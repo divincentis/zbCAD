@@ -75,8 +75,8 @@ export function cleanEntityRefs(value) {
       if (!Number.isSafeInteger(ref.index) || ref.index < 0) return { error: 'has an invalid vertex index' };
       entry.index = ref.index;
     }
-    if (ref.part === 'QUAD') {
-      if (!Number.isFinite(ref.angle)) return { error: 'has an invalid quadrant angle' };
+    if (ref.part === 'QUAD' || ref.part === 'POINT') {
+      if (!Number.isFinite(ref.angle)) return { error: `has an invalid ${ref.part.toLowerCase()} angle` };
       entry.angle = ref.angle;
     }
     cleaned.push(entry);

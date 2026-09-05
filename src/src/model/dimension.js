@@ -1,6 +1,6 @@
 import { DEFAULT_DIM_STYLE_ID } from '../core/defaults.js';
 import { dimSize, getDimStyle } from '../core/dimstyle.js';
-import { circularPoint, dist } from '../core/math.js';
+import { angleFromCenter, angleOnArc, circularPoint, dist } from '../core/math.js';
 import { formatLength } from '../core/units.js';
 import { isEntityVisible } from './layerQuery.js';
 import { state } from '../state.js';
@@ -154,6 +154,18 @@ export function resolveEntityReference(point) {
       if (candidate.part === 'QUAD') ref.angle = candidate.angle;
       return ref;
     }
+    // Most points picked on a circle or arc are not one of the few named
+    // candidates above — a NEAREST snap or a typed coordinate that happens to
+    // land on the curve is by far the common case when dimensioning a circle,
+    // since there is no dedicated radius/diameter dimension command. Any such
+    // point is still a real, trackable spot: its angle from the entity's
+    // centre. Checked last so an exact quadrant or arc endpoint still gets
+    // its more specific part instead of falling through to this.
+    if (entity.type === 'CIRCLE' || entity.type === 'ARC') {
+      if (Math.abs(dist(point, entity.center) - entity.radius) > REFERENCE_TOLERANCE) continue;
+      const angle = angleFromCenter(entity.center, point);
+      if (angleOnArc(angle, entity)) return { entityId: entity.id, part: 'POINT', angle };
+    }
   }
   return null;
 }
@@ -179,6 +191,15 @@ export function pointForReference(entity, ref) {
   if (ref.part === 'QUAD') {
     return entity.type === 'CIRCLE' && Number.isFinite(ref.angle)
       ? circularPoint(entity.center, entity.radius, ref.angle) : null;
+  }
+  // An arbitrary point on a circle or arc's own curve, named by its angle
+  // from the centre rather than one of the fixed candidates above. On an arc
+  // whose sweep has since moved past that angle, this freezes rather than
+  // producing a point that is no longer actually on the arc.
+  if (ref.part === 'POINT') {
+    if (entity.type !== 'CIRCLE' && entity.type !== 'ARC') return null;
+    if (!Number.isFinite(ref.angle) || !angleOnArc(ref.angle, entity)) return null;
+    return circularPoint(entity.center, entity.radius, ref.angle);
   }
   if (ref.part === 'START') {
     if (entity.type === 'LINE') return entity.a;
