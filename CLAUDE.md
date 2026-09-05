@@ -8,7 +8,7 @@ zbCAD is a single-file, browser-based 2D CAD prototype (no server, no build depe
 
 There are two parallel representations of the same program:
 
-- `src/src/` — the real source, as ~50 ES modules (readable, one concern per file).
+- `src/src/` — the real source, as ~52 ES modules (readable, one concern per file).
 - `cad.html` (repo root) and `src/dist/cad.html` — the built single-file bundle. These two files are kept byte-identical; `cad.html` is the shippable artifact.
 - `src/shell.html` — the HTML/CSS shell (head, body markup, styles) with an empty `(() => { })();` IIFE that the bundler fills with the concatenated modules.
 
@@ -47,7 +47,20 @@ python3 src/tools/unbundle.py <path-to-edited-cad.html> src
 
 After `build.mjs` regenerates `src/dist/cad.html`, copy it to the repo-root `cad.html` (the two are meant to stay identical — the root copy is the one actually shipped/opened).
 
-There is no separate lint or test-runner command and no test suite in this repo. Correctness is checked by: `run-checks.sh` (structural checks) plus manual/in-browser verification, and the `window.__cadPrototype` hook described below (used by *external* automated regression tests, not present in this repo).
+There is no lint command. Correctness is checked by `run-checks.sh` (structural checks), the headless suites below, and manual/in-browser verification.
+
+```sh
+# Drive the built bundle headlessly and assert behaviour. Run AFTER
+# run-checks.sh — these test src/dist/cad.html, i.e. whatever was last built:
+sh src/tools/tests/run-tests.sh
+
+# Test a different bundle (e.g. the shipped root copy):
+sh src/tools/tests/run-tests.sh ../cad.html
+```
+
+`src/tools/tests/harness.mjs` boots the built single-file bundle inside a Node `vm` with a stubbed DOM, canvas and localStorage, and returns `window.__cadPrototype` (see `testHook.js`). That hook exists precisely so the app can be driven and inspected without real DOM events. Prefer driving real commands (`startCommand`, `commitPoint`, `submitCommandText`) over seeding `state` directly, so a test exercises what a user's clicks actually produce.
+
+**Test with realistic inputs, not just canonical ones.** Points that happen to land on a quadrant, an endpoint, or an axis take different code paths from the arbitrary points users actually produce with a NEAREST snap — a past associative-dimension bug survived a green suite for exactly this reason. Assert geometric *properties* (tangency, sweep, reflection) rather than only precomputed coordinates.
 
 ## Runtime architecture
 

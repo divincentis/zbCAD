@@ -43,19 +43,25 @@ That is the definition of a useful first product. A collection of drawing comman
 
 The architectural refactor (Phase 1) and most of Phase 2 have already happened:
 
-- 51-module ES architecture, zero dependency cycles, mutation-tested
+- 52-module ES architecture, zero dependency cycles, mutation-tested
 - Versioned native JSON document format, with a validate-before-commit gate that rejects a bad edit before it can reach history
 - Autosave with crash recovery (localStorage, not the IndexedDB originally planned — see Phase 1 below)
 - Deterministic entity IDs, command-level undo/redo
-- Full command set: line, polyline, rectangle, circle, arc, move, copy, rotate, scale, stretch, grips, join, explode, offset, trim, extend, plus inquiry commands (distance, area, id, list)
+- Draw: line, polyline, rectangle, circle, arc, single-line text
+- Modify: erase, move, copy, rotate, scale, mirror, stretch, grips, join, explode, offset, trim, extend, fillet, chamfer
+- Annotate: linear, aligned, radius and diameter dimensions — **all associative** — plus dimension styles
+- Inquiry: distance, area, id, list
 - Full snap set: endpoint, midpoint, intersection, center, quadrant, perpendicular, tangent, nearest
 - Polar tracking, ORTHO, individual/window/crossing selection
-- Layers and dimension styles
-- Linear and aligned dimensions — **shipped but explicitly non-associative**, flagged in the UI ("Static dimensions: editing source geometry does not update its dimensions")
+- Layers, with name, visibility, lock and colour
 
-**Not yet started:** text, blocks, associative dimensions, a multi-selection properties panel, underlays, PDF/DXF output (Phase 3 remainder and all of Phase 4).
+**Correction, September 2026:** this section previously claimed a "full command set" while ERASE, MIRROR, FILLET, CHAMFER, DIMRADIUS and DIMDIAMETER did not exist — there was no way to erase except the Delete key, and no way to type it at all. All six have since been added. Phase 2's exit gate ("benchmark roof geometry can be built without manual workarounds") was not honestly met before that, because a symmetric plan with filleted corners could not be drawn without them.
 
-**Process note — read before planning further work:** Phase 0's benchmark validation (three drawings against a QCAD/AutoCAD baseline) was never run. The architectural refactor and Phase 2 build-out happened first, out of the order this roadmap specifies. See the status note in Phase 0 below before treating Phase 1/2 as validated.
+**Known gaps in what is listed above:** layers carry no linetype, lineweight or printability, which PDF output and DXF export both need; there is no properties panel for multi-selection editing; FILLET and CHAMFER handle line/line corners only and refuse anything else by name.
+
+**Not yet started:** multiline text, blocks, leaders and callouts, hatches, a multi-selection properties panel, underlays, PDF/DXF output (Phase 3 remainder and all of Phase 4).
+
+**Process note:** Phase 0's benchmark validation was run retroactively — the mechanical pass headlessly (see the Phase 0 status note), and the human feel-pass by the product owner in September 2026. Phase 0 is closed.
 
 ## 4. Roadmap at a Glance
 
@@ -71,20 +77,25 @@ The architectural refactor (Phase 1) and most of Phase 2 have already happened:
 
 ## 5. Phase 0 — Validate the Interaction Model
 
-### Status — did not happen in sequence (September 2026)
+### Status — closed, out of sequence (September 2026)
 
-This validation was never run. The architectural refactor and most of Phase 2's
-commands were built first — the opposite order this section calls for. Two
-things now need checking at once, not one:
+This validation was not run in the order this section calls for: the
+architectural refactor and most of Phase 2's commands were built first. It was
+run retroactively against the current build instead, in two passes:
 
-1. Is the core interaction model actually right? (the original question)
-2. Did anything drift from it across the module split and feature build-out
-   that followed? (a new question this gap creates)
+1. **Mechanical**, headlessly against the built bundle through the
+   `window.__cadPrototype` test hook — commands, point-entry grammars, snaps,
+   ortho/polar, window and crossing selection, undo/redo guarding, and the
+   transforms. Result: 1 blocker (benchmark 3 needs underlays, which do not
+   exist yet — expected), 1 low-severity friction, 0 defects. See
+   `phase0-validation-report.md`.
+2. **Human feel-pass**, by the product owner — pan/zoom smoothness, snap-marker
+   legibility, and the timing baseline, none of which a headless run can
+   assess. Completed and accepted.
 
-Run the three benchmark drawings below against the **current** build before
-starting text/blocks or any further geometry expansion. A defect found now is
-more expensive than one found before the refactor, because more code now
-depends on the behavior being tested.
+Phase 0 is closed. The one thing it could not cover remains open by
+construction: benchmark 3 depends on calibrated underlays, so it is a Phase 4
+gate rather than a Phase 0 one.
 
 ### Purpose
 
@@ -235,18 +246,36 @@ further Phase 3 work, and they are now implemented. Moving, rotating,
 scaling, or stretching geometry that a dimension measures now updates that
 dimension automatically; a reference that stops resolving (its entity was
 deleted, trimmed, or otherwise structurally replaced) freezes the dimension
-at its last measured value instead of erroring. Not yet human-tested in the
-browser — the change has automated coverage (a headless test driving the
-built bundle) but no live-session verification.
+at its last measured value instead of erroring. Verified headlessly and
+accepted in the product owner's live pass.
+
+Radial dimensions followed in September 2026: DIMRADIUS (circles and arcs)
+and DIMDIAMETER (circles only — on an arc the far end of the diameter is not
+on the arc, so the reference would not resolve and the dimension would
+distort the moment the arc moved). Both are associative through the same
+machinery. Before them, the only way to dimension a circle was to click two
+arbitrary points on its boundary, which is what made the earlier associative
+-reference bug possible.
+
+**Still not associative:** a dimension referencing an intersection,
+perpendicular or tangent point. Those depend on two entities' relationship
+rather than one entity's own geometry, so they need a reference type that
+does not exist yet.
 
 ### Status — single-line text shipped (2026-09-05)
 
 Single-line TEXT entities can now be placed (insertion point, height,
 rotation, content), moved, rotated, scaled, stretched, and grip-edited, with
 save/load validation and an ID/LIST inquiry report. Multiline text and
-blocks are deliberately not started — scoped out for this pass. Same
-caveat as associative dimensions above: mechanically verified only, no
-live-session pass yet.
+blocks are deliberately not started — scoped out for this pass. Verified
+headlessly and accepted in the product owner's live pass.
+
+### Status — core command gaps closed (September 2026)
+
+ERASE, MIRROR, FILLET, CHAMFER, DIMRADIUS and DIMDIAMETER were added; see the
+correction in section 3 for why they were missing. FILLET and CHAMFER cover
+line/line corners and refuse every other combination by name, so polyline
+corners remain an open extension.
 
 ### Features
 
@@ -271,7 +300,7 @@ live-session pass yet.
 
 - A benchmark roof plan can be fully annotated.
 - Reopening the native file preserves appearance and geometry.
-- Moving geometry updates associative dimensions. *(Shipped 2026-09-05 — see Status note above; still needs a human pass to confirm the feel is right, not just the mechanics.)*
+- Moving geometry updates associative dimensions. *(Shipped 2026-09-05, human pass accepted — see Status note above.)*
 - Locked and hidden layers cannot be accidentally modified.
 
 ## 9. Phase 4 — Handle Inputs and Deliverables
@@ -406,18 +435,35 @@ This is much more actionable than “it feels weird,” while still preserving f
 shipped during the refactor, out of the original sequence (see Phase 0 status
 note). What's left:
 
-1. **Run the Phase 0 benchmark validation retroactively**, against the
-   current build — this was skipped, not completed out of order, and the
-   roadmap's own sequencing assumed it would gate everything after it.
-2. ~~**Ship associative dimensions**~~ — shipped 2026-09-05 (mechanically
-   verified via a headless test against the built bundle; still needs a human
-   in-browser pass). Was the hard prerequisite for the rest of Phase 3.
-3. Single-line text: shipped 2026-09-05, mechanically verified (see Phase 3
-   status note). Blocks intentionally not started yet.
-4. TypeScript migration and IndexedDB autosave — still open, not deliberately
-   deferred; see Phase 1 status note.
-5. Add calibrated underlays and exact-scale PDF output.
-6. Add controlled DXF export/import.
+1. ~~**Run the Phase 0 benchmark validation retroactively**~~ — done. The
+   mechanical pass ran headlessly against the built bundle; the human
+   feel-pass was completed by the product owner in September 2026. Closed.
+2. ~~**Ship associative dimensions**~~ — shipped 2026-09-05. Was the hard
+   prerequisite for the rest of Phase 3.
+3. ~~Single-line text~~ — shipped 2026-09-05.
+4. ~~**Fill the gaps in the core command set**~~ — shipped September 2026:
+   ERASE, MIRROR, FILLET, CHAMFER, DIMRADIUS, DIMDIAMETER. These were assumed
+   present by the "full command set" line above and were not; see the
+   correction in section 3.
+5. **Complete the layer record: linetype, lineweight, printability.** Do this
+   before PDF output rather than after — both PDF and DXF need lineweight and
+   ByLayer semantics, so it is a prerequisite and not a Phase 3 nicety.
+6. Add calibrated underlays and exact-scale PDF output. This is the half of
+   the product definition that is still at zero: a drawing can be created and
+   annotated but cannot be issued.
+7. Add controlled DXF export/import.
+8. IndexedDB autosave, once entity counts justify it — the per-edit
+   localStorage write is already ~1.5 ms at 100 entities and ~20 ms at 4,000,
+   and blocks and hatches will push that up.
+9. TypeScript migration — **deliberately deferred**, on the strength of
+   section 18. It is a large mechanical change that does not help anyone
+   create, annotate, quantify or issue a plan. Reconsider only if type errors
+   start causing real defects.
+
+**Extensions the current work leaves open:** FILLET and CHAMFER on polyline
+corners (line/line only today); a dimension referencing an intersection,
+perpendicular or tangent point, which has no reference type and so does not
+associate.
 
 <details>
 <summary>Already shipped (original items 4–10)</summary>
