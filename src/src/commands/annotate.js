@@ -92,7 +92,7 @@ export function addDimension(dimType, p1, p2, linePoint, refs) {
   const entity = buildDimension(dimType, p1, p2, linePoint, refs);
   const geometry = dimensionGeometry(entity);
   if (geometry.measure <= 1e-9) {
-    updatePrompt('That dimension line direction measures nothing. Try the other side.');
+    updatePrompt('Dimension line location is read as horizontal or vertical, whichever the pick is offset toward — this pick measures neither. Try a point offset more clearly to one side.');
     return false;
   }
   entity.id = state.nextId;
