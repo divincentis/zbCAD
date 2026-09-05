@@ -155,3 +155,96 @@ export function scaleEntity(entity, base, factor, id = entity.id) {
   }
   return JSON.parse(JSON.stringify(entity));
 }
+
+// Reflecting a point across the line through axisA and axisB: split the offset
+// from axisA into the component running along the axis and the component
+// crossing it, then negate only the second.
+export function mirrorPoint(point, axisA, axisB) {
+  const axisX = axisB.x - axisA.x;
+  const axisY = axisB.y - axisA.y;
+  const axisLengthSq = axisX * axisX + axisY * axisY;
+  // Two coincident points name no direction to reflect across. The command
+  // rejects that before committing, so the point is handed back untouched
+  // rather than turned into NaN on the way to a preview.
+  if (axisLengthSq < 1e-18) return { x: point.x, y: point.y };
+  const dx = point.x - axisA.x;
+  const dy = point.y - axisA.y;
+  const projection = 2 * (dx * axisX + dy * axisY) / axisLengthSq;
+  return {
+    x: axisA.x + projection * axisX - dx,
+    y: axisA.y + projection * axisY - dy,
+  };
+}
+
+// A direction at angle θ reflected across an axis at angle φ comes back at
+// 2φ − θ.
+export function mirrorAngle(angle, axisA, axisB) {
+  const axisAngle = Math.atan2(axisB.y - axisA.y, axisB.x - axisA.x);
+  return normalizeAngle(2 * axisAngle - angle);
+}
+
+export function mirrorEntity(entity, axisA, axisB, id = entity.id) {
+  if (entity.type === 'LINE') {
+    return {
+      ...entity,
+      id,
+      a: mirrorPoint(entity.a, axisA, axisB),
+      b: mirrorPoint(entity.b, axisA, axisB),
+    };
+  }
+  if (entity.type === 'PLINE') {
+    return {
+      ...entity,
+      id,
+      points: entity.points.map(point => mirrorPoint(point, axisA, axisB)),
+    };
+  }
+  if (entity.type === 'CIRCLE') {
+    return { ...entity, id, center: mirrorPoint(entity.center, axisA, axisB) };
+  }
+  if (entity.type === 'ARC') {
+    // Reflection reverses the sense of rotation, so the mirrored arc runs
+    // counter-clockwise from the reflected end back to the reflected start.
+    // Sweeping the original magnitude from that reflected end lands on the
+    // reflected start and covers the mirrored span.
+    const sweep = arcSweep(entity);
+    const startAngle = mirrorAngle(entity.startAngle + sweep, axisA, axisB);
+    return {
+      ...entity,
+      id,
+      center: mirrorPoint(entity.center, axisA, axisB),
+      startAngle,
+      endAngle: startAngle + sweep,
+    };
+  }
+  if (entity.type === 'DIM') {
+    return {
+      ...entity,
+      id,
+      p1: mirrorPoint(entity.p1, axisA, axisB),
+      p2: mirrorPoint(entity.p2, axisA, axisB),
+      linePoint: mirrorPoint(entity.linePoint, axisA, axisB),
+      // A LINEAR dimension measures along a fixed direction, so that direction
+      // reflects with the geometry or the measurement silently changes.
+      rotation: mirrorAngle(entity.rotation, axisA, axisB),
+      // textOffset is a displacement rather than a place, so it reflects about
+      // the origin: only its direction is meant to change.
+      textOffset: entity.textOffset
+        ? mirrorPoint(
+          entity.textOffset,
+          { x: 0, y: 0 },
+          { x: axisB.x - axisA.x, y: axisB.y - axisA.y },
+        )
+        : null,
+      refs: entity.refs.map(ref => (ref ? { ...ref } : null)),
+    };
+  }
+  if (entity.type === 'TEXT') {
+    // AutoCAD's MIRRTEXT default, and for the same reason: the insertion point
+    // moves with everything else, but the lettering keeps its own angle rather
+    // than becoming a mirror image of itself. A note on a mirrored roof half
+    // still has to be readable.
+    return { ...entity, id, position: mirrorPoint(entity.position, axisA, axisB) };
+  }
+  return JSON.parse(JSON.stringify(entity));
+}

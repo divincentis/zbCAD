@@ -3035,6 +3035,99 @@ kbd { font-size: 9px; opacity: .65; }
     return JSON.parse(JSON.stringify(entity));
   }
 
+  // Reflecting a point across the line through axisA and axisB: split the offset
+  // from axisA into the component running along the axis and the component
+  // crossing it, then negate only the second.
+  function mirrorPoint(point, axisA, axisB) {
+    const axisX = axisB.x - axisA.x;
+    const axisY = axisB.y - axisA.y;
+    const axisLengthSq = axisX * axisX + axisY * axisY;
+    // Two coincident points name no direction to reflect across. The command
+    // rejects that before committing, so the point is handed back untouched
+    // rather than turned into NaN on the way to a preview.
+    if (axisLengthSq < 1e-18) return { x: point.x, y: point.y };
+    const dx = point.x - axisA.x;
+    const dy = point.y - axisA.y;
+    const projection = 2 * (dx * axisX + dy * axisY) / axisLengthSq;
+    return {
+      x: axisA.x + projection * axisX - dx,
+      y: axisA.y + projection * axisY - dy,
+    };
+  }
+
+  // A direction at angle θ reflected across an axis at angle φ comes back at
+  // 2φ − θ.
+  function mirrorAngle(angle, axisA, axisB) {
+    const axisAngle = Math.atan2(axisB.y - axisA.y, axisB.x - axisA.x);
+    return normalizeAngle(2 * axisAngle - angle);
+  }
+
+  function mirrorEntity(entity, axisA, axisB, id = entity.id) {
+    if (entity.type === 'LINE') {
+      return {
+        ...entity,
+        id,
+        a: mirrorPoint(entity.a, axisA, axisB),
+        b: mirrorPoint(entity.b, axisA, axisB),
+      };
+    }
+    if (entity.type === 'PLINE') {
+      return {
+        ...entity,
+        id,
+        points: entity.points.map(point => mirrorPoint(point, axisA, axisB)),
+      };
+    }
+    if (entity.type === 'CIRCLE') {
+      return { ...entity, id, center: mirrorPoint(entity.center, axisA, axisB) };
+    }
+    if (entity.type === 'ARC') {
+      // Reflection reverses the sense of rotation, so the mirrored arc runs
+      // counter-clockwise from the reflected end back to the reflected start.
+      // Sweeping the original magnitude from that reflected end lands on the
+      // reflected start and covers the mirrored span.
+      const sweep = arcSweep(entity);
+      const startAngle = mirrorAngle(entity.startAngle + sweep, axisA, axisB);
+      return {
+        ...entity,
+        id,
+        center: mirrorPoint(entity.center, axisA, axisB),
+        startAngle,
+        endAngle: startAngle + sweep,
+      };
+    }
+    if (entity.type === 'DIM') {
+      return {
+        ...entity,
+        id,
+        p1: mirrorPoint(entity.p1, axisA, axisB),
+        p2: mirrorPoint(entity.p2, axisA, axisB),
+        linePoint: mirrorPoint(entity.linePoint, axisA, axisB),
+        // A LINEAR dimension measures along a fixed direction, so that direction
+        // reflects with the geometry or the measurement silently changes.
+        rotation: mirrorAngle(entity.rotation, axisA, axisB),
+        // textOffset is a displacement rather than a place, so it reflects about
+        // the origin: only its direction is meant to change.
+        textOffset: entity.textOffset
+          ? mirrorPoint(
+            entity.textOffset,
+            { x: 0, y: 0 },
+            { x: axisB.x - axisA.x, y: axisB.y - axisA.y },
+          )
+          : null,
+        refs: entity.refs.map(ref => (ref ? { ...ref } : null)),
+      };
+    }
+    if (entity.type === 'TEXT') {
+      // AutoCAD's MIRRTEXT default, and for the same reason: the insertion point
+      // moves with everything else, but the lettering keeps its own angle rather
+      // than becoming a mirror image of itself. A note on a mirrored roof half
+      // still has to be readable.
+      return { ...entity, id, position: mirrorPoint(entity.position, axisA, axisB) };
+    }
+    return JSON.parse(JSON.stringify(entity));
+  }
+
   // ---------------------------------------------------------------------------
   // ui/dialogs/units.js
   // ---------------------------------------------------------------------------
@@ -4112,14 +4205,32 @@ kbd { font-size: 9px; opacity: .65; }
     draw();
   }
 
-  function deleteSelected() {
+  // The one implementation of "remove what is selected", shared by the Delete
+  // key and the ERASE command. It reports what it did so ERASE can say so at the
+  // prompt; the key press has nowhere to show that and ignores it.
+  function eraseSelection() {
     const deletable = new Set(state.entities
       .filter(entity => state.selected.has(entity.id) && isEntityEditable(entity))
       .map(entity => entity.id));
-    if (!deletable.size) return;
-    if (!commitGeometry(state.entities.filter(e => !deletable.has(e.id)))) return;
+    if (!deletable.size) return { error: 'No objects selected.', erased: 0 };
+    if (!commitGeometry(state.entities.filter(e => !deletable.has(e.id)))) {
+      return { error: 'That deletion was rejected.', erased: 0 };
+    }
     state.selected.clear();
     draw();
+    return { erased: deletable.size };
+  }
+
+  // A dimension whose geometry is erased freezes at its last measured value
+  // rather than disappearing, so the count names objects removed, not objects
+  // affected.
+  function eraseNote(result) {
+    if (!result.erased) return '';
+    return `Erased ${result.erased} object${result.erased === 1 ? '' : 's'}.`;
+  }
+
+  function deleteSelected() {
+    eraseSelection();
   }
 
   // ---------------------------------------------------------------------------
@@ -6523,6 +6634,111 @@ kbd { font-size: 9px; opacity: .65; }
       drawTransformGuide(newLengthAnchor, p, label);
     },
   });
+  // The stages at which MIRROR is placing the mirror line. Both measure from
+  // the first picked point, and ORTHO applies to the second: a mirror axis in a
+  // building plan is very often exactly horizontal or vertical.
+  const MIRROR_AXIS_STAGES = ['BASE', 'SECOND'];
+
+  const YES_KEYWORDS = ['Y', 'YES'];
+  const NO_KEYWORDS = ['N', 'NO'];
+
+  defineCommand('MIRROR', {
+    ...transformStages('MIRROR', { second: null }),
+
+    usesOrtho() {
+      return state.transform?.stage === 'SECOND';
+    },
+
+    takesDistance() {
+      return state.transform?.stage === 'SECOND';
+    },
+
+    basePoint() {
+      return state.transform?.stage === 'SECOND' ? state.transform.base : null;
+    },
+
+    acceptsPoint() {
+      return MIRROR_AXIS_STAGES.includes(state.transform?.stage);
+    },
+
+    prompt() {
+      const stage = state.transform?.stage || 'SELECT';
+      if (stage === 'SELECT') return transformSelectionPrompt('MIRROR');
+      if (stage === 'BASE') return 'MIRROR — Specify first point of mirror line:';
+      if (stage === 'SECOND') return 'MIRROR — Specify second point of mirror line:';
+      return 'MIRROR — Erase source objects? [Yes/No] <No>:';
+    },
+
+    point(p) {
+      const operation = state.transform;
+      if (!operation) return;
+      if (operation.stage === 'BASE') {
+        operation.base = { ...p };
+        operation.stage = 'SECOND';
+        updatePrompt();
+        return;
+      }
+      if (operation.stage !== 'SECOND') return;
+      if (dist(operation.base, p) < 1e-9) {
+        updatePrompt('The mirror line needs two distinct points.');
+        return;
+      }
+      operation.second = { ...p };
+      operation.stage = 'CONFIRM';
+      updatePrompt();
+    },
+
+    keyword(text) {
+      const operation = state.transform;
+      if (operation?.stage !== 'CONFIRM') return false;
+      const answer = text.trim().toUpperCase();
+      if (YES_KEYWORDS.includes(answer)) {
+        applyMirror(true);
+        return true;
+      }
+      if (NO_KEYWORDS.includes(answer)) {
+        applyMirror(false);
+        return true;
+      }
+      return false;
+    },
+
+    previewReady() {
+      return ['SECOND', 'CONFIRM'].includes(state.transform?.stage);
+    },
+
+    preview(p) {
+      const operation = state.transform;
+      // Once the axis is fixed the cursor no longer defines it, so the committed
+      // second point drives the preview and the answer stage keeps showing the
+      // result the user is about to accept.
+      const axisEnd = operation.stage === 'CONFIRM' ? operation.second : p;
+      if (dist(operation.base, axisEnd) < 1e-9) return;
+      const ids = new Set(operation.ids);
+      for (const entity of state.entities) {
+        if (ids.has(entity.id) && isEntityEditable(entity)) {
+          drawEntity(mirrorEntity(entity, operation.base, axisEnd), true);
+        }
+      }
+      drawTransformGuide(
+        operation.base,
+        axisEnd,
+        `Mirror @ ${formatAngle(Math.atan2(axisEnd.y - operation.base.y, axisEnd.x - operation.base.x))}`,
+        true,
+      );
+    },
+
+    // Enter answers whichever question is open: the selection first, then the
+    // bracketed <No> default for erasing the source.
+    finish() {
+      if (state.transform?.stage === 'CONFIRM') {
+        applyMirror(false);
+        return true;
+      }
+      return acceptTransformSelection();
+    },
+  });
+
   function editableSelectionIds() {
     return state.entities
       .filter(entity => state.selected.has(entity.id) && isEntityEditable(entity))
@@ -6639,6 +6855,43 @@ kbd { font-size: 9px; opacity: .65; }
 
     if (!commitGeometry(state.entities.map(entity => scaled.get(entity.id) || entity))) return;
     state.selected = new Set(idSet);
+    setMode('SELECT');
+  }
+
+  function applyMirror(eraseSource) {
+    const operation = state.transform;
+    if (!operation?.base || operation.stage !== 'CONFIRM' || operation.type !== 'MIRROR') return;
+    if (!operation.second || dist(operation.base, operation.second) < 1e-9) {
+      updatePrompt('The mirror line needs two distinct points.');
+      return;
+    }
+
+    const idSet = new Set(state.entities
+      .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
+      .map(entity => entity.id));
+    if (!idSet.size) {
+      updatePrompt('The selected objects are no longer editable.');
+      return;
+    }
+
+    if (eraseSource) {
+      const entities = state.entities.map(entity =>
+        idSet.has(entity.id) ? mirrorEntity(entity, operation.base, operation.second) : entity,
+      );
+      if (!commitGeometry(entities)) return;
+      state.selected = new Set(idSet);
+    } else {
+      // The reflected entities keep their original ids on the way into
+      // duplicateEntities, which is what lets a mirrored dimension be remapped
+      // onto the mirrored copy of the geometry it measures rather than left
+      // pointing at the original.
+      const reflected = state.entities
+        .filter(entity => idSet.has(entity.id))
+        .map(entity => mirrorEntity(entity, operation.base, operation.second));
+      const { entities: copies, nextId } = duplicateEntities(reflected, state.nextId);
+      if (!commitGeometry([...state.entities, ...copies], { nextId })) return;
+      state.selected = new Set(copies.map(entity => entity.id));
+    }
     setMode('SELECT');
   }
 
@@ -7468,6 +7721,10 @@ kbd { font-size: 9px; opacity: .65; }
 
   defineCommand('JOIN', selectionEditCommand('JOIN', 'join', joinSelection, joinNote));
   defineCommand('EXPLODE', selectionEditCommand('EXPLODE', 'explode', explodeSelection, explodeNote));
+  // ERASE reads a selection and nothing else, which is the shape JOIN and
+  // EXPLODE already have: act on a preselection at once, otherwise gather one
+  // and act on Enter. The Delete key stays as the shortcut for the same thing.
+  defineCommand('ERASE', selectionEditCommand('ERASE', 'erase', eraseSelection, eraseNote));
   defineCommand('STRETCH', {
     additiveSelection: true,
 
@@ -7587,7 +7844,8 @@ kbd { font-size: 9px; opacity: .65; }
     REC:'RECTANGLE', RECTANG:'RECTANGLE', RECTANGLE:'RECTANGLE', C:'CIRCLE', CIRCLE:'CIRCLE',
     A:'ARC', ARC:'ARC',
     M:'MOVE', MOVE:'MOVE', CO:'COPY', COPY:'COPY', CP:'COPY', RO:'ROTATE', ROTATE:'ROTATE',
-    SC:'SCALE', SCALE:'SCALE',
+    SC:'SCALE', SCALE:'SCALE', MI:'MIRROR', MIRROR:'MIRROR',
+    E:'ERASE', ERASE:'ERASE', DEL:'ERASE', DELETE:'ERASE',
     O:'OFFSET', OFFSET:'OFFSET',
     TR:'TRIM', TRIM:'TRIM', EX:'EXTEND', EXTEND:'EXTEND', S:'SELECT', SELECT:'SELECT',
     J:'JOIN', JOIN:'JOIN', X:'EXPLODE', EXPLODE:'EXPLODE',

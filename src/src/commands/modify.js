@@ -8,6 +8,7 @@ import { explodeNote, explodeSelection, joinNote, joinSelection } from '../geome
 import { acceptOffsetSource, applyOffset, isOffsettable, offsetEntity, setOffsetDistance } from '../geometry/offset.js';
 import { applyStretch, pointInStretchWindow, stretchIsDegenerate, stretchedEntity } from '../geometry/stretch.js';
 import { trimAt } from '../geometry/trim.js';
+import { eraseNote, eraseSelection } from '../interaction/selection.js';
 import { isEntityEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';
 import { notePrompt, updatePrompt } from '../ui/prompt.js';
@@ -237,6 +238,10 @@ export function selectionEditCommand(type, label, apply, note) {
 
 defineCommand('JOIN', selectionEditCommand('JOIN', 'join', joinSelection, joinNote));
 defineCommand('EXPLODE', selectionEditCommand('EXPLODE', 'explode', explodeSelection, explodeNote));
+// ERASE reads a selection and nothing else, which is the shape JOIN and
+// EXPLODE already have: act on a preselection at once, otherwise gather one
+// and act on Enter. The Delete key stays as the shortcut for the same thing.
+defineCommand('ERASE', selectionEditCommand('ERASE', 'erase', eraseSelection, eraseNote));
 defineCommand('STRETCH', {
   additiveSelection: true,
 

@@ -1,7 +1,7 @@
 import { defineCommand, setMode } from './registry.js';
 import { circularPoint, dist } from '../core/math.js';
 import { formatAngle, formatLength, formatLengthLabel } from '../core/units.js';
-import { rotateEntity, scaleEntity, translateEntity } from '../geometry/transform.js';
+import { mirrorEntity, rotateEntity, scaleEntity, translateEntity } from '../geometry/transform.js';
 import { parseDistance } from '../interaction/input.js';
 import { commitGeometry } from '../model/document.js';
 import { duplicateEntities, entityBBox } from '../model/entity.js';
@@ -412,6 +412,111 @@ defineCommand('SCALE', {
     drawTransformGuide(newLengthAnchor, p, label);
   },
 });
+// The stages at which MIRROR is placing the mirror line. Both measure from
+// the first picked point, and ORTHO applies to the second: a mirror axis in a
+// building plan is very often exactly horizontal or vertical.
+export const MIRROR_AXIS_STAGES = ['BASE', 'SECOND'];
+
+export const YES_KEYWORDS = ['Y', 'YES'];
+export const NO_KEYWORDS = ['N', 'NO'];
+
+defineCommand('MIRROR', {
+  ...transformStages('MIRROR', { second: null }),
+
+  usesOrtho() {
+    return state.transform?.stage === 'SECOND';
+  },
+
+  takesDistance() {
+    return state.transform?.stage === 'SECOND';
+  },
+
+  basePoint() {
+    return state.transform?.stage === 'SECOND' ? state.transform.base : null;
+  },
+
+  acceptsPoint() {
+    return MIRROR_AXIS_STAGES.includes(state.transform?.stage);
+  },
+
+  prompt() {
+    const stage = state.transform?.stage || 'SELECT';
+    if (stage === 'SELECT') return transformSelectionPrompt('MIRROR');
+    if (stage === 'BASE') return 'MIRROR — Specify first point of mirror line:';
+    if (stage === 'SECOND') return 'MIRROR — Specify second point of mirror line:';
+    return 'MIRROR — Erase source objects? [Yes/No] <No>:';
+  },
+
+  point(p) {
+    const operation = state.transform;
+    if (!operation) return;
+    if (operation.stage === 'BASE') {
+      operation.base = { ...p };
+      operation.stage = 'SECOND';
+      updatePrompt();
+      return;
+    }
+    if (operation.stage !== 'SECOND') return;
+    if (dist(operation.base, p) < 1e-9) {
+      updatePrompt('The mirror line needs two distinct points.');
+      return;
+    }
+    operation.second = { ...p };
+    operation.stage = 'CONFIRM';
+    updatePrompt();
+  },
+
+  keyword(text) {
+    const operation = state.transform;
+    if (operation?.stage !== 'CONFIRM') return false;
+    const answer = text.trim().toUpperCase();
+    if (YES_KEYWORDS.includes(answer)) {
+      applyMirror(true);
+      return true;
+    }
+    if (NO_KEYWORDS.includes(answer)) {
+      applyMirror(false);
+      return true;
+    }
+    return false;
+  },
+
+  previewReady() {
+    return ['SECOND', 'CONFIRM'].includes(state.transform?.stage);
+  },
+
+  preview(p) {
+    const operation = state.transform;
+    // Once the axis is fixed the cursor no longer defines it, so the committed
+    // second point drives the preview and the answer stage keeps showing the
+    // result the user is about to accept.
+    const axisEnd = operation.stage === 'CONFIRM' ? operation.second : p;
+    if (dist(operation.base, axisEnd) < 1e-9) return;
+    const ids = new Set(operation.ids);
+    for (const entity of state.entities) {
+      if (ids.has(entity.id) && isEntityEditable(entity)) {
+        drawEntity(mirrorEntity(entity, operation.base, axisEnd), true);
+      }
+    }
+    drawTransformGuide(
+      operation.base,
+      axisEnd,
+      `Mirror @ ${formatAngle(Math.atan2(axisEnd.y - operation.base.y, axisEnd.x - operation.base.x))}`,
+      true,
+    );
+  },
+
+  // Enter answers whichever question is open: the selection first, then the
+  // bracketed <No> default for erasing the source.
+  finish() {
+    if (state.transform?.stage === 'CONFIRM') {
+      applyMirror(false);
+      return true;
+    }
+    return acceptTransformSelection();
+  },
+});
+
 export function editableSelectionIds() {
   return state.entities
     .filter(entity => state.selected.has(entity.id) && isEntityEditable(entity))
@@ -528,5 +633,42 @@ export function applyScale(factor) {
 
   if (!commitGeometry(state.entities.map(entity => scaled.get(entity.id) || entity))) return;
   state.selected = new Set(idSet);
+  setMode('SELECT');
+}
+
+export function applyMirror(eraseSource) {
+  const operation = state.transform;
+  if (!operation?.base || operation.stage !== 'CONFIRM' || operation.type !== 'MIRROR') return;
+  if (!operation.second || dist(operation.base, operation.second) < 1e-9) {
+    updatePrompt('The mirror line needs two distinct points.');
+    return;
+  }
+
+  const idSet = new Set(state.entities
+    .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
+    .map(entity => entity.id));
+  if (!idSet.size) {
+    updatePrompt('The selected objects are no longer editable.');
+    return;
+  }
+
+  if (eraseSource) {
+    const entities = state.entities.map(entity =>
+      idSet.has(entity.id) ? mirrorEntity(entity, operation.base, operation.second) : entity,
+    );
+    if (!commitGeometry(entities)) return;
+    state.selected = new Set(idSet);
+  } else {
+    // The reflected entities keep their original ids on the way into
+    // duplicateEntities, which is what lets a mirrored dimension be remapped
+    // onto the mirrored copy of the geometry it measures rather than left
+    // pointing at the original.
+    const reflected = state.entities
+      .filter(entity => idSet.has(entity.id))
+      .map(entity => mirrorEntity(entity, operation.base, operation.second));
+    const { entities: copies, nextId } = duplicateEntities(reflected, state.nextId);
+    if (!commitGeometry([...state.entities, ...copies], { nextId })) return;
+    state.selected = new Set(copies.map(entity => entity.id));
+  }
   setMode('SELECT');
 }

@@ -75,12 +75,30 @@ export function finishBoxSelection(add = false) {
   draw();
 }
 
-export function deleteSelected() {
+// The one implementation of "remove what is selected", shared by the Delete
+// key and the ERASE command. It reports what it did so ERASE can say so at the
+// prompt; the key press has nowhere to show that and ignores it.
+export function eraseSelection() {
   const deletable = new Set(state.entities
     .filter(entity => state.selected.has(entity.id) && isEntityEditable(entity))
     .map(entity => entity.id));
-  if (!deletable.size) return;
-  if (!commitGeometry(state.entities.filter(e => !deletable.has(e.id)))) return;
+  if (!deletable.size) return { error: 'No objects selected.', erased: 0 };
+  if (!commitGeometry(state.entities.filter(e => !deletable.has(e.id)))) {
+    return { error: 'That deletion was rejected.', erased: 0 };
+  }
   state.selected.clear();
   draw();
+  return { erased: deletable.size };
+}
+
+// A dimension whose geometry is erased freezes at its last measured value
+// rather than disappearing, so the count names objects removed, not objects
+// affected.
+export function eraseNote(result) {
+  if (!result.erased) return '';
+  return `Erased ${result.erased} object${result.erased === 1 ? '' : 's'}.`;
+}
+
+export function deleteSelected() {
+  eraseSelection();
 }

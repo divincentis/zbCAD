@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const map = JSON.parse(fs.readFileSync(path.join(root, 'src/.modules.json'), 'utf8'));
-const shell = process.argv[2] ?? path.join(root, 'index.html');
+const shell = process.argv[2] ?? path.join(root, 'shell.html');
 const target = process.argv[3] ?? path.join(root, 'dist/cad.html');
 
 const RULE = '  // ' + '-'.repeat(75);
