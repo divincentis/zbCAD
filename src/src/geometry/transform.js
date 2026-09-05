@@ -33,6 +33,9 @@ export function translateEntity(entity, dx, dy, id = entity.id) {
       refs: entity.refs.map(ref => (ref ? { ...ref } : null)),
     };
   }
+  if (entity.type === 'TEXT') {
+    return { ...entity, id, position: { x: entity.position.x + dx, y: entity.position.y + dy } };
+  }
   return JSON.parse(JSON.stringify(entity));
 }
 
@@ -91,6 +94,14 @@ export function rotateEntity(entity, base, angle, id = entity.id) {
       refs: entity.refs.map(ref => (ref ? { ...ref } : null)),
     };
   }
+  if (entity.type === 'TEXT') {
+    return {
+      ...entity,
+      id,
+      position: rotatePoint(entity.position, base, angle),
+      rotation: normalizeAngle(entity.rotation + angle),
+    };
+  }
   return JSON.parse(JSON.stringify(entity));
 }
 
@@ -136,6 +147,11 @@ export function scaleEntity(entity, base, factor, id = entity.id) {
         ? { x: entity.textOffset.x * factor, y: entity.textOffset.y * factor } : null,
       refs: entity.refs.map(ref => (ref ? { ...ref } : null)),
     };
+  }
+  if (entity.type === 'TEXT') {
+    // Real CAD scales text height along with everything else, so a 2x SCALE
+    // on a wall and its label keeps them in visual proportion.
+    return { ...entity, id, position: scalePoint(entity.position, base, factor), height: entity.height * factor };
   }
   return JSON.parse(JSON.stringify(entity));
 }

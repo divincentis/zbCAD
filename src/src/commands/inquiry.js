@@ -308,6 +308,7 @@ export function entityReportGroup(entity) {
     );
   } else if (entity.type === 'DIM') {
     const geometry = dimensionGeometry(entity);
+    const referenced = entity.refs.filter(Boolean).length;
     rows.push(
       ['Dimension type', entity.dimType],
       ['Measurement', dimensionText(entity)],
@@ -315,10 +316,16 @@ export function entityReportGroup(entity) {
       ['From', describePoint(entity.p1)],
       ['To', describePoint(entity.p2)],
       ['Style', geometry.style.name],
-      ['Associative', 'No'],
+      ['Associative', referenced === 0 ? 'No' : referenced === 2 ? 'Yes' : 'Partial'],
+      ['References captured', `${referenced} of 2`],
     );
-    const referenced = entity.refs.filter(Boolean).length;
-    rows.push(['References captured', `${referenced} of 2`]);
+  } else if (entity.type === 'TEXT') {
+    rows.push(
+      ['Position', describePoint(entity.position)],
+      ['Height', formatLengthLabel(entity.height)],
+      ['Rotation', formatAngle(normalizeAngle(entity.rotation))],
+      ['Content', entity.content],
+    );
   } else if (entity.type === 'ARC') {
     rows.push(
       ['Center', describePoint(entity.center)],

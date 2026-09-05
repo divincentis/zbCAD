@@ -21,6 +21,7 @@ export const state = {
   edit: null,
   grip: null,
   circle: null,
+  text: null,
   mouseScreen: { x: 0, y: 0 },
   mouseWorld: { x: 0, y: 0 },
   activePoint: { x: 0, y: 0 },

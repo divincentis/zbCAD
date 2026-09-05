@@ -1,7 +1,7 @@
 import { activeCommand, commandSelectsObjects } from '../commands/registry.js';
 import { angleFromCenter, angleOnArc, circularPoint, dist, pointOnSegmentClosest } from '../core/math.js';
 import { commitGeometry } from '../model/document.js';
-import { boxContains, entityBBox, entityCrossesBox, pickSegments } from '../model/entity.js';
+import { boxContains, entityBBox, entityCrossesBox, pickSegments, textContainsPoint } from '../model/entity.js';
 import { isEntityEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';
 import { updatePrompt } from '../ui/prompt.js';
@@ -20,6 +20,9 @@ export function distanceToEntityPx(world, entity) {
     ];
     return Math.min(...endpoints.map(point => dist(world, point))) * state.view.scale;
   }
+  // A click anywhere inside a text run's footprint should select it, the way
+  // a filled glyph area reads, rather than only near its outline.
+  if (entity.type === 'TEXT' && textContainsPoint(entity, world)) return 0;
   let best = Infinity;
   for (const [a, b] of pickSegments(entity)) {
     const q = pointOnSegmentClosest(world, a, b);

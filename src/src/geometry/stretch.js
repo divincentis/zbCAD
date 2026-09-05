@@ -42,6 +42,9 @@ export function stretchedEntity(entity, dx, dy, caught) {
       refs: entity.refs.map(ref => (ref ? { ...ref } : null)),
     };
   }
+  // Text has one anchor point and no vertices of its own, so — like a circle
+  // or arc — it answers to that point: caught, it travels; missed, it stays.
+  if (entity.type === 'TEXT') return { ...entity, position: shift(entity.position) };
   return { ...entity };
 }
 

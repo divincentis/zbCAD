@@ -1,7 +1,54 @@
-import { TAU } from '../core/constants.js';
+import { TAU, TEXT_WIDTH_FACTOR } from '../core/constants.js';
 import { angleOnArc, arcSweep, circularPoint, dist, segmentCircularIntersections, segmentIntersection } from '../core/math.js';
 import { dimensionGeometry, dimensionSegments } from './dimension.js';
 import { allocateEntityId, state } from '../state.js';
+
+// ---------------------------------------------------------------------------
+// Text footprint
+//
+// No real glyph metrics exist outside a canvas context, so a text entity's
+// on-screen box is approximated from its character count and height rather
+// than measured — see TEXT_WIDTH_FACTOR. Used for bounding box, hit-testing,
+// and zoom-extents; the renderer draws with a monospace font specifically to
+// keep this approximation close to what actually appears.
+// ---------------------------------------------------------------------------
+
+function rotateAroundOrigin(point, angle) {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  return { x: point.x * cosine - point.y * sine, y: point.x * sine + point.y * cosine };
+}
+
+export function textWidth(entity) {
+  return Math.max(entity.content.length, 1) * entity.height * TEXT_WIDTH_FACTOR;
+}
+
+// Corners of the text's footprint, in drawing order, position first. The box
+// extends from a quarter-height descender below the baseline (position) to
+// the full nominal height above it — an approximation of ascender/descender,
+// not a measurement of this particular string's actual glyphs.
+export function textCorners(entity) {
+  const width = textWidth(entity);
+  const descent = entity.height * 0.25;
+  const local = [
+    { x: 0, y: -descent }, { x: width, y: -descent },
+    { x: width, y: entity.height }, { x: 0, y: entity.height },
+  ];
+  return local.map(point => {
+    const rotated = rotateAroundOrigin(point, entity.rotation);
+    return { x: entity.position.x + rotated.x, y: entity.position.y + rotated.y };
+  });
+}
+
+export function textContainsPoint(entity, point) {
+  const local = rotateAroundOrigin(
+    { x: point.x - entity.position.x, y: point.y - entity.position.y },
+    -entity.rotation,
+  );
+  const width = textWidth(entity);
+  const descent = entity.height * 0.25;
+  return local.x >= 0 && local.x <= width && local.y >= -descent && local.y <= entity.height;
+}
 
 export function polygonArea(points) {
   if (!points.length) return 0;
@@ -103,10 +150,21 @@ export function entitySegments(entity) {
 // trimming to one, is never what anybody wants.
 export function pickSegments(entity) {
   if (entity.type === 'DIM') return dimensionSegments(entity);
+  if (entity.type === 'TEXT') {
+    const corners = textCorners(entity);
+    return corners.map((point, index) => [point, corners[(index + 1) % corners.length]]);
+  }
   return entitySegments(entity);
 }
 
 export function entityBBox(e) {
+  if (e.type === 'TEXT') {
+    const corners = textCorners(e);
+    return {
+      minX: Math.min(...corners.map(p => p.x)), maxX: Math.max(...corners.map(p => p.x)),
+      minY: Math.min(...corners.map(p => p.y)), maxY: Math.max(...corners.map(p => p.y)),
+    };
+  }
   if (e.type === 'CIRCLE') {
     return {
       minX: e.center.x - e.radius,

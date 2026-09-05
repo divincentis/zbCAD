@@ -97,12 +97,34 @@ export function drawDimension(entity, preview, color) {
   }
 }
 
+export function drawText(e, preview, color) {
+  const screen = worldToScreen(e.position);
+  const heightPx = e.height * state.view.scale;
+  if (heightPx < 2) return; // Illegible below this; skip rather than draw a smear.
+  ctx.save();
+  ctx.translate(screen.x, screen.y);
+  // World Y and screen Y point opposite ways, so an un-mirrored rotation here
+  // would spin text the wrong direction relative to everything else drawn.
+  ctx.rotate(-e.rotation);
+  ctx.font = `${heightPx}px monospace`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = color;
+  if (preview) ctx.globalAlpha = 0.6;
+  ctx.fillText(e.content, 0, 0);
+  ctx.restore();
+}
+
 export function drawEntity(e, preview = false) {
   ctx.lineWidth = preview ? 1 : 1.35;
   const layerColor = getLayer(e.layerId)?.color || '#d6d6d6';
   ctx.strokeStyle = preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor;
   if (e.type === 'DIM') {
     drawDimension(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
+    return;
+  }
+  if (e.type === 'TEXT') {
+    drawText(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
     return;
   }
   if (preview) ctx.setLineDash([6,4]); else ctx.setLineDash([]);

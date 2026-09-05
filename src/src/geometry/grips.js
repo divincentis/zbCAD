@@ -47,6 +47,9 @@ export function entityGrips(entity) {
       { kind: 'ARC_END', point: circularPoint(entity.center, entity.radius, entity.endAngle) },
     ];
   }
+  if (entity.type === 'TEXT') {
+    return [{ kind: 'TEXT_POSITION', point: entity.position }];
+  }
   return [];
 }
 
@@ -170,6 +173,10 @@ export function gripEditedEntity(entity, descriptor, point) {
         },
       };
     }
+  }
+
+  if (entity.type === 'TEXT' && descriptor.kind === 'TEXT_POSITION') {
+    return { entity: { ...entity, position: { ...point } } };
   }
 
   return { error: 'That grip cannot edit this entity.' };

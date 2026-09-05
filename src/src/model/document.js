@@ -182,6 +182,26 @@ export function cleanEntity(value, layerIds) {
     };
   }
 
+  if (type === 'TEXT') {
+    const position = cleanPoint(value.position);
+    if (!position || !Number.isFinite(value.height) || value.height <= 1e-9) {
+      return { error: 'has invalid text placement' };
+    }
+    if (!Number.isFinite(value.rotation)) return { error: 'has an invalid text rotation' };
+    if (typeof value.content !== 'string' || !value.content.trim() || value.content.length > 1000) {
+      return { error: 'has invalid text content' };
+    }
+    return {
+      entity: {
+        ...common,
+        position,
+        height: value.height,
+        rotation: normalizeAngle(value.rotation),
+        content: value.content,
+      },
+    };
+  }
+
   return { error: `uses unsupported entity type ${type || '(missing)'}` };
 }
 

@@ -117,7 +117,7 @@ export function commandSelectsObjects(command = activeCommand()) {
 export function commandInProgress() {
   return state.mode !== 'SELECT' ||
     state.currentPoints.length > 0 ||
-    Boolean(state.transform || state.offset || state.edit || state.grip || state.dimension);
+    Boolean(state.transform || state.offset || state.edit || state.grip || state.dimension || state.text);
 }
 
 // Refuse an out-of-band document change and say why. Returns true when the
@@ -153,6 +153,7 @@ export function setMode(mode, commandName = mode) {
   state.grip = null;
   state.gripPress = false;
   state.circle = null;
+  state.text = null;
   state.snap = null;
   const command = activeCommand();
   const beginResult = command?.begin?.();
@@ -168,6 +169,7 @@ export function setMode(mode, commandName = mode) {
     state.offset = null;
     state.dimension = null;
     state.circle = null;
+    state.text = null;
     state.grip = null;
   }
   // Match the command, falling back to the mode. DIMLINEAR and DIMALIGNED both

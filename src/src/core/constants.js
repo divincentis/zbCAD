@@ -20,3 +20,10 @@ export const POLAR_APERTURE_PX = 12;
 
 export const DIM_TYPES = ['ALIGNED', 'LINEAR'];
 export const DIM_REF_PARTS = ['START', 'END', 'CENTER', 'MID', 'QUAD', 'VERTEX', 'POINT', 'SEGMENT'];
+
+// No real glyph metrics exist outside a canvas context, so a text entity's
+// footprint (for bounding box, hit-testing, and zoom-extents) is approximated
+// from its character count and height rather than measured. Rendering uses a
+// monospace font specifically so this approximation stays close to what is
+// actually drawn.
+export const TEXT_WIDTH_FACTOR = 0.6;
