@@ -27,7 +27,25 @@ body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 
 }
 .brand { font-weight: 700; white-space: nowrap; }
 .version { color: #9e9e9e; font-size: 11px; font-weight: 400; }
-.tools { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 5px; }
+.tools { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 6px 0; }
+.tool-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border-right: 1px solid #3a3a3a;
+}
+.tool-group:last-child { border-right: none; padding-right: 0; }
+.tool-group:first-child { padding-left: 0; }
+.group-label {
+  color: #8a8a8a;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-right: 1px;
+}
 button {
   border: 1px solid #4a4a4a;
   background: #303030;
@@ -360,36 +378,67 @@ kbd { font-size: 9px; opacity: .65; }
   <header class="topbar">
     <div class="brand">zbCAD Prototype <span class="version">v0.24.3</span></div>
     <div class="tools">
-      <button id="newBtn">New</button>
-      <button id="openBtn">Open</button>
-      <button id="saveBtn">Save</button>
-      <button id="recoverBackupBtn" title="Recover the previous validated autosave">Recover Backup</button>
-      <button data-command="SELECT" class="active">Select</button>
-      <button data-command="LINE">Line (L)</button>
-      <button data-command="PLINE">Polyline (PL)</button>
-      <button data-command="RECTANGLE">Rectangle (REC)</button>
-      <button data-command="CIRCLE">Circle (C)</button>
-      <button data-command="ARC">Arc (A)</button>
-      <button data-command="MOVE">Move (M)</button>
-      <button data-command="COPY">Copy (CO)</button>
-      <button data-command="ROTATE">Rotate (RO)</button>
-      <button data-command="SCALE">Scale (SC)</button>
-      <button data-command="OFFSET">Offset (O)</button>
-      <button data-command="TRIM">Trim (TR)</button>
-      <button data-command="EXTEND">Extend (EX)</button>
-      <button data-command="JOIN">Join (J)</button>
-      <button data-command="EXPLODE">Explode (X)</button>
-      <button data-command="STRETCH">Stretch (ST)</button>
-      <button id="undoBtn">Undo</button>
-      <button id="redoBtn">Redo</button>
-      <button id="fitBtn">Zoom Extents</button>
-      <button data-command="DIST">Dist (DI)</button>
-      <button data-command="AREA">Area (AA)</button>
-      <button data-command="LIST">List (LI)</button>
-      <button data-command="DIMLINEAR">Dim Linear (DLI)</button>
-      <button data-command="DIMALIGNED">Dim Aligned (DAL)</button>
-      <button id="dimStyleBtn">Dim Style (DST)</button>
-      <button id="unitsBtn">Units (UN)</button>
+      <div class="tool-group">
+        <span class="group-label">File</span>
+        <button id="newBtn">New</button>
+        <button id="openBtn">Open</button>
+        <button id="saveBtn">Save</button>
+        <button id="recoverBackupBtn" title="Recover the previous validated autosave">Recover Backup</button>
+      </div>
+      <div class="tool-group">
+        <span class="group-label">Edit</span>
+        <button id="undoBtn">Undo</button>
+        <button id="redoBtn">Redo</button>
+      </div>
+      <div class="tool-group">
+        <button data-command="SELECT" class="active">Select</button>
+      </div>
+      <div class="tool-group">
+        <span class="group-label">Draw</span>
+        <button data-command="LINE">Line (L)</button>
+        <button data-command="PLINE">Polyline (PL)</button>
+        <button data-command="RECTANGLE">Rectangle (REC)</button>
+        <button data-command="CIRCLE">Circle (C)</button>
+        <button data-command="ARC">Arc (A)</button>
+      </div>
+      <div class="tool-group">
+        <span class="group-label">Modify</span>
+        <button data-command="MOVE">Move (M)</button>
+        <button data-command="COPY">Copy (CO)</button>
+        <button data-command="ROTATE">Rotate (RO)</button>
+        <button data-command="SCALE">Scale (SC)</button>
+        <button data-command="MIRROR">Mirror (MI)</button>
+        <button data-command="OFFSET">Offset (O)</button>
+        <button data-command="FILLET">Fillet (F)</button>
+        <button data-command="CHAMFER">Chamfer (CHA)</button>
+        <button data-command="TRIM">Trim (TR)</button>
+        <button data-command="EXTEND">Extend (EX)</button>
+        <button data-command="STRETCH">Stretch (ST)</button>
+        <button data-command="JOIN">Join (J)</button>
+        <button data-command="EXPLODE">Explode (X)</button>
+        <button data-command="ERASE">Erase (E)</button>
+      </div>
+      <div class="tool-group">
+        <span class="group-label">Annotate</span>
+        <button data-command="DIMLINEAR">Dim Linear (DLI)</button>
+        <button data-command="DIMALIGNED">Dim Aligned (DAL)</button>
+        <button data-command="DIMRADIUS">Dim Radius (DRA)</button>
+        <button data-command="DIMDIAMETER">Dim Diameter (DDI)</button>
+        <button data-command="TEXT">Text (T)</button>
+        <button id="dimStyleBtn">Dim Style (DST)</button>
+      </div>
+      <div class="tool-group">
+        <span class="group-label">Inquiry</span>
+        <button data-command="DIST">Dist (DI)</button>
+        <button data-command="AREA">Area (AA)</button>
+        <button data-command="ID">ID</button>
+        <button data-command="LIST">List (LI)</button>
+      </div>
+      <div class="tool-group">
+        <span class="group-label">View</span>
+        <button id="fitBtn">Zoom Extents</button>
+        <button id="unitsBtn">Units (UN)</button>
+      </div>
     </div>
     <input id="openInput" type="file" accept=".json,.draft2d.json,application/json" hidden />
   </header>
@@ -399,7 +448,7 @@ kbd { font-size: 9px; opacity: .65; }
       <canvas id="cadCanvas" tabindex="0"></canvas>
       <div id="help" class="help">
     <strong>Prototype controls:</strong>
-    Ctrl+N/O/S = new/open/save · drawings recover automatically after refresh · select an object, then click a white grip to edit it · L = line · PL = polyline · REC = rectangle · C = circle; choose 2P/3P before the first point or D after the center · A = three-point arc · M = move · CO = copy · RO = rotate · SC = uniform scale · type R after the RO/SC base point for reference mode · O = offset · TR = trim · EX = extend · J = join lines and open polylines end to end · X = explode a polyline or rectangle into lines · ST = stretch the vertices inside a crossing window · use the Layers panel to create, rename, color, hide, lock, assign, and safely delete layers · Enter or Space finishes; Esc cancels and discards · Enter/Space/right-click at an empty prompt repeats the last command · type C to close or U to step back during a line or polyline · DLI = linear dimension · DAL = aligned dimension · DST = dimension style · DI = distance · AA = area (type O for a single object) · ID = point · LI = list selected · UN opens Drawing Units; distances accept 5'6-1/2", 3-1/2, and 150mm · F8 = ortho · F10 = polar tracking, with the increment beside the button · SNAP toggles object snapping and the readout beside it chooses which snaps are active · Ctrl+Z/Y cancels an active command first, then undoes/redoes
+    Ctrl+N/O/S = new/open/save · drawings recover automatically after refresh · select an object, then click a white grip to edit it · L = line · PL = polyline · REC = rectangle · C = circle; choose 2P/3P before the first point or D after the center · A = three-point arc · M = move · CO = copy · RO = rotate · SC = uniform scale · MI = mirror · type R after the RO/SC base point for reference mode · O = offset · F = fillet · CHA = chamfer · TR = trim · EX = extend · J = join lines and open polylines end to end · X = explode a polyline or rectangle into lines · ST = stretch the vertices inside a crossing window · E = erase · use the Layers panel to create, rename, color, hide, lock, assign, and safely delete layers · Enter or Space finishes; Esc cancels and discards · Enter/Space/right-click at an empty prompt repeats the last command · type C to close or U to step back during a line or polyline · DLI = linear dimension · DAL = aligned dimension · DRA = radius dimension · DDI = diameter dimension · DST = dimension style · T = text · DI = distance · AA = area (type O for a single object) · ID = point · LI = list selected · UN opens Drawing Units; distances accept 5'6-1/2", 3-1/2, and 150mm · F8 = ortho · F10 = polar tracking, with the increment beside the button · SNAP toggles object snapping and the readout beside it chooses which snaps are active · Ctrl+Z/Y cancels an active command first, then undoes/redoes
   </div>
       <div id="inquiryPanel" class="inquiry" aria-live="polite" hidden>
         <div class="inquiry-head">
