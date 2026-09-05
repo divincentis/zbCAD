@@ -42,6 +42,7 @@
   "commands/transform.js",
   "model/persistence.js",
   "geometry/offset.js",
+  "geometry/fillet.js",
   "geometry/joinExplode.js",
   "geometry/stretch.js",
   "commands/modify.js",

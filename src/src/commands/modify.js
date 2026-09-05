@@ -3,6 +3,7 @@ import { editableSelectionIds } from './transform.js';
 import { formatAngle, formatLengthLabel } from '../core/units.js';
 import { finishEdgeEdit } from '../geometry/edgeEdit.js';
 import { extendAt } from '../geometry/extend.js';
+import { applyCorner, chamferCorner, cornerPick, filletCorner } from '../geometry/fillet.js';
 import { applyGripEdit, gripEditedEntity } from '../geometry/grips.js';
 import { explodeNote, explodeSelection, joinNote, joinSelection } from '../geometry/joinExplode.js';
 import { acceptOffsetSource, applyOffset, isOffsettable, offsetEntity, setOffsetDistance } from '../geometry/offset.js';
@@ -192,6 +193,154 @@ defineCommand('GRIP', {
     return true;
   },
 });
+
+// FILLET and CHAMFER keep their settings between invocations, the way every
+// CAD does: a plan is cleaned up one corner at a time at a radius chosen once.
+export const cornerSettings = { radius: 0, firstDistance: 0, secondDistance: 0 };
+
+export const RADIUS_KEYWORDS = ['R', 'RAD', 'RADIUS'];
+export const DISTANCE_KEYWORDS = ['D', 'DIST', 'DISTANCE'];
+
+// FILLET and CHAMFER differ only in what replaces the corner and which
+// settings they ask for, so they share every stage: optional settings, a first
+// line, a second line, then straight back to the first line for the next
+// corner.
+export function cornerCommand(type) {
+  const valueStages = type === 'FILLET' ? ['RADIUS'] : ['DISTANCE1', 'DISTANCE2'];
+
+  return {
+    begin() {
+      // The picks name which line and which side, never a place, so an
+      // unrelated selection would only be visual noise through the command.
+      state.selected.clear();
+      state.edit = { type, stage: 'FIRST', firstId: null, firstPoint: null, ...cornerSettings };
+    },
+
+    // Both picks say which edge and which side of the corner is meant. A snap
+    // would pull them onto an endpoint and change the answer to both.
+    usesSnap: false,
+
+    acceptsPoint() {
+      return false;
+    },
+
+    takesDistance() {
+      return valueStages.includes(state.edit?.stage);
+    },
+
+    prompt() {
+      const operation = state.edit;
+      const stage = operation?.stage || 'FIRST';
+      if (stage === 'RADIUS') return `FILLET — Specify fillet radius <${formatLengthLabel(operation.radius)}>:`;
+      if (stage === 'DISTANCE1') return `CHAMFER — Specify first chamfer distance <${formatLengthLabel(operation.firstDistance)}>:`;
+      if (stage === 'DISTANCE2') return `CHAMFER — Specify second chamfer distance <${formatLengthLabel(operation.secondDistance)}>:`;
+      if (stage === 'SECOND') return `${type} — Select the second line:`;
+      const setting = type === 'FILLET'
+        ? `radius ${formatLengthLabel(operation?.radius ?? 0)}`
+        : `${formatLengthLabel(operation?.firstDistance ?? 0)} × ${formatLengthLabel(operation?.secondDistance ?? 0)}`;
+      const option = type === 'FILLET' ? 'Radius' : 'Distance';
+      return `${type} — Select the first line or [${option}] (${setting}); Enter/right-click/Esc to finish:`;
+    },
+
+    keyword(text) {
+      const operation = state.edit;
+      if (operation?.stage !== 'FIRST') return false;
+      const answer = text.trim().toUpperCase();
+      if (type === 'FILLET' && RADIUS_KEYWORDS.includes(answer)) {
+        operation.stage = 'RADIUS';
+      } else if (type === 'CHAMFER' && DISTANCE_KEYWORDS.includes(answer)) {
+        operation.stage = 'DISTANCE1';
+      } else {
+        return false;
+      }
+      updatePrompt();
+      draw();
+      return true;
+    },
+
+    distance(value) {
+      const operation = state.edit;
+      if (!valueStages.includes(operation?.stage)) return false;
+      // A zero radius or distance is the ordinary "just close this corner"
+      // instruction, so only a negative one is refused.
+      if (value < 0) {
+        updatePrompt('That value cannot be negative.');
+        return true;
+      }
+      if (operation.stage === 'RADIUS') {
+        operation.radius = value;
+        cornerSettings.radius = value;
+        operation.stage = 'FIRST';
+      } else if (operation.stage === 'DISTANCE1') {
+        operation.firstDistance = value;
+        cornerSettings.firstDistance = value;
+        // The second distance follows the first unless it is changed, which is
+        // what makes an equal-sided chamfer a single answer.
+        operation.secondDistance = value;
+        cornerSettings.secondDistance = value;
+        operation.stage = 'DISTANCE2';
+      } else {
+        operation.secondDistance = value;
+        cornerSettings.secondDistance = value;
+        operation.stage = 'FIRST';
+      }
+      updatePrompt();
+      draw();
+      return true;
+    },
+
+    point(p) {
+      const operation = state.edit;
+      if (operation?.stage === 'FIRST') {
+        const picked = cornerPick(p);
+        if (picked.error) {
+          updatePrompt(picked.error);
+          draw();
+          return;
+        }
+        operation.firstId = picked.entity.id;
+        operation.firstPoint = { ...picked.point };
+        operation.stage = 'SECOND';
+        updatePrompt();
+        draw();
+        return;
+      }
+      if (operation?.stage === 'SECOND') applyCorner(p);
+    },
+
+    previewReady() {
+      return state.edit?.stage === 'SECOND';
+    },
+
+    preview(p) {
+      const operation = state.edit;
+      const first = state.entities.find(entity => entity.id === operation.firstId);
+      const picked = cornerPick(p);
+      if (!first || picked.error || picked.entity.id === first.id) return;
+      const result = operation.type === 'FILLET'
+        ? filletCorner(first, picked.entity, operation.firstPoint, picked.point, operation.radius)
+        : chamferCorner(
+          first, picked.entity, operation.firstPoint, picked.point,
+          operation.firstDistance, operation.secondDistance,
+        );
+      if (result.error) return;
+      for (const edge of result.edges) drawEntity(edge, true);
+      const addition = result.arc || result.cut;
+      if (addition) drawEntity(addition, true);
+    },
+
+    // One rule for Enter at every stage: the command is done. Abandoning a
+    // half-picked corner and leaving the command are the same instruction as
+    // far as the user is concerned, and Esc already cancels.
+    finish() {
+      setMode('SELECT');
+      return true;
+    },
+  };
+}
+
+defineCommand('FILLET', cornerCommand('FILLET'));
+defineCommand('CHAMFER', cornerCommand('CHAMFER'));
 
 export function selectionEditCommand(type, label, apply, note) {
   return {
