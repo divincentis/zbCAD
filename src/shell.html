@@ -80,7 +80,27 @@ button.active, button.on { background: #565656; border-color: #888; }
 }
 .layer-heading { display: flex; align-items: center; justify-content: space-between; }
 .layer-heading strong { font-size: 13px; }
+.layer-heading-actions { display: flex; align-items: center; gap: 6px; }
 .layer-add { padding: 3px 8px; font-size: 11px; }
+.layer-collapse { padding: 3px 6px; font-size: 11px; line-height: 1; }
+.layer-panel.collapsed {
+  padding: 10px 4px;
+  overflow: hidden;
+}
+.layer-panel.collapsed .layer-heading { justify-content: center; }
+.layer-panel.collapsed .layer-heading strong,
+.layer-panel.collapsed .layer-add,
+.layer-panel.collapsed .layer-label,
+.layer-panel.collapsed #currentLayerSelect,
+.layer-panel.collapsed .assign-layer,
+.layer-panel.collapsed .layer-list,
+.layer-panel.collapsed .layer-hint,
+.layer-panel.collapsed #dimensionNotice {
+  display: none;
+}
+/* :has() lets the collapse state live purely on the panel's own class, so
+   toggling it needs no coordinating class on an ancestor. */
+.workspace:has(.layer-panel.collapsed) { grid-template-columns: minmax(0, 1fr) 34px; }
 .layer-label { color: #aaa; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
 #currentLayerSelect {
   width: 100%;
@@ -458,10 +478,13 @@ kbd { font-size: 9px; opacity: .65; }
         <div id="inquiryBody"></div>
       </div>
     </div>
-    <aside class="layer-panel" aria-label="Layer manager">
+    <aside id="layerPanel" class="layer-panel" aria-label="Layer manager">
       <div class="layer-heading">
         <strong>Layers</strong>
-        <button id="addLayerBtn" class="layer-add" title="Create a new layer">+ Add</button>
+        <div class="layer-heading-actions">
+          <button id="addLayerBtn" class="layer-add" title="Create a new layer">+ Add</button>
+          <button id="layerPanelToggle" class="layer-collapse" title="Collapse layers panel" aria-label="Collapse layers panel" aria-expanded="true">▸</button>
+        </div>
       </div>
       <label class="layer-label" for="currentLayerSelect">Current layer</label>
       <select id="currentLayerSelect" aria-label="Current drawing layer"></select>

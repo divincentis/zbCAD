@@ -1,6 +1,6 @@
 import { commandCapturesSpace, navigateHistory, startCommand } from '../commands/registry.js';
 import { LENGTH_FORMATS } from '../core/units.js';
-import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, layerList, openInput, orthoBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
+import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
 import { submitCommandInput } from '../interaction/pointer.js';
 import { writeAutosave } from '../model/dirty.js';
 import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, toggleLayerLock, toggleLayerVisibility } from '../model/layers.js';
@@ -143,6 +143,33 @@ openInput.addEventListener('change', async () => {
 });
 snapBtn.addEventListener('click', () => { state.snapEnabled=!state.snapEnabled; snapBtn.classList.toggle('on',state.snapEnabled); draw(); });
 orthoBtn.addEventListener('click', () => setOrtho(!state.ortho));
+
+// Collapse state is a per-browser convenience, not drawing data, so it lives
+// in its own localStorage key rather than the document/autosave model.
+const LAYER_PANEL_COLLAPSED_KEY = 'zbcad.layerPanelCollapsed';
+function setLayerPanelCollapsed(collapsed) {
+  layerPanel.classList.toggle('collapsed', collapsed);
+  layerPanelToggle.textContent = collapsed ? '◂' : '▸';
+  layerPanelToggle.title = collapsed ? 'Expand layers panel' : 'Collapse layers panel';
+  layerPanelToggle.setAttribute('aria-label', layerPanelToggle.title);
+  layerPanelToggle.setAttribute('aria-expanded', String(!collapsed));
+  try {
+    window.localStorage.setItem(LAYER_PANEL_COLLAPSED_KEY, collapsed ? '1' : '0');
+  } catch {
+    // Private browsing or storage disabled: the toggle still works this session.
+  }
+}
+layerPanelToggle.addEventListener('click', () => {
+  setLayerPanelCollapsed(!layerPanel.classList.contains('collapsed'));
+  canvas.focus();
+});
+let layerPanelInitiallyCollapsed = false;
+try {
+  layerPanelInitiallyCollapsed = window.localStorage.getItem(LAYER_PANEL_COLLAPSED_KEY) === '1';
+} catch {
+  // Fall back to expanded.
+}
+setLayerPanelCollapsed(layerPanelInitiallyCollapsed);
 
 window.addEventListener('error', () => {
   engineStatus.textContent = 'ENGINE: ERROR';
