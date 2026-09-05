@@ -56,10 +56,11 @@ export function cleanPoint(value) {
   return { x: value.x, y: value.y };
 }
 
-// References are validated but never resolved: see dimensionGeometry. A
-// reference to a missing entity is accepted rather than rejected, because the
-// dimension does not depend on it, and dropping it would lose the information
-// that association would later need.
+// Validation never resolves a reference against the entity table (see
+// updateAssociativeDimensions for that). A reference to a missing entity is
+// accepted rather than rejected: the dimension still measures its last
+// committed points fine without it, and dropping the reference would
+// permanently sever an association that a later undo/redo could restore.
 export function cleanEntityRefs(value) {
   if (value === undefined || value === null) return { value: [null, null] };
   if (!Array.isArray(value) || value.length !== 2) return { error: 'must be a pair' };
@@ -73,6 +74,10 @@ export function cleanEntityRefs(value) {
     if (ref.part === 'VERTEX') {
       if (!Number.isSafeInteger(ref.index) || ref.index < 0) return { error: 'has an invalid vertex index' };
       entry.index = ref.index;
+    }
+    if (ref.part === 'QUAD') {
+      if (!Number.isFinite(ref.angle)) return { error: 'has an invalid quadrant angle' };
+      entry.angle = ref.angle;
     }
     cleaned.push(entry);
   }

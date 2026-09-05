@@ -14,9 +14,14 @@ import { state } from '../state.js';
 // horizontal or vertical component instead of the true distance.
 //
 // `refs` holds a reference to whatever each measured point was snapped to.
-// It is captured at creation and carried through the file, but nothing reads
-// it yet: these dimensions are not associative. It exists so that turning
-// association on later is purely additive.
+// It is captured at creation and carried through the file.
+// `updateAssociativeDimensions` (below) is what makes that reference live: it
+// runs once per commit and re-derives p1/p2 from the referenced entity's
+// current geometry, so moving, rotating, scaling, or stretching that entity
+// carries the dimension along.
+// A reference that no longer resolves (the entity was deleted, trimmed away,
+// or a polyline vertex it named is gone) simply stops updating that point
+// rather than erroring — the dimension freezes at its last measured value.
 // ---------------------------------------------------------------------------
 
 
@@ -123,7 +128,7 @@ export function entityReferenceCandidates(entity) {
     return [
       { part: 'CENTER', point: entity.center },
       ...[0, Math.PI / 2, Math.PI, Math.PI * 1.5].map(angle => ({
-        part: 'QUAD', point: circularPoint(entity.center, entity.radius, angle),
+        part: 'QUAD', angle, point: circularPoint(entity.center, entity.radius, angle),
       })),
     ];
   }
@@ -144,6 +149,9 @@ export function resolveEntityReference(point) {
       if (dist(point, candidate.point) > REFERENCE_TOLERANCE) continue;
       const ref = { entityId: entity.id, part: candidate.part };
       if (candidate.part === 'VERTEX') ref.index = candidate.index;
+      // A circle has four quadrant candidates with the same part name; without
+      // the angle, resolving the reference later could not tell them apart.
+      if (candidate.part === 'QUAD') ref.angle = candidate.angle;
       return ref;
     }
   }
@@ -156,6 +164,72 @@ export function linearDimensionRotation(p1, p2, linePoint) {
   const midX = (p1.x + p2.x) / 2;
   const midY = (p1.y + p2.y) / 2;
   return Math.abs(linePoint.y - midY) >= Math.abs(linePoint.x - midX) ? 0 : Math.PI / 2;
+}
+
+// The other half of entityReferenceCandidates: given the entity a reference
+// now points at, recompute the world point that reference names. Returns
+// null wherever the reference no longer makes sense against that entity (a
+// mismatched type, a vertex index past the current point count, and so on),
+// which the caller treats as "leave this measured point where it was."
+export function pointForReference(entity, ref) {
+  if (!entity || entity.type === 'DIM') return null;
+  if (ref.part === 'CENTER') {
+    return entity.type === 'CIRCLE' || entity.type === 'ARC' ? entity.center : null;
+  }
+  if (ref.part === 'QUAD') {
+    return entity.type === 'CIRCLE' && Number.isFinite(ref.angle)
+      ? circularPoint(entity.center, entity.radius, ref.angle) : null;
+  }
+  if (ref.part === 'START') {
+    if (entity.type === 'LINE') return entity.a;
+    if (entity.type === 'ARC') return circularPoint(entity.center, entity.radius, entity.startAngle);
+    return null;
+  }
+  if (ref.part === 'END') {
+    if (entity.type === 'LINE') return entity.b;
+    if (entity.type === 'ARC') return circularPoint(entity.center, entity.radius, entity.endAngle);
+    return null;
+  }
+  if (ref.part === 'MID') {
+    return entity.type === 'LINE'
+      ? { x: (entity.a.x + entity.b.x) / 2, y: (entity.a.y + entity.b.y) / 2 } : null;
+  }
+  if (ref.part === 'VERTEX') {
+    if (entity.type !== 'PLINE' || !Number.isInteger(ref.index) ||
+        ref.index < 0 || ref.index >= entity.points.length) return null;
+    return entity.points[ref.index];
+  }
+  return null;
+}
+
+// Runs once per commit (see commitGeometry) over the full candidate entity
+// list, so it sees every edit uniformly instead of every command having to
+// know it should re-derive dimensions. Idempotent: an entity whose reference
+// already resolves to its current point is returned unchanged, so calling
+// this on every commit (including ones with no dimensions at all) is cheap
+// and never introduces spurious history entries.
+export function updateAssociativeDimensions(entities) {
+  let byId = null;
+  let changed = false;
+  const next = entities.map(entity => {
+    if (entity.type !== 'DIM' || !entity.refs || (!entity.refs[0] && !entity.refs[1])) return entity;
+    byId ??= new Map(entities.map(candidate => [candidate.id, candidate]));
+    let p1 = entity.p1;
+    let p2 = entity.p2;
+    let dirty = false;
+    if (entity.refs[0]) {
+      const resolved = pointForReference(byId.get(entity.refs[0].entityId), entity.refs[0]);
+      if (resolved && (resolved.x !== p1.x || resolved.y !== p1.y)) { p1 = { ...resolved }; dirty = true; }
+    }
+    if (entity.refs[1]) {
+      const resolved = pointForReference(byId.get(entity.refs[1].entityId), entity.refs[1]);
+      if (resolved && (resolved.x !== p2.x || resolved.y !== p2.y)) { p2 = { ...resolved }; dirty = true; }
+    }
+    if (!dirty) return entity;
+    changed = true;
+    return { ...entity, p1, p2 };
+  });
+  return changed ? next : entities;
 }
 
 export function buildDimension(dimType, p1, p2, linePoint, refs) {

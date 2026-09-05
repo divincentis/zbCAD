@@ -1,6 +1,7 @@
 import { documentChanged } from '../events.js';
 import { markDirty } from './dirty.js';
 import { documentSnapshot, editSnapshot, restoreEditSnapshot, validateDocumentData } from './document.js';
+import { updateAssociativeDimensions } from './dimension.js';
 import { state } from '../state.js';
 import { updatePrompt } from '../ui/prompt.js';
 import { draw } from '../view/frame.js';
@@ -16,7 +17,7 @@ export function pushHistory() {
 // command stage. Only a validated candidate may enter the undoable document.
 export function commitGeometry(entities, options = {}) {
   const candidate = {
-    ...documentSnapshot(), entities,
+    ...documentSnapshot(), entities: updateAssociativeDimensions(entities),
     nextId: options.nextId ?? state.nextId,
     units: options.unitSettings ?? state.unitSettings,
     dimStyles: options.dimStyles ?? state.dimStyles,
