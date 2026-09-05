@@ -226,13 +226,19 @@ Do not hide unsupported cases. Reject them clearly and preserve the original geo
 
 ## 8. Phase 3 — Produce Real Drawing Documents
 
-### Status — associativity decided (September 2026)
+### Status — associative dimensions shipped (2026-09-05)
 
-Dimensions already shipped, but non-associative — the roadmap's original exit
-gate treated "clearly marks them non-associative" as an acceptable fallback.
-That's been decided against: **associative dimensions are required before
-further Phase 3 work continues.** Text and blocks are on hold until this
-ships.
+Dimensions had shipped non-associative — the roadmap's original exit gate
+treated "clearly marks them non-associative" as an acceptable fallback. That
+was decided against: associative dimensions were made a hard prerequisite for
+further Phase 3 work, and they are now implemented. Moving, rotating,
+scaling, or stretching geometry that a dimension measures now updates that
+dimension automatically; a reference that stops resolving (its entity was
+deleted, trimmed, or otherwise structurally replaced) freezes the dimension
+at its last measured value instead of erroring. Not yet human-tested in the
+browser — the change has automated coverage (a headless test driving the
+built bundle) but no live-session verification. **Text and blocks are no
+longer blocked and can proceed.**
 
 ### Features
 
@@ -257,7 +263,7 @@ ships.
 
 - A benchmark roof plan can be fully annotated.
 - Reopening the native file preserves appearance and geometry.
-- Moving geometry updates associative dimensions. *(Decided September 2026 — non-associative is no longer an acceptable fallback here; see Status note above.)*
+- Moving geometry updates associative dimensions. *(Shipped 2026-09-05 — see Status note above; still needs a human pass to confirm the feel is right, not just the mechanics.)*
 - Locked and hidden layers cannot be accidentally modified.
 
 ## 9. Phase 4 — Handle Inputs and Deliverables
@@ -395,9 +401,10 @@ note). What's left:
 1. **Run the Phase 0 benchmark validation retroactively**, against the
    current build — this was skipped, not completed out of order, and the
    roadmap's own sequencing assumed it would gate everything after it.
-2. **Ship associative dimensions** — decided as a hard prerequisite for the
-   rest of Phase 3, not an optional fallback.
-3. Add text and blocks.
+2. ~~**Ship associative dimensions**~~ — shipped 2026-09-05 (mechanically
+   verified via a headless test against the built bundle; still needs a human
+   in-browser pass). Was the hard prerequisite for the rest of Phase 3.
+3. Add text and blocks — no longer blocked.
 4. TypeScript migration and IndexedDB autosave — still open, not deliberately
    deferred; see Phase 1 status note.
 5. Add calibrated underlays and exact-scale PDF output.
