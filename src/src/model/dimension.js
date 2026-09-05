@@ -113,6 +113,32 @@ export function dimensionSegments(entity) {
 // associative build would inherit references nobody asked for.
 export const REFERENCE_TOLERANCE = 1e-7;
 
+// Duplicates entitySegments() in model/entity.js rather than importing it:
+// entity.js already imports dimensionGeometry/dimensionSegments from this
+// file, so importing back would be a cycle. The logic is small enough that
+// keeping two copies is cheaper than restructuring the module graph for it.
+function segmentPairs(entity) {
+  const segments = [];
+  for (let i = 0; i < entity.points.length - 1; i++) segments.push([entity.points[i], entity.points[i + 1]]);
+  if (entity.closed && entity.points.length >= 3) {
+    segments.push([entity.points[entity.points.length - 1], entity.points[0]]);
+  }
+  return segments;
+}
+
+// The parametric position of `point` along [a, b] (0 at a, 1 at b) if it
+// genuinely lies on the segment within REFERENCE_TOLERANCE, else null. Used
+// both to capture a SEGMENT reference and to recompute one later.
+function segmentParam(a, b, point) {
+  const vx = b.x - a.x;
+  const vy = b.y - a.y;
+  const length2 = vx * vx + vy * vy;
+  if (length2 <= 1e-18) return null;
+  const t = Math.max(0, Math.min(1, ((point.x - a.x) * vx + (point.y - a.y) * vy) / length2));
+  const projected = { x: a.x + t * vx, y: a.y + t * vy };
+  return dist(point, projected) <= REFERENCE_TOLERANCE ? t : null;
+}
+
 export function entityReferenceCandidates(entity) {
   if (entity.type === 'LINE') {
     return [
@@ -165,6 +191,22 @@ export function resolveEntityReference(point) {
       if (Math.abs(dist(point, entity.center) - entity.radius) > REFERENCE_TOLERANCE) continue;
       const angle = angleFromCenter(entity.center, point);
       if (angleOnArc(angle, entity)) return { entityId: entity.id, part: 'POINT', angle };
+    }
+    // Same idea for a straight edge: a NEAREST snap onto a line, or onto a
+    // polyline between its vertices, is by far the most common way a point
+    // there gets picked, and none of it is START/END/MID/VERTEX. Track it by
+    // its parametric position along the segment instead.
+    if (entity.type === 'LINE') {
+      const t = segmentParam(entity.a, entity.b, point);
+      if (t !== null) return { entityId: entity.id, part: 'SEGMENT', t };
+    }
+    if (entity.type === 'PLINE') {
+      const segments = segmentPairs(entity);
+      for (let index = 0; index < segments.length; index++) {
+        const [a, b] = segments[index];
+        const t = segmentParam(a, b, point);
+        if (t !== null) return { entityId: entity.id, part: 'SEGMENT', segmentIndex: index, t };
+      }
     }
   }
   return null;
@@ -219,6 +261,24 @@ export function pointForReference(entity, ref) {
     if (entity.type !== 'PLINE' || !Number.isInteger(ref.index) ||
         ref.index < 0 || ref.index >= entity.points.length) return null;
     return entity.points[ref.index];
+  }
+  // An arbitrary point along a line, or along one segment of a polyline,
+  // named by its parametric position rather than one of the fixed candidates
+  // above. A polyline segment that no longer exists (a vertex was removed or
+  // the shape was otherwise reshaped down to fewer segments) freezes this
+  // point instead of guessing which segment it meant.
+  if (ref.part === 'SEGMENT') {
+    if (!Number.isFinite(ref.t)) return null;
+    if (entity.type === 'LINE') {
+      return { x: entity.a.x + ref.t * (entity.b.x - entity.a.x), y: entity.a.y + ref.t * (entity.b.y - entity.a.y) };
+    }
+    if (entity.type === 'PLINE') {
+      const segments = segmentPairs(entity);
+      if (!Number.isInteger(ref.segmentIndex) || ref.segmentIndex < 0 || ref.segmentIndex >= segments.length) return null;
+      const [a, b] = segments[ref.segmentIndex];
+      return { x: a.x + ref.t * (b.x - a.x), y: a.y + ref.t * (b.y - a.y) };
+    }
+    return null;
   }
   return null;
 }

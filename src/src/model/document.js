@@ -79,6 +79,17 @@ export function cleanEntityRefs(value) {
       if (!Number.isFinite(ref.angle)) return { error: `has an invalid ${ref.part.toLowerCase()} angle` };
       entry.angle = ref.angle;
     }
+    if (ref.part === 'SEGMENT') {
+      if (!Number.isFinite(ref.t)) return { error: 'has an invalid segment position' };
+      entry.t = ref.t;
+      // Only a polyline segment needs to say which one; a line has only one.
+      if (ref.segmentIndex !== undefined) {
+        if (!Number.isSafeInteger(ref.segmentIndex) || ref.segmentIndex < 0) {
+          return { error: 'has an invalid segment index' };
+        }
+        entry.segmentIndex = ref.segmentIndex;
+      }
+    }
     cleaned.push(entry);
   }
   return { value: cleaned };

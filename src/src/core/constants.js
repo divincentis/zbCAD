@@ -19,4 +19,4 @@ export const POLAR_INCREMENTS = Object.freeze([90, 45, 30, 22.5, 15, 10, 5]);
 export const POLAR_APERTURE_PX = 12;
 
 export const DIM_TYPES = ['ALIGNED', 'LINEAR'];
-export const DIM_REF_PARTS = ['START', 'END', 'CENTER', 'MID', 'QUAD', 'VERTEX', 'POINT'];
+export const DIM_REF_PARTS = ['START', 'END', 'CENTER', 'MID', 'QUAD', 'VERTEX', 'POINT', 'SEGMENT'];
