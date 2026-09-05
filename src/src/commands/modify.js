@@ -3,7 +3,7 @@ import { editableSelectionIds } from './transform.js';
 import { formatAngle, formatLengthLabel } from '../core/units.js';
 import { finishEdgeEdit } from '../geometry/edgeEdit.js';
 import { extendAt } from '../geometry/extend.js';
-import { applyCorner, chamferCorner, cornerPick, filletCorner } from '../geometry/fillet.js';
+import { applyCorner, chamferCorner, cornerPick, edgeRef, filletCorner } from '../geometry/fillet.js';
 import { applyGripEdit, gripEditedEntity } from '../geometry/grips.js';
 import { explodeNote, explodeSelection, joinNote, joinSelection } from '../geometry/joinExplode.js';
 import { acceptOffsetSource, applyOffset, isOffsettable, offsetEntity, setOffsetDistance } from '../geometry/offset.js';
@@ -213,7 +213,7 @@ export function cornerCommand(type) {
       // The picks name which line and which side, never a place, so an
       // unrelated selection would only be visual noise through the command.
       state.selected.clear();
-      state.edit = { type, stage: 'FIRST', firstId: null, firstPoint: null, ...cornerSettings };
+      state.edit = { type, stage: 'FIRST', firstId: null, firstSegmentIndex: null, firstPoint: null, ...cornerSettings };
     },
 
     // Both picks say which edge and which side of the corner is meant. A snap
@@ -299,6 +299,7 @@ export function cornerCommand(type) {
           return;
         }
         operation.firstId = picked.entity.id;
+        operation.firstSegmentIndex = picked.segmentIndex;
         operation.firstPoint = { ...picked.point };
         operation.stage = 'SECOND';
         updatePrompt();
@@ -316,17 +317,16 @@ export function cornerCommand(type) {
       const operation = state.edit;
       const first = state.entities.find(entity => entity.id === operation.firstId);
       const picked = cornerPick(p);
-      if (!first || picked.error || picked.entity.id === first.id) return;
+      if (!first || picked.error) return;
+      if (picked.entity.id === first.id && picked.segmentIndex === operation.firstSegmentIndex) return;
+      const ref1 = edgeRef(first, operation.firstSegmentIndex);
+      const ref2 = edgeRef(picked.entity, picked.segmentIndex);
       const result = operation.type === 'FILLET'
-        ? filletCorner(first, picked.entity, operation.firstPoint, picked.point, operation.radius)
-        : chamferCorner(
-          first, picked.entity, operation.firstPoint, picked.point,
-          operation.firstDistance, operation.secondDistance,
-        );
+        ? filletCorner(ref1, ref2, operation.firstPoint, picked.point, operation.radius)
+        : chamferCorner(ref1, ref2, operation.firstPoint, picked.point, operation.firstDistance, operation.secondDistance);
       if (result.error) return;
-      for (const edge of result.edges) drawEntity(edge, true);
-      const addition = result.arc || result.cut;
-      if (addition) drawEntity(addition, true);
+      for (const entity of result.updated) drawEntity(entity, true);
+      if (result.addition) drawEntity(result.addition, true);
     },
 
     // One rule for Enter at every stage: the command is done. Abandoning a

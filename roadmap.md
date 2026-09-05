@@ -57,7 +57,7 @@ The architectural refactor (Phase 1) and most of Phase 2 have already happened:
 
 **Correction, September 2026:** this section previously claimed a "full command set" while ERASE, MIRROR, FILLET, CHAMFER, DIMRADIUS and DIMDIAMETER did not exist — there was no way to erase except the Delete key, and no way to type it at all. All six have since been added. Phase 2's exit gate ("benchmark roof geometry can be built without manual workarounds") was not honestly met before that, because a symmetric plan with filleted corners could not be drawn without them.
 
-**Known gaps in what is listed above:** layers carry no linetype, lineweight or printability, which PDF output and DXF export both need; there is no properties panel for multi-selection editing; FILLET and CHAMFER handle line/line corners only and refuse anything else by name.
+**Known gaps in what is listed above:** layers carry no linetype, lineweight or printability, which PDF output and DXF export both need; there is no properties panel for multi-selection editing. FILLET and CHAMFER now also handle polyline segments (including the shared vertex of two adjacent segments, the everyday "round/chamfer this corner" case) as well as plain lines; FILLET refuses a shared polyline vertex specifically, since this app's polylines have no curved (bulge) segment to hold the arc.
 
 **Not yet started:** multiline text, blocks, leaders and callouts, hatches, a multi-selection properties panel, underlays, PDF/DXF output (Phase 3 remainder and all of Phase 4).
 
@@ -460,10 +460,25 @@ note). What's left:
    create, annotate, quantify or issue a plan. Reconsider only if type errors
    start causing real defects.
 
-**Extensions the current work leaves open:** FILLET and CHAMFER on polyline
-corners (line/line only today); a dimension referencing an intersection,
-perpendicular or tangent point, which has no reference type and so does not
-associate.
+**Update 2026-09-05: FILLET and CHAMFER extended to polyline corners.** Both
+now accept a polyline segment wherever they previously required a plain LINE,
+including the common case of two adjacent segments of the same polyline
+sharing a corner vertex (e.g. rounding or chamfering a rectangle's corner).
+CHAMFER on a shared vertex splits it into the two cut points in place — still
+one PLINE, no separate bridging LINE needed, since the cut is already the
+polyline's own new edge. FILLET on a shared vertex is refused by name: this
+app's polylines have no curved (bulge) segment, so there is nowhere to put
+the arc without breaking the polyline apart, which was judged out of scope
+here. FILLET/CHAMFER between a line and a polyline segment, or between two
+non-adjacent segments (same or different polylines), work like today's
+line/line case — each edge trims independently, with an ARC or cut LINE
+bridging them. `geometry/fillet.js`, 19 new headless checks in
+`test-corners.mjs`.
+
+**Extensions the current work leaves open:** a dimension referencing an
+intersection, perpendicular or tangent point, which has no reference type and
+so does not associate; FILLET on a polyline's own shared vertex, which would
+need either bulge (curved-segment) support or splitting the polyline apart.
 
 <details>
 <summary>Already shipped (original items 4–10)</summary>
