@@ -237,8 +237,16 @@ dimension automatically; a reference that stops resolving (its entity was
 deleted, trimmed, or otherwise structurally replaced) freezes the dimension
 at its last measured value instead of erroring. Not yet human-tested in the
 browser — the change has automated coverage (a headless test driving the
-built bundle) but no live-session verification. **Text and blocks are no
-longer blocked and can proceed.**
+built bundle) but no live-session verification.
+
+### Status — single-line text shipped (2026-09-05)
+
+Single-line TEXT entities can now be placed (insertion point, height,
+rotation, content), moved, rotated, scaled, stretched, and grip-edited, with
+save/load validation and an ID/LIST inquiry report. Multiline text and
+blocks are deliberately not started — scoped out for this pass. Same
+caveat as associative dimensions above: mechanically verified only, no
+live-session pass yet.
 
 ### Features
 
@@ -404,7 +412,8 @@ note). What's left:
 2. ~~**Ship associative dimensions**~~ — shipped 2026-09-05 (mechanically
    verified via a headless test against the built bundle; still needs a human
    in-browser pass). Was the hard prerequisite for the rest of Phase 3.
-3. Add text and blocks — no longer blocked.
+3. Single-line text: shipped 2026-09-05, mechanically verified (see Phase 3
+   status note). Blocks intentionally not started yet.
 4. TypeScript migration and IndexedDB autosave — still open, not deliberately
    deferred; see Phase 1 status note.
 5. Add calibrated underlays and exact-scale PDF output.
