@@ -1,0 +1,83 @@
+import { activeCommand, commandSelectsObjects } from '../commands/registry.js';
+import { angleFromCenter, angleOnArc, circularPoint, dist, pointOnSegmentClosest } from '../core/math.js';
+import { commitGeometry } from '../model/document.js';
+import { boxContains, entityBBox, entityCrossesBox, pickSegments } from '../model/entity.js';
+import { isEntityEditable } from '../model/layerQuery.js';
+import { state } from '../state.js';
+import { updatePrompt } from '../ui/prompt.js';
+import { draw } from '../view/frame.js';
+import { screenToWorld, worldToScreen } from '../view/viewport.js';
+
+export function distanceToEntityPx(world, entity) {
+  if (entity.type === 'CIRCLE' || entity.type === 'ARC') {
+    const angle = angleFromCenter(entity.center, world);
+    if (angleOnArc(angle, entity)) {
+      return Math.abs(dist(world, entity.center) - entity.radius) * state.view.scale;
+    }
+    const endpoints = [
+      circularPoint(entity.center, entity.radius, entity.startAngle),
+      circularPoint(entity.center, entity.radius, entity.endAngle),
+    ];
+    return Math.min(...endpoints.map(point => dist(world, point))) * state.view.scale;
+  }
+  let best = Infinity;
+  for (const [a, b] of pickSegments(entity)) {
+    const q = pointOnSegmentClosest(world, a, b);
+    const qs = worldToScreen(q);
+    best = Math.min(best, Math.hypot(qs.x - state.mouseScreen.x, qs.y - state.mouseScreen.y));
+  }
+  return best;
+}
+
+export function selectAt(world, add = false) {
+  let hit = null;
+  let best = 8;
+  for (const e of state.entities) {
+    if (!isEntityEditable(e)) continue;
+    const d = distanceToEntityPx(world, e);
+    if (d < best) { best = d; hit = e; }
+  }
+  if (!add) state.selected.clear();
+  if (hit) {
+    if (add && state.selected.has(hit.id)) state.selected.delete(hit.id);
+    else state.selected.add(hit.id);
+    activeCommand()?.noteSelection?.({ entityId: hit.id });
+  }
+  // Any command gathering a selection may be reporting how many it has.
+  if (commandSelectsObjects()) updatePrompt();
+  draw();
+}
+
+export function finishBoxSelection(add = false) {
+  const ds = state.dragSelect;
+  if (!ds) return;
+  const a = screenToWorld(ds.start);
+  const b = screenToWorld(ds.end);
+  const box = { minX: Math.min(a.x,b.x), maxX: Math.max(a.x,b.x), minY: Math.min(a.y,b.y), maxY: Math.max(a.y,b.y) };
+  const crossing = ds.end.x < ds.start.x;
+  if (!add) state.selected.clear();
+  for (const e of state.entities) {
+    if (!isEntityEditable(e)) continue;
+    const bb = entityBBox(e);
+    if (!bb) continue;
+    // Window selection stays a bbox containment test: these bounding boxes are
+    // tight (arcs include their quadrant extremes), so bbox-inside-window is
+    // equivalent to geometry-inside-window.
+    const hit = crossing ? entityCrossesBox(e, box) : boxContains(box, bb);
+    if (hit) state.selected.add(e.id);
+  }
+  activeCommand()?.noteSelection?.({ box, crossing });
+  state.dragSelect = null;
+  if (commandSelectsObjects()) updatePrompt();
+  draw();
+}
+
+export function deleteSelected() {
+  const deletable = new Set(state.entities
+    .filter(entity => state.selected.has(entity.id) && isEntityEditable(entity))
+    .map(entity => entity.id));
+  if (!deletable.size) return;
+  if (!commitGeometry(state.entities.filter(e => !deletable.has(e.id)))) return;
+  state.selected.clear();
+  draw();
+}
