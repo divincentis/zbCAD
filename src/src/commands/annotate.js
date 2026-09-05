@@ -137,6 +137,11 @@ defineCommand('TEXT', {
     return state.text?.stage === 'HEIGHT';
   },
 
+  // A space typed while entering content is a word break, not Enter.
+  capturesSpace() {
+    return state.text?.stage === 'CONTENT';
+  },
+
   begin() {
     state.text = { stage: 'POINT', position: null, height: null, rotation: null };
   },

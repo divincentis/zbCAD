@@ -40,6 +40,10 @@ import { draw } from '../view/frame.js';
 //                    COMMAND_COMPLETE when the command finishes on activation
 //   prompt()         the command line text for the current stage
 //   acceptsPoint()   whether typed point input is valid in the current stage
+//   capturesSpace()  whether Space must reach the command input as a literal
+//                    character instead of acting as a command terminator —
+//                    the one stage that needs this is free-text entry (TEXT
+//                    content), where a word-breaking space is the whole point
 //   point(p)         a committed point
 //   distance(value)  consumes a typed distance with command-specific meaning
 //   keyword(text)    consumes a command-local keyword, ahead of alias lookup
@@ -93,6 +97,10 @@ export function commandTakesDistance(command = activeCommand()) {
 export function commandAcceptsPoint(command = activeCommand()) {
   if (!command?.point) return false;
   return !command.acceptsPoint || Boolean(command.acceptsPoint());
+}
+
+export function commandCapturesSpace(command = activeCommand()) {
+  return command ? staged(command.capturesSpace, command) : false;
 }
 
 export function commandPreviewReady(command = activeCommand()) {

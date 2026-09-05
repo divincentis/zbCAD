@@ -2613,6 +2613,10 @@ kbd { font-size: 9px; opacity: .65; }
   //                    COMMAND_COMPLETE when the command finishes on activation
   //   prompt()         the command line text for the current stage
   //   acceptsPoint()   whether typed point input is valid in the current stage
+  //   capturesSpace()  whether Space must reach the command input as a literal
+  //                    character instead of acting as a command terminator —
+  //                    the one stage that needs this is free-text entry (TEXT
+  //                    content), where a word-breaking space is the whole point
   //   point(p)         a committed point
   //   distance(value)  consumes a typed distance with command-specific meaning
   //   keyword(text)    consumes a command-local keyword, ahead of alias lookup
@@ -2666,6 +2670,10 @@ kbd { font-size: 9px; opacity: .65; }
   function commandAcceptsPoint(command = activeCommand()) {
     if (!command?.point) return false;
     return !command.acceptsPoint || Boolean(command.acceptsPoint());
+  }
+
+  function commandCapturesSpace(command = activeCommand()) {
+    return command ? staged(command.capturesSpace, command) : false;
   }
 
   function commandPreviewReady(command = activeCommand()) {
@@ -5812,6 +5820,11 @@ kbd { font-size: 9px; opacity: .65; }
       return state.text?.stage === 'HEIGHT';
     },
 
+    // A space typed while entering content is a word break, not Enter.
+    capturesSpace() {
+      return state.text?.stage === 'CONTENT';
+    },
+
     begin() {
       state.text = { stage: 'POINT', position: null, height: null, rotation: null };
     },
@@ -8047,8 +8060,11 @@ kbd { font-size: 9px; opacity: .65; }
     // Space is a command terminator in AutoCAD and QCAD, so it must never be a
     // literal character here. Mixed numbers are therefore typed with a hyphen —
     // 5'6-1/2" — exactly as AutoCAD requires, and parseDistance accepts both
-    // separators so pasted values still work.
+    // separators so pasted values still work. The one exception is a command
+    // stage that explicitly captures free text (TEXT content): a space there is
+    // a word break, not an Enter, so it is left to type normally instead.
     if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    if (ev.key === ' ' && commandCapturesSpace()) return;
     ev.preventDefault();
     ev.stopPropagation();
     submitCommandInput();

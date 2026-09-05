@@ -1,4 +1,4 @@
-import { navigateHistory, startCommand } from '../commands/registry.js';
+import { commandCapturesSpace, navigateHistory, startCommand } from '../commands/registry.js';
 import { LENGTH_FORMATS } from '../core/units.js';
 import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, layerList, openInput, orthoBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
 import { submitCommandInput } from '../interaction/pointer.js';
@@ -18,8 +18,11 @@ commandInput.addEventListener('keydown', ev => {
   // Space is a command terminator in AutoCAD and QCAD, so it must never be a
   // literal character here. Mixed numbers are therefore typed with a hyphen —
   // 5'6-1/2" — exactly as AutoCAD requires, and parseDistance accepts both
-  // separators so pasted values still work.
+  // separators so pasted values still work. The one exception is a command
+  // stage that explicitly captures free text (TEXT content): a space there is
+  // a word break, not an Enter, so it is left to type normally instead.
   if (ev.key !== 'Enter' && ev.key !== ' ') return;
+  if (ev.key === ' ' && commandCapturesSpace()) return;
   ev.preventDefault();
   ev.stopPropagation();
   submitCommandInput();
