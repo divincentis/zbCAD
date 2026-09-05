@@ -40,10 +40,9 @@ export function createDefaultLayers() {
 }
 
 // Object snaps in priority order, which is also the order they are listed in
-// the settings dialog. The first six are the set the tool has always offered
-// and stay on by default. Tangent and nearest are off: a running NEAREST can
-// offer a point anywhere along any curve under the aperture, so it would
-// quietly capture points that were meant to be free.
+// the settings dialog. All default on: nearest ranks last of all candidates
+// (see closestCandidate in snap.js), so a running NEAREST only ever fills in
+// when nothing more specific is under the aperture, rather than pre-empting it.
 export const SNAP_TYPES = Object.freeze([
   { type: 'END', label: 'Endpoint', on: true },
   { type: 'INT', label: 'Intersection', on: true },
@@ -51,8 +50,8 @@ export const SNAP_TYPES = Object.freeze([
   { type: 'CENTER', label: 'Center', on: true },
   { type: 'QUAD', label: 'Quadrant', on: true },
   { type: 'PERP', label: 'Perpendicular', on: true },
-  { type: 'TAN', label: 'Tangent', on: false },
-  { type: 'NEAR', label: 'Nearest', on: false },
+  { type: 'TAN', label: 'Tangent', on: true },
+  { type: 'NEAR', label: 'Nearest', on: true },
 ]);
 
 export const SNAP_RANK = Object.fromEntries(SNAP_TYPES.map((entry, index) => [entry.type, index]));

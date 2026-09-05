@@ -162,10 +162,11 @@ kbd { font-size: 9px; opacity: .65; }
   text-align: center;
   background: none;
   border: 0;
-  padding: 0;
+  border-bottom: 1px dotted #56d6ff;
+  padding: 0 0 1px;
   cursor: pointer;
 }
-.snap-status:hover { color: #8fe6ff; }
+.snap-status:hover { color: #8fe6ff; border-bottom-color: #8fe6ff; border-bottom-style: solid; }
 .snap-row { display: flex !important; gap: 7px; align-items: center; margin-bottom: 7px; }
 .snap-row input { margin: 0; }
 .snap-row code {
@@ -678,10 +679,9 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   // Object snaps in priority order, which is also the order they are listed in
-  // the settings dialog. The first six are the set the tool has always offered
-  // and stay on by default. Tangent and nearest are off: a running NEAREST can
-  // offer a point anywhere along any curve under the aperture, so it would
-  // quietly capture points that were meant to be free.
+  // the settings dialog. All default on: nearest ranks last of all candidates
+  // (see closestCandidate in snap.js), so a running NEAREST only ever fills in
+  // when nothing more specific is under the aperture, rather than pre-empting it.
   const SNAP_TYPES = Object.freeze([
     { type: 'END', label: 'Endpoint', on: true },
     { type: 'INT', label: 'Intersection', on: true },
@@ -689,8 +689,8 @@ kbd { font-size: 9px; opacity: .65; }
     { type: 'CENTER', label: 'Center', on: true },
     { type: 'QUAD', label: 'Quadrant', on: true },
     { type: 'PERP', label: 'Perpendicular', on: true },
-    { type: 'TAN', label: 'Tangent', on: false },
-    { type: 'NEAR', label: 'Nearest', on: false },
+    { type: 'TAN', label: 'Tangent', on: true },
+    { type: 'NEAR', label: 'Nearest', on: true },
   ]);
 
   const SNAP_RANK = Object.fromEntries(SNAP_TYPES.map((entry, index) => [entry.type, index]));
