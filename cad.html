@@ -631,7 +631,12 @@ kbd { font-size: 9px; opacity: .65; }
   // near the base point and far from it.
   const POLAR_APERTURE_PX = 12;
 
-  const DIM_TYPES = ['ALIGNED', 'LINEAR'];
+  const DIM_TYPES = ['ALIGNED', 'LINEAR', 'RADIUS', 'DIAMETER'];
+
+  // What a radial dimension's text is prefixed with. Both measure a circle
+  // rather than a distance between two features, and the prefix is what tells
+  // the two apart on a drawing.
+  const DIM_TEXT_PREFIX = { RADIUS: 'R ', DIAMETER: '⌀ ' };
   const DIM_REF_PARTS = ['START', 'END', 'CENTER', 'MID', 'QUAD', 'VERTEX', 'POINT', 'SEGMENT'];
 
   // No real glyph metrics exist outside a canvas context, so a text entity's
@@ -1383,8 +1388,9 @@ kbd { font-size: 9px; opacity: .65; }
   function dimensionText(entity) {
     const geometry = dimensionGeometry(entity);
     const style = geometry.style;
-    if (style.precision === null) return formatLength(geometry.measure);
-    return formatLength(geometry.measure, { ...state.unitSettings, precision: style.precision });
+    const prefix = DIM_TEXT_PREFIX[entity.dimType] || '';
+    if (style.precision === null) return prefix + formatLength(geometry.measure);
+    return prefix + formatLength(geometry.measure, { ...state.unitSettings, precision: style.precision });
   }
 
   // The line work only, used for hit testing and bounds. Text is excluded on
@@ -1480,11 +1486,11 @@ kbd { font-size: 9px; opacity: .65; }
       }
       // Most points picked on a circle or arc are not one of the few named
       // candidates above — a NEAREST snap or a typed coordinate that happens to
-      // land on the curve is by far the common case when dimensioning a circle,
-      // since there is no dedicated radius/diameter dimension command. Any such
-      // point is still a real, trackable spot: its angle from the entity's
-      // centre. Checked last so an exact quadrant or arc endpoint still gets
-      // its more specific part instead of falling through to this.
+      // land on the curve is the common case, and it is also what DIMRADIUS and
+      // DIMDIAMETER produce, since the point their leader lands on is wherever
+      // the cursor was. Any such point is still a real, trackable spot: its
+      // angle from the entity's centre. Checked last so an exact quadrant or arc
+      // endpoint still gets its more specific part instead of falling through.
       if (entity.type === 'CIRCLE' || entity.type === 'ARC') {
         if (Math.abs(dist(point, entity.center) - entity.radius) > REFERENCE_TOLERANCE) continue;
         const angle = angleFromCenter(entity.center, point);
@@ -5892,6 +5898,149 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   // ---------------------------------------------------------------------------
+  // Radial dimensions
+  //
+  // RADIUS and DIAMETER measure one circular entity rather than the distance
+  // between two features, but they still fit the two-point definition every
+  // other dimension uses: the dimension line is laid along a radius, so p1/p2
+  // are simply the two ends of what is being measured — centre-to-edge for a
+  // radius, edge-to-edge for a diameter. Because both points then sit on the
+  // line through linePoint, the shared geometry produces no extension lines,
+  // which is exactly right for a radial dimension.
+  //
+  // Both points land on features resolveEntityReference already tracks (the
+  // centre, and an arbitrary angle on the curve), so radial dimensions are
+  // associative through the existing machinery with nothing added.
+  //
+  // DIAMETER is offered on circles only. On an arc the opposite end of the
+  // diameter is not on the arc, so its reference would not resolve and the
+  // dimension would distort the moment the arc moved — a silently wrong result
+  // is worse than saying DIMRADIUS is the command for an arc.
+  // ---------------------------------------------------------------------------
+
+  function radialTarget(world, dimType) {
+    const hit = hitTestSegment(world, 10, null, true);
+    if (!hit) return { error: 'No circle or arc there. Click one.' };
+    const entity = hit.entity;
+    if (entity.type !== 'CIRCLE' && entity.type !== 'ARC') {
+      return { error: `That is a ${entity.type}. Select a circle or arc.` };
+    }
+    if (dimType === 'DIAMETER' && entity.type === 'ARC') {
+      return { error: 'DIMDIAMETER measures a circle. Use DIMRADIUS on an arc.' };
+    }
+    return { entity };
+  }
+
+  // The cursor picks both which way the leader runs and how far the text sits
+  // along it, the way AutoCAD's radial dimensions behave.
+  function radialDimensionEntity(dimType, targetId, cursor) {
+    const target = state.entities.find(entity => entity.id === targetId);
+    if (!target || (target.type !== 'CIRCLE' && target.type !== 'ARC')) return null;
+    if (target.radius <= 1e-9) return null;
+
+    let angle = angleFromCenter(target.center, cursor);
+    // On an arc the leader has to land on the arc itself rather than on the
+    // empty part of the circle it belongs to.
+    if (target.type === 'ARC' && !angleOnArc(angle, target)) {
+      const sweep = target.endAngle - target.startAngle;
+      const past = normalizeAngle(angle - target.startAngle);
+      angle = past - sweep < TAU - past ? target.endAngle : target.startAngle;
+    }
+    const edge = circularPoint(target.center, target.radius, angle);
+    const p1 = dimType === 'RADIUS'
+      ? { ...target.center }
+      : circularPoint(target.center, target.radius, angle + Math.PI);
+    const refs = [resolveEntityReference(p1), resolveEntityReference(edge)];
+
+    // linePoint sits on the measured line itself, so the shared geometry
+    // projects p1/p2 onto themselves and draws the dimension line straight
+    // along the radius.
+    const entity = buildDimension(dimType, p1, edge, p1, refs);
+    const mid = { x: (p1.x + edge.x) / 2, y: (p1.y + edge.y) / 2 };
+    // The text follows the cursor, which is the only thing left for the second
+    // pick to say once the angle is taken from it.
+    entity.textOffset = { x: cursor.x - mid.x, y: cursor.y - mid.y };
+    return entity;
+  }
+
+  function addRadialDimension(dimType, targetId, cursor) {
+    if (!currentLayerIsEditable()) return false;
+    const entity = radialDimensionEntity(dimType, targetId, cursor);
+    if (!entity) {
+      updatePrompt('That circle is no longer in the drawing.');
+      return false;
+    }
+    if (dimensionGeometry(entity).measure <= 1e-9) {
+      updatePrompt('That circle is too small to dimension.');
+      return false;
+    }
+    entity.id = state.nextId;
+    return commitGeometry([...state.entities, entity], { nextId: state.nextId + 1 });
+  }
+
+  function radialDimensionCommand(dimType, label) {
+    return {
+      stateMode: 'DIM',
+      creates: true,
+
+      canBegin() {
+        if (currentLayerIsEditable()) return true;
+        updatePrompt('The current layer is locked or hidden.');
+        return false;
+      },
+
+      begin() {
+        state.dimension = { dimType, refs: [null, null], targetId: null };
+      },
+
+      // The first pick names which circle and the second names a direction
+      // around it. Neither is a place in the drawing, so a snap would only
+      // fight both.
+      usesSnap: false,
+
+      acceptsPoint() {
+        return false;
+      },
+
+      prompt() {
+        return state.dimension?.targetId
+          ? `${label} — Specify the dimension line location:`
+          : `${label} — Select a ${dimType === 'DIAMETER' ? 'circle' : 'circle or arc'}:`;
+      },
+
+      point(p) {
+        const operation = state.dimension;
+        if (!operation) return;
+        if (!operation.targetId) {
+          const picked = radialTarget(p, dimType);
+          if (picked.error) {
+            updatePrompt(picked.error);
+            draw();
+            return;
+          }
+          operation.targetId = picked.entity.id;
+          updatePrompt();
+          draw();
+          return;
+        }
+        if (addRadialDimension(dimType, operation.targetId, p)) setMode('SELECT');
+      },
+
+      previewReady() {
+        return Boolean(state.dimension?.targetId);
+      },
+
+      preview(p) {
+        const entity = radialDimensionEntity(state.dimension.dimType, state.dimension.targetId, p);
+        if (entity && dimensionGeometry(entity).measure > 1e-9) drawEntity(entity, true);
+      },
+    };
+  }
+
+  defineCommand('DIMRADIUS', radialDimensionCommand('RADIUS', 'DIMRADIUS'));
+  defineCommand('DIMDIAMETER', radialDimensionCommand('DIAMETER', 'DIMDIAMETER'));
+
+  // ---------------------------------------------------------------------------
   // TEXT
   //
   // Follows the AutoCAD single-line TEXT flow: insertion point, height,
@@ -8248,6 +8397,8 @@ kbd { font-size: 9px; opacity: .65; }
     DI:'DIST', DIST:'DIST', DISTANCE:'DIST',
     DLI:'DIMLINEAR', DIMLINEAR:'DIMLINEAR', DIMLIN:'DIMLINEAR',
     DAL:'DIMALIGNED', DIMALIGNED:'DIMALIGNED', DIMALI:'DIMALIGNED',
+    DRA:'DIMRADIUS', DIMRADIUS:'DIMRADIUS', DIMRAD:'DIMRADIUS',
+    DDI:'DIMDIAMETER', DIMDIAMETER:'DIMDIAMETER', DIMDIA:'DIMDIAMETER',
     DST:'DIMSTYLE', DIMSTYLE:'DIMSTYLE', DDIM:'DIMSTYLE',
     T:'TEXT', TEXT:'TEXT', DT:'TEXT', DTEXT:'TEXT',
     AA:'AREA', AREA:'AREA',

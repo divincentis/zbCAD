@@ -1,3 +1,4 @@
+import { DIM_TEXT_PREFIX } from '../core/constants.js';
 import { DEFAULT_DIM_STYLE_ID } from '../core/defaults.js';
 import { dimSize, getDimStyle } from '../core/dimstyle.js';
 import { angleFromCenter, angleOnArc, circularPoint, dist } from '../core/math.js';
@@ -85,8 +86,9 @@ export function dimensionGeometry(entity, style = getDimStyle(entity.styleId)) {
 export function dimensionText(entity) {
   const geometry = dimensionGeometry(entity);
   const style = geometry.style;
-  if (style.precision === null) return formatLength(geometry.measure);
-  return formatLength(geometry.measure, { ...state.unitSettings, precision: style.precision });
+  const prefix = DIM_TEXT_PREFIX[entity.dimType] || '';
+  if (style.precision === null) return prefix + formatLength(geometry.measure);
+  return prefix + formatLength(geometry.measure, { ...state.unitSettings, precision: style.precision });
 }
 
 // The line work only, used for hit testing and bounds. Text is excluded on
@@ -182,11 +184,11 @@ export function resolveEntityReference(point) {
     }
     // Most points picked on a circle or arc are not one of the few named
     // candidates above — a NEAREST snap or a typed coordinate that happens to
-    // land on the curve is by far the common case when dimensioning a circle,
-    // since there is no dedicated radius/diameter dimension command. Any such
-    // point is still a real, trackable spot: its angle from the entity's
-    // centre. Checked last so an exact quadrant or arc endpoint still gets
-    // its more specific part instead of falling through to this.
+    // land on the curve is the common case, and it is also what DIMRADIUS and
+    // DIMDIAMETER produce, since the point their leader lands on is wherever
+    // the cursor was. Any such point is still a real, trackable spot: its
+    // angle from the entity's centre. Checked last so an exact quadrant or arc
+    // endpoint still gets its more specific part instead of falling through.
     if (entity.type === 'CIRCLE' || entity.type === 'ARC') {
       if (Math.abs(dist(point, entity.center) - entity.radius) > REFERENCE_TOLERANCE) continue;
       const angle = angleFromCenter(entity.center, point);

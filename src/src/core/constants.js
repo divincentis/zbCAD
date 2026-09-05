@@ -18,7 +18,12 @@ export const POLAR_INCREMENTS = Object.freeze([90, 45, 30, 22.5, 15, 10, 5]);
 // near the base point and far from it.
 export const POLAR_APERTURE_PX = 12;
 
-export const DIM_TYPES = ['ALIGNED', 'LINEAR'];
+export const DIM_TYPES = ['ALIGNED', 'LINEAR', 'RADIUS', 'DIAMETER'];
+
+// What a radial dimension's text is prefixed with. Both measure a circle
+// rather than a distance between two features, and the prefix is what tells
+// the two apart on a drawing.
+export const DIM_TEXT_PREFIX = { RADIUS: 'R ', DIAMETER: '⌀ ' };
 export const DIM_REF_PARTS = ['START', 'END', 'CENTER', 'MID', 'QUAD', 'VERTEX', 'POINT', 'SEGMENT'];
 
 // No real glyph metrics exist outside a canvas context, so a text entity's
