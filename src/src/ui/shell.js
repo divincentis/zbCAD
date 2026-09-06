@@ -41,6 +41,9 @@ document.getElementById('inquiryClose').addEventListener('click', () => {
   hideInquiryReport();
   canvas.focus();
 });
+document.getElementById('smallScreenDismiss').addEventListener('click', () => {
+  document.getElementById('smallScreenWarning').classList.add('dismissed');
+});
 unitStatus.addEventListener('click', openUnitsDialog);
 snapStatus.addEventListener('click', openSnapDialog);
 polarBtn.addEventListener('click', () => setPolar(!state.polar));
