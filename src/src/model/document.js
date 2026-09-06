@@ -1,4 +1,4 @@
-import { DIM_REF_PARTS, DIM_TYPES, DOCUMENT_FORMAT, DOCUMENT_VERSION, TAU } from '../core/constants.js';
+import { DEFAULT_LINETYPE, DEFAULT_LINEWEIGHT, DIM_REF_PARTS, DIM_TYPES, DOCUMENT_FORMAT, DOCUMENT_VERSION, LINETYPES, LINEWEIGHTS, TAU } from '../core/constants.js';
 import { DEFAULT_DIM_STYLE_ID, defaultDimStyle, derivedNextLayerId } from '../core/defaults.js';
 import { parseDimStyle } from '../core/dimstyle.js';
 import { dist, normalizeAngle } from '../core/math.js';
@@ -258,6 +258,11 @@ export function validateDocumentData(value) {
         : '#d6d6d6',
       visible: layer.visible !== false,
       locked: layer.locked === true,
+      // Version 4 files (and earlier) have none of these three — default them
+      // to what a v4 file would have looked like if it could have held them.
+      linetype: LINETYPES.includes(layer.linetype) ? layer.linetype : DEFAULT_LINETYPE,
+      lineweight: LINEWEIGHTS.includes(Number(layer.lineweight)) ? Number(layer.lineweight) : DEFAULT_LINEWEIGHT,
+      printable: layer.printable !== false,
     });
   }
   if (!layerIds.has('0')) return { error: 'The drawing is missing required layer 0.' };

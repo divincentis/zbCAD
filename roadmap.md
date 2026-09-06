@@ -53,11 +53,13 @@ The architectural refactor (Phase 1) and most of Phase 2 have already happened:
 - Inquiry: distance, area, id, list
 - Full snap set: endpoint, midpoint, intersection, center, quadrant, perpendicular, tangent, nearest
 - Polar tracking, ORTHO, individual/window/crossing selection
-- Layers, with name, visibility, lock and colour
+- Layers, with name, visibility, lock, colour, linetype, lineweight and printability
 
 **Correction, September 2026:** this section previously claimed a "full command set" while ERASE, MIRROR, FILLET, CHAMFER, DIMRADIUS and DIMDIAMETER did not exist — there was no way to erase except the Delete key, and no way to type it at all. All six have since been added. Phase 2's exit gate ("benchmark roof geometry can be built without manual workarounds") was not honestly met before that, because a symmetric plan with filleted corners could not be drawn without them.
 
-**Known gaps in what is listed above:** layers carry no linetype, lineweight or printability, which PDF output and DXF export both need; there is no properties panel for multi-selection editing. FILLET and CHAMFER now also handle polyline segments (including the shared vertex of two adjacent segments, the everyday "round/chamfer this corner" case) as well as plain lines; FILLET refuses a shared polyline vertex specifically, since this app's polylines have no curved (bulge) segment to hold the arc.
+**Known gaps in what is listed above:** there is no properties panel for multi-selection editing. FILLET and CHAMFER now also handle polyline segments (including the shared vertex of two adjacent segments, the everyday "round/chamfer this corner" case) as well as plain lines; FILLET refuses a shared polyline vertex specifically, since this app's polylines have no curved (bulge) segment to hold the arc.
+
+**Update September 2026: layer record completed (linetype, lineweight, printability).** Each layer now carries a `linetype` (continuous/dashed/dotted/dashdot/center), a `lineweight` (the standard CAD mm table, e.g. 0.25, 0.50, 1.00) and a `printable` flag, editable from the layer panel. Rendering applies a layer's linetype and lineweight to its entities' strokes (dimension and text entities are exempt, matching standard CAD convention that dimension lines/text carry their own style rather than the layer's); on-screen line width is a fixed pixel-per-mm multiple rather than something that scales with zoom, so lineweight stays legible at any view scale, and the multiplier was chosen so the previous default (0.25mm) reproduces the exact pre-feature line width — existing drawings render unchanged. `printable` is stored and toggle-able now but has no effect yet since PDF output does not exist; it is there so PDF output (next) has something to read instead of adding it retroactively. Legacy files (pre-version-5, no linetype/lineweight/printable on their layers) open with all three defaulted exactly as a v4 file would have looked if it could have held them; garbage/out-of-table values in a hand-edited file are cleaned to those same defaults rather than rejected. `model/layers.js`, `model/document.js`, `core/constants.js`, `core/defaults.js`, `view/render.js`, `ui/layerPanel.js`. 36 new headless checks in `test-layers.mjs` (covering defaults, setter validation, save/reload round-trip, and legacy/garbage-file migration), full suite still green. Verified live in a real (headless) Chromium session: layer panel renders correctly with multiple layers, and lines drawn on layers with different linetypes/lineweights/printability render visibly distinctly.
 
 **Not yet started:** multiline text, blocks, leaders and callouts, hatches, a multi-selection properties panel, underlays, PDF/DXF output (Phase 3 remainder and all of Phase 4).
 
@@ -277,9 +279,15 @@ correction in section 3 for why they were missing. FILLET and CHAMFER cover
 line/line corners and refuse every other combination by name, so polyline
 corners remain an open extension.
 
+### Status — layer record completed (September 2026)
+
+Linetype, lineweight and printability were added to the layer record; see the
+Current Position update in section 3 for detail. The layer record is now
+complete as originally scoped below.
+
 ### Features
 
-- Layers
+- Layers *(complete)*
   - Name
   - Visibility
   - Lock
@@ -445,9 +453,9 @@ note). What's left:
    ERASE, MIRROR, FILLET, CHAMFER, DIMRADIUS, DIMDIAMETER. These were assumed
    present by the "full command set" line above and were not; see the
    correction in section 3.
-5. **Complete the layer record: linetype, lineweight, printability.** Do this
-   before PDF output rather than after — both PDF and DXF need lineweight and
-   ByLayer semantics, so it is a prerequisite and not a Phase 3 nicety.
+5. ~~**Complete the layer record: linetype, lineweight, printability.**~~ —
+   shipped September 2026. Was a prerequisite for PDF/DXF's lineweight and
+   ByLayer semantics, done before rather than after Phase 4 for that reason.
 6. Add calibrated underlays and exact-scale PDF output. This is the half of
    the product definition that is still at zero: a drawing can be created and
    annotated but cannot be issued.

@@ -1,5 +1,5 @@
 import { activeCommand, commandPreviewReady } from '../commands/registry.js';
-import { TAU } from '../core/constants.js';
+import { DEFAULT_LINETYPE, DEFAULT_LINEWEIGHT, LINETYPE_DASH_PATTERNS, LINEWEIGHT_PX_PER_MM, MIN_LINEWEIGHT_PX, TAU } from '../core/constants.js';
 import { dimSize } from '../core/dimstyle.js';
 import { formatAngle, formatLength, formatLengthLabel } from '../core/units.js';
 import { assignLayerBtn, canvas, coordXEl, coordYEl, ctx, snapStatus } from '../dom.js';
@@ -115,9 +115,22 @@ export function drawText(e, preview, color) {
   ctx.restore();
 }
 
+// Screen line width is a fixed pixel value derived from the layer's mm
+// lineweight (see LINEWEIGHT_PX_PER_MM), not something that scales with
+// zoom — matches how CAD programs keep lineweight legible at any view scale.
+export function lineWidthForLayer(layer) {
+  const mm = typeof layer?.lineweight === 'number' ? layer.lineweight : DEFAULT_LINEWEIGHT;
+  return Math.max(MIN_LINEWEIGHT_PX, mm * LINEWEIGHT_PX_PER_MM);
+}
+
+export function dashPatternForLayer(layer) {
+  return LINETYPE_DASH_PATTERNS[layer?.linetype] || LINETYPE_DASH_PATTERNS[DEFAULT_LINETYPE];
+}
+
 export function drawEntity(e, preview = false) {
-  ctx.lineWidth = preview ? 1 : 1.35;
-  const layerColor = getLayer(e.layerId)?.color || '#d6d6d6';
+  const layer = getLayer(e.layerId);
+  ctx.lineWidth = preview ? 1 : lineWidthForLayer(layer);
+  const layerColor = layer?.color || '#d6d6d6';
   ctx.strokeStyle = preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor;
   if (e.type === 'DIM') {
     drawDimension(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
@@ -127,7 +140,7 @@ export function drawEntity(e, preview = false) {
     drawText(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
     return;
   }
-  if (preview) ctx.setLineDash([6,4]); else ctx.setLineDash([]);
+  if (preview) ctx.setLineDash([6,4]); else ctx.setLineDash(dashPatternForLayer(layer));
   ctx.beginPath();
   if (e.type === 'CIRCLE') {
     const center = worldToScreen(e.center);

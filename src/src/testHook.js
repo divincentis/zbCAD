@@ -20,7 +20,7 @@ import { buildDimension, dimensionGeometry, dimensionSegments, dimensionText, li
 import { cleanEntityRefs, exportDocumentText, parseDocumentText } from './model/document.js';
 import { boxesOverlap, cloneEntities, cloneLayers, duplicateEntities, entityArea, entityBBox, entityCrossesBox, entityLength, entitySegments, pickSegments, polygonArea, polylineIsClosed } from './model/entity.js';
 import { redo, undo } from './model/history.js';
-import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, toggleLayerLock, toggleLayerVisibility } from './model/layers.js';
+import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, setLayerLinetype, setLayerLineweight, toggleLayerLock, toggleLayerPrintable, toggleLayerVisibility } from './model/layers.js';
 import { loadDocumentText, newDrawing, restoreAutosave } from './model/persistence.js';
 import { state } from './state.js';
 import { applyDimStyleDialog, closeDimStyleDialog, openDimStyleDialog, pendingDimStyle, refreshDimStyleDialog } from './ui/dialogs/dimstyle.js';
@@ -193,9 +193,12 @@ window.__cadPrototype = {
   createLayer,
   renameLayer,
   setLayerColor,
+  setLayerLinetype,
+  setLayerLineweight,
   setCurrentLayer,
   toggleLayerVisibility,
   toggleLayerLock,
+  toggleLayerPrintable,
   deleteLayer,
   assignSelectionToLayer,
 };

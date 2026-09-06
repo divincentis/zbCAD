@@ -1,3 +1,4 @@
+import { DEFAULT_LINETYPE, DEFAULT_LINEWEIGHT } from './constants.js';
 
 // New drawings get the architectural default. Migrated v2 files do NOT — see
 // parseUnitSettings, which reproduces what v2 actually displayed.
@@ -36,7 +37,10 @@ export function defaultDimStyle(drawingUnit = 'inches') {
   };
 }
 export function createDefaultLayers() {
-  return [{ id: '0', name: '0', color: '#d6d6d6', visible: true, locked: false }];
+  return [{
+    id: '0', name: '0', color: '#d6d6d6', visible: true, locked: false,
+    linetype: DEFAULT_LINETYPE, lineweight: DEFAULT_LINEWEIGHT, printable: true,
+  }];
 }
 
 // Object snaps in priority order, which is also the order they are listed in

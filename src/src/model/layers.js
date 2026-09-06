@@ -1,4 +1,5 @@
 import { requireIdle } from '../commands/registry.js';
+import { DEFAULT_LINETYPE, DEFAULT_LINEWEIGHT, LINETYPES, LINEWEIGHTS } from '../core/constants.js';
 import { pushHistory } from './history.js';
 import { getLayer, isEntityEditable } from './layerQuery.js';
 import { state } from '../state.js';
@@ -30,7 +31,10 @@ export function createLayer(name = '', color = '#56d6ff') {
   const layerColor = /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : '#56d6ff';
   const id = `layer-${number}`;
   pushHistory();
-  state.layers.push({ id, name: layerName, color: layerColor, visible: true, locked: false });
+  state.layers.push({
+    id, name: layerName, color: layerColor, visible: true, locked: false,
+    linetype: DEFAULT_LINETYPE, lineweight: DEFAULT_LINEWEIGHT, printable: true,
+  });
   state.currentLayerId = id;
   state.nextLayerId = number + 1;
   renderLayerManager();
@@ -76,6 +80,42 @@ export function setLayerColor(id, color) {
   if (layer.color === nextColor) return true;
   pushHistory();
   layer.color = nextColor;
+  renderLayerManager();
+  draw();
+  return true;
+}
+
+export function setLayerLinetype(id, linetype) {
+  if (!requireIdle('changing a layer linetype')) return false;
+  const layer = getLayer(id);
+  if (!layer || !LINETYPES.includes(linetype)) return false;
+  if (layer.linetype === linetype) return true;
+  pushHistory();
+  layer.linetype = linetype;
+  renderLayerManager();
+  draw();
+  return true;
+}
+
+export function setLayerLineweight(id, lineweight) {
+  if (!requireIdle('changing a layer lineweight')) return false;
+  const layer = getLayer(id);
+  const weight = Number(lineweight);
+  if (!layer || !LINEWEIGHTS.includes(weight)) return false;
+  if (layer.lineweight === weight) return true;
+  pushHistory();
+  layer.lineweight = weight;
+  renderLayerManager();
+  draw();
+  return true;
+}
+
+export function toggleLayerPrintable(id) {
+  if (!requireIdle('changing layer printability')) return false;
+  const layer = getLayer(id);
+  if (!layer) return false;
+  pushHistory();
+  layer.printable = !layer.printable;
   renderLayerManager();
   draw();
   return true;

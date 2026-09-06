@@ -132,10 +132,9 @@ button.active, button.on { background: #565656; border-color: #888; }
   border-top: 1px solid #363636;
 }
 .layer-row {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 28px 40px 30px 30px;
+  display: flex;
+  flex-direction: column;
   gap: 4px;
-  align-items: center;
   padding: 6px 0;
   border-bottom: 1px solid #303030;
 }
@@ -143,6 +142,39 @@ button.active, button.on { background: #565656; border-color: #888; }
 .layer-row.hidden { opacity: .58; }
 .layer-row button { padding: 4px 3px; font-size: 10px; }
 .layer-row button:disabled { opacity: .3; cursor: default; }
+.layer-row-main {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 28px 40px 30px 30px;
+  gap: 4px;
+  align-items: center;
+}
+.layer-row-props {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding-left: 28px;
+}
+.layer-linetype {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 2px;
+  color: #ccc;
+  background: #292929;
+  border: 1px solid #414141;
+  border-radius: 2px;
+  font-size: 10px;
+}
+.layer-lineweight {
+  flex: 0 0 44px;
+  padding: 3px 2px;
+  color: #ccc;
+  background: #292929;
+  border: 1px solid #414141;
+  border-radius: 2px;
+  font-size: 10px;
+}
+.layer-printable { flex: 0 0 26px; }
+.layer-printable.off { opacity: .5; }
 .layer-current { color: #777; }
 .layer-current.on { color: #56d6ff; }
 .layer-lock { font-size: 14px !important; line-height: 1; }
@@ -404,7 +436,7 @@ kbd { font-size: 9px; opacity: .65; }
 
 @media (max-width: 820px) {
   .workspace { grid-template-columns: minmax(0, 1fr) 230px; }
-  .layer-row { grid-template-columns: 22px minmax(0, 1fr) 26px 36px 28px 28px; }
+  .layer-row-main { grid-template-columns: 22px minmax(0, 1fr) 26px 36px 28px 28px; }
 }
   </style>
 </head>

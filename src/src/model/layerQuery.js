@@ -13,6 +13,10 @@ export function isLayerLocked(id) {
   return getLayer(id)?.locked === true;
 }
 
+export function isLayerPrintable(id) {
+  return getLayer(id)?.printable !== false;
+}
+
 export function isEntityVisible(entity) {
   return !entity?.layerId || isLayerVisible(entity.layerId);
 }

@@ -3,7 +3,7 @@ import { LENGTH_FORMATS } from '../core/units.js';
 import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
 import { submitCommandInput } from '../interaction/pointer.js';
 import { writeAutosave } from '../model/dirty.js';
-import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, toggleLayerLock, toggleLayerVisibility } from '../model/layers.js';
+import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, setLayerLinetype, setLayerLineweight, toggleLayerLock, toggleLayerPrintable, toggleLayerVisibility } from '../model/layers.js';
 import { chooseOpenFile, loadDocumentText, newDrawing, restoreAutosave, saveDrawing } from '../model/persistence.js';
 import { state } from '../state.js';
 import { applyDimStyleDialog, closeDimStyleDialog, openDimStyleDialog, pendingDimStyle, refreshDimStyleDialog } from './dialogs/dimstyle.js';
@@ -123,6 +123,7 @@ layerList.addEventListener('click', event => {
   if (action === 'current') setCurrentLayer(id);
   else if (action === 'visibility') toggleLayerVisibility(id);
   else if (action === 'lock') toggleLayerLock(id);
+  else if (action === 'printable') toggleLayerPrintable(id);
   else if (action === 'delete') deleteLayer(id);
 });
 layerList.addEventListener('change', event => {
@@ -130,6 +131,8 @@ layerList.addEventListener('change', event => {
   const id = event.target?.dataset?.layerId;
   if (action === 'name') renameLayer(id, event.target.value);
   else if (action === 'color') setLayerColor(id, event.target.value);
+  else if (action === 'linetype') setLayerLinetype(id, event.target.value);
+  else if (action === 'lineweight') setLayerLineweight(id, event.target.value);
 });
 openInput.addEventListener('change', async () => {
   const file = openInput.files?.[0];
