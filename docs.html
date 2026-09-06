@@ -152,6 +152,7 @@
           <li><a href="#layers">Layers</a></li>
           <li><a href="#units">Units &amp; dimension style</a></li>
           <li><a href="#files">Files &amp; autosave</a></li>
+          <li><a href="#plotting">Plotting to PDF</a></li>
         </ul>
       </li>
       <li><a class="section" href="#shortcuts">Keyboard shortcuts</a></li>
@@ -187,13 +188,19 @@
         file you download and re-open yourself, and an autosave copy is kept in the browser's local
         storage so an accidental tab close doesn't lose your work.
       </p>
+      <p>
+        zbCAD is built for a mouse and keyboard on a wide display; it has no touch input handling or
+        small-viewport layout. A narrow window or a touch device shows a dismissible warning to that
+        effect rather than silently breaking &mdash; <strong>Continue anyway</strong> skips it for
+        anyone who wants to try regardless.
+      </p>
     </section>
 
     <h2 id="interface">The interface</h2>
     <section>
       <p>The window is divided into a few fixed regions:</p>
       <ul>
-        <li><strong>Toolbar</strong> (top) &mdash; grouped buttons for File, Edit, Draw, Modify, Annotate, Inquiry, and View. Buttons that start a command show its keyboard alias in parentheses, e.g. <strong>Line (L)</strong>.</li>
+        <li><strong>Toolbar</strong> (top) &mdash; grouped buttons for File, Edit, Draw, Modify, Annotate, Inquiry, and View. Buttons that start a command show its keyboard alias in parentheses, e.g. <strong>Line (L)</strong>. The <strong>Auto-hide</strong> button next to the zbCAD logo collapses it down to that slim brand bar, freeing up canvas height; mouse over the bar (or <kbd>Tab</kbd> into it) to bring the toolbar back as an overlay without resizing the canvas underneath it. This preference is remembered per browser.</li>
         <li><strong>Canvas</strong> (center) &mdash; the drawing area. Left-click to pick points or select objects, scroll to zoom, middle-drag to pan, right-click or <kbd>Enter</kbd> to accept the current command's default action.</li>
         <li><strong>Layers panel</strong> (right) &mdash; lists every layer with its visibility, lock, and color controls; collapsible via the <strong>&#9656;</strong> / <strong>&#9666;</strong> toggle at its top.</li>
         <li><strong>Command line &amp; status bar</strong> (bottom) &mdash; the text input where you type commands, coordinates, and keywords, plus toggle buttons for <strong>SNAP</strong>, <strong>ORTHO</strong>, <strong>POLAR</strong>, the active object-snap set, the drawing units, the current file name, and the live cursor coordinates.</li>
@@ -361,6 +368,53 @@
       <p>Autosave and manual Save are a convenience, not a substitute for keeping your own backups &mdash; both live only in this browser's storage or wherever you chose to save the downloaded file.</p>
     </section>
 
+    <section>
+      <h3 id="plotting">Plotting to PDF</h3>
+      <p>
+        <strong>Plot (PLT)</strong> writes the drawing to a PDF as real vector geometry &mdash; not a
+        screenshot of the canvas. Lines stay lines, so the sheet can be measured, marked up, and
+        printed at any resolution. <kbd>Ctrl/Cmd+P</kbd> opens the same dialog.
+      </p>
+      <p>
+        The dialog previews the sheet live as sheet size, area and scale are chosen, drawn from the
+        same plot plan the PDF is serialised from, so there is nothing between choosing options and
+        seeing what lands on paper. Anything that falls outside the printable border is shown in amber
+        rather than left off the preview, since a line half on the sheet and half clipped is exactly
+        the mistake this is meant to catch before the file is written. Text too small to read at
+        preview scale is greeked into a bar instead of vanishing &mdash; annotation that is really on
+        the sheet shouldn't look absent in the picture of it. The dialog widens to two columns to fit
+        the preview, collapsing back to one on a narrow window.
+      </p>
+      <p>
+        <strong>Sheet size</strong> offers the ANSI, ARCH and ISO sizes, in either orientation, with a
+        half-inch margin the plot is fitted inside and clipped to. <strong>Plot area</strong> is the
+        drawing extents, the current view, or a rectangle you pick on the drawing with
+        <strong>Pick window</strong> (the dialog steps aside for the two corners and comes back with
+        the window filled in).
+      </p>
+      <p>
+        <strong>Scale</strong> is the part that has to be exact. <em>Fit to the sheet</em> works out
+        whatever scale makes the plot area fill the page; <em>Exact scale</em> takes a drawing scale
+        &mdash; 1/4" = 1'-0", 1" = 20', 1:100 &mdash; and plots at precisely that, so a hundred-foot
+        wall at 1" = 20' measures five inches on the sheet. If an exact scale is too large for the
+        sheet the plot still runs, clipped at the margin, and says so before you commit to it.
+      </p>
+      <p>
+        <strong>Color</strong> plots monochrome by default: layer colors are chosen to read on the
+        dark drawing area and several of them are nearly invisible on white paper.
+        <strong>Plot layer lineweights</strong> uses each layer's millimetre lineweight; turned off,
+        everything plots thin. Objects on hidden layers and on layers marked non-printable are left
+        off the sheet entirely &mdash; that is what the layer panel's printable toggle is for.
+      </p>
+      <div class="note">
+        <strong>Dimension and text sizes are set by the dimension style, not by the plot.</strong>
+        Dimension text is sized in the drawing (paper height &times; the style's scale multiplier), so
+        a drawing you intend to plot at 1/4" = 1'-0" wants its Dim Style scale set to 48. Plotting at
+        a scale the dimension style was not set up for produces correct geometry with unreadably small
+        or oversized annotation.
+      </div>
+    </section>
+
     <h2 id="shortcuts">Keyboard shortcuts</h2>
     <section>
       <table>
@@ -378,6 +432,7 @@
         <tr><td><kbd>Ctrl/Cmd+S</kbd></td><td>Save.</td></tr>
         <tr><td><kbd>Ctrl/Cmd+O</kbd></td><td>Open.</td></tr>
         <tr><td><kbd>Ctrl/Cmd+N</kbd></td><td>New drawing.</td></tr>
+        <tr><td><kbd>Ctrl/Cmd+P</kbd></td><td>Open the Plot to PDF dialog.</td></tr>
         <tr><td>Scroll wheel</td><td>Zoom in/out, centered on the cursor.</td></tr>
         <tr><td>Middle-drag</td><td>Pan the view.</td></tr>
       </table>
@@ -569,6 +624,7 @@
         <tr><th>Command</th><th>Alias</th><th>Effect</th></tr>
         <tr><td>ZOOMEXTENTS</td><td><code>Z</code>, <code>ZE</code></td><td>Fits the view to the drawing extents (same as the Zoom Extents toolbar button).</td></tr>
         <tr><td>UNITS</td><td><code>UN</code>, <code>DDUNITS</code></td><td>Opens the Units dialog.</td></tr>
+        <tr><td>PLOT</td><td><code>PLT</code>, <code>PRINT</code></td><td>Opens the Plot to PDF dialog. See <a href="#plotting">Plotting to PDF</a>.</td></tr>
         <tr><td>SELECT</td><td><code>S</code></td><td>The idle mode everything returns to &mdash; click to pick objects, drag for a window/crossing selection. Not a drawing command in its own right.</td></tr>
       </table>
     </section>

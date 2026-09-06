@@ -28,7 +28,41 @@ body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 
 }
 .brand { font-weight: 700; white-space: nowrap; }
 .version { color: #9e9e9e; font-size: 11px; font-weight: 400; }
-.tools { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 6px 0; }
+/* display:contents lets .tools' own tool-groups (Select/Draw/Modify/Annotate)
+   pack directly into the topbar's flex-wrap row alongside File/Edit/View/
+   Inquiry, instead of wrapping as one atomic block. Autohide mode below
+   turns .tools back into a real box so it can be pulled out of flow. */
+.tools { display: contents; }
+.toolbar-autohide-btn { flex: 0 0 auto; }
+/* Auto-hide takes .tools out of flow and floats it as an overlay below the
+   slim brand bar, so opening it on hover never resizes the canvas the way
+   the always-visible toolbar's own row-wrap does (see the ResizeObserver in
+   shell.js). Collapsed height comes for free: with .tools out of flow, the
+   header simply shrinks to the brand row's own height. */
+.topbar.autohide .tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 0;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 0 10px;
+  max-height: 0;
+  overflow: hidden;
+  background: #252525;
+  border-bottom: 1px solid #3a3a3a;
+  transition: max-height .12s ease-out;
+}
+.topbar.autohide:hover .tools,
+.topbar.autohide:focus-within .tools {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 8px 10px;
+}
 .docs-link {
   position: absolute;
   top: 6px;
@@ -132,10 +166,9 @@ button.active, button.on { background: #565656; border-color: #888; }
   border-top: 1px solid #363636;
 }
 .layer-row {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 28px 40px 30px 30px;
+  display: flex;
+  flex-direction: column;
   gap: 4px;
-  align-items: center;
   padding: 6px 0;
   border-bottom: 1px solid #303030;
 }
@@ -143,6 +176,39 @@ button.active, button.on { background: #565656; border-color: #888; }
 .layer-row.hidden { opacity: .58; }
 .layer-row button { padding: 4px 3px; font-size: 10px; }
 .layer-row button:disabled { opacity: .3; cursor: default; }
+.layer-row-main {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 28px 40px 30px 30px;
+  gap: 4px;
+  align-items: center;
+}
+.layer-row-props {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding-left: 28px;
+}
+.layer-linetype {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 2px;
+  color: #ccc;
+  background: #292929;
+  border: 1px solid #414141;
+  border-radius: 2px;
+  font-size: 10px;
+}
+.layer-lineweight {
+  flex: 0 0 44px;
+  padding: 3px 2px;
+  color: #ccc;
+  background: #292929;
+  border: 1px solid #414141;
+  border-radius: 2px;
+  font-size: 10px;
+}
+.layer-printable { flex: 0 0 26px; }
+.layer-printable.off { opacity: .5; }
 .layer-current { color: #777; }
 .layer-current.on { color: #56d6ff; }
 .layer-lock { font-size: 14px !important; line-height: 1; }
@@ -158,13 +224,28 @@ button.active, button.on { background: #565656; border-color: #888; }
   font-size: 11px;
 }
 .layer-name:disabled { color: #bbb; opacity: 1; }
-.layer-color {
+button.layer-color {
   width: 28px;
   height: 24px;
   padding: 1px;
   border: 1px solid #4a4a4a;
-  background: #303030;
   cursor: pointer;
+}
+/* Chrome's native color-picker popup anchors to this element's on-screen
+   position and clips instead of flipping when that position sits near the
+   viewport's right edge — which the docked layer panel always does. Rows
+   trigger the picker on this single offscreen anchor instead of their own
+   swatch button, so the popup always has room to open. */
+.layer-color-anchor {
+  position: fixed;
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 .layer-hint { margin-top: auto; color: #888; font-size: 10px; line-height: 1.35; }
 
@@ -332,6 +413,8 @@ kbd { font-size: 9px; opacity: .65; }
 .dialog-card {
   width: 380px;
   max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
   padding: 16px 18px 14px;
   background: #242424;
   border: 1px solid #555;
@@ -373,6 +456,31 @@ kbd { font-size: 9px; opacity: .65; }
   color: #9e9e9e;
 }
 .dialog-preview strong { color: #56d6ff; font-weight: 600; }
+.plot-window-row { display: flex; align-items: center; gap: 8px; margin: -4px 0 10px; }
+.plot-window-summary { color: #8f8f8f; font-size: 10px; }
+.plot-warnings { color: #ffc857; }
+.plot-warnings:empty { display: none; }
+.plot-card { width: 700px; }
+.plot-layout { display: grid; grid-template-columns: 1fr 300px; gap: 18px; align-items: start; }
+.plot-preview-canvas {
+  display: block;
+  width: 100%;
+  height: 230px;
+  background: #1b1b1b;
+  border: 1px solid #383838;
+  border-radius: 3px;
+}
+.plot-preview-legend { margin: 6px 0 0; }
+.plot-clipped-key { color: #e0a03c; }
+.plot-preview-pane .dialog-preview { margin: 10px 0 8px; }
+/* Side by side needs room for both columns; below that the preview stacks
+   under the controls rather than squeezing them. A short window keeps the two
+   columns — the preview is worth less once it has been scrolled past. */
+@media (max-width: 760px) {
+  .plot-card { width: 380px; }
+  .plot-layout { grid-template-columns: 1fr; gap: 0; }
+}
+@media (max-height: 700px) { .plot-preview-canvas { height: 150px; } }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .dialog-actions .primary { background: #2e5d74; border-color: #56d6ff; }
 .dialog-actions .primary:hover { background: #37718c; }
@@ -402,28 +510,71 @@ kbd { font-size: 9px; opacity: .65; }
   border-radius: 4px;
 }
 
+/* This is a mouse-and-keyboard CAD prototype with no touch input handling and
+   no layout built for a phone/tablet viewport. Rather than silently failing
+   there, warn plainly — but let someone dismiss it and try anyway, since a
+   coarse pointer or a narrow window isn't proof the device can't work. */
+.small-screen-warning { display: none; }
+@media (max-width: 700px), (pointer: coarse) {
+  .small-screen-warning {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(10, 10, 10, .92);
+  }
+}
+.small-screen-warning.dismissed { display: none !important; }
+.small-screen-card {
+  max-width: 340px;
+  padding: 20px;
+  text-align: center;
+  background: #252525;
+  border: 1px solid #4a4a4a;
+  border-radius: 6px;
+}
+.small-screen-card strong { display: block; margin-bottom: 8px; font-size: 15px; }
+.small-screen-card p { margin: 0 0 16px; color: #cfcfcf; font-size: 13px; line-height: 1.4; }
+
 @media (max-width: 820px) {
   .workspace { grid-template-columns: minmax(0, 1fr) 230px; }
-  .layer-row { grid-template-columns: 22px minmax(0, 1fr) 26px 36px 28px 28px; }
+  .layer-row-main { grid-template-columns: 22px minmax(0, 1fr) 26px 36px 28px 28px; }
 }
   </style>
 </head>
 <body>
-  <header class="topbar">
+  <header id="topbar" class="topbar">
     <div class="brand">zbCAD <span class="version">v0.24.3</span></div>
+    <button id="toolbarAutohideBtn" class="toolbar-autohide-btn toggle" title="Auto-hide the toolbar; mouse over this bar (or Tab into it) to show it again" aria-pressed="false">Auto-hide</button>
+    <div class="tool-group">
+      <span class="group-label">File</span>
+      <button id="newBtn">New</button>
+      <button id="openBtn">Open</button>
+      <button id="saveBtn">Save</button>
+      <button id="recoverBackupBtn" title="Recover the previous validated autosave">Recover Backup</button>
+      <button id="plotBtn" title="Plot to a scaled PDF">Plot (PLT)</button>
+    </div>
+    <div class="tool-group">
+      <span class="group-label">Edit</span>
+      <button id="undoBtn">Undo</button>
+      <button id="redoBtn">Redo</button>
+    </div>
+    <div class="tool-group">
+      <span class="group-label">View</span>
+      <button id="fitBtn">Zoom Extents</button>
+      <button id="unitsBtn">Units (UN)</button>
+    </div>
+    <div class="tool-group">
+      <span class="group-label">Inquiry</span>
+      <button data-command="DIST">Dist (DI)</button>
+      <button data-command="AREA">Area (AA)</button>
+      <button data-command="ID">ID</button>
+      <button data-command="LIST">List (LI)</button>
+    </div>
     <div class="tools">
-      <div class="tool-group">
-        <span class="group-label">File</span>
-        <button id="newBtn">New</button>
-        <button id="openBtn">Open</button>
-        <button id="saveBtn">Save</button>
-        <button id="recoverBackupBtn" title="Recover the previous validated autosave">Recover Backup</button>
-      </div>
-      <div class="tool-group">
-        <span class="group-label">Edit</span>
-        <button id="undoBtn">Undo</button>
-        <button id="redoBtn">Redo</button>
-      </div>
       <div class="tool-group">
         <button data-command="SELECT" class="active">Select</button>
       </div>
@@ -461,18 +612,6 @@ kbd { font-size: 9px; opacity: .65; }
         <button data-command="TEXT">Text (T)</button>
         <button id="dimStyleBtn">Dim Style (DST)</button>
       </div>
-      <div class="tool-group">
-        <span class="group-label">Inquiry</span>
-        <button data-command="DIST">Dist (DI)</button>
-        <button data-command="AREA">Area (AA)</button>
-        <button data-command="ID">ID</button>
-        <button data-command="LIST">List (LI)</button>
-      </div>
-      <div class="tool-group">
-        <span class="group-label">View</span>
-        <button id="fitBtn">Zoom Extents</button>
-        <button id="unitsBtn">Units (UN)</button>
-      </div>
     </div>
     <a id="docsLink" class="docs-link" href="docs.html" target="_blank" rel="noopener">Docs</a>
     <input id="openInput" type="file" accept=".json,.zbCAD.json,application/json" hidden />
@@ -494,6 +633,7 @@ kbd { font-size: 9px; opacity: .65; }
       </div>
     </div>
     <aside id="layerPanel" class="layer-panel" aria-label="Layer manager">
+      <input id="layerColorPicker" type="color" class="layer-color-anchor" tabindex="-1" aria-hidden="true" />
       <div class="layer-heading">
         <strong>Layers</strong>
         <div class="layer-heading-actions">
@@ -601,7 +741,7 @@ kbd { font-size: 9px; opacity: .65; }
   <div id="dimStyleDialog" class="dialog" hidden>
     <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="dimStyleTitle">
       <h2 id="dimStyleTitle">Dimension Style</h2>
-      <p class="dialog-note">Dimensions are static. They measure their own definition points and do not follow edits to source objects.</p>
+      <p class="dialog-note">These settings apply to every dimension in the drawing. Sizes below are paper sizes; see the scale note.</p>
 
       <label for="dimArrowType">Terminator
         <select id="dimArrowType"></select>
@@ -641,6 +781,85 @@ kbd { font-size: 9px; opacity: .65; }
     </div>
   </div>
 
+  <div id="plotDialog" class="dialog" hidden>
+    <div class="dialog-card plot-card" role="dialog" aria-modal="true" aria-labelledby="plotDialogTitle">
+      <h2 id="plotDialogTitle">Plot to PDF</h2>
+      <p class="dialog-note">
+        Vector output at an exact scale, not a screenshot. Hidden and
+        non-printable layers are left off the sheet.
+      </p>
+
+      <div class="plot-layout">
+      <div class="plot-settings">
+
+      <label for="plotPaper">Sheet size
+        <select id="plotPaper"></select>
+      </label>
+      <label for="plotOrientation">Orientation
+        <select id="plotOrientation"></select>
+      </label>
+
+      <label for="plotArea">Plot area
+        <select id="plotArea"></select>
+      </label>
+      <div class="plot-window-row" id="plotWindowRow" hidden>
+        <button id="plotWindowBtn">Pick window&hellip;</button>
+        <span class="plot-window-summary" id="plotWindowSummary">No window picked yet</span>
+      </div>
+
+      <label for="plotScaleMode">Scale
+        <select id="plotScaleMode"></select>
+      </label>
+      <div id="plotScaleRow" hidden>
+        <label for="plotScalePreset">Drawing scale
+          <select id="plotScalePreset"></select>
+        </label>
+        <label for="plotScale">Model units per paper unit
+          <input id="plotScale" type="number" min="0.0001" step="0.0001" />
+        </label>
+      </div>
+
+      <label class="dialog-check" for="plotCenter">
+        <input type="checkbox" id="plotCenter" />
+        <span>Center the plot on the sheet</span>
+      </label>
+
+      <label for="plotColor">Color
+        <select id="plotColor"></select>
+      </label>
+      <label class="dialog-check" for="plotLineweights">
+        <input type="checkbox" id="plotLineweights" />
+        <span>Plot layer lineweights</span>
+      </label>
+
+      </div>
+      <div class="plot-preview-pane">
+        <canvas id="plotPreviewCanvas" class="plot-preview-canvas" aria-label="Plot preview"></canvas>
+        <p class="dialog-note plot-preview-legend">
+          The dashed border is the printable area. Anything drawn
+          <span class="plot-clipped-key">in amber</span> falls outside it and is
+          clipped off the sheet.
+        </p>
+        <div class="dialog-preview">Plot: <strong id="plotPreview">&mdash;</strong></div>
+        <p class="dialog-note plot-warnings" id="plotWarnings"></p>
+      </div>
+      </div>
+
+      <div class="dialog-actions">
+        <button id="plotCancel">Cancel</button>
+        <button id="plotRun" class="primary">Plot</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="smallScreenWarning" class="small-screen-warning" role="alert">
+    <div class="small-screen-card">
+      <strong>zbCAD needs a bigger screen</strong>
+      <p>This prototype is built for a mouse and keyboard on a wide display. It has not been made for phones, tablets, or touch input, and drawing tools will not work reliably here.</p>
+      <button id="smallScreenDismiss">Continue anyway</button>
+    </div>
+  </div>
+
   <noscript><div class="fatal-error">JavaScript is disabled. This prototype cannot run until JavaScript is enabled.</div></noscript>
 
   <script>
@@ -674,8 +893,11 @@ kbd { font-size: 9px; opacity: .65; }
   const addLayerBtn = document.getElementById('addLayerBtn');
   const assignLayerBtn = document.getElementById('assignLayerBtn');
   const layerList = document.getElementById('layerList');
+  const layerColorPicker = document.getElementById('layerColorPicker');
   const layerPanel = document.getElementById('layerPanel');
   const layerPanelToggle = document.getElementById('layerPanelToggle');
+  const topbar = document.getElementById('topbar');
+  const toolbarAutohideBtn = document.getElementById('toolbarAutohideBtn');
   const help = document.getElementById('help');
   const inquiryPanel = document.getElementById('inquiryPanel');
   const inquiryTitle = document.getElementById('inquiryTitle');
@@ -688,6 +910,24 @@ kbd { font-size: 9px; opacity: .65; }
   const unitRescaleRow = document.getElementById('unitRescaleRow');
   const unitPreview = document.getElementById('unitPreview');
   const unitStatus = document.getElementById('unitStatus');
+  const plotDialog = document.getElementById('plotDialog');
+  const plotPaperSelect = document.getElementById('plotPaper');
+  const plotOrientationSelect = document.getElementById('plotOrientation');
+  const plotAreaSelect = document.getElementById('plotArea');
+  const plotWindowRow = document.getElementById('plotWindowRow');
+  const plotWindowBtn = document.getElementById('plotWindowBtn');
+  const plotWindowSummary = document.getElementById('plotWindowSummary');
+  const plotScaleModeSelect = document.getElementById('plotScaleMode');
+  const plotScaleRow = document.getElementById('plotScaleRow');
+  const plotScalePresetSelect = document.getElementById('plotScalePreset');
+  const plotScaleInput = document.getElementById('plotScale');
+  const plotCenterCheck = document.getElementById('plotCenter');
+  const plotColorSelect = document.getElementById('plotColor');
+  const plotLineweightsCheck = document.getElementById('plotLineweights');
+  const plotPreview = document.getElementById('plotPreview');
+  const plotPreviewCanvas = document.getElementById('plotPreviewCanvas');
+  const plotPreviewCtx = plotPreviewCanvas.getContext('2d');
+  const plotWarningsEl = document.getElementById('plotWarnings');
   const dimStyleDialog = document.getElementById('dimStyleDialog');
   const dimArrowTypeSelect = document.getElementById('dimArrowType');
   const dimScalePresetSelect = document.getElementById('dimScalePreset');
@@ -705,7 +945,9 @@ kbd { font-size: 9px; opacity: .65; }
   const MIN_VIEW_SCALE = 0.0001;
   const MAX_VIEW_SCALE = 100000;
   const DOCUMENT_FORMAT = 'browser-2d-draft';
-  const DOCUMENT_VERSION = 4;
+  // Version 4 had no per-layer linetype/lineweight/printability (see
+  // core/defaults.js and model/document.js's layer parsing for the migration).
+  const DOCUMENT_VERSION = 5;
   const AUTOSAVE_KEY = `${DOCUMENT_FORMAT}.autosave`;
   const AUTOSAVE_BACKUP_KEY = `${AUTOSAVE_KEY}.previous`;
   const LEGACY_AUTOSAVE_KEYS = [`${DOCUMENT_FORMAT}.autosave.v1`];
@@ -734,6 +976,43 @@ kbd { font-size: 9px; opacity: .65; }
   // monospace font specifically so this approximation stays close to what is
   // actually drawn.
   const TEXT_WIDTH_FACTOR = 0.6;
+
+  // Standard AutoCAD-style linetypes and lineweights, kept to the subset an
+  // architectural roof plan actually needs. Dash patterns are screen pixels
+  // rather than world units (like the existing preview dash [6,4] in
+  // view/render.js) so a linetype stays legible at any zoom level instead of
+  // vanishing into a solid line when zoomed out.
+  const LINETYPES = Object.freeze(['continuous', 'dashed', 'dotted', 'dashdot', 'center']);
+  const LINETYPE_LABELS = Object.freeze({
+    continuous: 'Continuous',
+    dashed: 'Dashed',
+    dotted: 'Dotted',
+    dashdot: 'Dash-Dot',
+    center: 'Center',
+  });
+  const LINETYPE_DASH_PATTERNS = Object.freeze({
+    continuous: [],
+    dashed: [8, 4],
+    dotted: [1, 3],
+    dashdot: [8, 3, 1, 3],
+    center: [12, 3, 2, 3],
+  });
+  const DEFAULT_LINETYPE = 'continuous';
+
+  // The full standard CAD lineweight table, in millimeters.
+  const LINEWEIGHTS = Object.freeze([
+    0.00, 0.05, 0.09, 0.13, 0.15, 0.18, 0.20, 0.25, 0.30, 0.35, 0.40, 0.50,
+    0.53, 0.60, 0.70, 0.80, 0.90, 1.00, 1.06, 1.20, 1.40, 1.58, 2.00, 2.11,
+  ]);
+  const DEFAULT_LINEWEIGHT = 0.25;
+
+  // On-screen line width is a fixed multiple of the millimeter lineweight
+  // rather than something that scales with zoom, matching how CAD programs
+  // keep lineweight legible regardless of view scale. The multiplier is chosen
+  // so the default 0.25mm weight reproduces this app's pre-lineweight line
+  // width (1.35px), so drawings made before this feature render unchanged.
+  const LINEWEIGHT_PX_PER_MM = 1.35 / DEFAULT_LINEWEIGHT;
+  const MIN_LINEWEIGHT_PX = 1;
 
   // ---------------------------------------------------------------------------
   // core/defaults.js
@@ -776,7 +1055,10 @@ kbd { font-size: 9px; opacity: .65; }
     };
   }
   function createDefaultLayers() {
-    return [{ id: '0', name: '0', color: '#d6d6d6', visible: true, locked: false }];
+    return [{
+      id: '0', name: '0', color: '#d6d6d6', visible: true, locked: false,
+      linetype: DEFAULT_LINETYPE, lineweight: DEFAULT_LINEWEIGHT, printable: true,
+    }];
   }
 
   // Object snaps in priority order, which is also the order they are listed in
@@ -1242,6 +1524,110 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   // ---------------------------------------------------------------------------
+  // core/paper.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Paper
+  //
+  // Sheet sizes are physical millimetres, deliberately independent of both the
+  // drawing's own unit and of PDF points, so exactly one place knows how big a
+  // sheet is and every consumer converts from there.
+  //
+  // A drawing scale is the dimensionless ratio between a real-world length and
+  // the paper length that stands for it: 1/4" = 1'-0" is 48 because a foot is
+  // 48 quarter-inches, and 1" = 20' is 240 for the same reason. Being a ratio of
+  // two physical lengths it does not depend on the unit the geometry is stored
+  // in, which is what lets one number drive an inch drawing and a metric one —
+  // and what makes an exactly scaled plot possible at all.
+  // ---------------------------------------------------------------------------
+
+  const MM_PER_INCH = 25.4;
+  // PDF user space is 1/72 inch. Nothing outside output/pdf.js should need this.
+  const POINTS_PER_MM = 72 / MM_PER_INCH;
+
+  // Portrait dimensions; orientation is applied by paperSizeMM. The imperial
+  // sizes are written as inches times MM_PER_INCH rather than as rounded
+  // millimetres, because that is what they actually are — a 24 x 36 ARCH D sheet
+  // is exactly 609.6 x 914.4 mm and a plot at an exact scale has to stay exact.
+  const PAPER_SIZES = Object.freeze([
+    { id: 'ansi-a', name: 'ANSI A — 8.5 × 11 in', widthMM: 8.5 * MM_PER_INCH, heightMM: 11 * MM_PER_INCH },
+    { id: 'ansi-b', name: 'ANSI B — 11 × 17 in', widthMM: 11 * MM_PER_INCH, heightMM: 17 * MM_PER_INCH },
+    { id: 'ansi-c', name: 'ANSI C — 17 × 22 in', widthMM: 17 * MM_PER_INCH, heightMM: 22 * MM_PER_INCH },
+    { id: 'ansi-d', name: 'ANSI D — 22 × 34 in', widthMM: 22 * MM_PER_INCH, heightMM: 34 * MM_PER_INCH },
+    { id: 'ansi-e', name: 'ANSI E — 34 × 44 in', widthMM: 34 * MM_PER_INCH, heightMM: 44 * MM_PER_INCH },
+    { id: 'arch-a', name: 'ARCH A — 9 × 12 in', widthMM: 9 * MM_PER_INCH, heightMM: 12 * MM_PER_INCH },
+    { id: 'arch-b', name: 'ARCH B — 12 × 18 in', widthMM: 12 * MM_PER_INCH, heightMM: 18 * MM_PER_INCH },
+    { id: 'arch-c', name: 'ARCH C — 18 × 24 in', widthMM: 18 * MM_PER_INCH, heightMM: 24 * MM_PER_INCH },
+    { id: 'arch-d', name: 'ARCH D — 24 × 36 in', widthMM: 24 * MM_PER_INCH, heightMM: 36 * MM_PER_INCH },
+    { id: 'arch-e', name: 'ARCH E — 36 × 48 in', widthMM: 36 * MM_PER_INCH, heightMM: 48 * MM_PER_INCH },
+    { id: 'iso-a4', name: 'ISO A4 — 210 × 297 mm', widthMM: 210, heightMM: 297 },
+    { id: 'iso-a3', name: 'ISO A3 — 297 × 420 mm', widthMM: 297, heightMM: 420 },
+    { id: 'iso-a2', name: 'ISO A2 — 420 × 594 mm', widthMM: 420, heightMM: 594 },
+    { id: 'iso-a1', name: 'ISO A1 — 594 × 841 mm', widthMM: 594, heightMM: 841 },
+    { id: 'iso-a0', name: 'ISO A0 — 841 × 1189 mm', widthMM: 841, heightMM: 1189 },
+  ]);
+
+  // A commercial roof plan is the workflow this tool exists for, and ARCH D
+  // landscape is the sheet it is issued on.
+  const DEFAULT_PAPER_SIZE_ID = 'arch-d';
+  const PAPER_ORIENTATIONS = Object.freeze({ landscape: 'Landscape', portrait: 'Portrait' });
+
+  // A half-inch border. Nothing is plotted into it: the plot is fitted inside it
+  // and clipped to it, which is also roughly the unprintable edge of a plotter.
+  const PAPER_MARGIN_MM = 0.5 * MM_PER_INCH;
+
+  // Both lists are [label, model length per paper length]. Shared with the
+  // dimension style dialog, which needs exactly the same number for a different
+  // reason: a dimension's paper text height is multiplied by it to get a model
+  // text height, so a drawing plotted at 1/4" = 1'-0" wants DIMSCALE 48.
+  const IMPERIAL_SCALE_PRESETS = Object.freeze([
+    ['Full size (1:1)', 1], ['3" = 1\'-0"', 4], ['1 1/2" = 1\'-0"', 8],
+    ['1" = 1\'-0"', 12], ['3/4" = 1\'-0"', 16], ['1/2" = 1\'-0"', 24],
+    ['3/8" = 1\'-0"', 32], ['1/4" = 1\'-0"', 48], ['3/16" = 1\'-0"', 64],
+    ['1/8" = 1\'-0"', 96], ['1/16" = 1\'-0"', 192],
+    // Engineering scales. A roof or site plan is drawn at these, not at the
+    // architectural fractions above.
+    ['1" = 10\'', 120], ['1" = 20\'', 240], ['1" = 30\'', 360], ['1" = 40\'', 480],
+    ['1" = 50\'', 600], ['1" = 60\'', 720], ['1" = 100\'', 1200],
+  ]);
+  const METRIC_SCALE_PRESETS = Object.freeze([
+    ['Full size (1:1)', 1], ['1:2', 2], ['1:5', 5], ['1:10', 10], ['1:20', 20],
+    ['1:25', 25], ['1:50', 50], ['1:100', 100], ['1:200', 200], ['1:500', 500],
+    ['1:1000', 1000],
+  ]);
+
+  function scalePresets(drawingUnit = state.unitSettings.drawingUnit) {
+    return drawingUnit === 'inches' || drawingUnit === 'feet'
+      ? IMPERIAL_SCALE_PRESETS : METRIC_SCALE_PRESETS;
+  }
+
+  function scalePresetLabel(value, drawingUnit = state.unitSettings.drawingUnit) {
+    const match = scalePresets(drawingUnit).find(([, preset]) => Math.abs(preset - value) < 1e-9);
+    if (match) return match[0];
+    return value >= 1 ? `1:${Number(value.toFixed(4))}` : `${Number((1 / value).toFixed(4))}:1`;
+  }
+
+  function getPaperSize(id) {
+    return PAPER_SIZES.find(size => size.id === id) ||
+      PAPER_SIZES.find(size => size.id === DEFAULT_PAPER_SIZE_ID);
+  }
+
+  function paperSizeMM(id, orientation) {
+    const size = getPaperSize(id);
+    return orientation === 'portrait'
+      ? { widthMM: size.widthMM, heightMM: size.heightMM }
+      : { widthMM: size.heightMM, heightMM: size.widthMM };
+  }
+
+  // The one conversion the whole plot rests on: how many millimetres of paper
+  // one drawing unit becomes. Everything else in a plot is this number times a
+  // model coordinate.
+  function paperMMPerDrawingUnit(scale, drawingUnit = state.unitSettings.drawingUnit) {
+    return DRAWING_UNITS[drawingUnit].mmPerUnit / scale;
+  }
+
+  // ---------------------------------------------------------------------------
   // core/dimstyle.js
   // ---------------------------------------------------------------------------
 
@@ -1375,6 +1761,10 @@ kbd { font-size: 9px; opacity: .65; }
 
   function isLayerLocked(id) {
     return getLayer(id)?.locked === true;
+  }
+
+  function isLayerPrintable(id) {
+    return getLayer(id)?.printable !== false;
   }
 
   function isEntityVisible(entity) {
@@ -2096,6 +2486,817 @@ kbd { font-size: 9px; opacity: .65; }
   // fraction/inch/foot ladder instead.
 
   // ---------------------------------------------------------------------------
+  // output/pdf.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // PDF writer
+  //
+  // A plot plan (see output/plot.js) is a list of primitives in millimetres from
+  // the bottom-left of the sheet, with Y up. That is already PDF's own
+  // convention, so this file does nothing but serialise: scale millimetres to
+  // points, write the operators, and assemble the object table around them.
+  // There is no library here and no rasterisation — the output is real vector
+  // geometry, which is what makes a plotted line measurable.
+  //
+  // Only the base-14 fonts are used (Helvetica for dimension text, Courier for
+  // TEXT entities), so nothing has to be embedded and the file stays small. The
+  // output is deterministic: no timestamps, so plotting the same drawing twice
+  // produces two identical files that can be diffed.
+  // ---------------------------------------------------------------------------
+
+  // Standard Helvetica advance widths, in 1/1000 em, for character codes 32-126.
+  // Needed because dimension text is centred on the dimension line, and centring
+  // without metrics puts it visibly off-centre.
+  const PDF_HELVETICA_WIDTHS = Object.freeze([
+    278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
+    556, 556, 556, 556, 556, 556, 556, 556, 556, 556,
+    278, 278, 584, 584, 584, 556, 1015,
+    667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667,
+    778, 722, 667, 611, 722, 667, 944, 667, 667, 611,
+    278, 278, 278, 469, 556, 333,
+    556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556,
+    556, 333, 500, 278, 556, 500, 722, 500, 500, 500,
+    334, 260, 334, 584,
+  ]);
+
+  // Courier is metrically monospaced at 600/1000 em, which is exactly the
+  // TEXT_WIDTH_FACTOR this app already approximates a text entity's footprint
+  // with — so a plotted TEXT entity occupies precisely the box that hit-testing
+  // and zoom-extents said it would.
+  const PDF_COURIER_WIDTH = 600;
+
+  // The characters this app can produce that are not plain ASCII, mapped to
+  // their WinAnsiEncoding code. The diameter sign the app displays (U+2300) is
+  // not in WinAnsi; the slashed O at 0xD8 is the glyph every CAD font uses for
+  // diameter anyway, so it is the right substitution rather than a compromise.
+  const PDF_WINANSI_EXTRAS = Object.freeze({
+    '°': 0xb0, '⌀': 0xd8, 'Ø': 0xd8, 'ø': 0xf8,
+    '±': 0xb1, '×': 0xd7, '÷': 0xf7, '½': 0xbd,
+    '¼': 0xbc, '¾': 0xbe, '–': 0x96, '—': 0x97,
+    '‘': 0x91, '’': 0x92, '“': 0x93, '”': 0x94,
+    '²': 0xb2, '³': 0xb3, '©': 0xa9, '®': 0xae,
+  });
+
+  // The code this character plots as, or null where the base-14 encoding has no
+  // equivalent. Callers decide whether that is a warning or a silent '?'.
+  function pdfMapCharacter(character) {
+    const code = character.charCodeAt(0);
+    if (code >= 32 && code <= 126) return code;
+    if (PDF_WINANSI_EXTRAS[character] !== undefined) return PDF_WINANSI_EXTRAS[character];
+    // The upper half of Latin-1 is WinAnsi's own range, apart from the 0x80-0x9f
+    // window which WinAnsi fills with punctuation instead of control codes.
+    if (code >= 0xa0 && code <= 0xff) return code;
+    return null;
+  }
+
+  function pdfGlyphWidth(code, font) {
+    if (font === 'courier') return PDF_COURIER_WIDTH;
+    if (code >= 32 && code <= 126) return PDF_HELVETICA_WIDTHS[code - 32];
+    // Everything outside the metrics table is a punctuation or accented glyph;
+    // 556 is Helvetica's digit width and the closest thing to an average.
+    return 556;
+  }
+
+  function pdfTextWidthMM(text, font, sizeMM) {
+    let total = 0;
+    for (const character of String(text)) {
+      const code = pdfMapCharacter(character);
+      total += pdfGlyphWidth(code === null ? 63 : code, font);
+    }
+    return (total / 1000) * sizeMM;
+  }
+
+  function pdfUnsupportedCharacters(text) {
+    const bad = new Set();
+    for (const character of String(text)) {
+      if (pdfMapCharacter(character) === null) bad.add(character);
+    }
+    return [...bad];
+  }
+
+  // A PDF string literal. Characters outside ASCII go out as octal escapes so
+  // the whole file stays 7-bit — which keeps character offsets equal to byte
+  // offsets, and the cross-reference table below depends on that.
+  function pdfEncodeText(text) {
+    let out = '';
+    for (const character of String(text)) {
+      const code = pdfMapCharacter(character);
+      const byte = code === null ? 63 : code;
+      if (byte === 0x28 || byte === 0x29 || byte === 0x5c) out += `\\${character}`;
+      else if (byte < 32 || byte > 126) out += `\\${byte.toString(8).padStart(3, '0')}`;
+      else out += String.fromCharCode(byte);
+    }
+    return out;
+  }
+
+  // Four decimals is roughly a thousandth of a millimetre at PDF's own scale,
+  // well past what any plotter resolves, and it keeps the file compact.
+  function pdfNumber(value) {
+    if (!Number.isFinite(value)) return '0';
+    const fixed = value.toFixed(4);
+    const trimmed = fixed.replace(/\.?0+$/, '');
+    return trimmed === '' || trimmed === '-0' ? '0' : trimmed;
+  }
+
+  function pdfPoint(mm) {
+    return pdfNumber(mm * POINTS_PER_MM);
+  }
+
+  function pdfColor(color, stroking) {
+    const [r, g, b] = color;
+    return `${pdfNumber(r)} ${pdfNumber(g)} ${pdfNumber(b)} ${stroking ? 'RG' : 'rg'}`;
+  }
+
+  function pdfStrokeOperators(op) {
+    const lines = [];
+    lines.push(pdfColor(op.color, true));
+    lines.push(`${pdfPoint(op.widthMM)} w`);
+    lines.push(op.dash && op.dash.length
+      ? `[${op.dash.map(pdfPoint).join(' ')}] 0 d`
+      : '[] 0 d');
+    for (const subpath of op.subpaths) {
+      lines.push(`${pdfPoint(subpath.start.x)} ${pdfPoint(subpath.start.y)} m`);
+      for (const segment of subpath.segs) {
+        if (segment.type === 'c') {
+          lines.push(`${pdfPoint(segment.c1.x)} ${pdfPoint(segment.c1.y)} ` +
+            `${pdfPoint(segment.c2.x)} ${pdfPoint(segment.c2.y)} ` +
+            `${pdfPoint(segment.to.x)} ${pdfPoint(segment.to.y)} c`);
+        } else {
+          lines.push(`${pdfPoint(segment.to.x)} ${pdfPoint(segment.to.y)} l`);
+        }
+      }
+      if (subpath.closed) lines.push('h');
+    }
+    lines.push('S');
+    return lines;
+  }
+
+  function pdfFillOperators(op) {
+    const lines = [pdfColor(op.color, false)];
+    op.points.forEach((point, index) => {
+      lines.push(`${pdfPoint(point.x)} ${pdfPoint(point.y)} ${index === 0 ? 'm' : 'l'}`);
+    });
+    lines.push('h', 'f');
+    return lines;
+  }
+
+  // Text is placed by a full text matrix rather than a translate plus rotate,
+  // because the anchor a caller gives is the middle of the string for dimension
+  // text and its baseline start for a TEXT entity, and both have to end up in
+  // the same place after rotation.
+  function pdfTextOperators(op) {
+    const font = op.font === 'courier' ? '/F2' : '/F1';
+    const width = pdfTextWidthMM(op.text, op.font, op.sizeMM);
+    const u = op.anchor === 'center' ? -width / 2 : 0;
+    // Canvas' "middle" baseline sits about 0.35 em above the alphabetic one for
+    // both of these faces, which is what the on-screen dimension text uses.
+    const v = op.baseline === 'middle' ? -0.35 * op.sizeMM : 0;
+    const cos = Math.cos(op.angle);
+    const sin = Math.sin(op.angle);
+    const x = op.x + u * cos - v * sin;
+    const y = op.y + u * sin + v * cos;
+    return [
+      'BT',
+      `${font} ${pdfNumber(op.sizeMM * POINTS_PER_MM)} Tf`,
+      pdfColor(op.color, false),
+      `${pdfNumber(cos)} ${pdfNumber(sin)} ${pdfNumber(-sin)} ${pdfNumber(cos)} ` +
+        `${pdfPoint(x)} ${pdfPoint(y)} Tm`,
+      `(${pdfEncodeText(op.text)}) Tj`,
+      'ET',
+    ];
+  }
+
+  function pdfContentStream(plan) {
+    const lines = ['q'];
+    // Everything is clipped to the printable area, so a plot at an exact scale
+    // that is larger than the sheet stops at the border instead of bleeding
+    // into it — the same thing a plotter does.
+    const clip = plan.printable;
+    lines.push(`${pdfPoint(clip.xMM)} ${pdfPoint(clip.yMM)} ` +
+      `${pdfPoint(clip.widthMM)} ${pdfPoint(clip.heightMM)} re W n`);
+    for (const op of plan.ops) {
+      if (op.kind === 'stroke') lines.push(...pdfStrokeOperators(op));
+      else if (op.kind === 'fill') lines.push(...pdfFillOperators(op));
+      else if (op.kind === 'text') lines.push(...pdfTextOperators(op));
+    }
+    lines.push('Q');
+    return lines.join('\n');
+  }
+
+  function buildPdfDocument(plan, title = 'Drawing') {
+    const content = pdfContentStream(plan);
+    const objects = [
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      '<< /Type /Page /Parent 2 0 R ' +
+        `/MediaBox [0 0 ${pdfPoint(plan.page.widthMM)} ${pdfPoint(plan.page.heightMM)}] ` +
+        '/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>',
+      `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>',
+      `<< /Title (${pdfEncodeText(title)}) /Producer (zbCAD) /Creator (zbCAD) >>`,
+    ];
+
+    let pdf = '%PDF-1.4\n';
+    const offsets = [];
+    objects.forEach((body, index) => {
+      offsets.push(pdf.length);
+      pdf += `${index + 1} 0 obj\n${body}\nendobj\n`;
+    });
+    const xrefOffset = pdf.length;
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+    for (const offset of offsets) {
+      pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
+    }
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info ${objects.length} 0 R >>\n` +
+      `startxref\n${xrefOffset}\n%%EOF\n`;
+    return pdf;
+  }
+
+  // ---------------------------------------------------------------------------
+  // output/plot.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Plot plan
+  //
+  // The drawing reduced to paper: a list of primitives measured in millimetres
+  // from the bottom-left corner of the sheet, Y up. Nothing here knows about
+  // PDF, and nothing here draws — output/pdf.js serialises the plan, and a test
+  // can assert on it directly, which is the only honest way to check that a
+  // hundred-foot line really did come out five inches long.
+  //
+  // The single number the whole plan turns on is `paperMMPerDrawingUnit`: paper
+  // millimetres per drawing unit. Every coordinate below is a model coordinate
+  // multiplied by it and shifted onto the sheet.
+  // ---------------------------------------------------------------------------
+
+  // The linetype patterns are screen pixels (see core/constants.js), which is
+  // the right unit for something that must stay legible at any zoom. On paper
+  // there is no zoom, so the same pattern is read as a paper length: a dashed
+  // line prints as 3.2mm on, 1.6mm off, which is a conventional plotted dash.
+  const PLOT_DASH_MM_PER_UNIT = 0.4;
+
+  // A lineweight of 0.00 means "thinnest the device can draw"; on paper that is
+  // a hairline, not an invisible line.
+  const PLOT_MIN_LINEWEIGHT_MM = 0.05;
+  // What everything plots at when lineweights are turned off, and the weight
+  // dimension line work always uses — dimensions carry their own style rather
+  // than the layer's, which is the same convention the screen renderer follows.
+  const PLOT_THIN_LINEWEIGHT_MM = 0.18;
+
+  const PLOT_AREAS = Object.freeze({
+    extents: 'Extents — everything visible',
+    display: 'Display — the current view',
+    window: 'Window — a picked rectangle',
+  });
+  const PLOT_COLOR_MODES = Object.freeze({
+    mono: 'Monochrome (all black)',
+    layer: 'Layer colors',
+  });
+
+  function defaultPlotSettings() {
+    return {
+      paperSizeId: DEFAULT_PAPER_SIZE_ID,
+      orientation: 'landscape',
+      area: 'extents',
+      window: null,
+      scaleMode: 'fit',
+      scale: 48,
+      center: true,
+      color: 'mono',
+      lineweights: true,
+    };
+  }
+
+  // Hidden layers are absent from the plot for the same reason they are absent
+  // from the screen. Non-printable layers are the point of the `printable` flag
+  // added with the rest of the layer record: construction lines and notes that
+  // belong on screen but never on the issued sheet.
+  function plottableEntities() {
+    return state.entities.filter(entity =>
+      isLayerVisible(entity.layerId) && isLayerPrintable(entity.layerId));
+  }
+
+  function plotHexColor(hex) {
+    const match = /^#([0-9a-fA-F]{6})$/.exec(String(hex || ''));
+    if (!match) return [0, 0, 0];
+    const value = parseInt(match[1], 16);
+    return [((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255];
+  }
+
+  function plotAreaBox(settings, entities = plottableEntities()) {
+    if (settings.area === 'window') {
+      const picked = settings.window;
+      if (!picked) return null;
+      return {
+        minX: Math.min(picked.minX, picked.maxX), maxX: Math.max(picked.minX, picked.maxX),
+        minY: Math.min(picked.minY, picked.maxY), maxY: Math.max(picked.minY, picked.maxY),
+      };
+    }
+    if (settings.area === 'display') {
+      const topLeft = screenToWorld({ x: 0, y: 0 });
+      const bottomRight = screenToWorld({ x: canvas.clientWidth, y: canvas.clientHeight });
+      return {
+        minX: Math.min(topLeft.x, bottomRight.x), maxX: Math.max(topLeft.x, bottomRight.x),
+        minY: Math.min(topLeft.y, bottomRight.y), maxY: Math.max(topLeft.y, bottomRight.y),
+      };
+    }
+    const boxes = entities.map(entityBBox).filter(Boolean);
+    if (!boxes.length) return null;
+    return {
+      minX: Math.min(...boxes.map(box => box.minX)), maxX: Math.max(...boxes.map(box => box.maxX)),
+      minY: Math.min(...boxes.map(box => box.minY)), maxY: Math.max(...boxes.map(box => box.maxY)),
+    };
+  }
+
+  // A cubic approximation of a circular arc, split so no piece sweeps more than
+  // a quarter turn — past that the error stops being invisible.
+  function plotArcSubpath(center, radius, startAngle, endAngle, closed = false) {
+    const sweep = endAngle - startAngle;
+    const pieces = Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 2) - 1e-9));
+    const step = sweep / pieces;
+    const handle = (4 / 3) * Math.tan(step / 4);
+    const start = circularPoint(center, radius, startAngle);
+    const segs = [];
+    for (let piece = 0; piece < pieces; piece++) {
+      const from = startAngle + step * piece;
+      const to = from + step;
+      const p0 = circularPoint(center, radius, from);
+      const p1 = circularPoint(center, radius, to);
+      segs.push({
+        type: 'c',
+        c1: { x: p0.x - handle * radius * Math.sin(from), y: p0.y + handle * radius * Math.cos(from) },
+        c2: { x: p1.x + handle * radius * Math.sin(to), y: p1.y - handle * radius * Math.cos(to) },
+        to: p1,
+      });
+    }
+    return { start, segs, closed };
+  }
+
+  // One plotted entity's operators. `context` carries the world-to-paper
+  // transform and the settings-derived choices every entity shares.
+  function plotEntityOps(entity, context) {
+    const toPaper = context.toPaper;
+    const layer = getLayer(entity.layerId);
+    const color = context.settings.color === 'layer' ? plotHexColor(layer?.color) : [0, 0, 0];
+
+    if (entity.type === 'DIM') return plotDimensionOps(entity, context, color);
+    if (entity.type === 'TEXT') {
+      if (!entity.content) return [];
+      const anchor = toPaper(entity.position);
+      return [{
+        kind: 'text',
+        text: entity.content,
+        x: anchor.x,
+        y: anchor.y,
+        angle: entity.rotation,
+        sizeMM: entity.height * context.mmPerUnit,
+        font: 'courier',
+        anchor: 'left',
+        baseline: 'alphabetic',
+        color,
+      }];
+    }
+
+    const widthMM = context.settings.lineweights
+      ? Math.max(PLOT_MIN_LINEWEIGHT_MM, layer?.lineweight ?? PLOT_THIN_LINEWEIGHT_MM)
+      : PLOT_THIN_LINEWEIGHT_MM;
+    const pattern = LINETYPE_DASH_PATTERNS[layer?.linetype] || [];
+    const stroke = {
+      kind: 'stroke',
+      widthMM,
+      dash: pattern.map(value => value * PLOT_DASH_MM_PER_UNIT),
+      color,
+      subpaths: [],
+    };
+
+    if (entity.type === 'CIRCLE') {
+      stroke.subpaths.push(plotArcSubpath(toPaper(entity.center), entity.radius * context.mmPerUnit, 0, TAU, true));
+    } else if (entity.type === 'ARC') {
+      stroke.subpaths.push(plotArcSubpath(
+        toPaper(entity.center), entity.radius * context.mmPerUnit, entity.startAngle, entity.endAngle));
+    } else if (entity.type === 'PLINE') {
+      if (entity.points.length < 2) return [];
+      stroke.subpaths.push({
+        start: toPaper(entity.points[0]),
+        segs: entity.points.slice(1).map(point => ({ type: 'l', to: toPaper(point) })),
+        closed: Boolean(entity.closed) && entity.points.length >= 3,
+      });
+    } else {
+      const segments = entitySegments(entity);
+      if (!segments.length) return [];
+      for (const [a, b] of segments) {
+        stroke.subpaths.push({ start: toPaper(a), segs: [{ type: 'l', to: toPaper(b) }], closed: false });
+      }
+    }
+    return [stroke];
+  }
+
+  function plotDimensionOps(entity, context, color) {
+    const toPaper = context.toPaper;
+    const geometry = dimensionGeometry(entity);
+    const style = geometry.style;
+    const q1 = toPaper(geometry.q1);
+    const q2 = toPaper(geometry.q2);
+
+    const lineWork = {
+      kind: 'stroke',
+      widthMM: PLOT_THIN_LINEWEIGHT_MM,
+      dash: [],
+      color,
+      subpaths: [{ start: q1, segs: [{ type: 'l', to: q2 }], closed: false }],
+    };
+    for (const extension of [geometry.extension1, geometry.extension2]) {
+      if (!extension) continue;
+      lineWork.subpaths.push({
+        start: toPaper(extension[0]),
+        segs: [{ type: 'l', to: toPaper(extension[1]) }],
+        closed: false,
+      });
+    }
+    const ops = [lineWork];
+
+    // Terminators. The screen renderer works these out in screen space, where Y
+    // points down; paper shares the drawing's Y-up convention, so the tick's
+    // rotation is written out here rather than reused from there.
+    const span = Math.hypot(q2.x - q1.x, q2.y - q1.y);
+    const sizeMM = dimSize(style, 'arrowSize') * context.mmPerUnit;
+    if (span > 1e-6 && sizeMM > 0) {
+      const ux = (q2.x - q1.x) / span;
+      const uy = (q2.y - q1.y) / span;
+      if (style.arrowType === 'tick') {
+        const tx = (ux - uy) * sizeMM * 0.5;
+        const ty = (ux + uy) * sizeMM * 0.5;
+        lineWork.subpaths.push(
+          { start: { x: q1.x - tx, y: q1.y - ty }, segs: [{ type: 'l', to: { x: q1.x + tx, y: q1.y + ty } }], closed: false },
+          { start: { x: q2.x - tx, y: q2.y - ty }, segs: [{ type: 'l', to: { x: q2.x + tx, y: q2.y + ty } }], closed: false },
+        );
+      } else {
+        ops.push(
+          plotArrowHead(q1, { x: -ux, y: -uy }, sizeMM, color),
+          plotArrowHead(q2, { x: ux, y: uy }, sizeMM, color),
+        );
+      }
+    }
+
+    const text = dimensionText(entity);
+    const sizeTextMM = dimSize(style, 'textHeight') * context.mmPerUnit;
+    if (text && sizeTextMM > 0) {
+      const anchor = toPaper(geometry.textAnchor);
+      let angle = Math.atan2(q2.y - q1.y, q2.x - q1.x);
+      if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
+      const width = pdfTextWidthMM(text, 'helvetica', sizeTextMM);
+      // The screen draws a dark box behind the text so it stays readable where
+      // it crosses the dimension line. On white paper the same box is white,
+      // which is the conventional gap in the dimension line.
+      ops.push(plotTextMask(anchor, angle, width + sizeTextMM * 0.4, sizeTextMM * 1.24));
+      ops.push({
+        kind: 'text',
+        text,
+        x: anchor.x,
+        y: anchor.y,
+        angle,
+        sizeMM: sizeTextMM,
+        font: 'helvetica',
+        anchor: 'center',
+        baseline: 'middle',
+        color,
+      });
+    }
+    return ops;
+  }
+
+  function plotArrowHead(tip, direction, sizeMM, color) {
+    const half = sizeMM * 0.36;
+    const backX = tip.x - direction.x * sizeMM;
+    const backY = tip.y - direction.y * sizeMM;
+    const nx = -direction.y;
+    const ny = direction.x;
+    return {
+      kind: 'fill',
+      color,
+      points: [
+        { x: tip.x, y: tip.y },
+        { x: backX + nx * half, y: backY + ny * half },
+        { x: backX - nx * half, y: backY - ny * half },
+      ],
+    };
+  }
+
+  function plotTextMask(anchor, angle, widthMM, heightMM) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const corners = [
+      [-widthMM / 2, -heightMM / 2], [widthMM / 2, -heightMM / 2],
+      [widthMM / 2, heightMM / 2], [-widthMM / 2, heightMM / 2],
+    ];
+    return {
+      kind: 'fill',
+      color: [1, 1, 1],
+      points: corners.map(([u, v]) => ({
+        x: anchor.x + u * cos - v * sin,
+        y: anchor.y + u * sin + v * cos,
+      })),
+    };
+  }
+
+  function buildPlotPlan(settings) {
+    const entities = plottableEntities();
+    const page = paperSizeMM(settings.paperSizeId, settings.orientation);
+    const printable = {
+      xMM: PAPER_MARGIN_MM,
+      yMM: PAPER_MARGIN_MM,
+      widthMM: page.widthMM - PAPER_MARGIN_MM * 2,
+      heightMM: page.heightMM - PAPER_MARGIN_MM * 2,
+    };
+    if (printable.widthMM <= 0 || printable.heightMM <= 0) {
+      return { error: 'That sheet is smaller than its own margins.' };
+    }
+    const area = plotAreaBox(settings, entities);
+    if (!area) {
+      return {
+        error: settings.area === 'window'
+          ? 'Pick a plot window first.'
+          : 'There is nothing to plot: every object is on a hidden or non-printable layer.',
+      };
+    }
+    const unitMM = DRAWING_UNITS[state.unitSettings.drawingUnit].mmPerUnit;
+    // A drawing whose extents are a single horizontal line has no height, and a
+    // fitted scale computed from it would be infinite.
+    const areaWidth = Math.max(area.maxX - area.minX, 1e-9);
+    const areaHeight = Math.max(area.maxY - area.minY, 1e-9);
+
+    let scale = settings.scale;
+    let fitted = false;
+    if (settings.scaleMode === 'fit') {
+      scale = Math.max(
+        (areaWidth * unitMM) / printable.widthMM,
+        (areaHeight * unitMM) / printable.heightMM,
+      );
+      fitted = true;
+    }
+    if (!Number.isFinite(scale) || scale <= 0) return { error: 'The plot scale must be a positive number.' };
+
+    const mmPerUnit = paperMMPerDrawingUnit(scale);
+    const plotWidthMM = areaWidth * mmPerUnit;
+    const plotHeightMM = areaHeight * mmPerUnit;
+    const originX = (settings.center
+      ? printable.xMM + (printable.widthMM - plotWidthMM) / 2
+      : printable.xMM) - area.minX * mmPerUnit;
+    const originY = (settings.center
+      ? printable.yMM + (printable.heightMM - plotHeightMM) / 2
+      : printable.yMM) - area.minY * mmPerUnit;
+
+    const context = {
+      settings,
+      mmPerUnit,
+      // World and paper share a Y-up convention, so this is a pure scale and
+      // shift — no reflection, which is what keeps arcs and rotated text from
+      // needing a mirrored special case.
+      toPaper: point => ({ x: originX + point.x * mmPerUnit, y: originY + point.y * mmPerUnit }),
+    };
+
+    const ops = [];
+    const unsupported = new Set();
+    for (const entity of entities) {
+      for (const op of plotEntityOps(entity, context)) {
+        if (op.kind === 'text') pdfUnsupportedCharacters(op.text).forEach(bad => unsupported.add(bad));
+        ops.push(op);
+      }
+    }
+
+    const warnings = [];
+    if (plotWidthMM > printable.widthMM + 1e-6 || plotHeightMM > printable.heightMM + 1e-6) {
+      warnings.push(`At ${scalePresetLabel(scale)} the plot is ${plotWidthMM.toFixed(1)} × ` +
+        `${plotHeightMM.toFixed(1)} mm and will be clipped to the ${printable.widthMM.toFixed(1)} × ` +
+        `${printable.heightMM.toFixed(1)} mm printable area.`);
+    }
+    const excluded = state.entities.length - entities.length;
+    if (excluded > 0) {
+      warnings.push(`${excluded} object${excluded === 1 ? '' : 's'} on hidden or non-printable layers ` +
+        'are not included.');
+    }
+    if (settings.color === 'layer') {
+      warnings.push('Layer colors are chosen for the dark drawing area and can plot faint on white paper.');
+    }
+    if (unsupported.size) {
+      warnings.push(`These characters have no equivalent in the plot font and print as "?": ${[...unsupported].join(' ')}`);
+    }
+
+    return {
+      page, printable, area, scale, fitted, mmPerUnit, ops, warnings,
+      plotWidthMM, plotHeightMM,
+      entityCount: entities.length,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // view/plotPreview.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Plot preview
+  //
+  // The plot plan (output/plot.js) drawn onto a small canvas, so sheet, scale and
+  // area can be judged before a file is written. It reads the same plan that
+  // output/pdf.js serialises and nothing else: there is no second path from the
+  // drawing to paper that could drift out of step, so what this shows is what the
+  // PDF contains — including the clip at the printable border, which is the part
+  // of a plot that is otherwise impossible to guess.
+  // ---------------------------------------------------------------------------
+
+  // Room around the sheet for whatever falls off it. Without this a plot that
+  // overruns the paper would be cropped by the preview as well, which is exactly
+  // the information the preview exists to give.
+  const PLOT_PREVIEW_PAD_PX = 18;
+  // Plotted hairlines are a fraction of a millimetre and vanish at preview scale;
+  // the preview is about placement, not about honest line weights.
+  const PLOT_PREVIEW_MIN_STROKE_PX = 0.7;
+  // Everything outside the printable area is clipped out of the PDF. It is drawn
+  // anyway, in the same amber the warnings use, so a missing line has a visible
+  // reason rather than just being absent.
+  const PLOT_PREVIEW_CLIPPED_COLOR = '#e0a03c';
+  const PLOT_PREVIEW_CLIPPED_ALPHA = 0.5;
+
+  function plotPreviewCssColor(color) {
+    const [r, g, b] = color || [0, 0, 0];
+    return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+  }
+
+  // Where the sheet sits inside the preview box, and how to get from a paper
+  // millimetre (Y up, from the bottom-left corner) to a CSS pixel (Y down).
+  function plotPreviewView(page, widthPx, heightPx) {
+    const scale = Math.min(
+      (widthPx - PLOT_PREVIEW_PAD_PX * 2) / page.widthMM,
+      (heightPx - PLOT_PREVIEW_PAD_PX * 2) / page.heightMM,
+    );
+    if (!Number.isFinite(scale) || scale <= 0) return null;
+    const originX = (widthPx - page.widthMM * scale) / 2;
+    const originY = (heightPx + page.heightMM * scale) / 2;
+    return {
+      scale, originX, originY,
+      toPx: point => ({ x: originX + point.x * scale, y: originY - point.y * scale }),
+    };
+  }
+
+  // Runs `draw` with the context in paper millimetres, Y up — the plan's own
+  // coordinates, which is what lets the bezier and dash numbers be used as they
+  // stand instead of being converted a second time.
+  function inPaperFrame(context, view, draw) {
+    context.save();
+    context.translate(view.originX, view.originY);
+    context.scale(view.scale, -view.scale);
+    draw();
+    context.restore();
+  }
+
+  function drawPlotPreviewStroke(context, view, op, clipped) {
+    inPaperFrame(context, view, () => {
+      context.strokeStyle = clipped ? PLOT_PREVIEW_CLIPPED_COLOR : plotPreviewCssColor(op.color);
+      context.lineWidth = Math.max(op.widthMM, PLOT_PREVIEW_MIN_STROKE_PX / view.scale);
+      context.setLineDash(op.dash && op.dash.length ? op.dash : []);
+      context.beginPath();
+      for (const subpath of op.subpaths) {
+        context.moveTo(subpath.start.x, subpath.start.y);
+        for (const segment of subpath.segs) {
+          if (segment.type === 'c') {
+            context.bezierCurveTo(segment.c1.x, segment.c1.y, segment.c2.x, segment.c2.y,
+              segment.to.x, segment.to.y);
+          } else {
+            context.lineTo(segment.to.x, segment.to.y);
+          }
+        }
+        if (subpath.closed) context.closePath();
+      }
+      context.stroke();
+      context.setLineDash([]);
+    });
+  }
+
+  function drawPlotPreviewFill(context, view, op, clipped) {
+    inPaperFrame(context, view, () => {
+      context.fillStyle = clipped ? PLOT_PREVIEW_CLIPPED_COLOR : plotPreviewCssColor(op.color);
+      context.beginPath();
+      op.points.forEach((point, index) => {
+        if (index === 0) context.moveTo(point.x, point.y);
+        else context.lineTo(point.x, point.y);
+      });
+      context.closePath();
+      context.fill();
+    });
+  }
+
+  // Below this the glyphs are smaller than the strokes that draw them and come
+  // out as a smudge, so the string is greeked into a bar instead: unreadable
+  // either way, but a bar is honest about being an approximation, and leaving
+  // the text out altogether would hide annotation that is really on the sheet.
+  const PLOT_PREVIEW_GREEK_PX = 3;
+  const PLOT_PREVIEW_GREEK_ALPHA = 0.5;
+
+  // Text is placed in pixel space rather than in the flipped paper frame, so the
+  // font size stays a real pixel size the canvas can render. The anchor and
+  // baseline offsets are the ones output/pdf.js applies, so a centred dimension
+  // string lands in the preview where it lands on the sheet.
+  function drawPlotPreviewText(context, view, op, clipped) {
+    const family = op.font === 'courier' ? '"Courier New", Consolas, monospace' : 'Arial, Helvetica, sans-serif';
+    const sizePx = op.sizeMM * view.scale;
+    if (sizePx <= 0) return;
+    const widthPx = pdfTextWidthMM(op.text, op.font, op.sizeMM) * view.scale;
+    const u = op.anchor === 'center' ? -widthPx / 2 : 0;
+    const v = op.baseline === 'middle' ? -0.35 * sizePx : 0;
+    const anchor = view.toPx(op);
+    context.save();
+    context.translate(anchor.x, anchor.y);
+    // Screen Y points down, so a counter-clockwise paper angle is a clockwise
+    // canvas one.
+    context.rotate(-op.angle);
+    context.fillStyle = clipped ? PLOT_PREVIEW_CLIPPED_COLOR : plotPreviewCssColor(op.color);
+    if (sizePx < PLOT_PREVIEW_GREEK_PX) {
+      context.globalAlpha *= PLOT_PREVIEW_GREEK_ALPHA;
+      context.fillRect(u, -v - sizePx * 0.7, widthPx, sizePx * 0.7);
+    } else {
+      context.font = `${sizePx}px ${family}`;
+      context.textAlign = 'left';
+      context.textBaseline = 'alphabetic';
+      context.fillText(op.text, u, -v);
+    }
+    context.restore();
+  }
+
+  function drawPlotPreviewOps(context, view, ops, clipped) {
+    for (const op of ops) {
+      if (op.kind === 'stroke') drawPlotPreviewStroke(context, view, op, clipped);
+      else if (op.kind === 'fill') drawPlotPreviewFill(context, view, op, clipped);
+      else if (op.kind === 'text') drawPlotPreviewText(context, view, op, clipped);
+    }
+  }
+
+  function plotPreviewRect(context, view, box) {
+    const corner = view.toPx({ x: box.xMM, y: box.yMM + box.heightMM });
+    context.rect(corner.x, corner.y, box.widthMM * view.scale, box.heightMM * view.scale);
+  }
+
+  function renderPlotPreview(target, context, plan) {
+    const widthPx = target.clientWidth || target.width || 0;
+    const heightPx = target.clientHeight || target.height || 0;
+    const ratio = window.devicePixelRatio || 1;
+    if (widthPx <= 0 || heightPx <= 0) return null;
+    if (target.width !== Math.round(widthPx * ratio)) target.width = Math.round(widthPx * ratio);
+    if (target.height !== Math.round(heightPx * ratio)) target.height = Math.round(heightPx * ratio);
+
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.clearRect(0, 0, widthPx, heightPx);
+    const page = plan && plan.page;
+    if (!page) return null;
+    const view = plotPreviewView(page, widthPx, heightPx);
+    if (!view) return null;
+
+    const sheet = view.toPx({ x: 0, y: page.heightMM });
+    context.fillStyle = '#f4f4f4';
+    context.fillRect(sheet.x, sheet.y, page.widthMM * view.scale, page.heightMM * view.scale);
+
+    // Two passes over the same ops through complementary clips: the amber one
+    // outside the printable border, the real one inside it. Splitting them by
+    // clip rather than by op means a single line that crosses the border is
+    // shown half plotted and half lost, which is what actually happens.
+    const ops = plan.ops || [];
+    if (plan.printable) {
+      context.save();
+      context.beginPath();
+      context.rect(0, 0, widthPx, heightPx);
+      plotPreviewRect(context, view, plan.printable);
+      context.clip('evenodd');
+      context.globalAlpha = PLOT_PREVIEW_CLIPPED_ALPHA;
+      drawPlotPreviewOps(context, view, ops, true);
+      context.restore();
+
+      context.save();
+      context.beginPath();
+      plotPreviewRect(context, view, plan.printable);
+      context.clip();
+      drawPlotPreviewOps(context, view, ops, false);
+      context.restore();
+    }
+
+    context.strokeStyle = '#7a7a7a';
+    context.lineWidth = 1;
+    context.strokeRect(sheet.x + 0.5, sheet.y + 0.5,
+      page.widthMM * view.scale - 1, page.heightMM * view.scale - 1);
+
+    if (plan.printable) {
+      context.strokeStyle = '#a8a8a8';
+      context.setLineDash([4, 3]);
+      context.beginPath();
+      plotPreviewRect(context, view, plan.printable);
+      context.stroke();
+      context.setLineDash([]);
+    }
+    return view;
+  }
+
+  // ---------------------------------------------------------------------------
   // ui/status.js
   // ---------------------------------------------------------------------------
 
@@ -2127,14 +3328,26 @@ kbd { font-size: 9px; opacity: .65; }
       const current = layer.id === state.currentLayerId;
       const protectedLayer = layer.id === '0' || current;
       const lockTitle = layer.locked ? 'Layer locked — click to unlock' : 'Layer unlocked — click to lock';
+      const printTitle = layer.printable ? 'Printable — click to exclude from output' : 'Excluded from output — click to make printable';
       return `
         <div class="layer-row${current ? ' current' : ''}${layer.visible ? '' : ' hidden'}" data-layer-id="${escapeHtml(layer.id)}">
-          <button class="layer-current${current ? ' on' : ''}" data-layer-action="current" data-layer-id="${escapeHtml(layer.id)}" title="Make current" aria-label="Make ${escapeHtml(layer.name)} current">${current ? '●' : '○'}</button>
-          <input class="layer-name" data-layer-action="name" data-layer-id="${escapeHtml(layer.id)}" value="${escapeHtml(layer.name)}" aria-label="Layer name"${layer.id === '0' ? ' disabled title="Layer 0 cannot be renamed"' : ''} />
-          <input class="layer-color" type="color" data-layer-action="color" data-layer-id="${escapeHtml(layer.id)}" value="${escapeHtml(layer.color)}" title="Layer color" aria-label="${escapeHtml(layer.name)} color" />
-          <button data-layer-action="visibility" data-layer-id="${escapeHtml(layer.id)}" title="Toggle visibility">${layer.visible ? 'On' : 'Off'}</button>
-          <button class="layer-lock" data-layer-action="lock" data-layer-id="${escapeHtml(layer.id)}" title="${lockTitle}" aria-label="${lockTitle}">${layer.locked ? '🔒' : '🔓'}</button>
-          <button class="layer-delete" data-layer-action="delete" data-layer-id="${escapeHtml(layer.id)}" title="${protectedLayer ? (layer.id === '0' ? 'Layer 0 cannot be deleted' : 'The current layer cannot be deleted') : 'Delete layer'}" aria-label="Delete ${escapeHtml(layer.name)}"${protectedLayer ? ' disabled' : ''}>Del</button>
+          <div class="layer-row-main">
+            <button class="layer-current${current ? ' on' : ''}" data-layer-action="current" data-layer-id="${escapeHtml(layer.id)}" title="Make current" aria-label="Make ${escapeHtml(layer.name)} current">${current ? '●' : '○'}</button>
+            <input class="layer-name" data-layer-action="name" data-layer-id="${escapeHtml(layer.id)}" value="${escapeHtml(layer.name)}" aria-label="Layer name"${layer.id === '0' ? ' disabled title="Layer 0 cannot be renamed"' : ''} />
+            <button type="button" class="layer-color" data-layer-action="color" data-layer-id="${escapeHtml(layer.id)}" data-layer-color="${escapeHtml(layer.color)}" style="background-color: ${escapeHtml(layer.color)};" title="Layer color" aria-label="${escapeHtml(layer.name)} color"></button>
+            <button data-layer-action="visibility" data-layer-id="${escapeHtml(layer.id)}" title="Toggle visibility">${layer.visible ? 'On' : 'Off'}</button>
+            <button class="layer-lock" data-layer-action="lock" data-layer-id="${escapeHtml(layer.id)}" title="${lockTitle}" aria-label="${lockTitle}">${layer.locked ? '🔒' : '🔓'}</button>
+            <button class="layer-delete" data-layer-action="delete" data-layer-id="${escapeHtml(layer.id)}" title="${protectedLayer ? (layer.id === '0' ? 'Layer 0 cannot be deleted' : 'The current layer cannot be deleted') : 'Delete layer'}" aria-label="Delete ${escapeHtml(layer.name)}"${protectedLayer ? ' disabled' : ''}>Del</button>
+          </div>
+          <div class="layer-row-props">
+            <select class="layer-linetype" data-layer-action="linetype" data-layer-id="${escapeHtml(layer.id)}" title="Linetype" aria-label="${escapeHtml(layer.name)} linetype">
+              ${LINETYPES.map(type => `<option value="${type}"${type === layer.linetype ? ' selected' : ''}>${LINETYPE_LABELS[type]}</option>`).join('')}
+            </select>
+            <select class="layer-lineweight" data-layer-action="lineweight" data-layer-id="${escapeHtml(layer.id)}" title="Lineweight (mm)" aria-label="${escapeHtml(layer.name)} lineweight">
+              ${LINEWEIGHTS.map(weight => `<option value="${weight}"${weight === layer.lineweight ? ' selected' : ''}>${weight.toFixed(2)}</option>`).join('')}
+            </select>
+            <button class="layer-printable${layer.printable ? '' : ' off'}" data-layer-action="printable" data-layer-id="${escapeHtml(layer.id)}" title="${printTitle}" aria-label="${escapeHtml(layer.name)} ${printTitle}">${layer.printable ? '🖨️' : '🚫'}</button>
+          </div>
         </div>`;
     }).join('');
     if (assignLayerBtn) assignLayerBtn.disabled = !state.selected.size;
@@ -2440,6 +3653,11 @@ kbd { font-size: 9px; opacity: .65; }
           : '#d6d6d6',
         visible: layer.visible !== false,
         locked: layer.locked === true,
+        // Version 4 files (and earlier) have none of these three — default them
+        // to what a v4 file would have looked like if it could have held them.
+        linetype: LINETYPES.includes(layer.linetype) ? layer.linetype : DEFAULT_LINETYPE,
+        lineweight: LINEWEIGHTS.includes(Number(layer.lineweight)) ? Number(layer.lineweight) : DEFAULT_LINEWEIGHT,
+        printable: layer.printable !== false,
       });
     }
     if (!layerIds.has('0')) return { error: 'The drawing is missing required layer 0.' };
@@ -3362,22 +4580,6 @@ kbd { font-size: 9px; opacity: .65; }
   // ---------------------------------------------------------------------------
   // ui/dialogs/dimstyle.js
   // ---------------------------------------------------------------------------
-
-  const IMPERIAL_SCALE_PRESETS = [
-    ['Full size (1:1)', 1], ['3" = 1\'-0"', 4], ['1 1/2" = 1\'-0"', 8],
-    ['1" = 1\'-0"', 12], ['3/4" = 1\'-0"', 16], ['1/2" = 1\'-0"', 24],
-    ['3/8" = 1\'-0"', 32], ['1/4" = 1\'-0"', 48], ['3/16" = 1\'-0"', 64],
-    ['1/8" = 1\'-0"', 96], ['1/16" = 1\'-0"', 192],
-  ];
-  const METRIC_SCALE_PRESETS = [
-    ['Full size (1:1)', 1], ['1:2', 2], ['1:5', 5], ['1:10', 10], ['1:20', 20],
-    ['1:50', 50], ['1:100', 100], ['1:200', 200], ['1:500', 500],
-  ];
-
-  function scalePresets() {
-    return state.unitSettings.drawingUnit === 'inches' || state.unitSettings.drawingUnit === 'feet'
-      ? IMPERIAL_SCALE_PRESETS : METRIC_SCALE_PRESETS;
-  }
 
   let pendingDimStyle = null;
 
@@ -4882,9 +6084,22 @@ kbd { font-size: 9px; opacity: .65; }
     ctx.restore();
   }
 
+  // Screen line width is a fixed pixel value derived from the layer's mm
+  // lineweight (see LINEWEIGHT_PX_PER_MM), not something that scales with
+  // zoom — matches how CAD programs keep lineweight legible at any view scale.
+  function lineWidthForLayer(layer) {
+    const mm = typeof layer?.lineweight === 'number' ? layer.lineweight : DEFAULT_LINEWEIGHT;
+    return Math.max(MIN_LINEWEIGHT_PX, mm * LINEWEIGHT_PX_PER_MM);
+  }
+
+  function dashPatternForLayer(layer) {
+    return LINETYPE_DASH_PATTERNS[layer?.linetype] || LINETYPE_DASH_PATTERNS[DEFAULT_LINETYPE];
+  }
+
   function drawEntity(e, preview = false) {
-    ctx.lineWidth = preview ? 1 : 1.35;
-    const layerColor = getLayer(e.layerId)?.color || '#d6d6d6';
+    const layer = getLayer(e.layerId);
+    ctx.lineWidth = preview ? 1 : lineWidthForLayer(layer);
+    const layerColor = layer?.color || '#d6d6d6';
     ctx.strokeStyle = preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor;
     if (e.type === 'DIM') {
       drawDimension(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
@@ -4894,7 +6109,7 @@ kbd { font-size: 9px; opacity: .65; }
       drawText(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
       return;
     }
-    if (preview) ctx.setLineDash([6,4]); else ctx.setLineDash([]);
+    if (preview) ctx.setLineDash([6,4]); else ctx.setLineDash(dashPatternForLayer(layer));
     ctx.beginPath();
     if (e.type === 'CIRCLE') {
       const center = worldToScreen(e.center);
@@ -7235,25 +8450,37 @@ kbd { font-size: 9px; opacity: .65; }
     return true;
   }
 
-  function drawingDownloadName() {
+  // The drawing name reduced to something a file system will accept, without a
+  // suffix — the caller adds the one that describes what it is writing.
+  function safeDrawingFileName() {
     const safeName = state.drawingName
       .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-')
       .replace(/[. ]+$/g, '')
       .trim();
-    return `${safeName || 'drawing'}.zbCAD.json`;
+    return safeName || 'drawing';
+  }
+
+  function drawingDownloadName() {
+    return `${safeDrawingFileName()}.zbCAD.json`;
+  }
+
+  // The browser's only "save as" is a click on an anchor, so every file this app
+  // hands the user leaves through here rather than each writer repeating it.
+  function downloadTextFile(text, filename, mimeType) {
+    const blob = new Blob([text], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   function saveDrawing() {
     try {
-      const blob = new Blob([exportDocumentText(true)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = drawingDownloadName();
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      downloadTextFile(exportDocumentText(true), drawingDownloadName(), 'application/json');
       setFileStatus(`${state.drawingName} · Saved file`);
       return true;
     } catch (error) {
@@ -7266,6 +8493,172 @@ kbd { font-size: 9px; opacity: .65; }
     openInput.value = '';
     openInput.click();
   }
+
+  // ---------------------------------------------------------------------------
+  // ui/dialogs/plot.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Plot dialog
+  //
+  // Settings live here rather than in the document. What sheet somebody printed
+  // on last is a property of the session, not of the drawing, and keeping it out
+  // of the file means the native format does not have to answer the page-size
+  // and scale-list questions before it can be plotted from.
+  // ---------------------------------------------------------------------------
+
+  let pendingPlot = null;
+  // Remembered across opens so a second plot of the same drawing is one click.
+  let lastPlotSettings = null;
+
+  function refreshPlotDialog() {
+    if (!pendingPlot) return;
+    fillSelect(plotPaperSelect, PAPER_SIZES.map(size => size.id),
+      id => PAPER_SIZES.find(size => size.id === id).name, pendingPlot.paperSizeId);
+    fillSelect(plotOrientationSelect, Object.keys(PAPER_ORIENTATIONS),
+      key => PAPER_ORIENTATIONS[key], pendingPlot.orientation);
+    fillSelect(plotAreaSelect, Object.keys(PLOT_AREAS), key => PLOT_AREAS[key], pendingPlot.area);
+    fillSelect(plotScaleModeSelect, ['fit', 'exact'],
+      key => (key === 'fit' ? 'Fit to the sheet' : 'Exact scale'), pendingPlot.scaleMode);
+    fillSelect(plotColorSelect, Object.keys(PLOT_COLOR_MODES),
+      key => PLOT_COLOR_MODES[key], pendingPlot.color);
+
+    const presets = scalePresets();
+    const match = presets.find(([, value]) => Math.abs(value - pendingPlot.scale) < 1e-9);
+    fillSelect(plotScalePresetSelect, ['custom', ...presets.map(([, value]) => value)],
+      value => (value === 'custom' ? 'Custom' : presets.find(([, preset]) => preset === value)[0]),
+      match ? match[1] : 'custom');
+    plotScaleInput.value = String(pendingPlot.scale);
+    plotCenterCheck.checked = Boolean(pendingPlot.center);
+    plotLineweightsCheck.checked = Boolean(pendingPlot.lineweights);
+
+    // A fitted plot has no scale to choose, and a window has to be picked before
+    // there is anything to report about it.
+    plotScaleRow.hidden = pendingPlot.scaleMode !== 'exact';
+    plotWindowRow.hidden = pendingPlot.area !== 'window';
+    plotWindowSummary.textContent = pendingPlot.window
+      ? `${formatLengthLabel(Math.abs(pendingPlot.window.maxX - pendingPlot.window.minX))} × ` +
+        `${formatLengthLabel(Math.abs(pendingPlot.window.maxY - pendingPlot.window.minY))}`
+      : 'No window picked yet';
+
+    const plan = buildPlotPlan(pendingPlot);
+    if (plan.error) {
+      // The sheet is still worth drawing when there is nothing on it: it says
+      // which paper the unanswered question is about.
+      renderPlotPreview(plotPreviewCanvas, plotPreviewCtx,
+        { page: paperSizeMM(pendingPlot.paperSizeId, pendingPlot.orientation), ops: [] });
+      plotPreview.textContent = '—';
+      plotWarningsEl.textContent = plan.error;
+      return;
+    }
+    renderPlotPreview(plotPreviewCanvas, plotPreviewCtx, plan);
+    plotPreview.textContent =
+      `${scalePresetLabel(plan.scale)} · ${plan.plotWidthMM.toFixed(1)} × ${plan.plotHeightMM.toFixed(1)} mm ` +
+      `on ${plan.page.widthMM.toFixed(1)} × ${plan.page.heightMM.toFixed(1)} mm · ` +
+      `${plan.entityCount} object${plan.entityCount === 1 ? '' : 's'}`;
+    plotWarningsEl.textContent = plan.warnings.join(' ');
+  }
+
+  function openPlotDialog() {
+    if (!requireIdle('plotting')) return;
+    pendingPlot = { ...(lastPlotSettings || defaultPlotSettings()) };
+    plotDialog.hidden = false;
+    refreshPlotDialog();
+    plotPaperSelect.focus();
+  }
+
+  function closePlotDialog() {
+    pendingPlot = null;
+    plotDialog.hidden = true;
+    canvas.focus();
+  }
+
+  function setPendingPlot(patch) {
+    if (!pendingPlot) return;
+    Object.assign(pendingPlot, patch);
+    refreshPlotDialog();
+  }
+
+  function plotDownloadName() {
+    return `${safeDrawingFileName()}.pdf`;
+  }
+
+  function runPlot() {
+    if (!pendingPlot) return false;
+    const plan = buildPlotPlan(pendingPlot);
+    if (plan.error) {
+      plotWarningsEl.textContent = plan.error;
+      return false;
+    }
+    lastPlotSettings = { ...pendingPlot };
+    try {
+      downloadTextFile(buildPdfDocument(plan, state.drawingName), plotDownloadName(), 'application/pdf');
+    } catch (error) {
+      plotWarningsEl.textContent = `Could not write the PDF: ${error.message || 'unknown error'}`;
+      return false;
+    }
+    closePlotDialog();
+    setFileStatus(`${state.drawingName} · Plotted at ${scalePresetLabel(plan.scale)}`);
+    return true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Picking the plot window
+  //
+  // The window is a rectangle on the drawing, so it has to be picked with the
+  // same two-corner gesture as everything else — which means a real command,
+  // registered the same way as any other. It lives here rather than in
+  // commands/ because it exists only to answer a question this dialog asked:
+  // the dialog steps out of the way, the corners are picked, and it comes back
+  // with the answer already filled in.
+  // ---------------------------------------------------------------------------
+
+  function startPlotWindowPick() {
+    if (!pendingPlot) return;
+    lastPlotSettings = { ...pendingPlot };
+    closePlotDialog();
+    startCommand('PLOTWINDOW');
+  }
+
+  defineCommand('PLOTWINDOW', {
+    // The corners name a region of the drawing to put on paper, not a feature of
+    // the geometry, so snapping to a nearby endpoint would only move the edge of
+    // the sheet somewhere the user did not point.
+    usesSnap: false,
+    prompt() {
+      return state.currentPoints.length
+        ? 'Plot window — opposite corner:'
+        : 'Plot window — first corner:';
+    },
+    point(p) {
+      state.currentPoints.push(p);
+      if (state.currentPoints.length < 2) return;
+      const [first, second] = state.currentPoints;
+      const picked = {
+        minX: Math.min(first.x, second.x), maxX: Math.max(first.x, second.x),
+        minY: Math.min(first.y, second.y), maxY: Math.max(first.y, second.y),
+      };
+      setMode('SELECT');
+      openPlotDialog();
+      setPendingPlot({ area: 'window', window: picked });
+    },
+    preview(p) {
+      const start = worldToScreen(state.currentPoints[0]);
+      const end = worldToScreen(p);
+      ctx.strokeStyle = '#56d6ff';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 4]);
+      ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
+      ctx.setLineDash([]);
+    },
+    // Leaving the pick without a second corner returns to the dialog rather than
+    // to a bare command line, since the dialog is where the user came from.
+    finish() {
+      setMode('SELECT');
+      openPlotDialog();
+      return true;
+    },
+  });
 
   // ---------------------------------------------------------------------------
   // geometry/offset.js
@@ -8573,6 +9966,7 @@ kbd { font-size: 9px; opacity: .65; }
     ST:'STRETCH', STRETCH:'STRETCH',
     Z:'ZOOMEXTENTS', ZE:'ZOOMEXTENTS',
     UN:'UNITS', UNITS:'UNITS', DDUNITS:'UNITS',
+    PLT:'PLOT', PLOT:'PLOT', PRINT:'PLOT',
     DI:'DIST', DIST:'DIST', DISTANCE:'DIST',
     DLI:'DIMLINEAR', DIMLINEAR:'DIMLINEAR', DIMLIN:'DIMLINEAR',
     DAL:'DIMALIGNED', DIMALIGNED:'DIMALIGNED', DIMALI:'DIMALIGNED',
@@ -8713,6 +10107,11 @@ kbd { font-size: 9px; opacity: .65; }
       else if (ev.key === 'Enter') { ev.preventDefault(); applyDimStyleDialog(); }
       return;
     }
+    if (!plotDialog.hidden) {
+      if (ev.key === 'Escape') { ev.preventDefault(); closePlotDialog(); }
+      else if (ev.key === 'Enter') { ev.preventDefault(); runPlot(); }
+      return;
+    }
     if (!polarDialog.hidden) {
       if (ev.key === 'Escape' || ev.key === 'Enter') { ev.preventDefault(); closePolarDialog(); }
       return;
@@ -8750,6 +10149,7 @@ kbd { font-size: 9px; opacity: .65; }
       if (key === 's') { ev.preventDefault(); saveDrawing(); return; }
       if (key === 'o') { ev.preventDefault(); chooseOpenFile(); return; }
       if (key === 'n') { ev.preventDefault(); newDrawing(); return; }
+      if (key === 'p') { ev.preventDefault(); openPlotDialog(); return; }
     }
 
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); navigateHistory('UNDO'); return; }
@@ -8862,7 +10262,10 @@ kbd { font-size: 9px; opacity: .65; }
     const layerColor = /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : '#56d6ff';
     const id = `layer-${number}`;
     pushHistory();
-    state.layers.push({ id, name: layerName, color: layerColor, visible: true, locked: false });
+    state.layers.push({
+      id, name: layerName, color: layerColor, visible: true, locked: false,
+      linetype: DEFAULT_LINETYPE, lineweight: DEFAULT_LINEWEIGHT, printable: true,
+    });
     state.currentLayerId = id;
     state.nextLayerId = number + 1;
     renderLayerManager();
@@ -8908,6 +10311,42 @@ kbd { font-size: 9px; opacity: .65; }
     if (layer.color === nextColor) return true;
     pushHistory();
     layer.color = nextColor;
+    renderLayerManager();
+    draw();
+    return true;
+  }
+
+  function setLayerLinetype(id, linetype) {
+    if (!requireIdle('changing a layer linetype')) return false;
+    const layer = getLayer(id);
+    if (!layer || !LINETYPES.includes(linetype)) return false;
+    if (layer.linetype === linetype) return true;
+    pushHistory();
+    layer.linetype = linetype;
+    renderLayerManager();
+    draw();
+    return true;
+  }
+
+  function setLayerLineweight(id, lineweight) {
+    if (!requireIdle('changing a layer lineweight')) return false;
+    const layer = getLayer(id);
+    const weight = Number(lineweight);
+    if (!layer || !LINEWEIGHTS.includes(weight)) return false;
+    if (layer.lineweight === weight) return true;
+    pushHistory();
+    layer.lineweight = weight;
+    renderLayerManager();
+    draw();
+    return true;
+  }
+
+  function toggleLayerPrintable(id) {
+    if (!requireIdle('changing layer printability')) return false;
+    const layer = getLayer(id);
+    if (!layer) return false;
+    pushHistory();
+    layer.printable = !layer.printable;
     renderLayerManager();
     draw();
     return true;
@@ -9063,6 +10502,9 @@ kbd { font-size: 9px; opacity: .65; }
     hideInquiryReport();
     canvas.focus();
   });
+  document.getElementById('smallScreenDismiss').addEventListener('click', () => {
+    document.getElementById('smallScreenWarning').classList.add('dismissed');
+  });
   unitStatus.addEventListener('click', openUnitsDialog);
   snapStatus.addEventListener('click', openSnapDialog);
   polarBtn.addEventListener('click', () => setPolar(!state.polar));
@@ -9094,6 +10536,27 @@ kbd { font-size: 9px; opacity: .65; }
     refreshUnitsDialog();
   });
   unitRescaleCheck.addEventListener('change', refreshUnitsDialog);
+
+  document.getElementById('plotBtn').addEventListener('click', openPlotDialog);
+  document.getElementById('plotCancel').addEventListener('click', closePlotDialog);
+  document.getElementById('plotRun').addEventListener('click', runPlot);
+  plotWindowBtn.addEventListener('click', startPlotWindowPick);
+  plotDialog.addEventListener('click', ev => { if (ev.target === plotDialog) closePlotDialog(); });
+  for (const [select, field] of [[plotPaperSelect, 'paperSizeId'], [plotOrientationSelect, 'orientation'],
+    [plotAreaSelect, 'area'], [plotScaleModeSelect, 'scaleMode'], [plotColorSelect, 'color']]) {
+    select.addEventListener('change', () => setPendingPlot({ [field]: select.value }));
+  }
+  plotScalePresetSelect.addEventListener('change', () => {
+    if (plotScalePresetSelect.value === 'custom') return;
+    setPendingPlot({ scale: Number(plotScalePresetSelect.value) });
+  });
+  plotScaleInput.addEventListener('input', () => {
+    const value = Number(plotScaleInput.value);
+    if (!Number.isFinite(value) || value <= 0) return;
+    setPendingPlot({ scale: value });
+  });
+  plotCenterCheck.addEventListener('change', () => setPendingPlot({ center: plotCenterCheck.checked }));
+  plotLineweightsCheck.addEventListener('change', () => setPendingPlot({ lineweights: plotLineweightsCheck.checked }));
 
   document.getElementById('dimStyleBtn').addEventListener('click', openDimStyleDialog);
   document.getElementById('dimStyleCancel').addEventListener('click', closeDimStyleDialog);
@@ -9146,13 +10609,28 @@ kbd { font-size: 9px; opacity: .65; }
     if (action === 'current') setCurrentLayer(id);
     else if (action === 'visibility') toggleLayerVisibility(id);
     else if (action === 'lock') toggleLayerLock(id);
+    else if (action === 'printable') toggleLayerPrintable(id);
     else if (action === 'delete') deleteLayer(id);
+    else if (action === 'color') {
+      activeColorLayerId = id;
+      layerColorPicker.value = event.target.dataset.layerColor;
+      layerColorPicker.click();
+    }
   });
   layerList.addEventListener('change', event => {
     const action = event.target?.dataset?.layerAction;
     const id = event.target?.dataset?.layerId;
     if (action === 'name') renameLayer(id, event.target.value);
-    else if (action === 'color') setLayerColor(id, event.target.value);
+    else if (action === 'linetype') setLayerLinetype(id, event.target.value);
+    else if (action === 'lineweight') setLayerLineweight(id, event.target.value);
+  });
+  // The picker anchor lives outside the layer rows (see .layer-color-anchor in
+  // shell.html) so Chrome's native popup always has room to open — a row's own
+  // swatch button sits flush against the docked panel's right edge, and that
+  // popup clips instead of flipping when it's anchored there.
+  let activeColorLayerId = null;
+  layerColorPicker.addEventListener('change', () => {
+    if (activeColorLayerId) setLayerColor(activeColorLayerId, layerColorPicker.value);
   });
   openInput.addEventListener('change', async () => {
     const file = openInput.files?.[0];
@@ -9193,6 +10671,31 @@ kbd { font-size: 9px; opacity: .65; }
     // Fall back to expanded.
   }
   setLayerPanelCollapsed(layerPanelInitiallyCollapsed);
+
+  // Same per-browser convenience as the layer panel above: whether the toolbar
+  // auto-hides is a display preference, not drawing data.
+  const TOOLBAR_AUTOHIDE_KEY = 'zbcad.toolbarAutohide';
+  function setToolbarAutohide(enabled) {
+    topbar.classList.toggle('autohide', enabled);
+    toolbarAutohideBtn.classList.toggle('on', enabled);
+    toolbarAutohideBtn.setAttribute('aria-pressed', String(enabled));
+    try {
+      window.localStorage.setItem(TOOLBAR_AUTOHIDE_KEY, enabled ? '1' : '0');
+    } catch {
+      // Private browsing or storage disabled: the toggle still works this session.
+    }
+  }
+  toolbarAutohideBtn.addEventListener('click', () => {
+    setToolbarAutohide(!topbar.classList.contains('autohide'));
+    canvas.focus();
+  });
+  let toolbarAutohideInitially = false;
+  try {
+    toolbarAutohideInitially = window.localStorage.getItem(TOOLBAR_AUTOHIDE_KEY) === '1';
+  } catch {
+    // Fall back to always-visible.
+  }
+  setToolbarAutohide(toolbarAutohideInitially);
 
   window.addEventListener('error', () => {
     engineStatus.textContent = 'ENGINE: ERROR';
@@ -9344,6 +10847,25 @@ kbd { font-size: 9px; opacity: .65; }
     applyDimStyleDialog,
     setPendingDimStyle(patch) { if (pendingDimStyle) { Object.assign(pendingDimStyle, patch); refreshDimStyleDialog(); } },
     get inquiryText() { return inquiryPanel.hidden ? null : inquiryBody.textContent; },
+    PAPER_SIZES,
+    POINTS_PER_MM,
+    paperSizeMM,
+    scalePresets,
+    defaultPlotSettings,
+    buildPlotPlan,
+    plotAreaBox,
+    buildPdfDocument,
+    pdfTextWidthMM,
+    plotDownloadName,
+    plotPreviewView,
+    renderPlotPreview,
+    openPlotDialog,
+    closePlotDialog,
+    runPlot,
+    startPlotWindowPick,
+    setPendingPlot,
+    get plotDialogVisible() { return !plotDialog.hidden; },
+    get plotSettings() { return pendingPlot ? { ...pendingPlot } : null; },
     openUnitsDialog,
     closeUnitsDialog,
     applyUnitsDialog,
@@ -9380,9 +10902,12 @@ kbd { font-size: 9px; opacity: .65; }
     createLayer,
     renameLayer,
     setLayerColor,
+    setLayerLinetype,
+    setLayerLineweight,
     setCurrentLayer,
     toggleLayerVisibility,
     toggleLayerLock,
+    toggleLayerPrintable,
     deleteLayer,
     assignSelectionToLayer,
   };
@@ -9407,11 +10932,12 @@ kbd { font-size: 9px; opacity: .65; }
   // a repaint actually is.
   setFrameRenderer(render);
 
-  // The three commands that are finished the moment they are typed. The registry
-  // holds the names; the layers that can actually perform them hold the work.
+  // The commands that are finished the moment they are typed. The registry holds
+  // the names; the layers that can actually perform them hold the work.
   registerDirectAction('ZOOMEXTENTS', zoomExtents);
   registerDirectAction('UNITS', openUnitsDialog);
   registerDirectAction('DIMSTYLE', openDimStyleDialog);
+  registerDirectAction('PLOT', openPlotDialog);
 
   // Chrome that has to be rebuilt whenever the whole document is replaced.
   onDocumentChanged(renderLayerManager);
