@@ -947,7 +947,7 @@ kbd { font-size: 9px; opacity: .65; }
   const DOCUMENT_FORMAT = 'browser-2d-draft';
   // Version 4 had no per-layer linetype/lineweight/printability (see
   // core/defaults.js and model/document.js's layer parsing for the migration).
-  const DOCUMENT_VERSION = 5;
+  const DOCUMENT_VERSION = 6;
   const AUTOSAVE_KEY = `${DOCUMENT_FORMAT}.autosave`;
   const AUTOSAVE_BACKUP_KEY = `${AUTOSAVE_KEY}.previous`;
   const LEGACY_AUTOSAVE_KEYS = [`${DOCUMENT_FORMAT}.autosave.v1`];
@@ -1293,6 +1293,116 @@ kbd { font-size: 9px; opacity: .65; }
   // always in force, polar only when the cursor asks for it.
   function pointAlong(a, b, t) {
     return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Polyline bulge
+  //
+  // A polyline segment is straight when its bulge is zero and a circular arc
+  // otherwise. The number is DXF's: the tangent of a quarter of the arc's
+  // included angle, signed positive when the arc sweeps counter-clockwise from
+  // the segment's first point to its second. Storing the curve that way, rather
+  // than as a centre and radius, is what lets a curved segment survive every
+  // edit a straight one does: it is invariant under translation, rotation and
+  // uniform scale, so MOVE/ROTATE/SCALE never have to know it exists, and only
+  // MIRROR — which reverses the sense of rotation — has to touch it at all.
+  // ---------------------------------------------------------------------------
+
+  // Below this the segment is straight for every purpose. Squaring a bulge this
+  // small underflows long before the arc it describes is a pixel off its chord.
+  const BULGE_TOLERANCE = 1e-12;
+
+  function bulgeSweep(bulge) {
+    return 4 * Math.atan(bulge);
+  }
+
+  function bulgeFromSweep(sweep) {
+    return Math.tan(sweep / 4);
+  }
+
+  // The arc a bulged segment describes, or null when the segment is straight or
+  // degenerate. Shaped so that every helper above which takes an ARC entity
+  // (angleOnArc, pointOnCircularEntity, segmentCircularIntersections) accepts it
+  // unchanged — hence `kind: 'ARC'`, which isArc() recognises. startAngle and
+  // endAngle follow this app's counter-clockwise arc convention and so belong to
+  // `b` rather than `a` whenever the bulge is negative; angleA/angleB name the
+  // two endpoints individually for the callers that need to tell them apart.
+  function bulgeArc(a, b, bulge) {
+    if (!Number.isFinite(bulge) || Math.abs(bulge) < BULGE_TOLERANCE) return null;
+    const chord = dist(a, b);
+    if (chord < 1e-12) return null;
+    const sweep = bulgeSweep(bulge);
+    const radius = chord / (2 * Math.sin(Math.abs(sweep) / 2));
+    if (!Number.isFinite(radius) || radius <= 0) return null;
+    // Signed distance from the chord's midpoint to the centre, measured to the
+    // left of a→b. It goes negative past a half turn, which is exactly what puts
+    // the centre on the far side of the chord for a major arc.
+    const apothem = (chord / 2) / Math.tan(sweep / 2);
+    if (!Number.isFinite(apothem)) return null;
+    const ux = (b.x - a.x) / chord;
+    const uy = (b.y - a.y) / chord;
+    const center = {
+      x: (a.x + b.x) / 2 - apothem * uy,
+      y: (a.y + b.y) / 2 + apothem * ux,
+    };
+    const angleA = angleFromCenter(center, a);
+    const angleB = angleFromCenter(center, b);
+    const startAngle = sweep > 0 ? angleA : angleB;
+    return {
+      kind: 'ARC',
+      center,
+      radius,
+      startAngle,
+      endAngle: startAngle + Math.abs(sweep),
+      sweep,
+      angleA,
+      angleB,
+    };
+  }
+
+  // The bulge that reproduces an arc running from `angleA` to `angleB` around
+  // `center` in the given direction — the inverse of bulgeArc(), used wherever a
+  // constructed arc has to be written back into a polyline.
+  function bulgeForArc(center, angleA, angleB, counterclockwise) {
+    const sweep = counterclockwise
+      ? normalizeAngle(angleB - angleA)
+      : -normalizeAngle(angleA - angleB);
+    return bulgeFromSweep(sweep);
+  }
+
+  // The point a fraction `t` of the way along a segment, 0 at `a` and 1 at `b`,
+  // following the arc when the segment is bulged.
+  function bulgePointAt(a, b, bulge, t) {
+    const arc = bulgeArc(a, b, bulge);
+    if (!arc) return pointAlong(a, b, t);
+    return circularPoint(arc.center, arc.radius, arc.angleA + arc.sweep * t);
+  }
+
+  // Where `point` sits along a bulged segment, on the same 0-at-a, 1-at-b scale,
+  // or null when it is not on that arc within `tolerance`. The whole comparison
+  // is made in angles rather than on the ratio, so that a point a rounding step
+  // short of the start reads as the start rather than wrapping a full turn and
+  // coming back as a parameter far past the end.
+  const BULGE_ANGLE_TOLERANCE = 1e-7;
+
+  function bulgeParam(a, b, bulge, point, tolerance) {
+    const arc = bulgeArc(a, b, bulge);
+    if (!arc) return null;
+    if (Math.abs(dist(point, arc.center) - arc.radius) > tolerance) return null;
+    const angle = angleFromCenter(arc.center, point);
+    const span = Math.abs(arc.sweep);
+    let offset = arc.sweep > 0
+      ? normalizeAngle(angle - arc.angleA)
+      : normalizeAngle(arc.angleA - angle);
+    if (offset > TAU - BULGE_ANGLE_TOLERANCE) offset = 0;
+    if (offset > span + BULGE_ANGLE_TOLERANCE) return null;
+    return Math.min(1, offset / span);
+  }
+
+  // How much area an arc adds beyond its own chord, signed the way the sweep is
+  // so that a polygon's signed area and its segments' can simply be added up.
+  function circularSegmentArea(radius, sweep) {
+    return (radius * radius / 2) * (sweep - Math.sin(sweep));
   }
 
   // ---------------------------------------------------------------------------
@@ -1900,11 +2010,17 @@ kbd { font-size: 9px; opacity: .65; }
   // entity.js already imports dimensionGeometry/dimensionSegments from this
   // file, so importing back would be a cycle. The logic is small enough that
   // keeping two copies is cheaper than restructuring the module graph for it.
+  // The third element is the segment's bulge rather than the arc entity.js
+  // derives from it, since both callers here want the raw number.
   function segmentPairs(entity) {
     const segments = [];
-    for (let i = 0; i < entity.points.length - 1; i++) segments.push([entity.points[i], entity.points[i + 1]]);
+    const bulgeAt = index => (Number.isFinite(entity.bulges?.[index]) ? entity.bulges[index] : 0);
+    for (let i = 0; i < entity.points.length - 1; i++) {
+      segments.push([entity.points[i], entity.points[i + 1], bulgeAt(i)]);
+    }
     if (entity.closed && entity.points.length >= 3) {
-      segments.push([entity.points[entity.points.length - 1], entity.points[0]]);
+      const last = entity.points.length - 1;
+      segments.push([entity.points[last], entity.points[0], bulgeAt(last)]);
     }
     return segments;
   }
@@ -1986,8 +2102,12 @@ kbd { font-size: 9px; opacity: .65; }
       if (entity.type === 'PLINE') {
         const segments = segmentPairs(entity);
         for (let index = 0; index < segments.length; index++) {
-          const [a, b] = segments[index];
-          const t = segmentParam(a, b, point);
+          const [a, b, bulge] = segments[index];
+          // On a curved segment the position runs along the arc, so the same
+          // 0-to-1 number keeps naming the same spot when the curve is reshaped.
+          const t = bulge
+            ? bulgeParam(a, b, bulge, point, REFERENCE_TOLERANCE)
+            : segmentParam(a, b, point);
           if (t !== null) return { entityId: entity.id, part: 'SEGMENT', segmentIndex: index, t };
         }
       }
@@ -2058,8 +2178,10 @@ kbd { font-size: 9px; opacity: .65; }
       if (entity.type === 'PLINE') {
         const segments = segmentPairs(entity);
         if (!Number.isInteger(ref.segmentIndex) || ref.segmentIndex < 0 || ref.segmentIndex >= segments.length) return null;
-        const [a, b] = segments[ref.segmentIndex];
-        return { x: a.x + ref.t * (b.x - a.x), y: a.y + ref.t * (b.y - a.y) };
+        const [a, b, bulge] = segments[ref.segmentIndex];
+        return bulge
+          ? bulgePointAt(a, b, bulge, ref.t)
+          : { x: a.x + ref.t * (b.x - a.x), y: a.y + ref.t * (b.y - a.y) };
       }
       return null;
     }
@@ -2182,13 +2304,56 @@ kbd { font-size: 9px; opacity: .65; }
     return Boolean(entity.closed) && entity.points.length >= 3;
   }
 
+  // ---------------------------------------------------------------------------
+  // Curved polyline segments
+  //
+  // A polyline's `bulges` array runs parallel to `points`: bulges[i] curves the
+  // segment leaving vertex i, so the last entry belongs to the closing segment
+  // and is unused on an open polyline. The array is absent altogether while
+  // every segment is straight, which is the overwhelmingly common case and keeps
+  // both saved files and this module's fast path unchanged — read it only
+  // through polylineBulge(), never directly.
+  // ---------------------------------------------------------------------------
+
+  function polylineBulge(entity, index) {
+    const value = entity.bulges?.[index];
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  function polylineHasBulges(entity) {
+    return entity.type === 'PLINE' && Array.isArray(entity.bulges) &&
+      entity.bulges.some((value, index) => polylineBulge(entity, index) !== 0 &&
+        (entity.closed || index < entity.points.length - 1));
+  }
+
+  // A bulges array sized to match `points`, for the callers that have to write
+  // one back. Zero-filled when the polyline is entirely straight.
+  function polylineBulgeList(entity) {
+    return entity.points.map((vertex, index) => polylineBulge(entity, index));
+  }
+
+  // Drops an all-zero bulges array rather than storing one, so that a polyline
+  // which has lost its last curve is indistinguishable from one that never had
+  // any. Every path that writes bulges ends here.
+  function withPolylineBulges(entity, bulges) {
+    const next = { ...entity };
+    if (bulges.some(value => Number.isFinite(value) && value !== 0)) {
+      next.bulges = bulges.map(value => (Number.isFinite(value) ? value : 0));
+    } else {
+      delete next.bulges;
+    }
+    return next;
+  }
+
   // Total length along the entity: perimeter for a closed shape, run length for
   // an open one, circumference or arc length for circular entities.
   function entityLength(entity) {
     if (entity.type === 'CIRCLE') return TAU * entity.radius;
     if (entity.type === 'ARC') return arcSweep(entity) * entity.radius;
     let total = 0;
-    for (const [a, b] of entitySegments(entity)) total += dist(a, b);
+    for (const [a, b, arc] of entitySegments(entity)) {
+      total += arc ? Math.abs(arc.sweep) * arc.radius : dist(a, b);
+    }
     return total;
   }
 
@@ -2196,7 +2361,16 @@ kbd { font-size: 9px; opacity: .65; }
   // arc do not enclose anything, and saying "0" would be a lie.
   function entityArea(entity) {
     if (entity.type === 'CIRCLE') return Math.PI * entity.radius * entity.radius;
-    if (entity.type === 'PLINE' && polylineIsClosed(entity)) return Math.abs(polygonArea(entity.points));
+    if (entity.type === 'PLINE' && polylineIsClosed(entity)) {
+      // The straight-sided polygon through the vertices, plus whatever each arc
+      // adds beyond its own chord. Both terms are signed the same way round, so
+      // a bulge that cuts a bite out of the shape subtracts.
+      let total = polygonArea(entity.points);
+      for (const [, , arc] of entitySegments(entity)) {
+        if (arc) total += circularSegmentArea(arc.radius, arc.sweep);
+      }
+      return Math.abs(total);
+    }
     return null;
   }
 
@@ -2246,17 +2420,37 @@ kbd { font-size: 9px; opacity: .65; }
   function cloneLayers() {
     return JSON.parse(JSON.stringify(state.layers));
   }
+  // Each segment is [a, b, arc]: `arc` is null for a straight one and otherwise
+  // the circular arc the segment's bulge describes (see bulgeArc). A caller that
+  // predates curved segments destructures only [a, b] and so reads the chord,
+  // which is why every caller for which that distinction matters is listed in
+  // this module's sibling comment rather than left to be discovered.
   function entitySegments(entity) {
-    if (entity.type === 'LINE') return [[entity.a, entity.b]];
+    if (entity.type === 'LINE') return [[entity.a, entity.b, null]];
     if (entity.type === 'PLINE') {
       const segs = [];
-      for (let i = 0; i < entity.points.length - 1; i++) segs.push([entity.points[i], entity.points[i + 1]]);
+      const push = (index, a, b) => segs.push([a, b, bulgeArc(a, b, polylineBulge(entity, index))]);
+      for (let i = 0; i < entity.points.length - 1; i++) push(i, entity.points[i], entity.points[i + 1]);
       if (entity.closed && entity.points.length >= 3) {
-        segs.push([entity.points[entity.points.length - 1], entity.points[0]]);
+        push(entity.points.length - 1, entity.points[entity.points.length - 1], entity.points[0]);
       }
       return segs;
     }
     return [];
+  }
+
+  // The extreme points of an arc: its two ends, plus whichever axis crossings it
+  // actually passes through. Shared by bounding-box code for ARC entities and
+  // for a polyline's curved segments, which need exactly the same treatment.
+  function circularExtremes(arc) {
+    const points = [
+      circularPoint(arc.center, arc.radius, arc.startAngle),
+      circularPoint(arc.center, arc.radius, arc.endAngle),
+    ];
+    for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+      if (angleOnArc(angle, arc)) points.push(circularPoint(arc.center, arc.radius, angle));
+    }
+    return points;
   }
 
   // Geometry for picking and bounds. Dimensions are pickable but are
@@ -2288,13 +2482,7 @@ kbd { font-size: 9px; opacity: .65; }
       };
     }
     if (e.type === 'ARC') {
-      const points = [
-        circularPoint(e.center, e.radius, e.startAngle),
-        circularPoint(e.center, e.radius, e.endAngle),
-      ];
-      for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
-        if (angleOnArc(angle, e)) points.push(circularPoint(e.center, e.radius, angle));
-      }
+      const points = circularExtremes(e);
       return {
         minX: Math.min(...points.map(point => point.x)),
         maxX: Math.max(...points.map(point => point.x)),
@@ -2303,7 +2491,10 @@ kbd { font-size: 9px; opacity: .65; }
       };
     }
     const pts = [];
-    for (const [a, b] of pickSegments(e)) pts.push(a, b);
+    for (const [a, b, arc] of pickSegments(e)) {
+      if (arc) pts.push(...circularExtremes(arc));
+      else pts.push(a, b);
+    }
     // The measured points sit outside the line work when extension lines are
     // suppressed, and zoom-extents should still frame them.
     if (e.type === 'DIM') pts.push(e.p1, e.p2, dimensionGeometry(e).textAnchor);
@@ -2354,8 +2545,12 @@ kbd { font-size: 9px; opacity: .65; }
     if (entity.type === 'CIRCLE' || entity.type === 'ARC') {
       return edges.some(([a, b]) => segmentCircularIntersections(a, b, entity).length > 0);
     }
-    for (const [a, b] of pickSegments(entity)) {
+    for (const [a, b, arc] of pickSegments(entity)) {
       if (pointInBox(a, box) || pointInBox(b, box)) return true;
+      if (arc) {
+        if (edges.some(([c, d]) => segmentCircularIntersections(c, d, arc).length > 0)) return true;
+        continue;
+      }
       if (edges.some(([c, d]) => segmentIntersection(a, b, c, d))) return true;
     }
     return false;
@@ -2813,12 +3008,13 @@ kbd { font-size: 9px; opacity: .65; }
 
   // A cubic approximation of a circular arc, split so no piece sweeps more than
   // a quarter turn — past that the error stops being invisible.
-  function plotArcSubpath(center, radius, startAngle, endAngle, closed = false) {
-    const sweep = endAngle - startAngle;
+  // The bezier pieces of an arc, without the subpath that carries them, so that
+  // a polyline's curved segment can be spliced into a longer path rather than
+  // having to become a subpath of its own.
+  function plotArcSegs(center, radius, startAngle, sweep) {
     const pieces = Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 2) - 1e-9));
     const step = sweep / pieces;
     const handle = (4 / 3) * Math.tan(step / 4);
-    const start = circularPoint(center, radius, startAngle);
     const segs = [];
     for (let piece = 0; piece < pieces; piece++) {
       const from = startAngle + step * piece;
@@ -2832,7 +3028,15 @@ kbd { font-size: 9px; opacity: .65; }
         to: p1,
       });
     }
-    return { start, segs, closed };
+    return segs;
+  }
+
+  function plotArcSubpath(center, radius, startAngle, endAngle, closed = false) {
+    return {
+      start: circularPoint(center, radius, startAngle),
+      segs: plotArcSegs(center, radius, startAngle, endAngle - startAngle),
+      closed,
+    };
   }
 
   // One plotted entity's operators. `context` carries the world-to-paper
@@ -2879,11 +3083,21 @@ kbd { font-size: 9px; opacity: .65; }
         toPaper(entity.center), entity.radius * context.mmPerUnit, entity.startAngle, entity.endAngle));
     } else if (entity.type === 'PLINE') {
       if (entity.points.length < 2) return [];
-      stroke.subpaths.push({
-        start: toPaper(entity.points[0]),
-        segs: entity.points.slice(1).map(point => ({ type: 'l', to: toPaper(point) })),
-        closed: Boolean(entity.closed) && entity.points.length >= 3,
-      });
+      const closed = Boolean(entity.closed) && entity.points.length >= 3;
+      const segments = entitySegments(entity);
+      const segs = [];
+      for (let index = 0; index < segments.length; index++) {
+        const [, b, arc] = segments[index];
+        if (arc) {
+          segs.push(...plotArcSegs(toPaper(arc.center), arc.radius * context.mmPerUnit, arc.angleA, arc.sweep));
+        } else if (!(closed && index === segments.length - 1)) {
+          // A straight closing segment is what the path's own close operator
+          // draws, so writing it out too would only repeat it. A curved one has
+          // no such shorthand and is emitted above like any other arc.
+          segs.push({ type: 'l', to: toPaper(b) });
+        }
+      }
+      stroke.subpaths.push({ start: toPaper(entity.points[0]), segs, closed });
     } else {
       const segments = entitySegments(entity);
       if (!segments.length) return [];
@@ -3490,6 +3704,32 @@ kbd { font-size: 9px; opacity: .65; }
     return { value: cleaned };
   }
 
+  // A polyline's curved segments. The array is rejected outright rather than
+  // resized when its length disagrees with the points: every internal path that
+  // reshapes a polyline has to reshape its bulges with it, and a stale array
+  // silently truncated back into range would draw a plausible curve on the wrong
+  // segment. A trailing entry on an open polyline names a segment that does not
+  // exist, so that one is zeroed rather than refused — it is unambiguous.
+  function cleanPolylineBulges(value, points, closed) {
+    if (value === undefined || value === null) return { value: null };
+    if (!Array.isArray(value)) return { error: 'has an invalid polyline bulge list' };
+    if (value.length !== points.length) {
+      return { error: 'has a polyline bulge list that does not match its points' };
+    }
+    const bulges = [];
+    for (let index = 0; index < value.length; index++) {
+      const bulge = value[index];
+      if (!Number.isFinite(bulge)) return { error: 'has an invalid polyline bulge' };
+      if (!closed && index === points.length - 1) { bulges.push(0); continue; }
+      const next = closed && index === points.length - 1 ? points[0] : points[index + 1];
+      if (bulge !== 0 && !bulgeArc(points[index], next, bulge)) {
+        return { error: 'has a polyline bulge that describes no arc' };
+      }
+      bulges.push(bulge);
+    }
+    return { value: bulges.some(bulge => bulge !== 0) ? bulges : null };
+  }
+
   function cleanEntity(value, layerIds) {
     if (!value || typeof value !== 'object') return { error: 'must be an object' };
     if (!Number.isSafeInteger(value.id) || value.id <= 0 || value.id >= Number.MAX_SAFE_INTEGER) return { error: 'has an invalid ID' };
@@ -3517,7 +3757,11 @@ kbd { font-size: 9px; opacity: .65; }
       if (closed && dist(points[0], points[points.length - 1]) <= 1e-9) {
         return { error: 'has a collapsed closing polyline segment' };
       }
-      return { entity: { ...common, points, closed } };
+      const bulges = cleanPolylineBulges(value.bulges, points, closed);
+      if (bulges.error) return { error: bulges.error };
+      const entity = { ...common, points, closed };
+      if (bulges.value) entity.bulges = bulges.value;
+      return { entity };
     }
 
     if (type === 'DIM') {
@@ -4189,6 +4433,417 @@ kbd { font-size: 9px; opacity: .65; }
   });
 
   // ---------------------------------------------------------------------------
+  // geometry/offset.js
+  // ---------------------------------------------------------------------------
+
+  function infiniteLineIntersection(a, b, c, d) {
+    const r = { x: b.x - a.x, y: b.y - a.y };
+    const s = { x: d.x - c.x, y: d.y - c.y };
+    const den = r.x * s.y - r.y * s.x;
+    if (Math.abs(den) < 1e-10) return null;
+    const ca = { x: c.x - a.x, y: c.y - a.y };
+    const t = (ca.x * s.y - ca.y * s.x) / den;
+    return { x: a.x + t * r.x, y: a.y + t * r.y };
+  }
+
+  function offsetSideSign(entity, sidePoint) {
+    let best = null;
+    for (const [a, b] of entitySegments(entity)) {
+      const q = pointOnSegmentClosest(sidePoint, a, b);
+      const gap = dist(sidePoint, q);
+      if (!best || gap < best.gap) {
+        const cross = (b.x - a.x) * (sidePoint.y - a.y) - (b.y - a.y) * (sidePoint.x - a.x);
+        best = { gap, cross };
+      }
+    }
+    if (!best || Math.abs(best.cross) < 1e-9) return 0;
+    return best.cross > 0 ? 1 : -1;
+  }
+
+  function shiftSegment(a, b, distance, side) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 1e-9) return null;
+    const nx = -dy / length * distance * side;
+    const ny = dx / length * distance * side;
+    return [
+      { x: a.x + nx, y: a.y + ny },
+      { x: b.x + nx, y: b.y + ny },
+    ];
+  }
+
+  function joinedOffsetPoint(previous, current) {
+    return infiniteLineIntersection(previous[0], previous[1], current[0], current[1]) || {
+      x: (previous[1].x + current[0].x) / 2,
+      y: (previous[1].y + current[0].y) / 2,
+    };
+  }
+
+  // OFFSET currently produces one mitered path. If the correct result needs
+  // splitting or removing loops, refuse it instead of drawing a plausible but
+  // incorrect path. These checks also run for the preview.
+  function pathSegments(points, closed) {
+    return points.slice(0, closed ? points.length : -1)
+      .map((point, index) => [point, points[(index + 1) % points.length]]);
+  }
+
+  function segmentBoundsNear(a, b, c, d, tolerance) {
+    return Math.min(a.x, b.x) <= Math.max(c.x, d.x) + tolerance &&
+      Math.max(a.x, b.x) + tolerance >= Math.min(c.x, d.x) &&
+      Math.min(a.y, b.y) <= Math.max(c.y, d.y) + tolerance &&
+      Math.max(a.y, b.y) + tolerance >= Math.min(c.y, d.y);
+  }
+
+  function segmentsMeet(a, b, c, d, tolerance) {
+    if (!segmentBoundsNear(a, b, c, d, tolerance)) return false;
+    if (dist(a, pointOnSegmentClosest(a, c, d)) <= tolerance ||
+        dist(b, pointOnSegmentClosest(b, c, d)) <= tolerance ||
+        dist(c, pointOnSegmentClosest(c, a, b)) <= tolerance ||
+        dist(d, pointOnSegmentClosest(d, a, b)) <= tolerance) return true;
+    const side = (p, q, r) => {
+      const length = dist(p, q);
+      return ((q.x - p.x) / length) * (r.y - p.y) -
+        ((q.y - p.y) / length) * (r.x - p.x);
+    };
+    const opposite = (first, second) =>
+      (first > tolerance && second < -tolerance) ||
+      (first < -tolerance && second > tolerance);
+    return opposite(side(a, b, c), side(a, b, d)) &&
+      opposite(side(c, d, a), side(c, d, b));
+  }
+
+  function pathHasCrossings(segments, closed, tolerance) {
+    for (let i = 0; i < segments.length; i++) {
+      const [a, b] = segments[i];
+      if (dist(a, b) <= tolerance) return true;
+      for (let j = i + 1; j < segments.length; j++) {
+        const [c, d] = segments[j];
+        const adjacent = j === i + 1 || (closed && i === 0 && j === segments.length - 1);
+        if (adjacent) {
+          // Adjacent edges may share their vertex, but cannot double back.
+          const incoming = j === i + 1 ? a : b;
+          const joint = j === i + 1 ? b : a;
+          const outgoing = j === i + 1 ? d : c;
+          if (dist(incoming, pointOnSegmentClosest(incoming, joint, outgoing)) <= tolerance ||
+              dist(outgoing, pointOnSegmentClosest(outgoing, incoming, joint)) <= tolerance) return true;
+        } else if (segmentsMeet(a, b, c, d, tolerance)) return true;
+      }
+    }
+    return false;
+  }
+
+  function offsetPathIsValid(source, result, closed, distance) {
+    if (result.some(point => !cleanPoint(point))) return false;
+    const magnitude = source.concat(result).reduce((maximum, point) =>
+      Math.max(maximum, Math.abs(point.x), Math.abs(point.y)), 1);
+    const tolerance = Math.max(1e-9, distance * 1e-8, magnitude * Number.EPSILON * 32);
+    const before = pathSegments(source, closed);
+    const after = pathSegments(result, closed);
+    if (pathHasCrossings(before, closed, tolerance) || pathHasCrossings(after, closed, tolerance)) return false;
+    for (let i = 0; i < before.length; i++) {
+      const [a, b] = before[i];
+      const [c, d] = after[i];
+      // A surviving edge must retain its direction. This rejects polygons that
+      // have passed through collapse and reappeared on the other side.
+      const length = dist(a, b);
+      if (((b.x - a.x) / length) * (d.x - c.x) +
+          ((b.y - a.y) / length) * (d.y - c.y) <= tolerance) return false;
+      for (const [p, q] of before) {
+        if (!segmentBoundsNear(c, d, p, q, distance + tolerance)) continue;
+        if (segmentsMeet(c, d, p, q, tolerance)) return false;
+        const gap = Math.min(
+          dist(c, pointOnSegmentClosest(c, p, q)), dist(d, pointOnSegmentClosest(d, p, q)),
+          dist(p, pointOnSegmentClosest(p, c, d)), dist(q, pointOnSegmentClosest(q, c, d)),
+        );
+        if (!Number.isFinite(gap) || gap < distance - tolerance) return false;
+      }
+    }
+    return true;
+  }
+
+  function offsetEntity(entity, distance, sidePoint, id = entity.id) {
+    if (!['LINE', 'PLINE', 'CIRCLE', 'ARC'].includes(entity.type) || distance <= 0) return null;
+    // The mitered path below is built from shifted straight segments and checked
+    // for self-crossing the same way. Offsetting a curved segment means offset
+    // arcs joined by arc/line intersections, which is a different construction —
+    // refused by name in acceptOffsetSource rather than approximated here.
+    if (polylineHasBulges(entity)) return null;
+
+    if (entity.type === 'CIRCLE' || entity.type === 'ARC') {
+      const pointDistance = dist(entity.center, sidePoint);
+      if (Math.abs(pointDistance - entity.radius) < 1e-9) return null;
+      const radius = pointDistance > entity.radius ? entity.radius + distance : entity.radius - distance;
+      return radius > 1e-9 ? { ...entity, id, center: { ...entity.center }, radius } : null;
+    }
+
+    const side = offsetSideSign(entity, sidePoint);
+    if (!side) return null;
+
+    if (entity.type === 'LINE') {
+      const shifted = shiftSegment(entity.a, entity.b, distance, side);
+      return shifted ? { ...entity, id, a: shifted[0], b: shifted[1] } : null;
+    }
+
+    const points = entity.points.map(point => ({ ...point }));
+    if (entity.closed && points.length > 1 && dist(points[0], points[points.length - 1]) < 1e-9) points.pop();
+    if (points.length < (entity.closed ? 3 : 2)) return null;
+
+    const sourceSegments = [];
+    for (let i = 0; i < points.length - 1; i++) sourceSegments.push([points[i], points[i + 1]]);
+    if (entity.closed) sourceSegments.push([points[points.length - 1], points[0]]);
+    const shifted = sourceSegments.map(segment => shiftSegment(segment[0], segment[1], distance, side));
+    if (shifted.some(segment => !segment)) return null;
+
+    const offsetPoints = [];
+    if (entity.closed) {
+      for (let i = 0; i < shifted.length; i++) {
+        offsetPoints.push(joinedOffsetPoint(shifted[(i - 1 + shifted.length) % shifted.length], shifted[i]));
+      }
+    } else {
+      offsetPoints.push(shifted[0][0]);
+      for (let i = 1; i < shifted.length; i++) {
+        offsetPoints.push(joinedOffsetPoint(shifted[i - 1], shifted[i]));
+      }
+      offsetPoints.push(shifted[shifted.length - 1][1]);
+    }
+
+    if (!offsetPathIsValid(points, offsetPoints, Boolean(entity.closed), distance)) return null;
+    return { ...entity, id, points: offsetPoints, closed: Boolean(entity.closed) };
+  }
+
+  function isOffsettable(entity) {
+    return entity && ['LINE', 'PLINE', 'CIRCLE', 'ARC'].includes(entity.type);
+  }
+
+  function setOffsetDistance(value) {
+    if (state.mode !== 'OFFSET' || state.offset?.stage !== 'DISTANCE') return false;
+    if (!Number.isFinite(value) || value <= 0) {
+      updatePrompt('Distance must be greater than zero.');
+      return true;
+    }
+    state.offset.distance = value;
+    state.offset.stage = state.offset.sourceId ? 'SIDE' : 'SOURCE';
+    updatePrompt();
+    draw();
+    return true;
+  }
+
+  function acceptOffsetSource() {
+    if (state.mode !== 'OFFSET' || state.offset?.stage !== 'SOURCE') return false;
+    const selected = state.entities.filter(entity => state.selected.has(entity.id) && isEntityEditable(entity));
+    if (selected.length !== 1 || !isOffsettable(selected[0])) {
+      updatePrompt(selected.length ? 'Select exactly one line, polyline, circle, or arc.' : 'No object selected.');
+      return true;
+    }
+    if (polylineHasBulges(selected[0])) {
+      updatePrompt('OFFSET works on straight polylines; that one has a curved segment. EXPLODE it first.');
+      return true;
+    }
+    state.offset.sourceId = selected[0].id;
+    state.offset.stage = 'SIDE';
+    updatePrompt();
+    draw();
+    return true;
+  }
+
+  function applyOffset(sidePoint) {
+    if (state.mode !== 'OFFSET' || state.offset?.stage !== 'SIDE') return;
+    const source = state.entities.find(entity => entity.id === state.offset.sourceId && isEntityEditable(entity));
+    const result = source && offsetEntity(source, state.offset.distance, sidePoint, state.nextId);
+    if (!result) {
+      updatePrompt('Offset rejected: the result collapses, crosses itself, or has no valid side. Try a smaller distance or another side.');
+      return;
+    }
+    if (!commitGeometry([...state.entities, result], { nextId: state.nextId + 1 })) return;
+    state.selected = new Set([result.id]);
+    setMode('SELECT');
+  }
+
+  // ---------------------------------------------------------------------------
+  // geometry/tangentCircle.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Circles tangent to two edges
+  //
+  // Two commands need the same construction. FILLET, given a radius, has to find
+  // where an arc of that radius touches both picked edges. CIRCLE's Ttr option
+  // asks the same question and keeps the whole circle instead of an arc of it.
+  //
+  // A line/line corner has one well-defined intersection point to build from.
+  // Two general curves generally don't — a line and a circle can cross twice or
+  // not at all, so there is no single "corner" to bisect. Real CAD works around
+  // this by constructing loci instead: the set of points a candidate centre
+  // could sit at, one locus per edge, then intersecting them.
+  //
+  // For a line, that locus is the line shifted by the radius, on either side
+  // (two candidates). For a circle of radius r, it is a concentric circle of
+  // radius r+R (the new circle sits outside it, the common case) or |r-R| (it is
+  // internally tangent — nested either way round, wrapping inside a bore or
+  // swallowing a small circle whole).
+  //
+  // Pairing every locus of one edge against every locus of the other, and
+  // keeping every intersection, produces every geometrically valid tangent
+  // circle — up to eight of them for two curved edges. Exactly one is what the
+  // user meant, and there is no way to know which from the radius alone; it is
+  // picked by the same rule a person uses when AutoCAD asks the same question:
+  // whichever solution's tangent points fall nearest the two points actually
+  // clicked.
+  // ---------------------------------------------------------------------------
+
+  // Lengths below this have no usable direction and the arithmetic built on them
+  // stops meaning anything.
+  const TANGENT_TOLERANCE = 1e-9;
+
+  // An edge for tangency purposes: a LINE entity (its whole a/b span), one
+  // segment of a PLINE, named by the point-array indices of its two ends so a
+  // result can be written back to just that part of the polyline, or a whole
+  // ARC/CIRCLE. `a`/`b` are the actual point objects the entity stores, not
+  // copies, so a surviving endpoint can be matched back to its index by
+  // reference — see fillet.js, which relies on exactly that.
+  function edgeRef(entity, segmentIndex) {
+    if (entity.type === 'LINE') {
+      return { entity, layerId: entity.layerId, kind: 'line', a: entity.a, b: entity.b, pointIndexA: null, pointIndexB: null };
+    }
+    if (entity.type === 'ARC' || entity.type === 'CIRCLE') {
+      return { entity, layerId: entity.layerId, kind: 'circle', center: entity.center, radius: entity.radius };
+    }
+    const count = entity.points.length;
+    const pointIndexA = segmentIndex;
+    const pointIndexB = (segmentIndex + 1) % count;
+    return {
+      entity, layerId: entity.layerId, kind: 'line',
+      a: entity.points[pointIndexA], b: entity.points[pointIndexB],
+      pointIndexA, pointIndexB,
+    };
+  }
+
+  // An infinite line's intersections with a circle, unlike segmentCircleIntersections
+  // (core/math.js), which clips to the a–b segment: an offset line here is a
+  // construction line, not the edge itself, so it must extend past both ends.
+  function infiniteLineCircleIntersections(a, b, center, radius) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const qa = dx * dx + dy * dy;
+    if (qa < TANGENT_TOLERANCE || radius <= 0) return [];
+    const fx = a.x - center.x;
+    const fy = a.y - center.y;
+    const qb = 2 * (fx * dx + fy * dy);
+    const qc = fx * fx + fy * fy - radius * radius;
+    const discriminant = qb * qb - 4 * qa * qc;
+    if (discriminant < -1e-9) return [];
+    const root = Math.sqrt(Math.max(0, discriminant));
+    const points = [];
+    for (const t of [(-qb - root) / (2 * qa), (-qb + root) / (2 * qa)]) {
+      const point = { x: a.x + t * dx, y: a.y + t * dy };
+      if (points.some(p => dist(p, point) < 1e-7)) continue;
+      points.push(point);
+    }
+    return points;
+  }
+
+  // The loci a tangent circle's centre could sit at, at distance `radius` from
+  // this edge. A circle locus carries `sign`: the tangent point sits at
+  // center + sign*radius*unit(candidateCentre - center) — see
+  // circularTangentPoint(). That is +1 for the ordinary "outside" tangency and
+  // for the "this edge's circle swallows the new one" nesting, and -1 only for
+  // the opposite nesting (the new circle swallows this edge's) — the one case
+  // where the tangent point sits on the far side of this edge's centre from the
+  // candidate centre rather than the near side.
+  function offsetLoci(ref, radius) {
+    if (ref.kind === 'line') {
+      const loci = [];
+      for (const side of [1, -1]) {
+        const shifted = shiftSegment(ref.a, ref.b, radius, side);
+        if (shifted) loci.push({ kind: 'line', a: shifted[0], b: shifted[1] });
+      }
+      return loci;
+    }
+    const loci = [{ kind: 'circle', center: ref.center, radius: ref.radius + radius, sign: 1 }];
+    const nested = Math.abs(ref.radius - radius);
+    if (nested > TANGENT_TOLERANCE) {
+      loci.push({ kind: 'circle', center: ref.center, radius: nested, sign: radius > ref.radius ? -1 : 1 });
+    }
+    return loci;
+  }
+
+  function locusIntersections(first, second) {
+    if (first.kind === 'line' && second.kind === 'line') {
+      const point = infiniteLineIntersection(first.a, first.b, second.a, second.b);
+      return point ? [point] : [];
+    }
+    if (first.kind === 'line') return infiniteLineCircleIntersections(first.a, first.b, second.center, second.radius);
+    if (second.kind === 'line') return infiniteLineCircleIntersections(second.a, second.b, first.center, first.radius);
+    return circleCircleIntersections(first, second);
+  }
+
+  function circularTangentPoint(ref, locus, candidateCenter) {
+    const ux = candidateCenter.x - ref.center.x;
+    const uy = candidateCenter.y - ref.center.y;
+    const length = Math.hypot(ux, uy);
+    if (length < TANGENT_TOLERANCE) return null;
+    const sign = locus.sign;
+    return { x: ref.center.x + sign * ref.radius * ux / length, y: ref.center.y + sign * ref.radius * uy / length };
+  }
+
+  function edgeTangentPoint(ref, locus, candidateCenter) {
+    return ref.kind === 'line'
+      ? pointOnInfiniteLine(candidateCenter, ref.a, ref.b)
+      : circularTangentPoint(ref, locus, candidateCenter);
+  }
+
+  // Every circle of the given radius tangent to both edges, with the point at
+  // which it touches each. Callers decide which of them the user meant.
+  function tangentCircleSolutions(ref1, ref2, radius) {
+    const solutions = [];
+    for (const locus1 of offsetLoci(ref1, radius)) {
+      for (const locus2 of offsetLoci(ref2, radius)) {
+        for (const center of locusIntersections(locus1, locus2)) {
+          const t1 = edgeTangentPoint(ref1, locus1, center);
+          const t2 = edgeTangentPoint(ref2, locus2, center);
+          if (!t1 || !t2) continue;
+          solutions.push({ center, t1, t2 });
+        }
+      }
+    }
+    return solutions;
+  }
+
+  // Whether a tangent point lands on the drawn edge rather than on the extension
+  // of it. Both are legitimate answers — a circle tangent to where two walls
+  // would meet is a real construction — so this ranks solutions rather than
+  // discarding them.
+  function tangentTouchesEdge(ref, point) {
+    if (ref.kind === 'line') return pointWithinSegment(point, ref.a, ref.b);
+    // A whole circle has no ends to fall outside of; an arc does.
+    return pointOnCircularEntity(point, ref.entity);
+  }
+
+  // CIRCLE's Ttr option: the circle of the given radius touching both picked
+  // edges. Preference goes first to solutions that touch the edges themselves
+  // rather than their extensions, and then to the one whose contact points are
+  // nearest what was actually clicked — the extension is still offered when
+  // nothing else fits, which is what makes "fillet the corner two walls would
+  // have made" work.
+  function tangentTangentRadiusCircle(ref1, ref2, pick1, pick2, radius) {
+    if (!Number.isFinite(radius) || radius <= TANGENT_TOLERANCE) {
+      return { error: 'Radius must be greater than zero.' };
+    }
+    let best = null;
+    for (const solution of tangentCircleSolutions(ref1, ref2, radius)) {
+      const offEdge = (tangentTouchesEdge(ref1, solution.t1) ? 0 : 1) +
+        (tangentTouchesEdge(ref2, solution.t2) ? 0 : 1);
+      const score = dist(solution.t1, pick1) + dist(solution.t2, pick2);
+      if (!best || offEdge < best.offEdge || (offEdge === best.offEdge && score < best.score)) {
+        best = { ...solution, offEdge, score };
+      }
+    }
+    if (!best) return { error: 'No circle of that radius is tangent to both of those objects.' };
+    return { center: best.center, radius, tangents: [best.t1, best.t2] };
+  }
+
+  // ---------------------------------------------------------------------------
   // geometry/transform.js
   // ---------------------------------------------------------------------------
 
@@ -4385,11 +5040,18 @@ kbd { font-size: 9px; opacity: .65; }
       };
     }
     if (entity.type === 'PLINE') {
-      return {
+      // Reflection reverses the sense of rotation, so every curved segment
+      // sweeps the other way round while keeping its shape — which for a bulge
+      // is exactly a change of sign. Translation, rotation and scale leave them
+      // alone, which is the whole reason a curve is stored this way.
+      const mirrored = {
         ...entity,
         id,
         points: entity.points.map(point => mirrorPoint(point, axisA, axisB)),
       };
+      return entity.bulges
+        ? { ...mirrored, bulges: entity.bulges.map(bulge => (bulge === 0 ? 0 : -bulge)) }
+        : mirrored;
     }
     if (entity.type === 'CIRCLE') {
       return { ...entity, id, center: mirrorPoint(entity.center, axisA, axisB) };
@@ -4784,16 +5446,32 @@ kbd { font-size: 9px; opacity: .65; }
     const cursor = screenToWorld(state.mouseScreen);
     const aperture = maxPx / state.view.scale + 1e-9;
 
-    const segs = snapSegments(excludedEntityId)
-      .filter(([a, b]) => segmentWithinRadius(a, b, cursor, aperture));
-    const circularEntities = state.entities.filter(entity => {
-      if (!isEntityVisible(entity) || entity.id === excludedEntityId) return false;
-      if (!['CIRCLE', 'ARC'].includes(entity.type)) return false;
-      const radial = dist(cursor, entity.center);
-      // Near the curve (endpoints, midpoint, quadrants, intersections, perpendicular)
-      // or near the center (CENTER snap, which sits far from the drawn curve).
-      return Math.abs(radial - entity.radius) <= aperture || radial <= aperture;
-    });
+    // Near the curve (endpoints, midpoint, quadrants, intersections, perpendicular)
+    // or near the center (CENTER snap, which sits far from the drawn curve).
+    const curveInRange = curve => {
+      const radial = dist(cursor, curve.center);
+      return Math.abs(radial - curve.radius) <= aperture || radial <= aperture;
+    };
+
+    // A polyline's curved segments snap exactly as a standalone arc does, so
+    // they join the circular list rather than staying in the straight one — the
+    // arc descriptor entitySegments() hands back is already the shape every
+    // circular helper below expects.
+    const segs = [];
+    const circularEntities = [];
+    for (const segment of snapSegments(excludedEntityId)) {
+      const arc = segment[2];
+      if (arc) {
+        if (curveInRange(arc)) circularEntities.push(arc);
+      } else if (segmentWithinRadius(segment[0], segment[1], cursor, aperture)) {
+        segs.push(segment);
+      }
+    }
+    for (const entity of state.entities) {
+      if (!isEntityVisible(entity) || entity.id === excludedEntityId) continue;
+      if (!['CIRCLE', 'ARC'].includes(entity.type)) continue;
+      if (curveInRange(entity)) circularEntities.push(entity);
+    }
 
     // Each type is skipped at the source rather than filtered afterwards, so a
     // snap that is switched off costs nothing to have.
@@ -4817,7 +5495,7 @@ kbd { font-size: 9px; opacity: .65; }
     }
 
     for (const circularEntity of circularEntities) {
-      if (circularEntity.type === 'ARC') {
+      if (isArc(circularEntity)) {
         if (wants('END')) {
           candidates.push({ type: 'END', p: circularPoint(circularEntity.center, circularEntity.radius, circularEntity.startAngle) });
           candidates.push({ type: 'END', p: circularPoint(circularEntity.center, circularEntity.radius, circularEntity.endAngle) });
@@ -4945,29 +5623,39 @@ kbd { font-size: 9px; opacity: .65; }
     }], { nextId: state.nextId + 1 });
   }
 
-  function addPolyline(points, forceClosed = false) {
+  // `bulges` is optional and runs parallel to `points`: entry i curves the
+  // segment leaving vertex i (see model/entity.js). It is carried through the
+  // same duplicate-point pruning as the points themselves, so a caller never has
+  // to keep the two arrays in step by hand.
+  function addPolyline(points, forceClosed = false, bulges = null) {
     if (points.length < 2 || !currentLayerIsEditable()) return false;
     // Never write what the loader will not read back. Every caller funnels
     // through here, so this is the one place duplicate consecutive points can be
     // ruled out for good rather than guarded at each entry point.
     const storedPoints = [];
-    for (const point of points) {
+    const storedBulges = [];
+    for (let index = 0; index < points.length; index++) {
+      const point = points[index];
       const last = storedPoints[storedPoints.length - 1];
       if (last && dist(last, point) <= 1e-9) continue;
       storedPoints.push({ ...point });
+      storedBulges.push(Number.isFinite(bulges?.[index]) ? bulges[index] : 0);
     }
     if (storedPoints.length < 2) return false;
     const closesAtStart = storedPoints.length >= 4 && dist(storedPoints[0], storedPoints[storedPoints.length - 1]) < 1e-7;
-    if (closesAtStart) storedPoints.pop();
+    // Dropping the repeated start point drops the entry that would have curved
+    // the segment leaving it — a segment an open path does not have and a closed
+    // one already describes with the entry before it.
+    if (closesAtStart) { storedPoints.pop(); storedBulges.pop(); }
     const closed = forceClosed || closesAtStart;
     if (closed && storedPoints.length < 3) return false;
-    return commitGeometry([...state.entities, {
+    return commitGeometry([...state.entities, withPolylineBulges({
       id: state.nextId,
       type: 'PLINE',
       layerId: state.currentLayerId,
       points: storedPoints,
       closed,
-    }], { nextId: state.nextId + 1 });
+    }, storedBulges)], { nextId: state.nextId + 1 });
   }
 
   function addRectangle(first, opposite) {
@@ -5151,17 +5839,32 @@ kbd { font-size: 9px; opacity: .65; }
       if (excludedIds?.has(entity.id) || !isEntityEditable(entity)) continue;
       const segments = entitySegments(entity);
       for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
-        const [a, b] = segments[segmentIndex];
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const lengthSquared = dx * dx + dy * dy;
-        if (lengthSquared < 1e-12) continue;
-        const t = Math.max(0, Math.min(1, ((world.x - a.x) * dx + (world.y - a.y) * dy) / lengthSquared));
-        const point = { x: a.x + t * dx, y: a.y + t * dy };
+        const [a, b, arc] = segments[segmentIndex];
+        let t;
+        let point;
+        if (arc) {
+          // A curved segment answers where the cursor sits along the arc, not
+          // along its chord; off the sweep entirely it is simply not hit, the
+          // same rule a standalone ARC follows below.
+          const angle = angleFromCenter(arc.center, world);
+          if (!angleOnArc(angle, arc)) continue;
+          const travelled = arc.sweep > 0
+            ? normalizeAngle(angle - arc.angleA)
+            : normalizeAngle(arc.angleA - angle);
+          t = Math.max(0, Math.min(1, travelled / Math.abs(arc.sweep)));
+          point = circularPoint(arc.center, arc.radius, angle);
+        } else {
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const lengthSquared = dx * dx + dy * dy;
+          if (lengthSquared < 1e-12) continue;
+          t = Math.max(0, Math.min(1, ((world.x - a.x) * dx + (world.y - a.y) * dy) / lengthSquared));
+          point = { x: a.x + t * dx, y: a.y + t * dy };
+        }
         const screen = worldToScreen(point);
         const px = Math.hypot(screen.x - cursor.x, screen.y - cursor.y);
         if (px <= maxPx && (!best || px < best.px)) {
-          best = { entity, kind: 'SEGMENT', segmentIndex, a, b, t, point, px };
+          best = { entity, kind: 'SEGMENT', segmentIndex, a, b, arc, t, point, px };
         }
       }
       if (includeCircular && ['CIRCLE', 'ARC'].includes(entity.type)) {
@@ -5195,7 +5898,17 @@ kbd { font-size: 9px; opacity: .65; }
       }
       const segments = entitySegments(entity);
       for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
-        boundaries.push({ kind: 'SEGMENT', entityId: entity.id, segmentIndex, a: segments[segmentIndex][0], b: segments[segmentIndex][1] });
+        const [a, b, arc] = segments[segmentIndex];
+        // A polyline's curved segment cuts as an arc, so it is offered in the
+        // same shape a standalone ARC is above rather than as its chord.
+        if (arc) {
+          boundaries.push({
+            kind: 'ARC', entityId: entity.id, segmentIndex,
+            center: arc.center, radius: arc.radius, startAngle: arc.startAngle, endAngle: arc.endAngle,
+          });
+        } else {
+          boundaries.push({ kind: 'SEGMENT', entityId: entity.id, segmentIndex, a, b });
+        }
       }
     }
     return boundaries;
@@ -5235,7 +5948,11 @@ kbd { font-size: 9px; opacity: .65; }
     const length = cleaned.slice(1).reduce((sum, point, index) => sum + dist(cleaned[index], point), 0);
     if (length < 1e-8) return null;
     if (entity.type === 'LINE') return { ...entity, a: cleaned[0], b: cleaned[cleaned.length - 1] };
-    return { ...entity, points: cleaned, closed: false };
+    // A trimmed piece is rebuilt from points alone, so any curve the source
+    // carried is not one of them. TRIM refuses a curved polyline outright (see
+    // calculateTrimOperation) precisely so this never silently straightens one;
+    // clearing the array here keeps that guarantee local rather than remote.
+    return withPolylineBulges({ ...entity, points: cleaned, closed: false }, cleaned.map(() => 0));
   }
 
   function pointAtPathPosition(entity, position) {
@@ -5364,6 +6081,13 @@ kbd { font-size: 9px; opacity: .65; }
     const includeSelfIntersections = !state.edit?.boundaryIds;
     const boundaries = editBoundarySegments(hit.entity.id, includeSelfIntersections);
     if (hit.kind === 'CIRCULAR') return calculateCircularTrimOperation(hit, boundaries);
+    // Trimming rebuilds a polyline from a list of points, which has nowhere to
+    // put a curve. Refusing the whole polyline rather than just its curved
+    // segments is deliberate: a piece cut from a straight segment still has to
+    // carry the rest of the shape, arcs included.
+    if (polylineHasBulges(hit.entity)) {
+      return { error: 'That polyline has a curved segment, which TRIM cannot rebuild. EXPLODE it first.' };
+    }
 
     const segmentCount = entitySegments(hit.entity).length;
     const intersections = [];
@@ -5451,8 +6175,19 @@ kbd { font-size: 9px; opacity: .65; }
     // a filled glyph area reads, rather than only near its outline.
     if (entity.type === 'TEXT' && textContainsPoint(entity, world)) return 0;
     let best = Infinity;
-    for (const [a, b] of pickSegments(entity)) {
-      const q = pointOnSegmentClosest(world, a, b);
+    for (const [a, b, arc] of pickSegments(entity)) {
+      // A curved segment is picked off its arc, not the chord across it — the
+      // same rule the standalone-curve branch above follows, including falling
+      // back to the nearer end once the cursor is past the sweep.
+      let q;
+      if (arc) {
+        const angle = angleFromCenter(arc.center, world);
+        q = angleOnArc(angle, arc)
+          ? circularPoint(arc.center, arc.radius, angle)
+          : (dist(world, a) <= dist(world, b) ? a : b);
+      } else {
+        q = pointOnSegmentClosest(world, a, b);
+      }
       const qs = worldToScreen(q);
       best = Math.min(best, Math.hypot(qs.x - state.mouseScreen.x, qs.y - state.mouseScreen.y));
     }
@@ -5666,6 +6401,13 @@ kbd { font-size: 9px; opacity: .65; }
     if (points.length < 2) return { error: 'That entity has no extendable endpoint.' };
     const extendStart = dist(world, points[0]) <= dist(world, points[points.length - 1]);
     const endpointIndex = extendStart ? 0 : points.length - 1;
+    // An extension runs along the end segment's own direction, and a curved
+    // segment's direction is its tangent rather than its chord — a different
+    // operation (growing the arc's sweep) than the one below.
+    if (hit.entity.type === 'PLINE' &&
+        polylineBulge(hit.entity, extendStart ? 0 : points.length - 2) !== 0) {
+      return { error: 'That end of the polyline is curved; EXTEND works from a straight end.' };
+    }
     const adjacentIndex = extendStart ? 1 : points.length - 2;
     const origin = points[endpointIndex];
     const adjacent = points[adjacentIndex];
@@ -6118,9 +6860,18 @@ kbd { font-size: 9px; opacity: .65; }
       const center = worldToScreen(e.center);
       ctx.arc(center.x, center.y, e.radius * state.view.scale, -e.startAngle, -e.endAngle, true);
     } else {
-      for (const [a,b] of entitySegments(e)) {
+      for (const [a,b,arc] of entitySegments(e)) {
         const sa = worldToScreen(a), sb = worldToScreen(b);
-        ctx.moveTo(sa.x,sa.y); ctx.lineTo(sb.x,sb.y);
+        ctx.moveTo(sa.x,sa.y);
+        if (arc) {
+          // Screen Y runs opposite world Y, so the angles are negated and the
+          // sweep direction flips with them: a counter-clockwise world arc is
+          // drawn anticlockwise=true here, exactly as an ARC entity is above.
+          const center = worldToScreen(arc.center);
+          ctx.arc(center.x, center.y, arc.radius * state.view.scale, -arc.angleA, -arc.angleB, arc.sweep > 0);
+        } else {
+          ctx.lineTo(sb.x,sb.y);
+        }
       }
     }
     ctx.stroke();
@@ -6532,6 +7283,54 @@ kbd { font-size: 9px; opacity: .65; }
     },
   });
 
+  // ---------------------------------------------------------------------------
+  // CIRCLE Ttr
+  //
+  // Two objects and a radius. The construction — every circle of that radius
+  // touching both — is shared with FILLET and lives in geometry/tangentCircle.js;
+  // what belongs here is only the command's side of it: which objects were
+  // picked, and where on them, since that is what decides which of the several
+  // valid answers the user meant.
+  // ---------------------------------------------------------------------------
+
+  function pickTangentEdge(world, alreadyPicked) {
+    const hit = hitTestSegment(world, 10, null, true);
+    // hitTestSegment already skips anything on a locked or hidden layer, and a
+    // DIM or TEXT contributes no segments to it, so a hit here is always an
+    // object a circle can legitimately be tangent to.
+    if (!hit) return { error: 'CIRCLE Ttr — No object there. Click a line, polyline segment, arc, or circle.' };
+    // A curved polyline segment has a centre and radius of its own that edgeRef
+    // does not carry, so tangency to it would silently be computed against its
+    // chord. Refused by name, as FILLET refuses the same segment.
+    if (hit.arc) return { error: 'CIRCLE Ttr — That polyline segment is curved; pick a straight one, or an arc.' };
+    const segmentIndex = hit.kind === 'SEGMENT' ? hit.segmentIndex : 0;
+    if (alreadyPicked.some(picked => picked.entityId === hit.entity.id && picked.segmentIndex === segmentIndex)) {
+      return { error: 'CIRCLE Ttr — Pick a second, different object or segment.' };
+    }
+    return { entityId: hit.entity.id, segmentIndex, point: hit.point };
+  }
+
+  function solveTangentCircle(operation, radius) {
+    const refs = operation.tangents.map(picked => {
+      const entity = state.entities.find(candidate => candidate.id === picked.entityId);
+      return entity ? edgeRef(entity, picked.segmentIndex) : null;
+    });
+    if (refs.length < 2 || refs.some(ref => !ref)) {
+      return { error: 'One of those objects is no longer in the drawing.' };
+    }
+    return tangentTangentRadiusCircle(refs[0], refs[1], operation.tangents[0].point, operation.tangents[1].point, radius);
+  }
+
+  function commitTangentCircle(operation, radius) {
+    const solved = solveTangentCircle(operation, radius);
+    if (solved.error) {
+      updatePrompt(solved.error);
+      return;
+    }
+    if (addCircle(solved.center, solved.radius)) setMode('SELECT');
+    else updatePrompt('That tangent circle could not be created on this layer.');
+  }
+
   defineCommand('CIRCLE', {
     creates: true,
     // 2P and 3P treat a number as a directed distance from the last point.
@@ -6555,16 +7354,40 @@ kbd { font-size: 9px; opacity: .65; }
         if (stage === 'SECOND') return 'CIRCLE 3P — Specify second point:';
         return 'CIRCLE 3P — Specify third point:';
       }
+      if (method === 'TTR') {
+        if (stage === 'FIRST') return 'CIRCLE Ttr — Specify point on object for first tangent:';
+        if (stage === 'SECOND') return 'CIRCLE Ttr — Specify point on object for second tangent:';
+        return 'CIRCLE Ttr — Specify radius of circle:';
+      }
       if (method === 'CENTER_DIAMETER') {
         return 'CIRCLE Diameter — Specify diameter or point:';
       }
       return stage === 'CENTER'
-        ? 'CIRCLE — Specify center point or [2P/3P]:'
+        ? 'CIRCLE — Specify center point or [2P/3P/Ttr]:'
         : 'CIRCLE — Specify radius or [Diameter]:';
     },
 
     point(p) {
       const operation = state.circle;
+      if (operation.method === 'TTR') {
+        if (operation.stage === 'RADIUS') {
+          // No centre exists yet to rubber-band a radius from, so the length is
+          // measured from the first point picked on an object — the preview
+          // shows the circle that produces, which is what makes it readable.
+          commitTangentCircle(operation, dist(operation.tangents[0].point, p));
+        } else {
+          const picked = pickTangentEdge(p, operation.tangents);
+          if (picked.error) {
+            updatePrompt(picked.error);
+          } else {
+            operation.tangents.push(picked);
+            operation.stage = operation.tangents.length === 1 ? 'SECOND' : 'RADIUS';
+            updatePrompt();
+          }
+        }
+        draw();
+        return;
+      }
       if (operation.method === 'TWO_POINT') {
         if (operation.stage === 'FIRST') {
           state.currentPoints = [{ ...p }];
@@ -6614,6 +7437,18 @@ kbd { font-size: 9px; opacity: .65; }
 
     distance(value) {
       const operation = state.circle;
+      if (operation?.method === 'TTR') {
+        // A number is only ever the radius here. Claiming it at the earlier
+        // stages too is what lets those stages say what they actually want
+        // instead of the entry falling through as an unknown command.
+        if (operation.stage !== 'RADIUS') {
+          updatePrompt('CIRCLE Ttr — Pick an object to be tangent to, not a distance.');
+          draw();
+          return true;
+        }
+        commitTangentCircle(operation, value);
+        return true;
+      }
       if (!state.currentPoints.length ||
           !['CENTER_RADIUS', 'CENTER_DIAMETER'].includes(operation?.method)) return false;
       const radius = operation.method === 'CENTER_DIAMETER' ? value / 2 : value;
@@ -6652,6 +7487,18 @@ kbd { font-size: 9px; opacity: .65; }
         }
         return true;
       }
+      if (['T', 'TTR', 'TAN'].includes(keyword)) {
+        if (operation.stage !== 'CENTER' || state.currentPoints.length) {
+          updatePrompt('Choose Ttr before specifying the center point.');
+        } else {
+          operation.method = 'TTR';
+          operation.stage = 'FIRST';
+          operation.tangents = [];
+          updatePrompt();
+          draw();
+        }
+        return true;
+      }
       if (['D', 'DIA', 'DIAMETER'].includes(keyword)) {
         if (operation.method !== 'CENTER_RADIUS' || operation.stage !== 'RADIUS' || !state.currentPoints.length) {
           updatePrompt('Specify the circle center before choosing Diameter.');
@@ -6666,8 +7513,19 @@ kbd { font-size: 9px; opacity: .65; }
       return false;
     },
 
+    previewReady() {
+      return state.circle?.method === 'TTR'
+        ? state.circle.stage === 'RADIUS'
+        : state.currentPoints.length > 0;
+    },
+
     preview(p) {
       const method = state.circle?.method || 'CENTER_RADIUS';
+      if (method === 'TTR') {
+        const solved = solveTangentCircle(state.circle, dist(state.circle.tangents[0].point, p));
+        if (!solved.error) drawEntity({ type: 'CIRCLE', center: solved.center, radius: solved.radius }, true);
+        return;
+      }
       if (method === 'TWO_POINT') {
         const first = state.currentPoints[0];
         drawEntity({
@@ -7010,11 +7868,13 @@ kbd { font-size: 9px; opacity: .65; }
       );
     } else if (entity.type === 'PLINE') {
       const closed = polylineIsClosed(entity);
+      const curved = entitySegments(entity).filter(([, , arc]) => arc).length;
       rows.push(
         ['Vertices', String(entity.points.length)],
         ['Closed', closed ? 'Yes' : 'No'],
-        [closed ? 'Perimeter' : 'Length', formatLengthLabel(entityLength(entity))],
       );
+      if (curved) rows.push(['Curved segments', String(curved)]);
+      rows.push([closed ? 'Perimeter' : 'Length', formatLengthLabel(entityLength(entity))]);
       if (closed) rows.push(['Area', formatArea(entityArea(entity))]);
     } else if (entity.type === 'CIRCLE') {
       rows.push(
@@ -8661,225 +9521,6 @@ kbd { font-size: 9px; opacity: .65; }
   });
 
   // ---------------------------------------------------------------------------
-  // geometry/offset.js
-  // ---------------------------------------------------------------------------
-
-  function infiniteLineIntersection(a, b, c, d) {
-    const r = { x: b.x - a.x, y: b.y - a.y };
-    const s = { x: d.x - c.x, y: d.y - c.y };
-    const den = r.x * s.y - r.y * s.x;
-    if (Math.abs(den) < 1e-10) return null;
-    const ca = { x: c.x - a.x, y: c.y - a.y };
-    const t = (ca.x * s.y - ca.y * s.x) / den;
-    return { x: a.x + t * r.x, y: a.y + t * r.y };
-  }
-
-  function offsetSideSign(entity, sidePoint) {
-    let best = null;
-    for (const [a, b] of entitySegments(entity)) {
-      const q = pointOnSegmentClosest(sidePoint, a, b);
-      const gap = dist(sidePoint, q);
-      if (!best || gap < best.gap) {
-        const cross = (b.x - a.x) * (sidePoint.y - a.y) - (b.y - a.y) * (sidePoint.x - a.x);
-        best = { gap, cross };
-      }
-    }
-    if (!best || Math.abs(best.cross) < 1e-9) return 0;
-    return best.cross > 0 ? 1 : -1;
-  }
-
-  function shiftSegment(a, b, distance, side) {
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const length = Math.hypot(dx, dy);
-    if (length < 1e-9) return null;
-    const nx = -dy / length * distance * side;
-    const ny = dx / length * distance * side;
-    return [
-      { x: a.x + nx, y: a.y + ny },
-      { x: b.x + nx, y: b.y + ny },
-    ];
-  }
-
-  function joinedOffsetPoint(previous, current) {
-    return infiniteLineIntersection(previous[0], previous[1], current[0], current[1]) || {
-      x: (previous[1].x + current[0].x) / 2,
-      y: (previous[1].y + current[0].y) / 2,
-    };
-  }
-
-  // OFFSET currently produces one mitered path. If the correct result needs
-  // splitting or removing loops, refuse it instead of drawing a plausible but
-  // incorrect path. These checks also run for the preview.
-  function pathSegments(points, closed) {
-    return points.slice(0, closed ? points.length : -1)
-      .map((point, index) => [point, points[(index + 1) % points.length]]);
-  }
-
-  function segmentBoundsNear(a, b, c, d, tolerance) {
-    return Math.min(a.x, b.x) <= Math.max(c.x, d.x) + tolerance &&
-      Math.max(a.x, b.x) + tolerance >= Math.min(c.x, d.x) &&
-      Math.min(a.y, b.y) <= Math.max(c.y, d.y) + tolerance &&
-      Math.max(a.y, b.y) + tolerance >= Math.min(c.y, d.y);
-  }
-
-  function segmentsMeet(a, b, c, d, tolerance) {
-    if (!segmentBoundsNear(a, b, c, d, tolerance)) return false;
-    if (dist(a, pointOnSegmentClosest(a, c, d)) <= tolerance ||
-        dist(b, pointOnSegmentClosest(b, c, d)) <= tolerance ||
-        dist(c, pointOnSegmentClosest(c, a, b)) <= tolerance ||
-        dist(d, pointOnSegmentClosest(d, a, b)) <= tolerance) return true;
-    const side = (p, q, r) => {
-      const length = dist(p, q);
-      return ((q.x - p.x) / length) * (r.y - p.y) -
-        ((q.y - p.y) / length) * (r.x - p.x);
-    };
-    const opposite = (first, second) =>
-      (first > tolerance && second < -tolerance) ||
-      (first < -tolerance && second > tolerance);
-    return opposite(side(a, b, c), side(a, b, d)) &&
-      opposite(side(c, d, a), side(c, d, b));
-  }
-
-  function pathHasCrossings(segments, closed, tolerance) {
-    for (let i = 0; i < segments.length; i++) {
-      const [a, b] = segments[i];
-      if (dist(a, b) <= tolerance) return true;
-      for (let j = i + 1; j < segments.length; j++) {
-        const [c, d] = segments[j];
-        const adjacent = j === i + 1 || (closed && i === 0 && j === segments.length - 1);
-        if (adjacent) {
-          // Adjacent edges may share their vertex, but cannot double back.
-          const incoming = j === i + 1 ? a : b;
-          const joint = j === i + 1 ? b : a;
-          const outgoing = j === i + 1 ? d : c;
-          if (dist(incoming, pointOnSegmentClosest(incoming, joint, outgoing)) <= tolerance ||
-              dist(outgoing, pointOnSegmentClosest(outgoing, incoming, joint)) <= tolerance) return true;
-        } else if (segmentsMeet(a, b, c, d, tolerance)) return true;
-      }
-    }
-    return false;
-  }
-
-  function offsetPathIsValid(source, result, closed, distance) {
-    if (result.some(point => !cleanPoint(point))) return false;
-    const magnitude = source.concat(result).reduce((maximum, point) =>
-      Math.max(maximum, Math.abs(point.x), Math.abs(point.y)), 1);
-    const tolerance = Math.max(1e-9, distance * 1e-8, magnitude * Number.EPSILON * 32);
-    const before = pathSegments(source, closed);
-    const after = pathSegments(result, closed);
-    if (pathHasCrossings(before, closed, tolerance) || pathHasCrossings(after, closed, tolerance)) return false;
-    for (let i = 0; i < before.length; i++) {
-      const [a, b] = before[i];
-      const [c, d] = after[i];
-      // A surviving edge must retain its direction. This rejects polygons that
-      // have passed through collapse and reappeared on the other side.
-      const length = dist(a, b);
-      if (((b.x - a.x) / length) * (d.x - c.x) +
-          ((b.y - a.y) / length) * (d.y - c.y) <= tolerance) return false;
-      for (const [p, q] of before) {
-        if (!segmentBoundsNear(c, d, p, q, distance + tolerance)) continue;
-        if (segmentsMeet(c, d, p, q, tolerance)) return false;
-        const gap = Math.min(
-          dist(c, pointOnSegmentClosest(c, p, q)), dist(d, pointOnSegmentClosest(d, p, q)),
-          dist(p, pointOnSegmentClosest(p, c, d)), dist(q, pointOnSegmentClosest(q, c, d)),
-        );
-        if (!Number.isFinite(gap) || gap < distance - tolerance) return false;
-      }
-    }
-    return true;
-  }
-
-  function offsetEntity(entity, distance, sidePoint, id = entity.id) {
-    if (!['LINE', 'PLINE', 'CIRCLE', 'ARC'].includes(entity.type) || distance <= 0) return null;
-
-    if (entity.type === 'CIRCLE' || entity.type === 'ARC') {
-      const pointDistance = dist(entity.center, sidePoint);
-      if (Math.abs(pointDistance - entity.radius) < 1e-9) return null;
-      const radius = pointDistance > entity.radius ? entity.radius + distance : entity.radius - distance;
-      return radius > 1e-9 ? { ...entity, id, center: { ...entity.center }, radius } : null;
-    }
-
-    const side = offsetSideSign(entity, sidePoint);
-    if (!side) return null;
-
-    if (entity.type === 'LINE') {
-      const shifted = shiftSegment(entity.a, entity.b, distance, side);
-      return shifted ? { ...entity, id, a: shifted[0], b: shifted[1] } : null;
-    }
-
-    const points = entity.points.map(point => ({ ...point }));
-    if (entity.closed && points.length > 1 && dist(points[0], points[points.length - 1]) < 1e-9) points.pop();
-    if (points.length < (entity.closed ? 3 : 2)) return null;
-
-    const sourceSegments = [];
-    for (let i = 0; i < points.length - 1; i++) sourceSegments.push([points[i], points[i + 1]]);
-    if (entity.closed) sourceSegments.push([points[points.length - 1], points[0]]);
-    const shifted = sourceSegments.map(segment => shiftSegment(segment[0], segment[1], distance, side));
-    if (shifted.some(segment => !segment)) return null;
-
-    const offsetPoints = [];
-    if (entity.closed) {
-      for (let i = 0; i < shifted.length; i++) {
-        offsetPoints.push(joinedOffsetPoint(shifted[(i - 1 + shifted.length) % shifted.length], shifted[i]));
-      }
-    } else {
-      offsetPoints.push(shifted[0][0]);
-      for (let i = 1; i < shifted.length; i++) {
-        offsetPoints.push(joinedOffsetPoint(shifted[i - 1], shifted[i]));
-      }
-      offsetPoints.push(shifted[shifted.length - 1][1]);
-    }
-
-    if (!offsetPathIsValid(points, offsetPoints, Boolean(entity.closed), distance)) return null;
-    return { ...entity, id, points: offsetPoints, closed: Boolean(entity.closed) };
-  }
-
-  function isOffsettable(entity) {
-    return entity && ['LINE', 'PLINE', 'CIRCLE', 'ARC'].includes(entity.type);
-  }
-
-  function setOffsetDistance(value) {
-    if (state.mode !== 'OFFSET' || state.offset?.stage !== 'DISTANCE') return false;
-    if (!Number.isFinite(value) || value <= 0) {
-      updatePrompt('Distance must be greater than zero.');
-      return true;
-    }
-    state.offset.distance = value;
-    state.offset.stage = state.offset.sourceId ? 'SIDE' : 'SOURCE';
-    updatePrompt();
-    draw();
-    return true;
-  }
-
-  function acceptOffsetSource() {
-    if (state.mode !== 'OFFSET' || state.offset?.stage !== 'SOURCE') return false;
-    const selected = state.entities.filter(entity => state.selected.has(entity.id) && isEntityEditable(entity));
-    if (selected.length !== 1 || !isOffsettable(selected[0])) {
-      updatePrompt(selected.length ? 'Select exactly one line, polyline, circle, or arc.' : 'No object selected.');
-      return true;
-    }
-    state.offset.sourceId = selected[0].id;
-    state.offset.stage = 'SIDE';
-    updatePrompt();
-    draw();
-    return true;
-  }
-
-  function applyOffset(sidePoint) {
-    if (state.mode !== 'OFFSET' || state.offset?.stage !== 'SIDE') return;
-    const source = state.entities.find(entity => entity.id === state.offset.sourceId && isEntityEditable(entity));
-    const result = source && offsetEntity(source, state.offset.distance, sidePoint, state.nextId);
-    if (!result) {
-      updatePrompt('Offset rejected: the result collapses, crosses itself, or has no valid side. Try a smaller distance or another side.');
-      return;
-    }
-    if (!commitGeometry([...state.entities, result], { nextId: state.nextId + 1 })) return;
-    state.selected = new Set([result.id]);
-    setMode('SELECT');
-  }
-
-  // ---------------------------------------------------------------------------
   // geometry/fillet.js
   // ---------------------------------------------------------------------------
 
@@ -8893,17 +9534,17 @@ kbd { font-size: 9px; opacity: .65; }
   // cleanup — the tangent length falls out as zero and the two edges simply meet
   // at their intersection.
   //
-  // An "edge" is a LINE entity or one segment of a PLINE — see edgeRef(). The
-  // two edges are ordinarily two different entities, each trimmed/extended by
-  // rewriting its own endpoint. When they are instead the two segments either
-  // side of one polyline vertex (the everyday "round this rectangle's corner"
-  // case), that shared vertex has to become two separate points rather than
-  // one — see sharedVertexIndex()/spliceEntity() — since it is the single point
-  // where both edges currently meet. Polylines here have no curved (bulge)
-  // segment, so a shared vertex can be chamfered (the new points are a straight
-  // cut, which a polyline can represent natively) but not filleted; that case
-  // is refused by name rather than either faking a straight "arc" or breaking
-  // the polyline into pieces to carry a real one.
+  // An "edge" is a LINE entity or one segment of a PLINE — see edgeRef() in
+  // tangentCircle.js. The two edges are ordinarily two different entities, each
+  // trimmed or extended by rewriting its own endpoint. When they are instead the
+  // two segments either side of one polyline vertex (the everyday "round this
+  // rectangle's corner" case), that shared vertex has to become two separate
+  // points rather than one — see sharedVertexIndex()/spliceEntity() — since it
+  // is the single point where both edges currently meet. Both operations write
+  // their result back into the polyline itself: a chamfer as the straight
+  // segment between the two new points, a fillet as that segment's bulge (see
+  // core/math.js). Either way the polyline stays one object, which is what
+  // rounding a rectangle's corner is supposed to leave you with.
   //
   // FILLET also accepts ARC and CIRCLE edges, in any combination with each
   // other or with a line/polyline segment — see filletCurved() below. A CIRCLE
@@ -8914,7 +9555,9 @@ kbd { font-size: 9px; opacity: .65; }
   // CHAMFER has no equivalent: a straight cut at an arc-length distance from an
   // arc/circle is a murkier idea than a radius, so it still refuses them by
   // name, per the roadmap's rule that an unsupported case is reported and the
-  // original geometry preserved.
+  // original geometry preserved. Neither works from a polyline segment that is
+  // already curved: a rounded corner has no straight direction to build the next
+  // one from, and that is refused by name too — see cornerPick().
   // ---------------------------------------------------------------------------
 
   const CORNER_TOLERANCE = 1e-9;
@@ -8990,29 +9633,6 @@ kbd { font-size: 9px; opacity: .65; }
     return first.layerId === second.layerId ? first.layerId : state.currentLayerId;
   }
 
-  // An edge for corner purposes: a LINE entity (its whole a/b span), or one
-  // segment of a PLINE, named by the point-array indices of its two ends so a
-  // result can be written back to just that part of the polyline. `a`/`b` are
-  // the actual point objects the entity stores, not copies, so arm.far — itself
-  // one of `a`/`b`, see cornerArm() — can be matched back to its index by
-  // reference in sharedVertexIndex()/buildIndependentUpdates().
-  function edgeRef(entity, segmentIndex) {
-    if (entity.type === 'LINE') {
-      return { entity, layerId: entity.layerId, kind: 'line', a: entity.a, b: entity.b, pointIndexA: null, pointIndexB: null };
-    }
-    if (entity.type === 'ARC' || entity.type === 'CIRCLE') {
-      return { entity, layerId: entity.layerId, kind: 'circle', center: entity.center, radius: entity.radius };
-    }
-    const count = entity.points.length;
-    const pointIndexA = segmentIndex;
-    const pointIndexB = (segmentIndex + 1) % count;
-    return {
-      entity, layerId: entity.layerId, kind: 'line',
-      a: entity.points[pointIndexA], b: entity.points[pointIndexB],
-      pointIndexA, pointIndexB,
-    };
-  }
-
   // Two edges share a polyline corner when they are segments of the same
   // polyline and one's endpoint is the other's — the ordinary case of picking
   // the two edges either side of one vertex. Returns that vertex's index, or
@@ -9031,15 +9651,36 @@ kbd { font-size: 9px; opacity: .65; }
   // the later one. Coincident points (FILLET 0's exact-intersection case, which
   // for an already-sharp polyline vertex is the vertex itself) collapse back to
   // one point rather than leaving a zero-length duplicate segment behind.
-  function spliceEntity(ref1, ref2, sharedIndex, t1, t2) {
+  //
+  // `arc` names the fillet circle the new segment should follow, or null for a
+  // chamfer's straight cut. The new segment takes the vertex's own index, so the
+  // segment that used to leave this vertex shifts along by one and every bulge
+  // after it moves with it.
+  function spliceEntity(ref1, ref2, sharedIndex, t1, t2, arc = null) {
     const [into, outOf] = ref1.pointIndexB === sharedIndex ? [t1, t2] : [t2, t1];
     const points = ref1.entity.points.map(point => ({ ...point }));
+    const bulges = polylineBulgeList(ref1.entity);
     if (dist(into, outOf) < CORNER_TOLERANCE) {
       points[sharedIndex] = into;
-    } else {
-      points.splice(sharedIndex, 1, into, outOf);
+      return withPolylineBulges({ ...ref1.entity, points }, bulges);
     }
-    return { ...ref1.entity, points };
+    points.splice(sharedIndex, 1, into, outOf);
+    bulges.splice(sharedIndex, 0, arc ? filletBulge(arc.center, into, outOf) : 0);
+    return withPolylineBulges({ ...ref1.entity, points }, bulges);
+  }
+
+  // The bulge of a fillet arc travelled from `into` to `outOf`. A fillet never
+  // sweeps more than half a turn, so the sign of the cross product settles the
+  // direction outright: positive means the short way round is counter-clockwise.
+  function filletBulge(center, into, outOf) {
+    const cross = (into.x - center.x) * (outOf.y - center.y) -
+      (into.y - center.y) * (outOf.x - center.x);
+    return bulgeForArc(
+      center,
+      angleFromCenter(center, into),
+      angleFromCenter(center, outOf),
+      cross > 0,
+    );
   }
 
   // The ordinary case: each edge's near endpoint (arm.far is the one kept, see
@@ -9069,100 +9710,15 @@ kbd { font-size: 9px; opacity: .65; }
   // ---------------------------------------------------------------------------
   // FILLET on a curved edge (ARC or CIRCLE), alone or paired with another one.
   //
-  // A line/line corner has one well-defined intersection point to build from.
-  // Two general curves generally don't — a line and a circle can cross twice or
-  // not at all, so there is no single "corner" to bisect. Real CAD fillet works
-  // around this by constructing loci instead: the set of points a candidate
-  // fillet centre could sit at, one locus per edge, then intersecting them.
-  //
-  // For a line, that locus is the line shifted by the radius, on either side
-  // (two candidates). For a circle of radius r, it is a concentric circle of
-  // radius r+R (the fillet arc sits outside it, the common "round this corner"
-  // case) or |r-R| (the fillet arc is internally tangent — nested either way
-  // round, wrapping inside a bore or swallowing a small circle whole).
-  //
-  // Pairing every locus of one edge against every locus of the other, and
-  // keeping every intersection, produces every geometrically valid tangent
-  // circle — up to eight of them for two curved edges. Exactly one is what the
-  // user meant, and there is no way to know which from the radius alone; it is
-  // picked by the same rule a person uses when AutoCAD asks the same question:
-  // whichever solution's tangent points fall nearest the two points actually
-  // clicked.
+  // There is no single "corner" to bisect when a curve is involved: a line and a
+  // circle can cross twice or not at all. The construction that answers it
+  // instead — every circle of the given radius tangent to both edges — lives in
+  // tangentCircle.js, because CIRCLE's Ttr option asks precisely the same
+  // question and keeps the whole circle rather than an arc of it. What is left
+  // here is only what makes an answer a *fillet*: the tangent point has to land
+  // on the arc's actual sweep, and the arc that survives is the short way round
+  // between the two contact points.
   // ---------------------------------------------------------------------------
-
-  // An infinite line's intersections with a circle, unlike segmentCircleIntersections
-  // (core/math.js), which clips to the a–b segment: a fillet's offset line is a
-  // construction line, not the edge itself, so it must extend past both ends.
-  function infiniteLineCircleIntersections(a, b, center, radius) {
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const qa = dx * dx + dy * dy;
-    if (qa < CORNER_TOLERANCE || radius <= 0) return [];
-    const fx = a.x - center.x;
-    const fy = a.y - center.y;
-    const qb = 2 * (fx * dx + fy * dy);
-    const qc = fx * fx + fy * fy - radius * radius;
-    const discriminant = qb * qb - 4 * qa * qc;
-    if (discriminant < -1e-9) return [];
-    const root = Math.sqrt(Math.max(0, discriminant));
-    const points = [];
-    for (const t of [(-qb - root) / (2 * qa), (-qb + root) / (2 * qa)]) {
-      const point = { x: a.x + t * dx, y: a.y + t * dy };
-      if (points.some(p => dist(p, point) < 1e-7)) continue;
-      points.push(point);
-    }
-    return points;
-  }
-
-  // The loci a fillet-arc centre could sit at, at distance `radius` from this
-  // edge. A circle locus carries `sign`: the tangent point sits at
-  // center + sign*radius*unit(candidateCentre - center) — see
-  // circularTangentPoint(). That is +1 for the ordinary "outside" tangency and
-  // for the "this edge's circle swallows the fillet" nesting, and -1 only for
-  // the opposite nesting (the fillet swallows this edge's circle) — the one
-  // case where the tangent point sits on the far side of this edge's centre
-  // from the candidate fillet centre rather than the near side.
-  function offsetLoci(ref, radius) {
-    if (ref.kind === 'line') {
-      const loci = [];
-      for (const side of [1, -1]) {
-        const shifted = shiftSegment(ref.a, ref.b, radius, side);
-        if (shifted) loci.push({ kind: 'line', a: shifted[0], b: shifted[1] });
-      }
-      return loci;
-    }
-    const loci = [{ kind: 'circle', center: ref.center, radius: ref.radius + radius, sign: 1 }];
-    const nested = Math.abs(ref.radius - radius);
-    if (nested > CORNER_TOLERANCE) {
-      loci.push({ kind: 'circle', center: ref.center, radius: nested, sign: radius > ref.radius ? -1 : 1 });
-    }
-    return loci;
-  }
-
-  function locusIntersections(first, second) {
-    if (first.kind === 'line' && second.kind === 'line') {
-      const point = infiniteLineIntersection(first.a, first.b, second.a, second.b);
-      return point ? [point] : [];
-    }
-    if (first.kind === 'line') return infiniteLineCircleIntersections(first.a, first.b, second.center, second.radius);
-    if (second.kind === 'line') return infiniteLineCircleIntersections(second.a, second.b, first.center, first.radius);
-    return circleCircleIntersections(first, second);
-  }
-
-  function circularTangentPoint(ref, locus, candidateCenter) {
-    const ux = candidateCenter.x - ref.center.x;
-    const uy = candidateCenter.y - ref.center.y;
-    const length = Math.hypot(ux, uy);
-    if (length < CORNER_TOLERANCE) return null;
-    const sign = locus.sign;
-    return { x: ref.center.x + sign * ref.radius * ux / length, y: ref.center.y + sign * ref.radius * uy / length };
-  }
-
-  function edgeTangentPoint(ref, locus, candidateCenter) {
-    return ref.kind === 'line'
-      ? pointOnInfiniteLine(candidateCenter, ref.a, ref.b)
-      : circularTangentPoint(ref, locus, candidateCenter);
-  }
 
   // An ARC can only be trimmed to a tangent point that actually lies on its
   // current sweep — extending an arc's angular span the way a line can be
@@ -9190,19 +9746,11 @@ kbd { font-size: 9px; opacity: .65; }
     if (radius <= 0) {
       return { error: 'FILLET needs a radius greater than zero when an arc or circle is involved.' };
     }
-    const loci1 = offsetLoci(ref1, radius);
-    const loci2 = offsetLoci(ref2, radius);
     let best = null;
-    for (const locus1 of loci1) {
-      for (const locus2 of loci2) {
-        for (const center of locusIntersections(locus1, locus2)) {
-          const t1 = edgeTangentPoint(ref1, locus1, center);
-          const t2 = edgeTangentPoint(ref2, locus2, center);
-          if (!t1 || !t2 || !tangentWithinSweep(ref1, t1) || !tangentWithinSweep(ref2, t2)) continue;
-          const score = dist(t1, pickFirst) + dist(t2, pickSecond);
-          if (!best || score < best.score) best = { center, t1, t2, score };
-        }
-      }
+    for (const { center, t1, t2 } of tangentCircleSolutions(ref1, ref2, radius)) {
+      if (!tangentWithinSweep(ref1, t1) || !tangentWithinSweep(ref2, t2)) continue;
+      const score = dist(t1, pickFirst) + dist(t2, pickSecond);
+      if (!best || score < best.score) best = { center, t1, t2, score };
     }
     if (!best) return { error: 'That radius does not fit here.' };
 
@@ -9257,9 +9805,6 @@ kbd { font-size: 9px; opacity: .65; }
     }
 
     const shared = sharedVertexIndex(ref1, ref2);
-    if (shared !== null && radius > 0) {
-      return { error: "That polyline corner can't be filleted — polylines here can't hold a curved segment. Try CHAMFER, or fillet two separate lines instead." };
-    }
 
     const t1 = { x: corner.x + tangent * arm1.direction.x, y: corner.y + tangent * arm1.direction.y };
     const t2 = { x: corner.x + tangent * arm2.direction.x, y: corner.y + tangent * arm2.direction.y };
@@ -9293,6 +9838,14 @@ kbd { font-size: 9px; opacity: .65; }
       sweep = TAU - sweep;
     }
     if (sweep <= 1e-8) return { error: 'That radius does not fit this corner.' };
+
+    // Two segments of one polyline round into that polyline: the arc becomes the
+    // bulge of the new segment between the tangent points, exactly where the
+    // chamfer's straight cut would have gone. A separate ARC entity is only for
+    // edges that belong to different objects and have nothing to write into.
+    if (shared !== null) {
+      return { updated: [spliceEntity(ref1, ref2, shared, t1, t2, { center })], addition: null };
+    }
 
     return {
       updated: buildIndependentUpdates(ref1, arm1, t1, ref2, arm2, t2),
@@ -9346,6 +9899,12 @@ kbd { font-size: 9px; opacity: .65; }
       return { error: `${type} works on ${allowed}; that is a ${entity.type}.` };
     }
     if (!isEntityEditable(entity)) return { error: 'That line is on a locked or hidden layer.' };
+    // The corner maths below works from a straight edge's direction, which a
+    // curved polyline segment does not have. Filleting against one would mean
+    // treating an already-rounded corner as its chord, so it is refused by name.
+    if (hit.arc) {
+      return { error: `That polyline segment is already curved; ${type} works from its straight segments.` };
+    }
     return { entity, point: hit.point, segmentIndex: hit.segmentIndex };
   }
 
@@ -9422,13 +9981,48 @@ kbd { font-size: 9px; opacity: .65; }
   // with a tolerance rather than by equality.
   const JOIN_TOLERANCE = 1e-6;
 
-  // Only open lines and polylines can be joined: a closed shape has no free end
-  // to attach to, and joining an arc would need a polyline bulge, which this
-  // drawing format does not have.
+  // A path being chained: `points` vertices and the `bulges` of the segments
+  // between them, so one entry shorter. Only open shapes can be joined — a
+  // closed one has no free end to attach to — but an arc is now among them,
+  // since a polyline can hold the curve as a bulge on its own segment.
   function joinablePath(entity) {
-    if (entity.type === 'LINE') return [{ ...entity.a }, { ...entity.b }];
-    if (entity.type === 'PLINE' && !entity.closed) return entity.points.map(point => ({ ...point }));
+    if (entity.type === 'LINE') return { points: [{ ...entity.a }, { ...entity.b }], bulges: [0] };
+    if (entity.type === 'ARC') {
+      return {
+        points: [
+          circularPoint(entity.center, entity.radius, entity.startAngle),
+          circularPoint(entity.center, entity.radius, entity.endAngle),
+        ],
+        // Arcs are stored counter-clockwise from start to end, which is exactly
+        // the direction a positive bulge names.
+        bulges: [bulgeFromSweep(arcSweep(entity))],
+      };
+    }
+    if (entity.type === 'PLINE' && !entity.closed) {
+      return {
+        points: entity.points.map(point => ({ ...point })),
+        bulges: entity.points.slice(0, -1).map((vertex, index) => polylineBulge(entity, index)),
+      };
+    }
     return null;
+  }
+
+  // Walking a path backwards reverses the sense of every arc on it, so each
+  // bulge changes sign as well as place — the same reflection rule MIRROR uses.
+  function reversePath(path) {
+    return {
+      points: [...path.points].reverse(),
+      bulges: [...path.bulges].reverse().map(bulge => (bulge === 0 ? 0 : -bulge)),
+    };
+  }
+
+  // Joins two paths that already meet: `second` starts where `first` ends, so
+  // that shared vertex is stored once.
+  function concatPaths(first, second) {
+    return {
+      points: first.points.concat(second.points.slice(1)),
+      bulges: first.bulges.concat(second.bulges),
+    };
   }
 
   // Grows one chain outwards from the first path, reversing whatever attaches
@@ -9437,22 +10031,22 @@ kbd { font-size: 9px; opacity: .65; }
   // meet at one point the choice is arbitrary; the result is still a valid
   // chain through that vertex, just not necessarily the one the eye expects.
   function chainPaths(paths) {
-    let chain = paths[0].slice();
+    let chain = paths[0];
     const remaining = paths.slice(1);
     let attached = true;
     while (remaining.length && attached) {
       attached = false;
       for (let i = 0; i < remaining.length; i++) {
         const path = remaining[i];
-        const head = chain[0];
-        const tail = chain[chain.length - 1];
-        const first = path[0];
-        const last = path[path.length - 1];
+        const head = chain.points[0];
+        const tail = chain.points[chain.points.length - 1];
+        const first = path.points[0];
+        const last = path.points[path.points.length - 1];
         let merged = null;
-        if (dist(tail, first) < JOIN_TOLERANCE) merged = chain.concat(path.slice(1));
-        else if (dist(tail, last) < JOIN_TOLERANCE) merged = chain.concat(path.slice(0, -1).reverse());
-        else if (dist(head, last) < JOIN_TOLERANCE) merged = path.slice(0, -1).concat(chain);
-        else if (dist(head, first) < JOIN_TOLERANCE) merged = path.slice(1).reverse().concat(chain);
+        if (dist(tail, first) < JOIN_TOLERANCE) merged = concatPaths(chain, path);
+        else if (dist(tail, last) < JOIN_TOLERANCE) merged = concatPaths(chain, reversePath(path));
+        else if (dist(head, last) < JOIN_TOLERANCE) merged = concatPaths(path, chain);
+        else if (dist(head, first) < JOIN_TOLERANCE) merged = concatPaths(reversePath(path), chain);
         if (!merged) continue;
         chain = merged;
         remaining.splice(i, 1);
@@ -9470,7 +10064,7 @@ kbd { font-size: 9px; opacity: .65; }
     }
     const paths = selected.map(joinablePath);
     if (paths.some(path => !path)) {
-      return { error: 'Only open lines and polylines can be joined.' };
+      return { error: 'Only open lines, arcs and polylines can be joined.' };
     }
 
     const chain = chainPaths(paths);
@@ -9478,36 +10072,47 @@ kbd { font-size: 9px; opacity: .65; }
 
     // A chain that returns to its own start is a closed shape, and a closed
     // polyline stores the start once rather than repeating it at the end.
-    const closed = chain.length >= 4 && dist(chain[0], chain[chain.length - 1]) < JOIN_TOLERANCE;
-    if (closed) chain.pop();
+    // Dropping that repeat also leaves the bulge list exactly the length the
+    // entity needs, with the closing segment's curve last.
+    const points = chain.points;
+    const closed = points.length >= 4 && dist(points[0], points[points.length - 1]) < JOIN_TOLERANCE;
+    if (closed) points.pop();
+    const bulges = closed ? chain.bulges : [...chain.bulges, 0];
 
     const sourceIds = new Set(selected.map(entity => entity.id));
-    const joined = {
+    const joined = withPolylineBulges({
       id: state.nextId,
       type: 'PLINE',
       // The result belongs where the first source object lived, which is the
       // only choice that does not depend on the order they were picked in.
       layerId: selected[0].layerId,
-      points: chain,
+      points,
       closed,
-    };
+    }, bulges);
     const entities = [...state.entities.filter(entity => !sourceIds.has(entity.id)), joined];
     if (!commitGeometry(entities, { nextId: state.nextId + 1 })) return { error: 'Joining would create invalid geometry.' };
     state.selected = new Set([joined.id]);
     return { joined: selected.length };
   }
 
-  // Rectangles are stored as closed polylines, so this covers both.
+  // Rectangles are stored as closed polylines, so this covers both. A curved
+  // segment leaves as an ARC rather than as the chord across it, which is what
+  // makes EXPLODE the honest escape hatch the commands that refuse a curved
+  // polyline (OFFSET, TRIM, EXTEND) point users at.
   function explodedPieces(entity) {
     if (entity.type !== 'PLINE') return null;
-    const points = entity.points;
-    const segmentCount = entity.closed ? points.length : points.length - 1;
     const pieces = [];
-    for (let i = 0; i < segmentCount; i++) {
-      const a = points[i];
-      const b = points[(i + 1) % points.length];
+    for (const [a, b, arc] of entitySegments(entity)) {
       if (dist(a, b) <= 1e-9) continue;
-      pieces.push({ type: 'LINE', layerId: entity.layerId, a: { ...a }, b: { ...b } });
+      if (arc) {
+        pieces.push({
+          type: 'ARC', layerId: entity.layerId,
+          center: { ...arc.center }, radius: arc.radius,
+          startAngle: arc.startAngle, endAngle: arc.endAngle,
+        });
+      } else {
+        pieces.push({ type: 'LINE', layerId: entity.layerId, a: { ...a }, b: { ...b } });
+      }
     }
     return pieces.length ? pieces : null;
   }
@@ -9660,8 +10265,12 @@ kbd { font-size: 9px; opacity: .65; }
     // so the command skips straight from the distance to the side. Anything
     // else is an unrelated selection and is cleared rather than guessed at.
     begin() {
+      // A curved polyline is deliberately not accepted here, so the refusal is
+      // made at the selection stage by name rather than after a distance and a
+      // side have already been given — see acceptOffsetSource.
       const preselected = state.entities.filter(entity =>
-        state.selected.has(entity.id) && isEntityEditable(entity) && isOffsettable(entity),
+        state.selected.has(entity.id) && isEntityEditable(entity) && isOffsettable(entity) &&
+        !polylineHasBulges(entity),
       );
       const source = preselected.length === 1 && state.selected.size === 1 ? preselected[0] : null;
       if (!source) state.selected.clear();
@@ -10933,6 +11542,10 @@ kbd { font-size: 9px; opacity: .65; }
     parseDocumentText,
     entitySegments,
     pickSegments,
+    bulgeArc,
+    bulgePointAt,
+    polylineBulge,
+    polylineHasBulges,
     entityBBox,
     boxesOverlap,
     entityCrossesBox,
@@ -11081,6 +11694,7 @@ kbd { font-size: 9px; opacity: .65; }
     acceptTransformSelection,
     finishEdgeEdit,
     deleteSelected,
+    selectAt,
     undo,
     redo,
     closeCurrentPath,

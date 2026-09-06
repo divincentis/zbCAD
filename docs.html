@@ -1,7 +1,5 @@
 <!doctype html>
 <html lang="en">
-<script data-goatcounter="https://zbfraser.goatcounter.com/count"
-      async src="//gc.zgo.at/count.js"></script>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -191,6 +189,12 @@
         storage so an accidental tab close doesn't lose your work.
       </p>
       <p>
+        No data leaves your machine. zbCAD makes no network requests at all &mdash; there's no server
+        to talk to, nothing is uploaded, and nothing is tracked. Everything the app does happens
+        locally in your browser tab, using only the file you opened and the browser's own local
+        storage.
+      </p>
+      <p>
         zbCAD is built for a mouse and keyboard on a wide display; it has no touch input handling or
         small-viewport layout. A narrow window or a touch device shows a dismissible warning to that
         effect rather than silently breaking &mdash; <strong>Continue anyway</strong> skips it for
@@ -202,9 +206,9 @@
     <section>
       <p>The window is divided into a few fixed regions:</p>
       <ul>
-        <li><strong>Toolbar</strong> (top) &mdash; grouped buttons for File, Edit, Draw, Modify, Annotate, Inquiry, and View. Buttons that start a command show its keyboard alias in parentheses, e.g. <strong>Line (L)</strong>. The <strong>Auto-hide</strong> button next to the zbCAD logo collapses it down to that slim brand bar, freeing up canvas height; mouse over the bar (or <kbd>Tab</kbd> into it) to bring the toolbar back as an overlay without resizing the canvas underneath it. This preference is remembered per browser.</li>
+        <li><strong>Toolbar</strong> (top) &mdash; the <strong>File</strong>, <strong>Edit</strong>, <strong>View</strong>, and <strong>Inquiry</strong> groups sit in the always-visible top row beside the zbCAD logo; <strong>Select</strong>, <strong>Draw</strong>, <strong>Modify</strong>, and <strong>Annotate</strong> follow it, wrapping onto further rows as the window narrows. Buttons that start a command show its keyboard alias in parentheses, e.g. <strong>Line (L)</strong>. The <strong>Auto-hide</strong> button next to the logo collapses those drawing groups away, freeing up canvas height; mouse over the bar (or <kbd>Tab</kbd> into it) to bring them back as an overlay without resizing the canvas underneath it. File, Edit, View, and Inquiry stay put either way, so opening a drawing or undoing never needs the overlay. This preference is remembered per browser.</li>
         <li><strong>Canvas</strong> (center) &mdash; the drawing area. Left-click to pick points or select objects, scroll to zoom, middle-drag to pan, right-click or <kbd>Enter</kbd> to accept the current command's default action.</li>
-        <li><strong>Layers panel</strong> (right) &mdash; lists every layer with its visibility, lock, and color controls; collapsible via the <strong>&#9656;</strong> / <strong>&#9666;</strong> toggle at its top.</li>
+        <li><strong>Layers panel</strong> (right) &mdash; lists every layer with its visibility, lock, and color controls, plus its linetype, lineweight, and printable toggle; collapsible via the <strong>&#9656;</strong> / <strong>&#9666;</strong> toggle at its top.</li>
         <li><strong>Command line &amp; status bar</strong> (bottom) &mdash; the text input where you type commands, coordinates, and keywords, plus toggle buttons for <strong>SNAP</strong>, <strong>ORTHO</strong>, <strong>POLAR</strong>, the active object-snap set, the drawing units, the current file name, and the live cursor coordinates.</li>
         <li><strong>Inquiry panel</strong> &mdash; a small overlay that appears with the result of <code>DIST</code>, <code>AREA</code>, <code>ID</code>, or <code>LIST</code>; close it with the &times; button or <kbd>Esc</kbd>.</li>
       </ul>
@@ -266,6 +270,11 @@
         <tr><td>Nearest</td><td>The closest point on any segment/curve to the cursor &mdash; the fallback snap, consulted only when nothing more specific is under the pick aperture.</td></tr>
       </table>
       <p>When several snap points coincide on screen, the one listed first above wins, rather than whichever happens to be a pixel closer.</p>
+      <p>
+        A polyline's curved segment counts as an arc for every snap above: its center, quadrants and
+        tangent points are live, Midpoint lands halfway along the arc, and Nearest follows the curve
+        rather than the straight chord across it.
+      </p>
     </section>
 
     <section>
@@ -306,7 +315,8 @@
       <p>
         Every object lives on exactly one layer. The layers panel lists each with a radio-style
         "make current" marker, an editable name, a color swatch, a visibility toggle, a lock toggle,
-        and a delete button. New objects are drawn onto the current layer, chosen from the dropdown
+        and a delete button, over a second row carrying the layer's linetype, lineweight, and
+        printable toggle. New objects are drawn onto the current layer, chosen from the dropdown
         above the panel or by clicking a layer's marker. Locked layers can't be edited; hidden layers
         don't render and aren't picked by selection or snap.
       </p>
@@ -314,6 +324,21 @@
         <strong>Assign selection to current</strong> moves the selected objects onto whichever layer
         is current. Layer <code>0</code> can't be renamed or deleted, and the current layer can't be
         deleted while it's current.
+      </p>
+      <p>
+        A layer also carries three properties that decide how its objects are drawn rather than which
+        of them exist:
+      </p>
+      <table>
+        <tr><th>Property</th><th>Effect</th></tr>
+        <tr><td>Linetype</td><td>Continuous, Dashed, Dotted, Dash-Dot, or Center. The pattern is measured in screen pixels, not drawing units, so it stays legible at any zoom instead of collapsing into a solid line when you zoom out. Plotted, the same pattern is read as a paper length &mdash; a dashed line prints 3.2&nbsp;mm on, 1.6&nbsp;mm off.</td></tr>
+        <tr><td>Lineweight</td><td>The standard CAD table in millimetres, 0.00 to 2.11, defaulting to 0.25. On screen the width is a fixed multiple of the millimetre value rather than something that scales with zoom, again matching CAD convention. On the sheet it is the real plotted width, and <code>0.00</code> means "as thin as the device draws".</td></tr>
+        <tr><td>Printable</td><td>The &#128424;/&#128683; toggle. A non-printable layer still draws on screen and can still be edited and snapped to, but is left off the plotted sheet entirely &mdash; construction lines, notes to yourself, an underlay you traced.</td></tr>
+      </table>
+      <p>
+        Both linetype and lineweight are layer properties only; there is no per-object override.
+        Drawings saved before these existed open as continuous, 0.25&nbsp;mm, printable layers and
+        look exactly as they did.
       </p>
     </section>
 
@@ -464,6 +489,7 @@
         <p>Draws a single connected polyline entity (unlike LINE, whose segments are independent objects).</p>
         <p class="steps">Click a start point, then click each next vertex, Enter to finish (needs 2+ points to create anything).</p>
         <p class="keys"><code>C</code>/Close: closes the shape (needs 3+ points) and finishes &middot; <code>U</code>/Undo: removes the last vertex &middot; a typed number is a distance along the tracked direction &middot; ORTHO/POLAR apply &middot; a repeated point (same spot twice in a row) is rejected rather than silently producing a zero-length segment.</p>
+        <p class="keys">PLINE only draws straight segments, but a polyline's segments need not stay straight: <a href="#cmd-modify">FILLET</a> on one of its own corners and <a href="#cmd-modify">JOIN</a> chaining an arc onto it both store the curve <em>on</em> the polyline, so it stays one object. Everything downstream &mdash; picking, snapping, area and perimeter, dimensions, rendering and plotting &mdash; measures along the arc, not the chord across it. EXPLODE turns each curved segment back into an ARC.</p>
       </div>
 
       <div class="cmd-card">
@@ -475,9 +501,11 @@
 
       <div class="cmd-card">
         <h4><span class="name">CIRCLE</span><span class="aliases">alias C</span></h4>
-        <p>Draws a circle. Three construction methods, chosen before the center is picked.</p>
+        <p>Draws a circle. Four construction methods, chosen before the center is picked.</p>
         <p class="steps"><strong>Center-Radius</strong> (default): click the center, then click a point or type a number for the radius.</p>
         <p class="keys"><code>D</code>/<code>DIA</code>/<code>DIAMETER</code>: switch to Center-Diameter &mdash; same picks, but the value sets diameter instead of radius &middot; <code>2P</code>: switch to two-point mode &mdash; click each end of a diameter &middot; <code>3P</code>: switch to three-point mode &mdash; click three non-collinear points on the circumference. Degenerate input (zero size, collinear 3P points) is rejected with a prompt, keeping the command open.</p>
+        <p class="steps"><strong>Tangent-Tangent-Radius</strong> (<code>T</code>/<code>TTR</code>): click a point on each of two objects &mdash; a line, a polyline segment, an arc or a circle &mdash; then type the radius (or click a point, which measures the radius from the first tangent pick). The circle of that radius touching both appears.</p>
+        <p class="keys">Where a radius allows several answers &mdash; and it usually does &mdash; <em>where</em> you clicked on each object decides which one you get: the solution whose contact points land nearest your two picks wins. Click the inside of a corner for the circle that fits into it, the outside for the one that wraps around. A circle tangent to two lines that don't actually reach each other is offered too, touching their extensions, but only when nothing on the drawn segments fits. If no circle of that radius can touch both, the command says so and stays open for another radius.</p>
       </div>
 
       <div class="cmd-card">
@@ -500,7 +528,7 @@
 
       <div class="cmd-card">
         <h4><span class="name">TRIM</span><span class="aliases">alias TR</span> &nbsp;/&nbsp; <span class="name">EXTEND</span><span class="aliases">alias EX</span></h4>
-        <p>TRIM shortens a line/polyline/circle/arc against boundary geometry; EXTEND lengthens an open end to meet boundary geometry. The two share one command flow.</p>
+        <p>TRIM shortens a line/polyline/circle/arc against boundary geometry; EXTEND lengthens an open end to meet boundary geometry. The two share one command flow. Neither reshapes a polyline that has a curved segment, and nor does OFFSET &mdash; each says so and leaves the polyline alone; EXPLODE it first if you need the edit.</p>
         <p class="steps">If objects are selected before starting, those act as the boundary set; otherwise every other visible, editable object in the drawing is a valid boundary. Click the portion to remove (TRIM) or the end to extend (EXTEND) &mdash; repeat for as many edits as needed.</p>
         <p class="keys">Enter / right-click / Esc: finish. Picks are unsnapped, since they name which piece of which object is meant, not a coordinate.</p>
       </div>
@@ -509,12 +537,13 @@
         <h4><span class="name">FILLET</span><span class="aliases">alias F</span> &nbsp;/&nbsp; <span class="name">CHAMFER</span><span class="aliases">alias CHA</span></h4>
         <p>FILLET rounds a corner between two lines/polyline segments with an arc of a set radius; CHAMFER bevels it with a straight cut at set distance(s). Both work on independent LINE entities and on individual polyline segments/corners, and both remember the last radius/distance(s) you used between separate command runs.</p>
         <p class="steps">Click the first line/segment, then click the second line/segment to complete that corner. The command loops back to "select the first line," so several corners can be cleaned up in one run.</p>
+        <p class="keys">Rounding a corner of a polyline &mdash; two segments meeting at one of its own vertices &mdash; leaves it a single polyline with a genuinely curved segment, not a polyline plus a loose arc: round all four corners of a rectangle and you still have one object. FILLET also accepts arcs and circles in any combination, including against a line or polyline segment. CHAMFER does not: a straight cut measured along a curve is a murkier idea than a radius, so it says so rather than guessing. Neither will work from a segment that is <em>already</em> curved &mdash; a rounded corner has no straight direction to build the next one from.</p>
         <p class="keys">FILLET: type <code>R</code>/<code>RAD</code>/<code>RADIUS</code> first to set the radius &middot; CHAMFER: type <code>D</code>/<code>DIST</code>/<code>DISTANCE</code> first to set the first distance, then a second (defaults to match the first &mdash; give a different value for an asymmetric chamfer) &middot; Enter/right-click/Esc: finish &middot; a zero value squares off the corner; negative values are rejected &middot; picks are unsnapped, since each identifies an edge and a side of the corner.</p>
       </div>
 
       <div class="cmd-card">
         <h4><span class="name">JOIN</span><span class="aliases">alias J</span> &nbsp;/&nbsp; <span class="name">EXPLODE</span><span class="aliases">alias X</span> &nbsp;/&nbsp; <span class="name">ERASE</span><span class="aliases">alias E, DEL, DELETE</span></h4>
-        <p>JOIN merges compatible selected entities (e.g. collinear/contiguous lines or polyline segments) into one. EXPLODE breaks a polyline or other composite entity into its independent constituent entities. ERASE deletes the selection (also bound to the <kbd>Delete</kbd> key outside of any command).</p>
+        <p>JOIN merges selected open lines, arcs and polylines that meet end to end into one polyline; an arc becomes a curved segment of it. EXPLODE is the inverse, breaking a polyline into its independent constituent LINEs and ARCs. ERASE deletes the selection (also bound to the <kbd>Delete</kbd> key outside of any command).</p>
         <p class="steps">If objects are already selected when the command starts, it applies immediately. Otherwise it prompts "select objects" and applies once you press Enter/right-click.</p>
       </div>
 
@@ -616,7 +645,7 @@
         <h4><span class="name">LIST</span><span class="aliases">alias LI</span></h4>
         <p>Reports full geometric detail for the selected entities.</p>
         <p class="steps">If nothing is preselected, prompts "select objects," then Enter/right-click reports. If you select first and then type LIST, it reports immediately.</p>
-        <p class="keys">Per-type detail: <strong>LINE</strong> (endpoints, length, angle) &middot; <strong>PLINE</strong> (vertex count, open/closed, length or perimeter, area if closed) &middot; <strong>CIRCLE</strong> (center, radius, diameter, circumference, area) &middot; <strong>ARC</strong> (center, radius, start/end/included angle, arc length, chord) &middot; <strong>TEXT</strong> (position, height, rotation, content) &middot; <strong>DIM</strong> (type, measured text and exact value, endpoints, style name, and associativity: Yes/Partial/No, based on how many of its reference points still resolve to live geometry). A multi-entity selection also gets a summary (object count, total length, total area where applicable); only the first 20 entities are detailed, with a count of how many more weren't listed.</p>
+        <p class="keys">Per-type detail: <strong>LINE</strong> (endpoints, length, angle) &middot; <strong>PLINE</strong> (vertex count, open/closed, curved segment count if any, length or perimeter, area if closed &mdash; both measured along the curves) &middot; <strong>CIRCLE</strong> (center, radius, diameter, circumference, area) &middot; <strong>ARC</strong> (center, radius, start/end/included angle, arc length, chord) &middot; <strong>TEXT</strong> (position, height, rotation, content) &middot; <strong>DIM</strong> (type, measured text and exact value, endpoints, style name, and associativity: Yes/Partial/No, based on how many of its reference points still resolve to live geometry). A multi-entity selection also gets a summary (object count, total length, total area where applicable); only the first 20 entities are detailed, with a count of how many more weren't listed.</p>
       </div>
     </section>
 
