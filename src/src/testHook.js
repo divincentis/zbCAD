@@ -1,6 +1,6 @@
 import { COMMAND_ALIASES, resolveCommandName } from './commands/aliases.js';
 import { acceptInquirySelection, commitAreaKeyword, finishInquiryPoints } from './commands/inquiry.js';
-import { COMMANDS, activeCommand, cancelCurrent, closeCurrentPath, commandAcceptsPoint, commandInProgress, commandPreviewReady, commandSelectsObjects, commandTakesDistance, commandUsesOrtho, commandUsesSnap, commitPoint, finishCurrent, navigateHistory, startCommand, undoLastPoint } from './commands/registry.js';
+import { COMMANDS, activeCommand, cancelCurrent, closeCurrentPath, commandAcceptsPoint, commandInProgress, commandLiveValue, commandPreviewReady, commandSelectsObjects, commandTakesDistance, commandUsesOrtho, commandUsesSnap, commitPoint, finishCurrent, navigateHistory, startCommand, undoLastPoint } from './commands/registry.js';
 import { acceptTransformSelection } from './commands/transform.js';
 import { AUTOSAVE_BACKUP_KEY, AUTOSAVE_KEY, DOCUMENT_VERSION, POLAR_INCREMENTS } from './core/constants.js';
 import { SNAP_TYPES, defaultDimStyle, defaultSnapTypes, defaultUnitSettings } from './core/defaults.js';
@@ -23,7 +23,7 @@ import { buildDimension, dimensionGeometry, dimensionSegments, dimensionText, li
 import { buildPdfDocument, pdfTextWidthMM } from './output/pdf.js';
 import { buildPlotPlan, defaultPlotSettings, plotAreaBox } from './output/plot.js';
 import { cleanEntityRefs, exportDocumentText, parseDocumentText } from './model/document.js';
-import { boxesOverlap, cloneEntities, cloneLayers, duplicateEntities, entityArea, entityBBox, entityCrossesBox, entityLength, entitySegments, pickSegments, polygonArea, polylineBulge, polylineHasBulges, polylineIsClosed } from './model/entity.js';
+import { boxesOverlap, cloneEntities, cloneLayers, duplicateEntities, entityArea, entityBBox, entityCrossesBox, entityLength, entitySegments, mtextLinePosition, mtextLines, pickSegments, polygonArea, polylineBulge, polylineHasBulges, polylineIsClosed } from './model/entity.js';
 import { redo, undo } from './model/history.js';
 import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, setLayerLinetype, setLayerLineweight, toggleLayerLock, toggleLayerPrintable, toggleLayerVisibility } from './model/layers.js';
 import { loadDocumentText, newDrawing, restoreAutosave } from './model/persistence.js';
@@ -62,6 +62,8 @@ window.__cadPrototype = {
   polylineBulge,
   polylineHasBulges,
   entityBBox,
+  mtextLines,
+  mtextLinePosition,
   boxesOverlap,
   entityCrossesBox,
   dimSize,
@@ -201,6 +203,10 @@ window.__cadPrototype = {
   setUnitRescale(value) { unitRescaleCheck.checked = Boolean(value); refreshUnitsDialog(); },
   get promptText() { return promptEl.textContent; },
   submitCommandText(text = '') { commandInput.value = text; submitCommandInput(); },
+  // Mirrors the commandInput 'input' listener wired in ui/shell.js, so tests
+  // can drive the on-canvas live-typing preview without simulating a real
+  // keystroke event against the DOM stub.
+  commandLiveValue,
   acceptDefaultAction,
   cancelCurrent,
   navigateHistory,

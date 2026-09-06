@@ -232,6 +232,28 @@ export function cleanEntity(value, layerIds) {
     };
   }
 
+  if (type === 'MTEXT') {
+    const position = cleanPoint(value.position);
+    if (!position || !Number.isFinite(value.width) || value.width <= 1e-9) {
+      return { error: 'has invalid mtext placement' };
+    }
+    if (!Number.isFinite(value.height) || value.height <= 1e-9) return { error: 'has invalid mtext placement' };
+    if (!Number.isFinite(value.rotation)) return { error: 'has an invalid mtext rotation' };
+    if (typeof value.content !== 'string' || !value.content.trim() || value.content.length > 4000) {
+      return { error: 'has invalid mtext content' };
+    }
+    return {
+      entity: {
+        ...common,
+        position,
+        width: value.width,
+        height: value.height,
+        rotation: normalizeAngle(value.rotation),
+        content: value.content,
+      },
+    };
+  }
+
   return { error: `uses unsupported entity type ${type || '(missing)'}` };
 }
 

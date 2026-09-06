@@ -49,6 +49,10 @@ import { draw } from '../view/frame.js';
 //   keyword(text)    consumes a command-local keyword, ahead of alias lookup
 //   value(text)      consumes typed input that is neither a point nor a
 //                    distance: an angle in degrees, a scale factor
+//   liveValue(text)  the free-text box's uncommitted keystrokes, fired on
+//                    every keystroke rather than on submit — lets a command
+//                    preview what is being typed (TEXT/MTEXT content) on the
+//                    canvas instead of only in the command-line input itself
 //   basePoint()      the anchor for ORTHO, relative entry, and direct
 //                    distance, for commands that do not track currentPoints
 //   previewReady()   whether preview() has enough state to draw; defaults to
@@ -101,6 +105,10 @@ export function commandAcceptsPoint(command = activeCommand()) {
 
 export function commandCapturesSpace(command = activeCommand()) {
   return command ? staged(command.capturesSpace, command) : false;
+}
+
+export function commandLiveValue(text, command = activeCommand()) {
+  command?.liveValue?.(text);
 }
 
 export function commandPreviewReady(command = activeCommand()) {

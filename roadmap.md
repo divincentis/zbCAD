@@ -47,7 +47,7 @@ The architectural refactor (Phase 1) and most of Phase 2 have already happened:
 - Versioned native JSON document format, with a validate-before-commit gate that rejects a bad edit before it can reach history
 - Autosave with crash recovery, in IndexedDB, with a synchronous localStorage snapshot written only as the tab closes
 - Deterministic entity IDs, command-level undo/redo
-- Draw: line, polyline, rectangle, circle, arc, single-line text
+- Draw: line, polyline, rectangle, circle, arc, single-line and multiline text
 - Modify: erase, move, copy, rotate, scale, mirror, stretch, grips, join, explode, offset, trim, extend, fillet, chamfer
 - Annotate: linear, aligned, radius and diameter dimensions — **all associative** — plus dimension styles
 - Inquiry: distance, area, id, list
@@ -63,7 +63,9 @@ The architectural refactor (Phase 1) and most of Phase 2 have already happened:
 
 **Update September 2026: exact-scale PDF output shipped.** `PLOT` (`PLT`/`PRINT`, Ctrl/Cmd+P) writes the drawing as vector PDF at an exact drawing scale or fitted to the sheet — see the Phase 4 status note for what is and is not covered. Two new modules do the work: `output/plot.js` reduces the drawing to a plot plan (primitives in millimetres on the sheet, Y up) and `output/pdf.js` serialises that plan into PDF operators, using only the base-14 fonts so nothing has to be embedded. Keeping the plan separate from the writer is what makes the roadmap's scale acceptance test assertable directly rather than by rendering a page and measuring pixels. The drawing-scale preset list moved to a new `core/paper.js` and is now shared with the dimension style dialog, which needs the same number for its DIMSCALE — and gained the engineering scales (1" = 20' and friends) a roof plan is actually drawn at.
 
-**Not yet started:** multiline text, blocks, leaders and callouts, hatches, a multi-selection properties panel, underlays, DXF import/export (Phase 3 remainder and the input half of Phase 4).
+**Update September 2026: multiline text (MTEXT) shipped.** `MTEXT`/`MT` follows single-line TEXT's staged point/distance/angle-then-free-text shape with one addition: after the insertion point, an opposite corner (or typed distance) sets a fixed wrap width, then height and rotation as before, then content — except content is multi-line, so each Enter commits one line and stays in the command, and a blank Enter is what finishes entry (the same command-line shape AutoCAD's own MTEXT uses). Word wrap is estimated the same way TEXT's single-line footprint already was (character count × height × a fixed factor, since no real glyph metrics exist outside a canvas context), with a hard break for any single word wider than the box. MTEXT is wired into every place TEXT already was — bbox, hit-testing, move/rotate/scale/mirror/stretch, grips (an insertion-point grip plus a width grip, since there is no properties panel yet to type a new width into), save/load validation, ID/LIST, and PDF output (one plotted text run per wrapped line). Also fixed, for both TEXT and MTEXT: the content being typed previously showed only in the command-line input box, not on the drawing, until Enter committed it — every keystroke now updates an on-canvas preview too. 61 new headless checks in `test-mtext.mjs`; also verified in a real (headless) Chromium session that a multi-line box wraps and renders correctly and that the live preview actually appears on canvas while typing, not just in the command line.
+
+**Not yet started:** blocks, leaders and callouts, hatches, a multi-selection properties panel, underlays, DXF import/export (Phase 3 remainder and the input half of Phase 4).
 
 **Process note:** Phase 0's benchmark validation was run retroactively — the mechanical pass headlessly (see the Phase 0 status note), and the human feel-pass by the product owner in September 2026. Phase 0 is closed.
 
@@ -271,6 +273,19 @@ rotation, content), moved, rotated, scaled, stretched, and grip-edited, with
 save/load validation and an ID/LIST inquiry report. Multiline text and
 blocks are deliberately not started — scoped out for this pass. Verified
 headlessly and accepted in the product owner's live pass.
+
+### Status — multiline text (MTEXT) shipped (September 2026)
+
+MTEXT entities can now be placed (insertion point, opposite corner or typed
+distance for a fixed wrap width, height, rotation, multi-line content), moved,
+rotated, scaled, mirrored, stretched, and grip-edited (insertion point and
+wrap width), with save/load validation, an ID/LIST inquiry report, and PDF
+output. Word wrap is an estimate from character count, matching how TEXT's
+own footprint was already approximated in the absence of real glyph metrics.
+Blocks remain deliberately not started. The command-line content-typing
+preview gap flagged nowhere before this (typed text did not appear on the
+drawing until Enter) was fixed for both TEXT and MTEXT in the same pass.
+Verified headlessly (61 checks) and in a real Chromium session.
 
 ### Status — core command gaps closed (September 2026)
 

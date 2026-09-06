@@ -3,7 +3,7 @@ import { arcSweep, circularPoint, dist, normalizeAngle } from '../core/math.js';
 import { formatAngle, formatArea, formatLength, formatLengthLabel } from '../core/units.js';
 import { ctx } from '../dom.js';
 import { dimensionGeometry, dimensionText } from '../model/dimension.js';
-import { entityArea, entityLength, entitySegments, polygonArea, polylineIsClosed } from '../model/entity.js';
+import { entityArea, entityLength, entitySegments, mtextLines, polygonArea, polylineIsClosed } from '../model/entity.js';
 import { getLayer, isEntityVisible } from '../model/layerQuery.js';
 import { state } from '../state.js';
 import { showInquiryReport } from '../ui/inquiry.js';
@@ -326,6 +326,15 @@ export function entityReportGroup(entity) {
       ['Position', describePoint(entity.position)],
       ['Height', formatLengthLabel(entity.height)],
       ['Rotation', formatAngle(normalizeAngle(entity.rotation))],
+      ['Content', entity.content],
+    );
+  } else if (entity.type === 'MTEXT') {
+    rows.push(
+      ['Position', describePoint(entity.position)],
+      ['Width', formatLengthLabel(entity.width)],
+      ['Height', formatLengthLabel(entity.height)],
+      ['Rotation', formatAngle(normalizeAngle(entity.rotation))],
+      ['Lines', String(mtextLines(entity).length)],
       ['Content', entity.content],
     );
   } else if (entity.type === 'ARC') {

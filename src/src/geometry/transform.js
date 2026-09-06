@@ -33,7 +33,7 @@ export function translateEntity(entity, dx, dy, id = entity.id) {
       refs: entity.refs.map(ref => (ref ? { ...ref } : null)),
     };
   }
-  if (entity.type === 'TEXT') {
+  if (entity.type === 'TEXT' || entity.type === 'MTEXT') {
     return { ...entity, id, position: { x: entity.position.x + dx, y: entity.position.y + dy } };
   }
   return JSON.parse(JSON.stringify(entity));
@@ -94,7 +94,7 @@ export function rotateEntity(entity, base, angle, id = entity.id) {
       refs: entity.refs.map(ref => (ref ? { ...ref } : null)),
     };
   }
-  if (entity.type === 'TEXT') {
+  if (entity.type === 'TEXT' || entity.type === 'MTEXT') {
     return {
       ...entity,
       id,
@@ -152,6 +152,17 @@ export function scaleEntity(entity, base, factor, id = entity.id) {
     // Real CAD scales text height along with everything else, so a 2x SCALE
     // on a wall and its label keeps them in visual proportion.
     return { ...entity, id, position: scalePoint(entity.position, base, factor), height: entity.height * factor };
+  }
+  if (entity.type === 'MTEXT') {
+    // Width scales with height so the box's proportions — and therefore its
+    // wrapping — stay visually the same, not just the lettering inside it.
+    return {
+      ...entity,
+      id,
+      position: scalePoint(entity.position, base, factor),
+      height: entity.height * factor,
+      width: entity.width * factor,
+    };
   }
   return JSON.parse(JSON.stringify(entity));
 }
@@ -246,7 +257,7 @@ export function mirrorEntity(entity, axisA, axisB, id = entity.id) {
       refs: entity.refs.map(ref => (ref ? { ...ref } : null)),
     };
   }
-  if (entity.type === 'TEXT') {
+  if (entity.type === 'TEXT' || entity.type === 'MTEXT') {
     // AutoCAD's MIRRTEXT default, and for the same reason: the insertion point
     // moves with everything else, but the lettering keeps its own angle rather
     // than becoming a mirror image of itself. A note on a mirrored roof half

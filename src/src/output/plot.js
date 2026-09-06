@@ -5,7 +5,7 @@ import { DEFAULT_PAPER_SIZE_ID, PAPER_MARGIN_MM, paperMMPerDrawingUnit, paperSiz
 import { DRAWING_UNITS } from '../core/units.js';
 import { canvas } from '../dom.js';
 import { dimensionGeometry, dimensionText } from '../model/dimension.js';
-import { entityBBox, entitySegments } from '../model/entity.js';
+import { entityBBox, entitySegments, mtextLinePosition, mtextLines } from '../model/entity.js';
 import { getLayer, isLayerPrintable, isLayerVisible } from '../model/layerQuery.js';
 import { pdfTextWidthMM, pdfUnsupportedCharacters } from './pdf.js';
 import { state } from '../state.js';
@@ -160,6 +160,27 @@ export function plotEntityOps(entity, context) {
       baseline: 'alphabetic',
       color,
     }];
+  }
+  if (entity.type === 'MTEXT') {
+    if (!entity.content) return [];
+    // Map before filtering, so a blank wrapped line still occupies its index
+    // and every later line's y-position stays correct.
+    return mtextLines(entity).map((line, index) => {
+      if (!line) return null;
+      const anchor = toPaper(mtextLinePosition(entity, index));
+      return {
+        kind: 'text',
+        text: line,
+        x: anchor.x,
+        y: anchor.y,
+        angle: entity.rotation,
+        sizeMM: entity.height * context.mmPerUnit,
+        font: 'courier',
+        anchor: 'left',
+        baseline: 'alphabetic',
+        color,
+      };
+    }).filter(Boolean);
   }
 
   const widthMM = context.settings.lineweights

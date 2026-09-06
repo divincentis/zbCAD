@@ -22,7 +22,7 @@ export function distanceToEntityPx(world, entity) {
   }
   // A click anywhere inside a text run's footprint should select it, the way
   // a filled glyph area reads, rather than only near its outline.
-  if (entity.type === 'TEXT' && textContainsPoint(entity, world)) return 0;
+  if ((entity.type === 'TEXT' || entity.type === 'MTEXT') && textContainsPoint(entity, world)) return 0;
   let best = Infinity;
   for (const [a, b, arc] of pickSegments(entity)) {
     // A curved segment is picked off its arc, not the chord across it — the

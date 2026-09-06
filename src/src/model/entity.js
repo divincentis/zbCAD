@@ -1,4 +1,4 @@
-import { TAU, TEXT_WIDTH_FACTOR } from '../core/constants.js';
+import { MTEXT_LINE_SPACING, TAU, TEXT_WIDTH_FACTOR } from '../core/constants.js';
 import { angleOnArc, arcSweep, bulgeArc, circularPoint, circularSegmentArea, dist, segmentCircularIntersections, segmentIntersection } from '../core/math.js';
 import { dimensionGeometry, dimensionSegments } from './dimension.js';
 import { allocateEntityId, state } from '../state.js';
@@ -11,28 +11,90 @@ import { allocateEntityId, state } from '../state.js';
 // than measured — see TEXT_WIDTH_FACTOR. Used for bounding box, hit-testing,
 // and zoom-extents; the renderer draws with a monospace font specifically to
 // keep this approximation close to what actually appears.
+//
+// MTEXT shares this model rather than getting its own: it is TEXT with a
+// fixed box width instead of a width derived from content, and with more than
+// one line. Position is the baseline-left anchor of the first (topmost) line,
+// exactly like TEXT's position — later lines just stack downward from it —
+// so no separate "corner" concept is needed.
 // ---------------------------------------------------------------------------
 
-function rotateAroundOrigin(point, angle) {
+export function rotateAroundOrigin(point, angle) {
   const cosine = Math.cos(angle);
   const sine = Math.sin(angle);
   return { x: point.x * cosine - point.y * sine, y: point.x * sine + point.y * cosine };
 }
 
+// Character width has no real glyph metrics behind it either (see above), so
+// wrapping is estimated from the same per-character factor the single-line
+// footprint uses, which is also why the renderer uses a monospace font.
+export function mtextCharWidth(entity) {
+  return entity.height * TEXT_WIDTH_FACTOR;
+}
+
+export function mtextLineHeight(entity) {
+  return entity.height * MTEXT_LINE_SPACING;
+}
+
+// Greedy word wrap against the estimated character width. A word wider than
+// the box on its own is hard-broken rather than left to overflow, so a narrow
+// box or a long unspaced token still produces a bounded footprint.
+export function mtextLines(entity) {
+  const maxChars = Math.max(1, Math.floor(entity.width / mtextCharWidth(entity)));
+  const lines = [];
+  for (const paragraph of entity.content.split('\n')) {
+    if (!paragraph) { lines.push(''); continue; }
+    let current = '';
+    for (let word of paragraph.split(' ')) {
+      while (word.length > maxChars) {
+        if (current) { lines.push(current); current = ''; }
+        lines.push(word.slice(0, maxChars));
+        word = word.slice(maxChars);
+      }
+      const candidate = current ? `${current} ${word}` : word;
+      if (candidate.length > maxChars && current) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = candidate;
+      }
+    }
+    lines.push(current);
+  }
+  return lines.length ? lines : [''];
+}
+
+function textLocalBounds(entity) {
+  const descent = entity.height * 0.25;
+  if (entity.type === 'MTEXT') {
+    const lineCount = mtextLines(entity).length;
+    return {
+      width: entity.width,
+      minY: -descent - (lineCount - 1) * mtextLineHeight(entity),
+      maxY: entity.height,
+    };
+  }
+  return {
+    width: Math.max(entity.content.length, 1) * entity.height * TEXT_WIDTH_FACTOR,
+    minY: -descent,
+    maxY: entity.height,
+  };
+}
+
 export function textWidth(entity) {
-  return Math.max(entity.content.length, 1) * entity.height * TEXT_WIDTH_FACTOR;
+  return textLocalBounds(entity).width;
 }
 
 // Corners of the text's footprint, in drawing order, position first. The box
-// extends from a quarter-height descender below the baseline (position) to
-// the full nominal height above it — an approximation of ascender/descender,
-// not a measurement of this particular string's actual glyphs.
+// extends from a quarter-height descender below the baseline (position, or
+// for MTEXT the last line's baseline) to the full nominal height above the
+// first line's baseline — an approximation of ascender/descender, not a
+// measurement of this particular string's actual glyphs.
 export function textCorners(entity) {
-  const width = textWidth(entity);
-  const descent = entity.height * 0.25;
+  const { width, minY, maxY } = textLocalBounds(entity);
   const local = [
-    { x: 0, y: -descent }, { x: width, y: -descent },
-    { x: width, y: entity.height }, { x: 0, y: entity.height },
+    { x: 0, y: minY }, { x: width, y: minY },
+    { x: width, y: maxY }, { x: 0, y: maxY },
   ];
   return local.map(point => {
     const rotated = rotateAroundOrigin(point, entity.rotation);
@@ -45,9 +107,15 @@ export function textContainsPoint(entity, point) {
     { x: point.x - entity.position.x, y: point.y - entity.position.y },
     -entity.rotation,
   );
-  const width = textWidth(entity);
-  const descent = entity.height * 0.25;
-  return local.x >= 0 && local.x <= width && local.y >= -descent && local.y <= entity.height;
+  const { width, minY, maxY } = textLocalBounds(entity);
+  return local.x >= 0 && local.x <= width && local.y >= minY && local.y <= maxY;
+}
+
+// World-space baseline-left anchor of one wrapped line, for callers (the
+// plotter) that need each line's own position rather than the whole box.
+export function mtextLinePosition(entity, index) {
+  const offset = rotateAroundOrigin({ x: 0, y: -index * mtextLineHeight(entity) }, entity.rotation);
+  return { x: entity.position.x + offset.x, y: entity.position.y + offset.y };
 }
 
 export function polygonArea(points) {
@@ -222,7 +290,7 @@ export function circularExtremes(arc) {
 // trimming to one, is never what anybody wants.
 export function pickSegments(entity) {
   if (entity.type === 'DIM') return dimensionSegments(entity);
-  if (entity.type === 'TEXT') {
+  if (entity.type === 'TEXT' || entity.type === 'MTEXT') {
     const corners = textCorners(entity);
     return corners.map((point, index) => [point, corners[(index + 1) % corners.length]]);
   }
@@ -230,7 +298,7 @@ export function pickSegments(entity) {
 }
 
 export function entityBBox(e) {
-  if (e.type === 'TEXT') {
+  if (e.type === 'TEXT' || e.type === 'MTEXT') {
     const corners = textCorners(e);
     return {
       minX: Math.min(...corners.map(p => p.x)), maxX: Math.max(...corners.map(p => p.x)),

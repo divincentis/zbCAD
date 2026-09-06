@@ -44,11 +44,23 @@ function makeCtx() {
 
 function makeElement(id = '', tag = 'div') {
   const children = [];
+  let leafText = '';
   const base = {
     id,
     tagName: tag.toUpperCase(),
     hidden: false,
-    textContent: '',
+    // Real DOM's textContent recursively concatenates descendant text; a
+    // plain field would silently read back '' for anything built out of
+    // child elements (ui/inquiry.js's report, for one), so this is a real
+    // accessor rather than a stored value. Setting it, like the real thing,
+    // replaces any children with the one text value.
+    get textContent() {
+      return children.length ? children.map(c => c.textContent || '').join('') : leafText;
+    },
+    set textContent(value) {
+      leafText = value == null ? '' : String(value);
+      children.length = 0;
+    },
     innerHTML: '',
     value: '',
     checked: false,

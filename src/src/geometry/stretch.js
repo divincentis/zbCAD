@@ -44,7 +44,9 @@ export function stretchedEntity(entity, dx, dy, caught) {
   }
   // Text has one anchor point and no vertices of its own, so — like a circle
   // or arc — it answers to that point: caught, it travels; missed, it stays.
-  if (entity.type === 'TEXT') return { ...entity, position: shift(entity.position) };
+  // MTEXT's box width is a property of the entity, not a second point, so it
+  // follows the same rule.
+  if (entity.type === 'TEXT' || entity.type === 'MTEXT') return { ...entity, position: shift(entity.position) };
   return { ...entity };
 }
 

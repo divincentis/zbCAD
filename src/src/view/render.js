@@ -8,7 +8,7 @@ import { entityGrips } from '../geometry/grips.js';
 import { calculateTrimOperation } from '../geometry/trim.js';
 import { getActivePoint } from '../interaction/tracking.js';
 import { dimensionGeometry, dimensionText } from '../model/dimension.js';
-import { entitySegments } from '../model/entity.js';
+import { entitySegments, mtextLineHeight, mtextLines } from '../model/entity.js';
 import { getLayer, isEntityVisible } from '../model/layerQuery.js';
 import { state } from '../state.js';
 import { drawGrid } from './grid.js';
@@ -115,6 +115,27 @@ export function drawText(e, preview, color) {
   ctx.restore();
 }
 
+// One canvas transform for the whole entity, same as drawText, then each
+// wrapped line is a separate fillText offset down the local y axis — which,
+// inside this already-rotated/flipped frame, is simply "further down the
+// page" regardless of the entity's own rotation.
+export function drawMText(e, preview, color) {
+  const screen = worldToScreen(e.position);
+  const heightPx = e.height * state.view.scale;
+  if (heightPx < 2) return;
+  const lineHeightPx = mtextLineHeight(e) * state.view.scale;
+  ctx.save();
+  ctx.translate(screen.x, screen.y);
+  ctx.rotate(-e.rotation);
+  ctx.font = `${heightPx}px monospace`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = color;
+  if (preview) ctx.globalAlpha = 0.6;
+  mtextLines(e).forEach((line, index) => ctx.fillText(line, 0, index * lineHeightPx));
+  ctx.restore();
+}
+
 // Screen line width is a fixed pixel value derived from the layer's mm
 // lineweight (see LINEWEIGHT_PX_PER_MM), not something that scales with
 // zoom — matches how CAD programs keep lineweight legible at any view scale.
@@ -138,6 +159,10 @@ export function drawEntity(e, preview = false) {
   }
   if (e.type === 'TEXT') {
     drawText(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
+    return;
+  }
+  if (e.type === 'MTEXT') {
+    drawMText(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
     return;
   }
   if (preview) ctx.setLineDash([6,4]); else ctx.setLineDash(dashPatternForLayer(layer));

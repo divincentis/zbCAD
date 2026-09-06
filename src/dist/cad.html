@@ -985,6 +985,11 @@ kbd { font-size: 9px; opacity: .65; }
   // actually drawn.
   const TEXT_WIDTH_FACTOR = 0.6;
 
+  // MTEXT wraps at a fixed box width, so its lines need a vertical spacing —
+  // expressed as a multiple of character height, matching how word processors
+  // and other CAD programs describe line spacing.
+  const MTEXT_LINE_SPACING = 1.5;
+
   // Standard AutoCAD-style linetypes and lineweights, kept to the subset an
   // architectural roof plan actually needs. Dash patterns are screen pixels
   // rather than world units (like the existing preview dash [6,4] in
@@ -2255,6 +2260,12 @@ kbd { font-size: 9px; opacity: .65; }
   // than measured — see TEXT_WIDTH_FACTOR. Used for bounding box, hit-testing,
   // and zoom-extents; the renderer draws with a monospace font specifically to
   // keep this approximation close to what actually appears.
+  //
+  // MTEXT shares this model rather than getting its own: it is TEXT with a
+  // fixed box width instead of a width derived from content, and with more than
+  // one line. Position is the baseline-left anchor of the first (topmost) line,
+  // exactly like TEXT's position — later lines just stack downward from it —
+  // so no separate "corner" concept is needed.
   // ---------------------------------------------------------------------------
 
   function rotateAroundOrigin(point, angle) {
@@ -2263,20 +2274,76 @@ kbd { font-size: 9px; opacity: .65; }
     return { x: point.x * cosine - point.y * sine, y: point.x * sine + point.y * cosine };
   }
 
+  // Character width has no real glyph metrics behind it either (see above), so
+  // wrapping is estimated from the same per-character factor the single-line
+  // footprint uses, which is also why the renderer uses a monospace font.
+  function mtextCharWidth(entity) {
+    return entity.height * TEXT_WIDTH_FACTOR;
+  }
+
+  function mtextLineHeight(entity) {
+    return entity.height * MTEXT_LINE_SPACING;
+  }
+
+  // Greedy word wrap against the estimated character width. A word wider than
+  // the box on its own is hard-broken rather than left to overflow, so a narrow
+  // box or a long unspaced token still produces a bounded footprint.
+  function mtextLines(entity) {
+    const maxChars = Math.max(1, Math.floor(entity.width / mtextCharWidth(entity)));
+    const lines = [];
+    for (const paragraph of entity.content.split('\n')) {
+      if (!paragraph) { lines.push(''); continue; }
+      let current = '';
+      for (let word of paragraph.split(' ')) {
+        while (word.length > maxChars) {
+          if (current) { lines.push(current); current = ''; }
+          lines.push(word.slice(0, maxChars));
+          word = word.slice(maxChars);
+        }
+        const candidate = current ? `${current} ${word}` : word;
+        if (candidate.length > maxChars && current) {
+          lines.push(current);
+          current = word;
+        } else {
+          current = candidate;
+        }
+      }
+      lines.push(current);
+    }
+    return lines.length ? lines : [''];
+  }
+
+  function textLocalBounds(entity) {
+    const descent = entity.height * 0.25;
+    if (entity.type === 'MTEXT') {
+      const lineCount = mtextLines(entity).length;
+      return {
+        width: entity.width,
+        minY: -descent - (lineCount - 1) * mtextLineHeight(entity),
+        maxY: entity.height,
+      };
+    }
+    return {
+      width: Math.max(entity.content.length, 1) * entity.height * TEXT_WIDTH_FACTOR,
+      minY: -descent,
+      maxY: entity.height,
+    };
+  }
+
   function textWidth(entity) {
-    return Math.max(entity.content.length, 1) * entity.height * TEXT_WIDTH_FACTOR;
+    return textLocalBounds(entity).width;
   }
 
   // Corners of the text's footprint, in drawing order, position first. The box
-  // extends from a quarter-height descender below the baseline (position) to
-  // the full nominal height above it — an approximation of ascender/descender,
-  // not a measurement of this particular string's actual glyphs.
+  // extends from a quarter-height descender below the baseline (position, or
+  // for MTEXT the last line's baseline) to the full nominal height above the
+  // first line's baseline — an approximation of ascender/descender, not a
+  // measurement of this particular string's actual glyphs.
   function textCorners(entity) {
-    const width = textWidth(entity);
-    const descent = entity.height * 0.25;
+    const { width, minY, maxY } = textLocalBounds(entity);
     const local = [
-      { x: 0, y: -descent }, { x: width, y: -descent },
-      { x: width, y: entity.height }, { x: 0, y: entity.height },
+      { x: 0, y: minY }, { x: width, y: minY },
+      { x: width, y: maxY }, { x: 0, y: maxY },
     ];
     return local.map(point => {
       const rotated = rotateAroundOrigin(point, entity.rotation);
@@ -2289,9 +2356,15 @@ kbd { font-size: 9px; opacity: .65; }
       { x: point.x - entity.position.x, y: point.y - entity.position.y },
       -entity.rotation,
     );
-    const width = textWidth(entity);
-    const descent = entity.height * 0.25;
-    return local.x >= 0 && local.x <= width && local.y >= -descent && local.y <= entity.height;
+    const { width, minY, maxY } = textLocalBounds(entity);
+    return local.x >= 0 && local.x <= width && local.y >= minY && local.y <= maxY;
+  }
+
+  // World-space baseline-left anchor of one wrapped line, for callers (the
+  // plotter) that need each line's own position rather than the whole box.
+  function mtextLinePosition(entity, index) {
+    const offset = rotateAroundOrigin({ x: 0, y: -index * mtextLineHeight(entity) }, entity.rotation);
+    return { x: entity.position.x + offset.x, y: entity.position.y + offset.y };
   }
 
   function polygonArea(points) {
@@ -2466,7 +2539,7 @@ kbd { font-size: 9px; opacity: .65; }
   // trimming to one, is never what anybody wants.
   function pickSegments(entity) {
     if (entity.type === 'DIM') return dimensionSegments(entity);
-    if (entity.type === 'TEXT') {
+    if (entity.type === 'TEXT' || entity.type === 'MTEXT') {
       const corners = textCorners(entity);
       return corners.map((point, index) => [point, corners[(index + 1) % corners.length]]);
     }
@@ -2474,7 +2547,7 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   function entityBBox(e) {
-    if (e.type === 'TEXT') {
+    if (e.type === 'TEXT' || e.type === 'MTEXT') {
       const corners = textCorners(e);
       return {
         minX: Math.min(...corners.map(p => p.x)), maxX: Math.max(...corners.map(p => p.x)),
@@ -3070,6 +3143,27 @@ kbd { font-size: 9px; opacity: .65; }
         baseline: 'alphabetic',
         color,
       }];
+    }
+    if (entity.type === 'MTEXT') {
+      if (!entity.content) return [];
+      // Map before filtering, so a blank wrapped line still occupies its index
+      // and every later line's y-position stays correct.
+      return mtextLines(entity).map((line, index) => {
+        if (!line) return null;
+        const anchor = toPaper(mtextLinePosition(entity, index));
+        return {
+          kind: 'text',
+          text: line,
+          x: anchor.x,
+          y: anchor.y,
+          angle: entity.rotation,
+          sizeMM: entity.height * context.mmPerUnit,
+          font: 'courier',
+          anchor: 'left',
+          baseline: 'alphabetic',
+          color,
+        };
+      }).filter(Boolean);
     }
 
     const widthMM = context.settings.lineweights
@@ -3849,6 +3943,28 @@ kbd { font-size: 9px; opacity: .65; }
       };
     }
 
+    if (type === 'MTEXT') {
+      const position = cleanPoint(value.position);
+      if (!position || !Number.isFinite(value.width) || value.width <= 1e-9) {
+        return { error: 'has invalid mtext placement' };
+      }
+      if (!Number.isFinite(value.height) || value.height <= 1e-9) return { error: 'has invalid mtext placement' };
+      if (!Number.isFinite(value.rotation)) return { error: 'has an invalid mtext rotation' };
+      if (typeof value.content !== 'string' || !value.content.trim() || value.content.length > 4000) {
+        return { error: 'has invalid mtext content' };
+      }
+      return {
+        entity: {
+          ...common,
+          position,
+          width: value.width,
+          height: value.height,
+          rotation: normalizeAngle(value.rotation),
+          content: value.content,
+        },
+      };
+    }
+
     return { error: `uses unsupported entity type ${type || '(missing)'}` };
   }
 
@@ -4348,6 +4464,10 @@ kbd { font-size: 9px; opacity: .65; }
   //   keyword(text)    consumes a command-local keyword, ahead of alias lookup
   //   value(text)      consumes typed input that is neither a point nor a
   //                    distance: an angle in degrees, a scale factor
+  //   liveValue(text)  the free-text box's uncommitted keystrokes, fired on
+  //                    every keystroke rather than on submit — lets a command
+  //                    preview what is being typed (TEXT/MTEXT content) on the
+  //                    canvas instead of only in the command-line input itself
   //   basePoint()      the anchor for ORTHO, relative entry, and direct
   //                    distance, for commands that do not track currentPoints
   //   previewReady()   whether preview() has enough state to draw; defaults to
@@ -4400,6 +4520,10 @@ kbd { font-size: 9px; opacity: .65; }
 
   function commandCapturesSpace(command = activeCommand()) {
     return command ? staged(command.capturesSpace, command) : false;
+  }
+
+  function commandLiveValue(text, command = activeCommand()) {
+    command?.liveValue?.(text);
   }
 
   function commandPreviewReady(command = activeCommand()) {
@@ -5049,7 +5173,7 @@ kbd { font-size: 9px; opacity: .65; }
         refs: entity.refs.map(ref => (ref ? { ...ref } : null)),
       };
     }
-    if (entity.type === 'TEXT') {
+    if (entity.type === 'TEXT' || entity.type === 'MTEXT') {
       return { ...entity, id, position: { x: entity.position.x + dx, y: entity.position.y + dy } };
     }
     return JSON.parse(JSON.stringify(entity));
@@ -5110,7 +5234,7 @@ kbd { font-size: 9px; opacity: .65; }
         refs: entity.refs.map(ref => (ref ? { ...ref } : null)),
       };
     }
-    if (entity.type === 'TEXT') {
+    if (entity.type === 'TEXT' || entity.type === 'MTEXT') {
       return {
         ...entity,
         id,
@@ -5168,6 +5292,17 @@ kbd { font-size: 9px; opacity: .65; }
       // Real CAD scales text height along with everything else, so a 2x SCALE
       // on a wall and its label keeps them in visual proportion.
       return { ...entity, id, position: scalePoint(entity.position, base, factor), height: entity.height * factor };
+    }
+    if (entity.type === 'MTEXT') {
+      // Width scales with height so the box's proportions — and therefore its
+      // wrapping — stay visually the same, not just the lettering inside it.
+      return {
+        ...entity,
+        id,
+        position: scalePoint(entity.position, base, factor),
+        height: entity.height * factor,
+        width: entity.width * factor,
+      };
     }
     return JSON.parse(JSON.stringify(entity));
   }
@@ -5262,7 +5397,7 @@ kbd { font-size: 9px; opacity: .65; }
         refs: entity.refs.map(ref => (ref ? { ...ref } : null)),
       };
     }
-    if (entity.type === 'TEXT') {
+    if (entity.type === 'TEXT' || entity.type === 'MTEXT') {
       // AutoCAD's MIRRTEXT default, and for the same reason: the insertion point
       // moves with everything else, but the lettering keeps its own angle rather
       // than becoming a mirror image of itself. A note on a mirrored roof half
@@ -6342,7 +6477,7 @@ kbd { font-size: 9px; opacity: .65; }
     }
     // A click anywhere inside a text run's footprint should select it, the way
     // a filled glyph area reads, rather than only near its outline.
-    if (entity.type === 'TEXT' && textContainsPoint(entity, world)) return 0;
+    if ((entity.type === 'TEXT' || entity.type === 'MTEXT') && textContainsPoint(entity, world)) return 0;
     let best = Infinity;
     for (const [a, b, arc] of pickSegments(entity)) {
       // A curved segment is picked off its arc, not the chord across it — the
@@ -6664,6 +6799,17 @@ kbd { font-size: 9px; opacity: .65; }
     if (entity.type === 'TEXT') {
       return [{ kind: 'TEXT_POSITION', point: entity.position }];
     }
+    if (entity.type === 'MTEXT') {
+      return [
+        { kind: 'MTEXT_POSITION', point: entity.position },
+        // Lets the wrap width be adjusted by drag, since there is no properties
+        // panel yet to type a new one into.
+        {
+          kind: 'MTEXT_WIDTH',
+          point: rotatePoint({ x: entity.position.x + entity.width, y: entity.position.y }, entity.position, entity.rotation),
+        },
+      ];
+    }
     return [];
   }
 
@@ -6791,6 +6937,19 @@ kbd { font-size: 9px; opacity: .65; }
 
     if (entity.type === 'TEXT' && descriptor.kind === 'TEXT_POSITION') {
       return { entity: { ...entity, position: { ...point } } };
+    }
+
+    if (entity.type === 'MTEXT' && descriptor.kind === 'MTEXT_POSITION') {
+      return { entity: { ...entity, position: { ...point } } };
+    }
+
+    if (entity.type === 'MTEXT' && descriptor.kind === 'MTEXT_WIDTH') {
+      // Project the drag onto the text's own rotated x-axis, so a drag that
+      // doesn't land exactly on that axis still yields a plain scalar width.
+      const local = rotatePoint(point, entity.position, -entity.rotation);
+      const width = local.x - entity.position.x;
+      if (width <= 1e-9) return { error: 'MTEXT width must be greater than zero.' };
+      return { entity: { ...entity, width } };
     }
 
     return { error: 'That grip cannot edit this entity.' };
@@ -6995,6 +7154,27 @@ kbd { font-size: 9px; opacity: .65; }
     ctx.restore();
   }
 
+  // One canvas transform for the whole entity, same as drawText, then each
+  // wrapped line is a separate fillText offset down the local y axis — which,
+  // inside this already-rotated/flipped frame, is simply "further down the
+  // page" regardless of the entity's own rotation.
+  function drawMText(e, preview, color) {
+    const screen = worldToScreen(e.position);
+    const heightPx = e.height * state.view.scale;
+    if (heightPx < 2) return;
+    const lineHeightPx = mtextLineHeight(e) * state.view.scale;
+    ctx.save();
+    ctx.translate(screen.x, screen.y);
+    ctx.rotate(-e.rotation);
+    ctx.font = `${heightPx}px monospace`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = color;
+    if (preview) ctx.globalAlpha = 0.6;
+    mtextLines(e).forEach((line, index) => ctx.fillText(line, 0, index * lineHeightPx));
+    ctx.restore();
+  }
+
   // Screen line width is a fixed pixel value derived from the layer's mm
   // lineweight (see LINEWEIGHT_PX_PER_MM), not something that scales with
   // zoom — matches how CAD programs keep lineweight legible at any view scale.
@@ -7018,6 +7198,10 @@ kbd { font-size: 9px; opacity: .65; }
     }
     if (e.type === 'TEXT') {
       drawText(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
+      return;
+    }
+    if (e.type === 'MTEXT') {
+      drawMText(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
       return;
     }
     if (preview) ctx.setLineDash([6,4]); else ctx.setLineDash(dashPatternForLayer(layer));
@@ -8073,6 +8257,15 @@ kbd { font-size: 9px; opacity: .65; }
         ['Rotation', formatAngle(normalizeAngle(entity.rotation))],
         ['Content', entity.content],
       );
+    } else if (entity.type === 'MTEXT') {
+      rows.push(
+        ['Position', describePoint(entity.position)],
+        ['Width', formatLengthLabel(entity.width)],
+        ['Height', formatLengthLabel(entity.height)],
+        ['Rotation', formatAngle(normalizeAngle(entity.rotation))],
+        ['Lines', String(mtextLines(entity).length)],
+        ['Content', entity.content],
+      );
     } else if (entity.type === 'ARC') {
       rows.push(
         ['Center', describePoint(entity.center)],
@@ -8435,7 +8628,11 @@ kbd { font-size: 9px; opacity: .65; }
     },
 
     previewReady() {
-      return ['HEIGHT', 'ROTATION'].includes(state.text?.stage);
+      const stage = state.text?.stage;
+      // Nothing has been typed yet the moment CONTENT begins, so there is
+      // nothing to preview until liveValue() reports a first keystroke.
+      if (stage === 'CONTENT') return Boolean(state.text.liveContent);
+      return ['HEIGHT', 'ROTATION'].includes(stage);
     },
 
     point(p) {
@@ -8485,6 +8682,17 @@ kbd { font-size: 9px; opacity: .65; }
       return false;
     },
 
+    // Fires on every keystroke, ahead of Enter — see liveValue() in the
+    // registry's hook contract. Kept separate from value() so the committed
+    // text always comes from the same trimmed, Enter-terminated string it
+    // always has, while the canvas gets to see it as it's typed.
+    liveValue(text) {
+      const operation = state.text;
+      if (operation?.stage !== 'CONTENT') return;
+      operation.liveContent = text;
+      draw();
+    },
+
     // Enter/Space with nothing typed accepts the bracketed default for the
     // current stage, matching AutoCAD's <default> convention.
     finish() {
@@ -8523,6 +8731,229 @@ kbd { font-size: 9px; opacity: .65; }
           rotation: Math.atan2(p.y - operation.position.y, p.x - operation.position.x),
           content: '(text)',
         }, true);
+        return;
+      }
+      if (operation.stage === 'CONTENT' && operation.liveContent) {
+        drawEntity({
+          type: 'TEXT',
+          position: operation.position,
+          height: operation.height,
+          rotation: operation.rotation,
+          content: operation.liveContent,
+        }, true);
+      }
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // MTEXT
+  //
+  // TEXT with a fixed box width instead of one derived from content, and more
+  // than one line. Follows the same point/distance/angle-then-free-text shape
+  // as TEXT, with an extra WIDTH stage ahead of HEIGHT: first corner, opposite
+  // corner (sets the wrap width), height, rotation, then content — except
+  // content itself is multi-line, so each Enter commits one line and stays in
+  // CONTENT rather than finishing; finish() (a blank Enter) is what ends entry,
+  // the way AutoCAD's command-line MTEXT works.
+  // ---------------------------------------------------------------------------
+
+  function addMText(position, width, height, rotation, content) {
+    if (!currentLayerIsEditable()) return false;
+    const entity = {
+      id: state.nextId,
+      type: 'MTEXT',
+      layerId: state.currentLayerId,
+      position: { ...position },
+      width,
+      height,
+      rotation,
+      content,
+    };
+    return commitGeometry([...state.entities, entity], { nextId: state.nextId + 1 });
+  }
+
+  // A generous default so Enter-for-default at the WIDTH stage still produces
+  // something a few words wide, mirroring TEXT's <default> convention even
+  // though AutoCAD's own MTEXT has no true default (it always asks for the
+  // opposite corner).
+  function defaultMTextWidth() {
+    return defaultTextHeight() * 20;
+  }
+
+  defineCommand('MTEXT', {
+    creates: true,
+    usesOrtho: true,
+
+    takesDistance() {
+      return ['WIDTH', 'HEIGHT'].includes(state.mtext?.stage);
+    },
+
+    capturesSpace() {
+      return state.mtext?.stage === 'CONTENT';
+    },
+
+    begin() {
+      state.mtext = {
+        stage: 'POINT', position: null, width: null, height: null, rotation: null,
+        lines: [], liveContent: '',
+      };
+    },
+
+    prompt() {
+      const stage = state.mtext?.stage;
+      if (stage === 'WIDTH') return `MTEXT — Specify opposite corner <${formatLength(defaultMTextWidth())} wide>:`;
+      if (stage === 'HEIGHT') return `MTEXT — Specify height <${formatLength(defaultTextHeight())}>:`;
+      if (stage === 'ROTATION') return 'MTEXT — Specify rotation angle <0>:';
+      if (stage === 'CONTENT') return 'MTEXT — Enter a line of text, blank line to finish:';
+      return 'MTEXT — Specify first corner:';
+    },
+
+    acceptsPoint() {
+      return ['POINT', 'WIDTH', 'HEIGHT'].includes(state.mtext?.stage);
+    },
+
+    previewReady() {
+      const stage = state.mtext?.stage;
+      if (stage === 'CONTENT') return Boolean(state.mtext.lines.length || state.mtext.liveContent);
+      return ['WIDTH', 'HEIGHT', 'ROTATION'].includes(stage);
+    },
+
+    point(p) {
+      const operation = state.mtext;
+      if (operation.stage === 'POINT') {
+        operation.position = { ...p };
+        operation.stage = 'WIDTH';
+        updatePrompt();
+        return;
+      }
+      if (operation.stage === 'WIDTH') {
+        const width = dist(operation.position, p);
+        if (width <= 1e-9) { updatePrompt('Width must be greater than zero.'); return; }
+        operation.width = width;
+        operation.stage = 'HEIGHT';
+        updatePrompt();
+        return;
+      }
+      if (operation.stage === 'HEIGHT') {
+        const height = dist(operation.position, p);
+        if (height <= 1e-9) { updatePrompt('Height must be greater than zero.'); return; }
+        operation.height = height;
+        operation.stage = 'ROTATION';
+        updatePrompt();
+      }
+    },
+
+    distance(value) {
+      const operation = state.mtext;
+      const stage = operation?.stage;
+      if (stage !== 'WIDTH' && stage !== 'HEIGHT') return false;
+      if (value <= 1e-9) {
+        updatePrompt(`${stage === 'WIDTH' ? 'Width' : 'Height'} must be greater than zero.`);
+        return true;
+      }
+      operation[stage === 'WIDTH' ? 'width' : 'height'] = value;
+      operation.stage = stage === 'WIDTH' ? 'HEIGHT' : 'ROTATION';
+      updatePrompt();
+      draw();
+      return true;
+    },
+
+    value(text) {
+      const operation = state.mtext;
+      if (operation?.stage === 'ROTATION') {
+        const match = text.trim().match(DEGREES);
+        if (!match) { updatePrompt('Invalid angle. Enter degrees.'); return true; }
+        operation.rotation = Number(match[1]) * Math.PI / 180;
+        operation.stage = 'CONTENT';
+        updatePrompt();
+        draw();
+        return true;
+      }
+      if (operation?.stage === 'CONTENT') {
+        // A non-blank submission is one more line, not the end of entry — a
+        // blank Enter (finish(), below) is what closes the entity out.
+        operation.lines.push(text);
+        operation.liveContent = '';
+        updatePrompt();
+        draw();
+        return true;
+      }
+      return false;
+    },
+
+    liveValue(text) {
+      const operation = state.mtext;
+      if (operation?.stage !== 'CONTENT') return;
+      operation.liveContent = text;
+      draw();
+    },
+
+    // Enter/Space with nothing typed accepts the bracketed default for the
+    // current stage, matching AutoCAD's <default> convention — except at
+    // CONTENT, where a blank line is the multi-line terminator instead.
+    finish() {
+      const operation = state.mtext;
+      if (!operation || operation.stage === 'POINT') return false;
+      if (operation.stage === 'WIDTH') {
+        operation.width = defaultMTextWidth();
+        operation.stage = 'HEIGHT';
+        updatePrompt();
+        draw();
+        return;
+      }
+      if (operation.stage === 'HEIGHT') {
+        operation.height = defaultTextHeight();
+        operation.stage = 'ROTATION';
+        updatePrompt();
+        draw();
+        return;
+      }
+      if (operation.stage === 'ROTATION') {
+        operation.rotation = 0;
+        operation.stage = 'CONTENT';
+        updatePrompt();
+        draw();
+        return;
+      }
+      if (!operation.lines.length) {
+        updatePrompt('Enter at least one line of text.');
+        return false;
+      }
+      if (addMText(operation.position, operation.width, operation.height, operation.rotation, operation.lines.join('\n'))) {
+        setMode('SELECT');
+      }
+      return;
+    },
+
+    preview(p) {
+      const operation = state.mtext;
+      if (operation.stage === 'WIDTH' || operation.stage === 'HEIGHT') {
+        drawEntity({ type: 'LINE', a: operation.position, b: p }, true);
+        return;
+      }
+      if (operation.stage === 'ROTATION') {
+        drawEntity({
+          type: 'MTEXT',
+          position: operation.position,
+          width: operation.width,
+          height: operation.height,
+          rotation: Math.atan2(p.y - operation.position.y, p.x - operation.position.x),
+          content: '(text)',
+        }, true);
+        return;
+      }
+      if (operation.stage === 'CONTENT') {
+        const content = [...operation.lines, operation.liveContent].join('\n');
+        if (content.trim()) {
+          drawEntity({
+            type: 'MTEXT',
+            position: operation.position,
+            width: operation.width,
+            height: operation.height,
+            rotation: operation.rotation,
+            content,
+          }, true);
+        }
       }
     },
   });
@@ -10379,7 +10810,9 @@ kbd { font-size: 9px; opacity: .65; }
     }
     // Text has one anchor point and no vertices of its own, so — like a circle
     // or arc — it answers to that point: caught, it travels; missed, it stays.
-    if (entity.type === 'TEXT') return { ...entity, position: shift(entity.position) };
+    // MTEXT's box width is a property of the entity, not a second point, so it
+    // follows the same rule.
+    if (entity.type === 'TEXT' || entity.type === 'MTEXT') return { ...entity, position: shift(entity.position) };
     return { ...entity };
   }
 
@@ -10953,6 +11386,7 @@ kbd { font-size: 9px; opacity: .65; }
     DDI:'DIMDIAMETER', DIMDIAMETER:'DIMDIAMETER', DIMDIA:'DIMDIAMETER',
     DST:'DIMSTYLE', DIMSTYLE:'DIMSTYLE', DDIM:'DIMSTYLE',
     T:'TEXT', TEXT:'TEXT', DT:'TEXT', DTEXT:'TEXT',
+    MT:'MTEXT', MTEXT:'MTEXT',
     AA:'AREA', AREA:'AREA',
     ID:'ID', LI:'LIST', LIST:'LIST',
   });
@@ -11469,6 +11903,11 @@ kbd { font-size: 9px; opacity: .65; }
     submitCommandInput();
   });
 
+  // A free-text stage (TEXT/MTEXT content) previously only showed what was
+  // typed in this input box, not on the drawing, until Enter committed it —
+  // every keystroke now also updates the on-canvas preview.
+  commandInput.addEventListener('input', () => commandLiveValue(commandInput.value));
+
   document.querySelectorAll('[data-command]').forEach(btn => btn.addEventListener('click', () => {
     startCommand(btn.dataset.command);
     canvas.focus();
@@ -11724,6 +12163,8 @@ kbd { font-size: 9px; opacity: .65; }
     polylineBulge,
     polylineHasBulges,
     entityBBox,
+    mtextLines,
+    mtextLinePosition,
     boxesOverlap,
     entityCrossesBox,
     dimSize,
@@ -11863,6 +12304,10 @@ kbd { font-size: 9px; opacity: .65; }
     setUnitRescale(value) { unitRescaleCheck.checked = Boolean(value); refreshUnitsDialog(); },
     get promptText() { return promptEl.textContent; },
     submitCommandText(text = '') { commandInput.value = text; submitCommandInput(); },
+    // Mirrors the commandInput 'input' listener wired in ui/shell.js, so tests
+    // can drive the on-canvas live-typing preview without simulating a real
+    // keystroke event against the DOM stub.
+    commandLiveValue,
     acceptDefaultAction,
     cancelCurrent,
     navigateHistory,

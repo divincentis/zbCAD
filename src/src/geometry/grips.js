@@ -1,6 +1,7 @@
 import { setMode } from '../commands/registry.js';
 import { arcSweep, circularPoint, dist } from '../core/math.js';
 import { threePointArc } from './construct.js';
+import { rotatePoint } from './transform.js';
 import { dimensionGeometry, resolveEntityReference } from '../model/dimension.js';
 import { commitGeometry } from '../model/history.js';
 import { isEntityEditable } from '../model/layerQuery.js';
@@ -49,6 +50,17 @@ export function entityGrips(entity) {
   }
   if (entity.type === 'TEXT') {
     return [{ kind: 'TEXT_POSITION', point: entity.position }];
+  }
+  if (entity.type === 'MTEXT') {
+    return [
+      { kind: 'MTEXT_POSITION', point: entity.position },
+      // Lets the wrap width be adjusted by drag, since there is no properties
+      // panel yet to type a new one into.
+      {
+        kind: 'MTEXT_WIDTH',
+        point: rotatePoint({ x: entity.position.x + entity.width, y: entity.position.y }, entity.position, entity.rotation),
+      },
+    ];
   }
   return [];
 }
@@ -177,6 +189,19 @@ export function gripEditedEntity(entity, descriptor, point) {
 
   if (entity.type === 'TEXT' && descriptor.kind === 'TEXT_POSITION') {
     return { entity: { ...entity, position: { ...point } } };
+  }
+
+  if (entity.type === 'MTEXT' && descriptor.kind === 'MTEXT_POSITION') {
+    return { entity: { ...entity, position: { ...point } } };
+  }
+
+  if (entity.type === 'MTEXT' && descriptor.kind === 'MTEXT_WIDTH') {
+    // Project the drag onto the text's own rotated x-axis, so a drag that
+    // doesn't land exactly on that axis still yields a plain scalar width.
+    const local = rotatePoint(point, entity.position, -entity.rotation);
+    const width = local.x - entity.position.x;
+    if (width <= 1e-9) return { error: 'MTEXT width must be greater than zero.' };
+    return { entity: { ...entity, width } };
   }
 
   return { error: 'That grip cannot edit this entity.' };

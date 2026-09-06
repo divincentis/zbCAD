@@ -1,4 +1,4 @@
-import { commandCapturesSpace, navigateHistory, startCommand } from '../commands/registry.js';
+import { commandCapturesSpace, commandLiveValue, navigateHistory, startCommand } from '../commands/registry.js';
 import { LENGTH_FORMATS } from '../core/units.js';
 import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, toolbarAutohideBtn, topbar, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
 import { submitCommandInput } from '../interaction/pointer.js';
@@ -28,6 +28,11 @@ commandInput.addEventListener('keydown', ev => {
   ev.stopPropagation();
   submitCommandInput();
 });
+
+// A free-text stage (TEXT/MTEXT content) previously only showed what was
+// typed in this input box, not on the drawing, until Enter committed it —
+// every keystroke now also updates the on-canvas preview.
+commandInput.addEventListener('input', () => commandLiveValue(commandInput.value));
 
 document.querySelectorAll('[data-command]').forEach(btn => btn.addEventListener('click', () => {
   startCommand(btn.dataset.command);

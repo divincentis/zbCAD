@@ -43,6 +43,11 @@ export const DIM_REF_PARTS = ['START', 'END', 'CENTER', 'MID', 'QUAD', 'VERTEX',
 // actually drawn.
 export const TEXT_WIDTH_FACTOR = 0.6;
 
+// MTEXT wraps at a fixed box width, so its lines need a vertical spacing —
+// expressed as a multiple of character height, matching how word processors
+// and other CAD programs describe line spacing.
+export const MTEXT_LINE_SPACING = 1.5;
+
 // Standard AutoCAD-style linetypes and lineweights, kept to the subset an
 // architectural roof plan actually needs. Dash patterns are screen pixels
 // rather than world units (like the existing preview dash [6,4] in

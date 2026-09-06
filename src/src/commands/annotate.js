@@ -304,7 +304,11 @@ defineCommand('TEXT', {
   },
 
   previewReady() {
-    return ['HEIGHT', 'ROTATION'].includes(state.text?.stage);
+    const stage = state.text?.stage;
+    // Nothing has been typed yet the moment CONTENT begins, so there is
+    // nothing to preview until liveValue() reports a first keystroke.
+    if (stage === 'CONTENT') return Boolean(state.text.liveContent);
+    return ['HEIGHT', 'ROTATION'].includes(stage);
   },
 
   point(p) {
@@ -354,6 +358,17 @@ defineCommand('TEXT', {
     return false;
   },
 
+  // Fires on every keystroke, ahead of Enter — see liveValue() in the
+  // registry's hook contract. Kept separate from value() so the committed
+  // text always comes from the same trimmed, Enter-terminated string it
+  // always has, while the canvas gets to see it as it's typed.
+  liveValue(text) {
+    const operation = state.text;
+    if (operation?.stage !== 'CONTENT') return;
+    operation.liveContent = text;
+    draw();
+  },
+
   // Enter/Space with nothing typed accepts the bracketed default for the
   // current stage, matching AutoCAD's <default> convention.
   finish() {
@@ -392,6 +407,229 @@ defineCommand('TEXT', {
         rotation: Math.atan2(p.y - operation.position.y, p.x - operation.position.x),
         content: '(text)',
       }, true);
+      return;
+    }
+    if (operation.stage === 'CONTENT' && operation.liveContent) {
+      drawEntity({
+        type: 'TEXT',
+        position: operation.position,
+        height: operation.height,
+        rotation: operation.rotation,
+        content: operation.liveContent,
+      }, true);
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// MTEXT
+//
+// TEXT with a fixed box width instead of one derived from content, and more
+// than one line. Follows the same point/distance/angle-then-free-text shape
+// as TEXT, with an extra WIDTH stage ahead of HEIGHT: first corner, opposite
+// corner (sets the wrap width), height, rotation, then content — except
+// content itself is multi-line, so each Enter commits one line and stays in
+// CONTENT rather than finishing; finish() (a blank Enter) is what ends entry,
+// the way AutoCAD's command-line MTEXT works.
+// ---------------------------------------------------------------------------
+
+export function addMText(position, width, height, rotation, content) {
+  if (!currentLayerIsEditable()) return false;
+  const entity = {
+    id: state.nextId,
+    type: 'MTEXT',
+    layerId: state.currentLayerId,
+    position: { ...position },
+    width,
+    height,
+    rotation,
+    content,
+  };
+  return commitGeometry([...state.entities, entity], { nextId: state.nextId + 1 });
+}
+
+// A generous default so Enter-for-default at the WIDTH stage still produces
+// something a few words wide, mirroring TEXT's <default> convention even
+// though AutoCAD's own MTEXT has no true default (it always asks for the
+// opposite corner).
+export function defaultMTextWidth() {
+  return defaultTextHeight() * 20;
+}
+
+defineCommand('MTEXT', {
+  creates: true,
+  usesOrtho: true,
+
+  takesDistance() {
+    return ['WIDTH', 'HEIGHT'].includes(state.mtext?.stage);
+  },
+
+  capturesSpace() {
+    return state.mtext?.stage === 'CONTENT';
+  },
+
+  begin() {
+    state.mtext = {
+      stage: 'POINT', position: null, width: null, height: null, rotation: null,
+      lines: [], liveContent: '',
+    };
+  },
+
+  prompt() {
+    const stage = state.mtext?.stage;
+    if (stage === 'WIDTH') return `MTEXT — Specify opposite corner <${formatLength(defaultMTextWidth())} wide>:`;
+    if (stage === 'HEIGHT') return `MTEXT — Specify height <${formatLength(defaultTextHeight())}>:`;
+    if (stage === 'ROTATION') return 'MTEXT — Specify rotation angle <0>:';
+    if (stage === 'CONTENT') return 'MTEXT — Enter a line of text, blank line to finish:';
+    return 'MTEXT — Specify first corner:';
+  },
+
+  acceptsPoint() {
+    return ['POINT', 'WIDTH', 'HEIGHT'].includes(state.mtext?.stage);
+  },
+
+  previewReady() {
+    const stage = state.mtext?.stage;
+    if (stage === 'CONTENT') return Boolean(state.mtext.lines.length || state.mtext.liveContent);
+    return ['WIDTH', 'HEIGHT', 'ROTATION'].includes(stage);
+  },
+
+  point(p) {
+    const operation = state.mtext;
+    if (operation.stage === 'POINT') {
+      operation.position = { ...p };
+      operation.stage = 'WIDTH';
+      updatePrompt();
+      return;
+    }
+    if (operation.stage === 'WIDTH') {
+      const width = dist(operation.position, p);
+      if (width <= 1e-9) { updatePrompt('Width must be greater than zero.'); return; }
+      operation.width = width;
+      operation.stage = 'HEIGHT';
+      updatePrompt();
+      return;
+    }
+    if (operation.stage === 'HEIGHT') {
+      const height = dist(operation.position, p);
+      if (height <= 1e-9) { updatePrompt('Height must be greater than zero.'); return; }
+      operation.height = height;
+      operation.stage = 'ROTATION';
+      updatePrompt();
+    }
+  },
+
+  distance(value) {
+    const operation = state.mtext;
+    const stage = operation?.stage;
+    if (stage !== 'WIDTH' && stage !== 'HEIGHT') return false;
+    if (value <= 1e-9) {
+      updatePrompt(`${stage === 'WIDTH' ? 'Width' : 'Height'} must be greater than zero.`);
+      return true;
+    }
+    operation[stage === 'WIDTH' ? 'width' : 'height'] = value;
+    operation.stage = stage === 'WIDTH' ? 'HEIGHT' : 'ROTATION';
+    updatePrompt();
+    draw();
+    return true;
+  },
+
+  value(text) {
+    const operation = state.mtext;
+    if (operation?.stage === 'ROTATION') {
+      const match = text.trim().match(DEGREES);
+      if (!match) { updatePrompt('Invalid angle. Enter degrees.'); return true; }
+      operation.rotation = Number(match[1]) * Math.PI / 180;
+      operation.stage = 'CONTENT';
+      updatePrompt();
+      draw();
+      return true;
+    }
+    if (operation?.stage === 'CONTENT') {
+      // A non-blank submission is one more line, not the end of entry — a
+      // blank Enter (finish(), below) is what closes the entity out.
+      operation.lines.push(text);
+      operation.liveContent = '';
+      updatePrompt();
+      draw();
+      return true;
+    }
+    return false;
+  },
+
+  liveValue(text) {
+    const operation = state.mtext;
+    if (operation?.stage !== 'CONTENT') return;
+    operation.liveContent = text;
+    draw();
+  },
+
+  // Enter/Space with nothing typed accepts the bracketed default for the
+  // current stage, matching AutoCAD's <default> convention — except at
+  // CONTENT, where a blank line is the multi-line terminator instead.
+  finish() {
+    const operation = state.mtext;
+    if (!operation || operation.stage === 'POINT') return false;
+    if (operation.stage === 'WIDTH') {
+      operation.width = defaultMTextWidth();
+      operation.stage = 'HEIGHT';
+      updatePrompt();
+      draw();
+      return;
+    }
+    if (operation.stage === 'HEIGHT') {
+      operation.height = defaultTextHeight();
+      operation.stage = 'ROTATION';
+      updatePrompt();
+      draw();
+      return;
+    }
+    if (operation.stage === 'ROTATION') {
+      operation.rotation = 0;
+      operation.stage = 'CONTENT';
+      updatePrompt();
+      draw();
+      return;
+    }
+    if (!operation.lines.length) {
+      updatePrompt('Enter at least one line of text.');
+      return false;
+    }
+    if (addMText(operation.position, operation.width, operation.height, operation.rotation, operation.lines.join('\n'))) {
+      setMode('SELECT');
+    }
+    return;
+  },
+
+  preview(p) {
+    const operation = state.mtext;
+    if (operation.stage === 'WIDTH' || operation.stage === 'HEIGHT') {
+      drawEntity({ type: 'LINE', a: operation.position, b: p }, true);
+      return;
+    }
+    if (operation.stage === 'ROTATION') {
+      drawEntity({
+        type: 'MTEXT',
+        position: operation.position,
+        width: operation.width,
+        height: operation.height,
+        rotation: Math.atan2(p.y - operation.position.y, p.x - operation.position.x),
+        content: '(text)',
+      }, true);
+      return;
+    }
+    if (operation.stage === 'CONTENT') {
+      const content = [...operation.lines, operation.liveContent].join('\n');
+      if (content.trim()) {
+        drawEntity({
+          type: 'MTEXT',
+          position: operation.position,
+          width: operation.width,
+          height: operation.height,
+          rotation: operation.rotation,
+          content,
+        }, true);
+      }
     }
   },
 });
