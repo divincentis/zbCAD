@@ -16,18 +16,32 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; }
 
 .topbar {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 18px;
   min-height: 44px;
-  padding: 6px 10px;
+  padding: 6px 74px 6px 10px;
   background: #252525;
   border-bottom: 1px solid #3a3a3a;
 }
 .brand { font-weight: 700; white-space: nowrap; }
 .version { color: #9e9e9e; font-size: 11px; font-weight: 400; }
 .tools { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 6px 0; }
+.docs-link {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  color: #cfcfcf;
+  text-decoration: none;
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border: 1px solid #4a4a4a;
+  border-radius: 4px;
+}
+.docs-link:hover { color: #fff; border-color: #6a6a6a; }
 .tool-group {
   display: flex;
   flex-wrap: wrap;
@@ -396,7 +410,7 @@ kbd { font-size: 9px; opacity: .65; }
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">zbCAD Prototype <span class="version">v0.24.3</span></div>
+    <div class="brand">zbCAD <span class="version">v0.24.3</span></div>
     <div class="tools">
       <div class="tool-group">
         <span class="group-label">File</span>
@@ -460,6 +474,7 @@ kbd { font-size: 9px; opacity: .65; }
         <button id="unitsBtn">Units (UN)</button>
       </div>
     </div>
+    <a id="docsLink" class="docs-link" href="docs.html" target="_blank" rel="noopener">Docs</a>
     <input id="openInput" type="file" accept=".json,.draft2d.json,application/json" hidden />
   </header>
 
@@ -5964,7 +5979,7 @@ kbd { font-size: 9px; opacity: .65; }
     const entity = buildDimension(dimType, p1, p2, linePoint, refs);
     const geometry = dimensionGeometry(entity);
     if (geometry.measure <= 1e-9) {
-      updatePrompt('That dimension line direction measures nothing. Try the other side.');
+      updatePrompt('Dimension line location is read as horizontal or vertical, whichever the pick is offset toward — this pick measures neither. Try a point offset more clearly to one side.');
       return false;
     }
     entity.id = state.nextId;
@@ -7485,9 +7500,21 @@ kbd { font-size: 9px; opacity: .65; }
   // cleanup — the tangent length falls out as zero and the two edges simply meet
   // at their intersection.
   //
-  // Only LINE/LINE corners are handled. Arcs, circles and polyline segments are
-  // refused by name rather than quietly skipped, per the roadmap's rule that an
-  // unsupported case is reported and the original geometry preserved.
+  // An "edge" is a LINE entity or one segment of a PLINE — see edgeRef(). The
+  // two edges are ordinarily two different entities, each trimmed/extended by
+  // rewriting its own endpoint. When they are instead the two segments either
+  // side of one polyline vertex (the everyday "round this rectangle's corner"
+  // case), that shared vertex has to become two separate points rather than
+  // one — see sharedVertexIndex()/spliceEntity() — since it is the single point
+  // where both edges currently meet. Polylines here have no curved (bulge)
+  // segment, so a shared vertex can be chamfered (the new points are a straight
+  // cut, which a polyline can represent natively) but not filleted; that case
+  // is refused by name rather than either faking a straight "arc" or breaking
+  // the polyline into pieces to carry a real one.
+  //
+  // Arcs and circles are refused by name rather than quietly skipped, per the
+  // roadmap's rule that an unsupported case is reported and the original
+  // geometry preserved.
   // ---------------------------------------------------------------------------
 
   const CORNER_TOLERANCE = 1e-9;
@@ -7563,8 +7590,78 @@ kbd { font-size: 9px; opacity: .65; }
     return first.layerId === second.layerId ? first.layerId : state.currentLayerId;
   }
 
-  function filletCorner(first, second, pickFirst, pickSecond, radius) {
-    const frame = cornerFrame(first, second, pickFirst, pickSecond);
+  // An edge for corner purposes: a LINE entity (its whole a/b span), or one
+  // segment of a PLINE, named by the point-array indices of its two ends so a
+  // result can be written back to just that part of the polyline. `a`/`b` are
+  // the actual point objects the entity stores, not copies, so arm.far — itself
+  // one of `a`/`b`, see cornerArm() — can be matched back to its index by
+  // reference in sharedVertexIndex()/buildIndependentUpdates().
+  function edgeRef(entity, segmentIndex) {
+    if (entity.type === 'LINE') {
+      return { entity, layerId: entity.layerId, a: entity.a, b: entity.b, pointIndexA: null, pointIndexB: null };
+    }
+    const count = entity.points.length;
+    const pointIndexA = segmentIndex;
+    const pointIndexB = (segmentIndex + 1) % count;
+    return {
+      entity, layerId: entity.layerId,
+      a: entity.points[pointIndexA], b: entity.points[pointIndexB],
+      pointIndexA, pointIndexB,
+    };
+  }
+
+  // Two edges share a polyline corner when they are segments of the same
+  // polyline and one's endpoint is the other's — the ordinary case of picking
+  // the two edges either side of one vertex. Returns that vertex's index, or
+  // null for two independent edges (different entities, or non-adjacent
+  // segments of the same polyline, which have nothing in common to splice).
+  function sharedVertexIndex(ref1, ref2) {
+    if (ref1.pointIndexA === null || ref1.entity.id !== ref2.entity.id) return null;
+    if (ref1.pointIndexA === ref2.pointIndexA || ref1.pointIndexA === ref2.pointIndexB) return ref1.pointIndexA;
+    if (ref1.pointIndexB === ref2.pointIndexA || ref1.pointIndexB === ref2.pointIndexB) return ref1.pointIndexB;
+    return null;
+  }
+
+  // Splits the one vertex ref1/ref2 share into their two tangent/cut points, in
+  // path order — the vertex-side of whichever ref runs INTO it (its `b`) gets
+  // the earlier point, the side that runs OUT of it (the other ref's `a`) gets
+  // the later one. Coincident points (FILLET 0's exact-intersection case, which
+  // for an already-sharp polyline vertex is the vertex itself) collapse back to
+  // one point rather than leaving a zero-length duplicate segment behind.
+  function spliceEntity(ref1, ref2, sharedIndex, t1, t2) {
+    const [into, outOf] = ref1.pointIndexB === sharedIndex ? [t1, t2] : [t2, t1];
+    const points = ref1.entity.points.map(point => ({ ...point }));
+    if (dist(into, outOf) < CORNER_TOLERANCE) {
+      points[sharedIndex] = into;
+    } else {
+      points.splice(sharedIndex, 1, into, outOf);
+    }
+    return { ...ref1.entity, points };
+  }
+
+  // The ordinary case: each edge's near endpoint (arm.far is the one kept, see
+  // cornerArm()) moves independently to its own tangent/cut point. A LINE is
+  // simply rewritten; a polyline has just the one point-array index touched. If
+  // both edges happen to belong to the same polyline without sharing a vertex,
+  // their edits are merged into a single update of that one entity.
+  function buildIndependentUpdates(ref1, arm1, t1, ref2, arm2, t2) {
+    const byId = new Map();
+    for (const { ref, arm, point } of [{ ref: ref1, arm: arm1, point: t1 }, { ref: ref2, arm: arm2, point: t2 }]) {
+      if (ref.entity.type === 'LINE') {
+        byId.set(ref.entity.id, { ...ref.entity, a: { ...arm.far }, b: point });
+        continue;
+      }
+      const index = arm.far === ref.a ? ref.pointIndexB : ref.pointIndexA;
+      const base = byId.get(ref.entity.id) || ref.entity;
+      const points = base.points === ref.entity.points ? ref.entity.points.map(p => ({ ...p })) : base.points;
+      points[index] = point;
+      byId.set(ref.entity.id, { ...base, points });
+    }
+    return [...byId.values()];
+  }
+
+  function filletCorner(ref1, ref2, pickFirst, pickSecond, radius) {
+    const frame = cornerFrame(ref1, ref2, pickFirst, pickSecond);
     if (frame.error) return frame;
     const { corner, arm1, arm2, included } = frame;
 
@@ -7577,14 +7674,20 @@ kbd { font-size: 9px; opacity: .65; }
       return { error: 'That radius is too large for these lines.' };
     }
 
+    const shared = sharedVertexIndex(ref1, ref2);
+    if (shared !== null && radius > 0) {
+      return { error: "That polyline corner can't be filleted — polylines here can't hold a curved segment. Try CHAMFER, or fillet two separate lines instead." };
+    }
+
     const t1 = { x: corner.x + tangent * arm1.direction.x, y: corner.y + tangent * arm1.direction.y };
     const t2 = { x: corner.x + tangent * arm2.direction.x, y: corner.y + tangent * arm2.direction.y };
 
-    const edges = [
-      { ...first, a: { ...arm1.far }, b: t1 },
-      { ...second, a: { ...arm2.far }, b: t2 },
-    ];
-    if (radius <= 0) return { edges, arc: null };
+    if (radius <= 0) {
+      const updated = shared !== null
+        ? [spliceEntity(ref1, ref2, shared, t1, t2)]
+        : buildIndependentUpdates(ref1, arm1, t1, ref2, arm2, t2);
+      return { updated, addition: null };
+    }
 
     // The centre sits on the bisector of the kept sides, far enough along it
     // that the perpendicular distance to each edge is exactly the radius.
@@ -7610,10 +7713,10 @@ kbd { font-size: 9px; opacity: .65; }
     if (sweep <= 1e-8) return { error: 'That radius does not fit this corner.' };
 
     return {
-      edges,
-      arc: {
+      updated: buildIndependentUpdates(ref1, arm1, t1, ref2, arm2, t2),
+      addition: {
         type: 'ARC',
-        layerId: cornerLayerId(first, second),
+        layerId: cornerLayerId(ref1, ref2),
         center,
         radius,
         startAngle,
@@ -7622,8 +7725,8 @@ kbd { font-size: 9px; opacity: .65; }
     };
   }
 
-  function chamferCorner(first, second, pickFirst, pickSecond, firstDistance, secondDistance) {
-    const frame = cornerFrame(first, second, pickFirst, pickSecond);
+  function chamferCorner(ref1, ref2, pickFirst, pickSecond, firstDistance, secondDistance) {
+    const frame = cornerFrame(ref1, ref2, pickFirst, pickSecond);
     if (frame.error) return frame;
     const { corner, arm1, arm2 } = frame;
     if (firstDistance > arm1.reach + CORNER_TOLERANCE || secondDistance > arm2.reach + CORNER_TOLERANCE) {
@@ -7632,30 +7735,33 @@ kbd { font-size: 9px; opacity: .65; }
 
     const t1 = { x: corner.x + firstDistance * arm1.direction.x, y: corner.y + firstDistance * arm1.direction.y };
     const t2 = { x: corner.x + secondDistance * arm2.direction.x, y: corner.y + secondDistance * arm2.direction.y };
-    const edges = [
-      { ...first, a: { ...arm1.far }, b: t1 },
-      { ...second, a: { ...arm2.far }, b: t2 },
-    ];
+
+    const shared = sharedVertexIndex(ref1, ref2);
+    if (shared !== null) {
+      // The cut is already the polyline's own new edge between the two points;
+      // a separate LINE bridging them would just duplicate it.
+      return { updated: [spliceEntity(ref1, ref2, shared, t1, t2)], addition: null };
+    }
+
+    const updated = buildIndependentUpdates(ref1, arm1, t1, ref2, arm2, t2);
     // Both distances zero is the same corner-close FILLET 0 performs, and there
     // is no cut line to draw between two coincident points.
-    if (firstDistance <= 0 && secondDistance <= 0) return { edges, cut: null };
-    return {
-      edges,
-      cut: { type: 'LINE', layerId: cornerLayerId(first, second), a: t1, b: t2 },
-    };
+    if (firstDistance <= 0 && secondDistance <= 0) return { updated, addition: null };
+    return { updated, addition: { type: 'LINE', layerId: cornerLayerId(ref1, ref2), a: t1, b: t2 } };
   }
 
-  // Which edge the cursor is over, refusing anything that is not a plain line by
-  // name so the reason is visible rather than the click just doing nothing.
+  // Which edge the cursor is over, refusing anything that is not a line or
+  // polyline segment by name so the reason is visible rather than the click
+  // just doing nothing.
   function cornerPick(world, excludedIds = null) {
     const hit = hitTestSegment(world, 10, excludedIds, true);
     if (!hit) return { error: 'No line there. Click a line.' };
     const entity = hit.entity;
-    if (entity.type !== 'LINE') {
-      return { error: `${state.edit?.type || 'FILLET'} works on two lines; that is a ${entity.type}.` };
+    if (!['LINE', 'PLINE'].includes(entity.type)) {
+      return { error: `${state.edit?.type || 'FILLET'} works on lines and polyline segments; that is a ${entity.type}.` };
     }
     if (!isEntityEditable(entity)) return { error: 'That line is on a locked or hidden layer.' };
-    return { entity, point: hit.point };
+    return { entity, point: hit.point, segmentIndex: hit.segmentIndex };
   }
 
   function applyCorner(secondPick) {
@@ -7673,28 +7779,26 @@ kbd { font-size: 9px; opacity: .65; }
       resetCornerPick('The first line is no longer in the drawing.');
       return;
     }
-    if (picked.entity.id === first.id) {
-      updatePrompt('Pick a second, different line.');
+    if (picked.entity.id === first.id && picked.segmentIndex === operation.firstSegmentIndex) {
+      updatePrompt('Pick a second, different line or segment.');
       draw();
       return;
     }
 
+    const ref1 = edgeRef(first, operation.firstSegmentIndex);
+    const ref2 = edgeRef(picked.entity, picked.segmentIndex);
     const result = operation.type === 'FILLET'
-      ? filletCorner(first, picked.entity, operation.firstPoint, picked.point, operation.radius)
-      : chamferCorner(
-        first, picked.entity, operation.firstPoint, picked.point,
-        operation.firstDistance, operation.secondDistance,
-      );
+      ? filletCorner(ref1, ref2, operation.firstPoint, picked.point, operation.radius)
+      : chamferCorner(ref1, ref2, operation.firstPoint, picked.point, operation.firstDistance, operation.secondDistance);
     if (result.error) {
       resetCornerPick(result.error);
       return;
     }
 
-    const replaced = new Map(result.edges.map(edge => [edge.id, edge]));
+    const replaced = new Map(result.updated.map(entity => [entity.id, entity]));
     const entities = state.entities.map(entity => replaced.get(entity.id) || entity);
-    const addition = result.arc || result.cut;
-    if (addition) {
-      if (!commitGeometry([...entities, { ...addition, id: state.nextId }], { nextId: state.nextId + 1 })) return;
+    if (result.addition) {
+      if (!commitGeometry([...entities, { ...result.addition, id: state.nextId }], { nextId: state.nextId + 1 })) return;
     } else if (!commitGeometry(entities)) {
       return;
     }
@@ -7710,6 +7814,7 @@ kbd { font-size: 9px; opacity: .65; }
     if (!state.edit) return;
     state.edit.stage = 'FIRST';
     state.edit.firstId = null;
+    state.edit.firstSegmentIndex = null;
     state.edit.firstPoint = null;
     updatePrompt(message);
     draw();
@@ -8162,7 +8267,7 @@ kbd { font-size: 9px; opacity: .65; }
         // The picks name which line and which side, never a place, so an
         // unrelated selection would only be visual noise through the command.
         state.selected.clear();
-        state.edit = { type, stage: 'FIRST', firstId: null, firstPoint: null, ...cornerSettings };
+        state.edit = { type, stage: 'FIRST', firstId: null, firstSegmentIndex: null, firstPoint: null, ...cornerSettings };
       },
 
       // Both picks say which edge and which side of the corner is meant. A snap
@@ -8248,6 +8353,7 @@ kbd { font-size: 9px; opacity: .65; }
             return;
           }
           operation.firstId = picked.entity.id;
+          operation.firstSegmentIndex = picked.segmentIndex;
           operation.firstPoint = { ...picked.point };
           operation.stage = 'SECOND';
           updatePrompt();
@@ -8265,17 +8371,16 @@ kbd { font-size: 9px; opacity: .65; }
         const operation = state.edit;
         const first = state.entities.find(entity => entity.id === operation.firstId);
         const picked = cornerPick(p);
-        if (!first || picked.error || picked.entity.id === first.id) return;
+        if (!first || picked.error) return;
+        if (picked.entity.id === first.id && picked.segmentIndex === operation.firstSegmentIndex) return;
+        const ref1 = edgeRef(first, operation.firstSegmentIndex);
+        const ref2 = edgeRef(picked.entity, picked.segmentIndex);
         const result = operation.type === 'FILLET'
-          ? filletCorner(first, picked.entity, operation.firstPoint, picked.point, operation.radius)
-          : chamferCorner(
-            first, picked.entity, operation.firstPoint, picked.point,
-            operation.firstDistance, operation.secondDistance,
-          );
+          ? filletCorner(ref1, ref2, operation.firstPoint, picked.point, operation.radius)
+          : chamferCorner(ref1, ref2, operation.firstPoint, picked.point, operation.firstDistance, operation.secondDistance);
         if (result.error) return;
-        for (const edge of result.edges) drawEntity(edge, true);
-        const addition = result.arc || result.cut;
-        if (addition) drawEntity(addition, true);
+        for (const entity of result.updated) drawEntity(entity, true);
+        if (result.addition) drawEntity(result.addition, true);
       },
 
       // One rule for Enter at every stage: the command is done. Abandoning a
