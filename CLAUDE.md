@@ -54,8 +54,9 @@ There is no lint command. Correctness is checked by `run-checks.sh` (structural 
 # run-checks.sh — these test src/dist/cad.html, i.e. whatever was last built:
 sh src/tools/tests/run-tests.sh
 
-# Test a different bundle (e.g. the shipped root copy):
-sh src/tools/tests/run-tests.sh ../cad.html
+# Test a different bundle (e.g. the shipped root copy). The path is resolved
+# from src/tools/tests/, which run-tests.sh cd's into, so pass an absolute one:
+sh src/tools/tests/run-tests.sh "$PWD/cad.html"
 ```
 
 `src/tools/tests/harness.mjs` boots the built single-file bundle inside a Node `vm` with a stubbed DOM, canvas and localStorage, and returns `window.__cadPrototype` (see `testHook.js`). That hook exists precisely so the app can be driven and inspected without real DOM events. Prefer driving real commands (`startCommand`, `commitPoint`, `submitCommandText`) over seeding `state` directly, so a test exercises what a user's clicks actually produce.
