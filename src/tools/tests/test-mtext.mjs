@@ -319,13 +319,13 @@ reset();
   check('MTEXT becomes preview-ready as soon as a line is being typed',
     api.commandCapabilities.previewReady === true);
   check('MTEXT stores the live, uncommitted line for the preview to draw',
-    api.state.mtext.liveContent === 'IN PROGRESS');
+    api.state.text.liveContent === 'IN PROGRESS');
 
   // Committing a line clears the live buffer but stays preview-ready, since
   // the committed line itself is still there to draw.
   api.submitCommandText('IN PROGRESS');
   check('MTEXT clears the live buffer once a line is committed',
-    api.state.mtext.liveContent === '');
+    api.state.text.liveContent === '');
   check('MTEXT stays preview-ready on its committed lines alone',
     api.commandCapabilities.previewReady === true);
   check('a committed line is not yet a placed entity',
