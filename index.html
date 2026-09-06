@@ -1,7 +1,5 @@
 <!doctype html>
 <html lang="en">
-<script data-goatcounter="https://zbfraser.goatcounter.com/count"
-      async src="//gc.zgo.at/count.js"></script>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -8907,9 +8905,16 @@ kbd { font-size: 9px; opacity: .65; }
   // is refused by name rather than either faking a straight "arc" or breaking
   // the polyline into pieces to carry a real one.
   //
-  // Arcs and circles are refused by name rather than quietly skipped, per the
-  // roadmap's rule that an unsupported case is reported and the original
-  // geometry preserved.
+  // FILLET also accepts ARC and CIRCLE edges, in any combination with each
+  // other or with a line/polyline segment — see filletCurved() below. A CIRCLE
+  // is never trimmed (it has no endpoint to move), only an ARC's nearer
+  // endpoint is; the arc's other endpoint, and which of the (up to eight)
+  // tangent-circle solutions is used, are chosen by the same "whichever is
+  // closest to what the user actually clicked" rule as everything else here.
+  // CHAMFER has no equivalent: a straight cut at an arc-length distance from an
+  // arc/circle is a murkier idea than a radius, so it still refuses them by
+  // name, per the roadmap's rule that an unsupported case is reported and the
+  // original geometry preserved.
   // ---------------------------------------------------------------------------
 
   const CORNER_TOLERANCE = 1e-9;
@@ -8993,13 +8998,16 @@ kbd { font-size: 9px; opacity: .65; }
   // reference in sharedVertexIndex()/buildIndependentUpdates().
   function edgeRef(entity, segmentIndex) {
     if (entity.type === 'LINE') {
-      return { entity, layerId: entity.layerId, a: entity.a, b: entity.b, pointIndexA: null, pointIndexB: null };
+      return { entity, layerId: entity.layerId, kind: 'line', a: entity.a, b: entity.b, pointIndexA: null, pointIndexB: null };
+    }
+    if (entity.type === 'ARC' || entity.type === 'CIRCLE') {
+      return { entity, layerId: entity.layerId, kind: 'circle', center: entity.center, radius: entity.radius };
     }
     const count = entity.points.length;
     const pointIndexA = segmentIndex;
     const pointIndexB = (segmentIndex + 1) % count;
     return {
-      entity, layerId: entity.layerId,
+      entity, layerId: entity.layerId, kind: 'line',
       a: entity.points[pointIndexA], b: entity.points[pointIndexB],
       pointIndexA, pointIndexB,
     };
@@ -9039,23 +9047,202 @@ kbd { font-size: 9px; opacity: .65; }
   // simply rewritten; a polyline has just the one point-array index touched. If
   // both edges happen to belong to the same polyline without sharing a vertex,
   // their edits are merged into a single update of that one entity.
+  function updateEdgeEndpoint(ref, arm, point, base) {
+    if (ref.entity.type === 'LINE') {
+      return { ...ref.entity, a: { ...arm.far }, b: point };
+    }
+    const index = arm.far === ref.a ? ref.pointIndexB : ref.pointIndexA;
+    const entity = base || ref.entity;
+    const points = entity.points === ref.entity.points ? ref.entity.points.map(p => ({ ...p })) : entity.points;
+    points[index] = point;
+    return { ...entity, points };
+  }
+
   function buildIndependentUpdates(ref1, arm1, t1, ref2, arm2, t2) {
     const byId = new Map();
     for (const { ref, arm, point } of [{ ref: ref1, arm: arm1, point: t1 }, { ref: ref2, arm: arm2, point: t2 }]) {
-      if (ref.entity.type === 'LINE') {
-        byId.set(ref.entity.id, { ...ref.entity, a: { ...arm.far }, b: point });
-        continue;
-      }
-      const index = arm.far === ref.a ? ref.pointIndexB : ref.pointIndexA;
-      const base = byId.get(ref.entity.id) || ref.entity;
-      const points = base.points === ref.entity.points ? ref.entity.points.map(p => ({ ...p })) : base.points;
-      points[index] = point;
-      byId.set(ref.entity.id, { ...base, points });
+      byId.set(ref.entity.id, updateEdgeEndpoint(ref, arm, point, byId.get(ref.entity.id)));
     }
     return [...byId.values()];
   }
 
+  // ---------------------------------------------------------------------------
+  // FILLET on a curved edge (ARC or CIRCLE), alone or paired with another one.
+  //
+  // A line/line corner has one well-defined intersection point to build from.
+  // Two general curves generally don't — a line and a circle can cross twice or
+  // not at all, so there is no single "corner" to bisect. Real CAD fillet works
+  // around this by constructing loci instead: the set of points a candidate
+  // fillet centre could sit at, one locus per edge, then intersecting them.
+  //
+  // For a line, that locus is the line shifted by the radius, on either side
+  // (two candidates). For a circle of radius r, it is a concentric circle of
+  // radius r+R (the fillet arc sits outside it, the common "round this corner"
+  // case) or |r-R| (the fillet arc is internally tangent — nested either way
+  // round, wrapping inside a bore or swallowing a small circle whole).
+  //
+  // Pairing every locus of one edge against every locus of the other, and
+  // keeping every intersection, produces every geometrically valid tangent
+  // circle — up to eight of them for two curved edges. Exactly one is what the
+  // user meant, and there is no way to know which from the radius alone; it is
+  // picked by the same rule a person uses when AutoCAD asks the same question:
+  // whichever solution's tangent points fall nearest the two points actually
+  // clicked.
+  // ---------------------------------------------------------------------------
+
+  // An infinite line's intersections with a circle, unlike segmentCircleIntersections
+  // (core/math.js), which clips to the a–b segment: a fillet's offset line is a
+  // construction line, not the edge itself, so it must extend past both ends.
+  function infiniteLineCircleIntersections(a, b, center, radius) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const qa = dx * dx + dy * dy;
+    if (qa < CORNER_TOLERANCE || radius <= 0) return [];
+    const fx = a.x - center.x;
+    const fy = a.y - center.y;
+    const qb = 2 * (fx * dx + fy * dy);
+    const qc = fx * fx + fy * fy - radius * radius;
+    const discriminant = qb * qb - 4 * qa * qc;
+    if (discriminant < -1e-9) return [];
+    const root = Math.sqrt(Math.max(0, discriminant));
+    const points = [];
+    for (const t of [(-qb - root) / (2 * qa), (-qb + root) / (2 * qa)]) {
+      const point = { x: a.x + t * dx, y: a.y + t * dy };
+      if (points.some(p => dist(p, point) < 1e-7)) continue;
+      points.push(point);
+    }
+    return points;
+  }
+
+  // The loci a fillet-arc centre could sit at, at distance `radius` from this
+  // edge. A circle locus carries `sign`: the tangent point sits at
+  // center + sign*radius*unit(candidateCentre - center) — see
+  // circularTangentPoint(). That is +1 for the ordinary "outside" tangency and
+  // for the "this edge's circle swallows the fillet" nesting, and -1 only for
+  // the opposite nesting (the fillet swallows this edge's circle) — the one
+  // case where the tangent point sits on the far side of this edge's centre
+  // from the candidate fillet centre rather than the near side.
+  function offsetLoci(ref, radius) {
+    if (ref.kind === 'line') {
+      const loci = [];
+      for (const side of [1, -1]) {
+        const shifted = shiftSegment(ref.a, ref.b, radius, side);
+        if (shifted) loci.push({ kind: 'line', a: shifted[0], b: shifted[1] });
+      }
+      return loci;
+    }
+    const loci = [{ kind: 'circle', center: ref.center, radius: ref.radius + radius, sign: 1 }];
+    const nested = Math.abs(ref.radius - radius);
+    if (nested > CORNER_TOLERANCE) {
+      loci.push({ kind: 'circle', center: ref.center, radius: nested, sign: radius > ref.radius ? -1 : 1 });
+    }
+    return loci;
+  }
+
+  function locusIntersections(first, second) {
+    if (first.kind === 'line' && second.kind === 'line') {
+      const point = infiniteLineIntersection(first.a, first.b, second.a, second.b);
+      return point ? [point] : [];
+    }
+    if (first.kind === 'line') return infiniteLineCircleIntersections(first.a, first.b, second.center, second.radius);
+    if (second.kind === 'line') return infiniteLineCircleIntersections(second.a, second.b, first.center, first.radius);
+    return circleCircleIntersections(first, second);
+  }
+
+  function circularTangentPoint(ref, locus, candidateCenter) {
+    const ux = candidateCenter.x - ref.center.x;
+    const uy = candidateCenter.y - ref.center.y;
+    const length = Math.hypot(ux, uy);
+    if (length < CORNER_TOLERANCE) return null;
+    const sign = locus.sign;
+    return { x: ref.center.x + sign * ref.radius * ux / length, y: ref.center.y + sign * ref.radius * uy / length };
+  }
+
+  function edgeTangentPoint(ref, locus, candidateCenter) {
+    return ref.kind === 'line'
+      ? pointOnInfiniteLine(candidateCenter, ref.a, ref.b)
+      : circularTangentPoint(ref, locus, candidateCenter);
+  }
+
+  // An ARC can only be trimmed to a tangent point that actually lies on its
+  // current sweep — extending an arc's angular span the way a line can be
+  // extended isn't supported. A CIRCLE has no sweep to fall outside of.
+  function tangentWithinSweep(ref, tangentPoint) {
+    if (ref.kind !== 'circle' || !isArc(ref.entity)) return true;
+    const angle = unwrappedArcAngle(angleFromCenter(ref.entity.center, tangentPoint), ref.entity);
+    return angle >= ref.entity.startAngle - 1e-7 && angle <= ref.entity.endAngle + 1e-7;
+  }
+
+  // Moves whichever of an ARC's two endpoints is nearer the tangent point to
+  // sit exactly on it — the other endpoint, on the same side as the pick,
+  // stays put. A CIRCLE is returned untouched: it has no endpoint to move.
+  function updateCircularEdge(ref, pick, tangentPoint) {
+    const entity = ref.entity;
+    if (!isArc(entity)) return entity;
+    const tangentAngle = unwrappedArcAngle(angleFromCenter(entity.center, tangentPoint), entity);
+    const pickAngle = unwrappedArcAngle(angleFromCenter(entity.center, pick), entity);
+    return pickAngle >= tangentAngle
+      ? { ...entity, startAngle: tangentAngle }
+      : { ...entity, endAngle: tangentAngle };
+  }
+
+  function filletCurved(ref1, ref2, pickFirst, pickSecond, radius) {
+    if (radius <= 0) {
+      return { error: 'FILLET needs a radius greater than zero when an arc or circle is involved.' };
+    }
+    const loci1 = offsetLoci(ref1, radius);
+    const loci2 = offsetLoci(ref2, radius);
+    let best = null;
+    for (const locus1 of loci1) {
+      for (const locus2 of loci2) {
+        for (const center of locusIntersections(locus1, locus2)) {
+          const t1 = edgeTangentPoint(ref1, locus1, center);
+          const t2 = edgeTangentPoint(ref2, locus2, center);
+          if (!t1 || !t2 || !tangentWithinSweep(ref1, t1) || !tangentWithinSweep(ref2, t2)) continue;
+          const score = dist(t1, pickFirst) + dist(t2, pickSecond);
+          if (!best || score < best.score) best = { center, t1, t2, score };
+        }
+      }
+    }
+    if (!best) return { error: 'That radius does not fit here.' };
+
+    const { center, t1, t2 } = best;
+    let startAngle = angleFromCenter(center, t1);
+    let sweep = normalizeAngle(angleFromCenter(center, t2) - startAngle);
+    if (sweep > Math.PI) {
+      startAngle = angleFromCenter(center, t2);
+      sweep = TAU - sweep;
+    }
+    if (sweep <= 1e-8) return { error: 'That radius does not fit here.' };
+
+    const updated = [];
+    for (const [ref, point, pick] of [[ref1, t1, pickFirst], [ref2, t2, pickSecond]]) {
+      if (ref.kind === 'line') {
+        const arm = cornerArm({ a: ref.a, b: ref.b }, point, pick);
+        if (!arm) return { error: 'A line with no length has no direction to work from.' };
+        updated.push(updateEdgeEndpoint(ref, arm, point));
+      } else if (isArc(ref.entity)) {
+        updated.push(updateCircularEdge(ref, pick, point));
+      }
+    }
+
+    return {
+      updated,
+      addition: {
+        type: 'ARC',
+        layerId: cornerLayerId(ref1, ref2),
+        center,
+        radius,
+        startAngle,
+        endAngle: startAngle + sweep,
+      },
+    };
+  }
+
   function filletCorner(ref1, ref2, pickFirst, pickSecond, radius) {
+    if (ref1.kind === 'circle' || ref2.kind === 'circle') {
+      return filletCurved(ref1, ref2, pickFirst, pickSecond, radius);
+    }
     const frame = cornerFrame(ref1, ref2, pickFirst, pickSecond);
     if (frame.error) return frame;
     const { corner, arm1, arm2, included } = frame;
@@ -9146,14 +9333,17 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   // Which edge the cursor is over, refusing anything that is not a line or
-  // polyline segment by name so the reason is visible rather than the click
-  // just doing nothing.
+  // polyline segment (or, for FILLET only, an arc or circle) by name so the
+  // reason is visible rather than the click just doing nothing.
   function cornerPick(world, excludedIds = null) {
     const hit = hitTestSegment(world, 10, excludedIds, true);
     if (!hit) return { error: 'No line there. Click a line.' };
     const entity = hit.entity;
-    if (!['LINE', 'PLINE'].includes(entity.type)) {
-      return { error: `${state.edit?.type || 'FILLET'} works on lines and polyline segments; that is a ${entity.type}.` };
+    const type = state.edit?.type || 'FILLET';
+    const allowCircular = type === 'FILLET';
+    if (!['LINE', 'PLINE'].includes(entity.type) && !(allowCircular && ['ARC', 'CIRCLE'].includes(entity.type))) {
+      const allowed = allowCircular ? 'lines, polyline segments, arcs and circles' : 'lines and polyline segments';
+      return { error: `${type} works on ${allowed}; that is a ${entity.type}.` };
     }
     if (!isEntityEditable(entity)) return { error: 'That line is on a locked or hidden layer.' };
     return { entity, point: hit.point, segmentIndex: hit.segmentIndex };
@@ -9683,12 +9873,13 @@ kbd { font-size: 9px; opacity: .65; }
         if (stage === 'RADIUS') return `FILLET — Specify fillet radius <${formatLengthLabel(operation.radius)}>:`;
         if (stage === 'DISTANCE1') return `CHAMFER — Specify first chamfer distance <${formatLengthLabel(operation.firstDistance)}>:`;
         if (stage === 'DISTANCE2') return `CHAMFER — Specify second chamfer distance <${formatLengthLabel(operation.secondDistance)}>:`;
-        if (stage === 'SECOND') return `${type} — Select the second line:`;
+        const noun = type === 'FILLET' ? 'edge' : 'line';
+        if (stage === 'SECOND') return `${type} — Select the second ${noun}:`;
         const setting = type === 'FILLET'
           ? `radius ${formatLengthLabel(operation?.radius ?? 0)}`
           : `${formatLengthLabel(operation?.firstDistance ?? 0)} × ${formatLengthLabel(operation?.secondDistance ?? 0)}`;
         const option = type === 'FILLET' ? 'Radius' : 'Distance';
-        return `${type} — Select the first line or [${option}] (${setting}); Enter/right-click/Esc to finish:`;
+        return `${type} — Select the first ${noun} or [${option}] (${setting}); Enter/right-click/Esc to finish:`;
       },
 
       keyword(text) {
