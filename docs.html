@@ -188,6 +188,12 @@
         file you download and re-open yourself, and an autosave copy is kept in the browser's local
         storage so an accidental tab close doesn't lose your work.
       </p>
+      <p>
+        zbCAD is built for a mouse and keyboard on a wide display; it has no touch input handling or
+        small-viewport layout. A narrow window or a touch device shows a dismissible warning to that
+        effect rather than silently breaking &mdash; <strong>Continue anyway</strong> skips it for
+        anyone who wants to try regardless.
+      </p>
     </section>
 
     <h2 id="interface">The interface</h2>
@@ -368,6 +374,16 @@
         <strong>Plot (PLT)</strong> writes the drawing to a PDF as real vector geometry &mdash; not a
         screenshot of the canvas. Lines stay lines, so the sheet can be measured, marked up, and
         printed at any resolution. <kbd>Ctrl/Cmd+P</kbd> opens the same dialog.
+      </p>
+      <p>
+        The dialog previews the sheet live as sheet size, area and scale are chosen, drawn from the
+        same plot plan the PDF is serialised from, so there is nothing between choosing options and
+        seeing what lands on paper. Anything that falls outside the printable border is shown in amber
+        rather than left off the preview, since a line half on the sheet and half clipped is exactly
+        the mistake this is meant to catch before the file is written. Text too small to read at
+        preview scale is greeked into a bar instead of vanishing &mdash; annotation that is really on
+        the sheet shouldn't look absent in the picture of it. The dialog widens to two columns to fit
+        the preview, collapsing back to one on a narrow window.
       </p>
       <p>
         <strong>Sheet size</strong> offers the ANSI, ARCH and ISO sizes, in either orientation, with a
