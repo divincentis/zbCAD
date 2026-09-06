@@ -36,7 +36,7 @@ export function loadDocumentText(text, sourceName = '') {
     return false;
   }
   if (parsed.document.name === 'Untitled' && sourceName) {
-    parsed.document.name = sourceName.replace(/(?:\.draft2d)?\.json$/i, '').trim() || 'Untitled';
+    parsed.document.name = sourceName.replace(/(?:\.zbCAD)?\.json$/i, '').trim() || 'Untitled';
   }
   applyDocument(parsed.document, true);
   setFileStatus(`${state.drawingName} · Opened`);
@@ -112,7 +112,7 @@ export function drawingDownloadName() {
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-')
     .replace(/[. ]+$/g, '')
     .trim();
-  return `${safeName || 'drawing'}.draft2d.json`;
+  return `${safeName || 'drawing'}.zbCAD.json`;
 }
 
 export function saveDrawing() {

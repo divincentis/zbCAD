@@ -16,18 +16,32 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; }
 
 .topbar {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 18px;
   min-height: 44px;
-  padding: 6px 10px;
+  padding: 6px 74px 6px 10px;
   background: #252525;
   border-bottom: 1px solid #3a3a3a;
 }
 .brand { font-weight: 700; white-space: nowrap; }
 .version { color: #9e9e9e; font-size: 11px; font-weight: 400; }
 .tools { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 6px 0; }
+.docs-link {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  color: #cfcfcf;
+  text-decoration: none;
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border: 1px solid #4a4a4a;
+  border-radius: 4px;
+}
+.docs-link:hover { color: #fff; border-color: #6a6a6a; }
 .tool-group {
   display: flex;
   flex-wrap: wrap;
@@ -396,7 +410,7 @@ kbd { font-size: 9px; opacity: .65; }
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">zbCAD Prototype <span class="version">v0.24.3</span></div>
+    <div class="brand">zbCAD <span class="version">v0.24.3</span></div>
     <div class="tools">
       <div class="tool-group">
         <span class="group-label">File</span>
@@ -460,7 +474,8 @@ kbd { font-size: 9px; opacity: .65; }
         <button id="unitsBtn">Units (UN)</button>
       </div>
     </div>
-    <input id="openInput" type="file" accept=".json,.draft2d.json,application/json" hidden />
+    <a id="docsLink" class="docs-link" href="docs.html" target="_blank" rel="noopener">Docs</a>
+    <input id="openInput" type="file" accept=".json,.zbCAD.json,application/json" hidden />
   </header>
 
   <main class="workspace">
