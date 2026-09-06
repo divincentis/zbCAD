@@ -3,7 +3,7 @@ import { arcSweep, circularPoint, dist, normalizeAngle } from '../core/math.js';
 import { formatAngle, formatArea, formatLength, formatLengthLabel } from '../core/units.js';
 import { ctx } from '../dom.js';
 import { dimensionGeometry, dimensionText } from '../model/dimension.js';
-import { entityArea, entityLength, polygonArea, polylineIsClosed } from '../model/entity.js';
+import { entityArea, entityLength, entitySegments, polygonArea, polylineIsClosed } from '../model/entity.js';
 import { getLayer, isEntityVisible } from '../model/layerQuery.js';
 import { state } from '../state.js';
 import { showInquiryReport } from '../ui/inquiry.js';
@@ -292,11 +292,13 @@ export function entityReportGroup(entity) {
     );
   } else if (entity.type === 'PLINE') {
     const closed = polylineIsClosed(entity);
+    const curved = entitySegments(entity).filter(([, , arc]) => arc).length;
     rows.push(
       ['Vertices', String(entity.points.length)],
       ['Closed', closed ? 'Yes' : 'No'],
-      [closed ? 'Perimeter' : 'Length', formatLengthLabel(entityLength(entity))],
     );
+    if (curved) rows.push(['Curved segments', String(curved)]);
+    rows.push([closed ? 'Perimeter' : 'Length', formatLengthLabel(entityLength(entity))]);
     if (closed) rows.push(['Area', formatArea(entityArea(entity))]);
   } else if (entity.type === 'CIRCLE') {
     rows.push(

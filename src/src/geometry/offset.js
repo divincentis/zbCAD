@@ -1,7 +1,7 @@
 import { setMode } from '../commands/registry.js';
 import { dist, pointOnSegmentClosest } from '../core/math.js';
 import { cleanPoint, commitGeometry } from '../model/document.js';
-import { entitySegments } from '../model/entity.js';
+import { entitySegments, polylineHasBulges } from '../model/entity.js';
 import { isEntityEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';
 import { updatePrompt } from '../ui/prompt.js';
@@ -135,6 +135,11 @@ export function offsetPathIsValid(source, result, closed, distance) {
 
 export function offsetEntity(entity, distance, sidePoint, id = entity.id) {
   if (!['LINE', 'PLINE', 'CIRCLE', 'ARC'].includes(entity.type) || distance <= 0) return null;
+  // The mitered path below is built from shifted straight segments and checked
+  // for self-crossing the same way. Offsetting a curved segment means offset
+  // arcs joined by arc/line intersections, which is a different construction —
+  // refused by name in acceptOffsetSource rather than approximated here.
+  if (polylineHasBulges(entity)) return null;
 
   if (entity.type === 'CIRCLE' || entity.type === 'ARC') {
     const pointDistance = dist(entity.center, sidePoint);
@@ -200,6 +205,10 @@ export function acceptOffsetSource() {
   const selected = state.entities.filter(entity => state.selected.has(entity.id) && isEntityEditable(entity));
   if (selected.length !== 1 || !isOffsettable(selected[0])) {
     updatePrompt(selected.length ? 'Select exactly one line, polyline, circle, or arc.' : 'No object selected.');
+    return true;
+  }
+  if (polylineHasBulges(selected[0])) {
+    updatePrompt('OFFSET works on straight polylines; that one has a curved segment. EXPLODE it first.');
     return true;
   }
   state.offset.sourceId = selected[0].id;

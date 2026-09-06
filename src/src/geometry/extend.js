@@ -2,6 +2,7 @@ import { TAU } from '../core/constants.js';
 import { angleFromCenter, angleOnArc, arcSweep, circleCircleIntersections, circularPoint, dist, normalizeAngle, pointOnCircularEntity, segmentCircleIntersections } from '../core/math.js';
 import { editBoundarySegments, makeArc } from './edgeEdit.js';
 import { replaceEditedEntity } from './trim.js';
+import { polylineBulge } from '../model/entity.js';
 import { distanceToEntityPx } from '../interaction/selection.js';
 import { isEntityEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';
@@ -140,6 +141,13 @@ export function calculateExtendOperation(world) {
   if (points.length < 2) return { error: 'That entity has no extendable endpoint.' };
   const extendStart = dist(world, points[0]) <= dist(world, points[points.length - 1]);
   const endpointIndex = extendStart ? 0 : points.length - 1;
+  // An extension runs along the end segment's own direction, and a curved
+  // segment's direction is its tangent rather than its chord — a different
+  // operation (growing the arc's sweep) than the one below.
+  if (hit.entity.type === 'PLINE' &&
+      polylineBulge(hit.entity, extendStart ? 0 : points.length - 2) !== 0) {
+    return { error: 'That end of the polyline is curved; EXTEND works from a straight end.' };
+  }
   const adjacentIndex = extendStart ? 1 : points.length - 2;
   const origin = points[endpointIndex];
   const adjacent = points[adjacentIndex];

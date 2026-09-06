@@ -1,7 +1,7 @@
 import { setMode } from '../commands/registry.js';
 import { TAU } from '../core/constants.js';
-import { angleFromCenter, circularPoint, dist, normalizeAngle, pointAlong, pointOnCircularEntity } from '../core/math.js';
-import { entitySegments } from '../model/entity.js';
+import { angleFromCenter, angleOnArc, circularPoint, dist, normalizeAngle, pointAlong, pointOnCircularEntity } from '../core/math.js';
+import { entitySegments, withPolylineBulges } from '../model/entity.js';
 import { isEntityEditable, isEntityVisible } from '../model/layerQuery.js';
 import { state } from '../state.js';
 import { worldToScreen } from '../view/viewport.js';
@@ -18,17 +18,32 @@ export function hitTestSegment(world, maxPx = 10, excludedIds = null, includeCir
     if (excludedIds?.has(entity.id) || !isEntityEditable(entity)) continue;
     const segments = entitySegments(entity);
     for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
-      const [a, b] = segments[segmentIndex];
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const lengthSquared = dx * dx + dy * dy;
-      if (lengthSquared < 1e-12) continue;
-      const t = Math.max(0, Math.min(1, ((world.x - a.x) * dx + (world.y - a.y) * dy) / lengthSquared));
-      const point = { x: a.x + t * dx, y: a.y + t * dy };
+      const [a, b, arc] = segments[segmentIndex];
+      let t;
+      let point;
+      if (arc) {
+        // A curved segment answers where the cursor sits along the arc, not
+        // along its chord; off the sweep entirely it is simply not hit, the
+        // same rule a standalone ARC follows below.
+        const angle = angleFromCenter(arc.center, world);
+        if (!angleOnArc(angle, arc)) continue;
+        const travelled = arc.sweep > 0
+          ? normalizeAngle(angle - arc.angleA)
+          : normalizeAngle(arc.angleA - angle);
+        t = Math.max(0, Math.min(1, travelled / Math.abs(arc.sweep)));
+        point = circularPoint(arc.center, arc.radius, angle);
+      } else {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const lengthSquared = dx * dx + dy * dy;
+        if (lengthSquared < 1e-12) continue;
+        t = Math.max(0, Math.min(1, ((world.x - a.x) * dx + (world.y - a.y) * dy) / lengthSquared));
+        point = { x: a.x + t * dx, y: a.y + t * dy };
+      }
       const screen = worldToScreen(point);
       const px = Math.hypot(screen.x - cursor.x, screen.y - cursor.y);
       if (px <= maxPx && (!best || px < best.px)) {
-        best = { entity, kind: 'SEGMENT', segmentIndex, a, b, t, point, px };
+        best = { entity, kind: 'SEGMENT', segmentIndex, a, b, arc, t, point, px };
       }
     }
     if (includeCircular && ['CIRCLE', 'ARC'].includes(entity.type)) {
@@ -62,7 +77,17 @@ export function editBoundarySegments(targetId, includeTarget = false) {
     }
     const segments = entitySegments(entity);
     for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
-      boundaries.push({ kind: 'SEGMENT', entityId: entity.id, segmentIndex, a: segments[segmentIndex][0], b: segments[segmentIndex][1] });
+      const [a, b, arc] = segments[segmentIndex];
+      // A polyline's curved segment cuts as an arc, so it is offered in the
+      // same shape a standalone ARC is above rather than as its chord.
+      if (arc) {
+        boundaries.push({
+          kind: 'ARC', entityId: entity.id, segmentIndex,
+          center: arc.center, radius: arc.radius, startAngle: arc.startAngle, endAngle: arc.endAngle,
+        });
+      } else {
+        boundaries.push({ kind: 'SEGMENT', entityId: entity.id, segmentIndex, a, b });
+      }
     }
   }
   return boundaries;
@@ -102,7 +127,11 @@ export function trimPieceFromPoints(entity, points) {
   const length = cleaned.slice(1).reduce((sum, point, index) => sum + dist(cleaned[index], point), 0);
   if (length < 1e-8) return null;
   if (entity.type === 'LINE') return { ...entity, a: cleaned[0], b: cleaned[cleaned.length - 1] };
-  return { ...entity, points: cleaned, closed: false };
+  // A trimmed piece is rebuilt from points alone, so any curve the source
+  // carried is not one of them. TRIM refuses a curved polyline outright (see
+  // calculateTrimOperation) precisely so this never silently straightens one;
+  // clearing the array here keeps that guarantee local rather than remote.
+  return withPolylineBulges({ ...entity, points: cleaned, closed: false }, cleaned.map(() => 0));
 }
 
 export function pointAtPathPosition(entity, position) {

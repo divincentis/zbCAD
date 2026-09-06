@@ -2,7 +2,7 @@ import { TAU } from '../core/constants.js';
 import { angleFromCenter, circularEntityIntersections, segmentCircularIntersections, unwrappedArcAngle } from '../core/math.js';
 import { buildTrimPieces, editBoundarySegments, hitTestSegment, makeArc, pathPointsBetween, segmentIntersectionParameters } from './edgeEdit.js';
 import { commitGeometry } from '../model/document.js';
-import { entitySegments } from '../model/entity.js';
+import { entitySegments, polylineHasBulges } from '../model/entity.js';
 import { state } from '../state.js';
 import { updatePrompt } from '../ui/prompt.js';
 import { draw } from '../view/frame.js';
@@ -77,6 +77,13 @@ export function calculateTrimOperation(world) {
   const includeSelfIntersections = !state.edit?.boundaryIds;
   const boundaries = editBoundarySegments(hit.entity.id, includeSelfIntersections);
   if (hit.kind === 'CIRCULAR') return calculateCircularTrimOperation(hit, boundaries);
+  // Trimming rebuilds a polyline from a list of points, which has nowhere to
+  // put a curve. Refusing the whole polyline rather than just its curved
+  // segments is deliberate: a piece cut from a straight segment still has to
+  // carry the rest of the shape, arcs included.
+  if (polylineHasBulges(hit.entity)) {
+    return { error: 'That polyline has a curved segment, which TRIM cannot rebuild. EXPLODE it first.' };
+  }
 
   const segmentCount = entitySegments(hit.entity).length;
   const intersections = [];

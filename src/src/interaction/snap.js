@@ -1,6 +1,7 @@
 import { activeCommand } from '../commands/registry.js';
 import { SNAP_RANK } from '../core/defaults.js';
-import { SNAP_COINCIDENT_PX, angleFromCenter, angleOnArc, arcSweep, circularEntityIntersections, circularPoint, dist, normalizeAngle, pointOnInfiniteLine, pointOnSegmentClosest, pointWithinSegment, segmentCircularIntersections, segmentIntersection, segmentWithinRadius } from '../core/math.js';
+import { SNAP_COINCIDENT_PX, angleFromCenter, angleOnArc, arcSweep, circularEntityIntersections, circularPoint, dist, isArc, normalizeAngle, pointOnInfiniteLine, pointOnSegmentClosest, pointWithinSegment, segmentCircularIntersections, segmentIntersection, segmentWithinRadius } from '../core/math.js';
+import { entitySegments } from '../model/entity.js';
 import { isEntityVisible } from '../model/layerQuery.js';
 import { state } from '../state.js';
 import { screenToWorld, worldToScreen } from '../view/viewport.js';
@@ -29,16 +30,32 @@ export function getSnap(rawWorld, basePoint = null, excludedEntityId = null) {
   const cursor = screenToWorld(state.mouseScreen);
   const aperture = maxPx / state.view.scale + 1e-9;
 
-  const segs = snapSegments(excludedEntityId)
-    .filter(([a, b]) => segmentWithinRadius(a, b, cursor, aperture));
-  const circularEntities = state.entities.filter(entity => {
-    if (!isEntityVisible(entity) || entity.id === excludedEntityId) return false;
-    if (!['CIRCLE', 'ARC'].includes(entity.type)) return false;
-    const radial = dist(cursor, entity.center);
-    // Near the curve (endpoints, midpoint, quadrants, intersections, perpendicular)
-    // or near the center (CENTER snap, which sits far from the drawn curve).
-    return Math.abs(radial - entity.radius) <= aperture || radial <= aperture;
-  });
+  // Near the curve (endpoints, midpoint, quadrants, intersections, perpendicular)
+  // or near the center (CENTER snap, which sits far from the drawn curve).
+  const curveInRange = curve => {
+    const radial = dist(cursor, curve.center);
+    return Math.abs(radial - curve.radius) <= aperture || radial <= aperture;
+  };
+
+  // A polyline's curved segments snap exactly as a standalone arc does, so
+  // they join the circular list rather than staying in the straight one — the
+  // arc descriptor entitySegments() hands back is already the shape every
+  // circular helper below expects.
+  const segs = [];
+  const circularEntities = [];
+  for (const segment of snapSegments(excludedEntityId)) {
+    const arc = segment[2];
+    if (arc) {
+      if (curveInRange(arc)) circularEntities.push(arc);
+    } else if (segmentWithinRadius(segment[0], segment[1], cursor, aperture)) {
+      segs.push(segment);
+    }
+  }
+  for (const entity of state.entities) {
+    if (!isEntityVisible(entity) || entity.id === excludedEntityId) continue;
+    if (!['CIRCLE', 'ARC'].includes(entity.type)) continue;
+    if (curveInRange(entity)) circularEntities.push(entity);
+  }
 
   // Each type is skipped at the source rather than filtered afterwards, so a
   // snap that is switched off costs nothing to have.
@@ -62,7 +79,7 @@ export function getSnap(rawWorld, basePoint = null, excludedEntityId = null) {
   }
 
   for (const circularEntity of circularEntities) {
-    if (circularEntity.type === 'ARC') {
+    if (isArc(circularEntity)) {
       if (wants('END')) {
         candidates.push({ type: 'END', p: circularPoint(circularEntity.center, circularEntity.radius, circularEntity.startAngle) });
         candidates.push({ type: 'END', p: circularPoint(circularEntity.center, circularEntity.radius, circularEntity.endAngle) });

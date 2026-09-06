@@ -5,7 +5,7 @@ export const MAX_VIEW_SCALE = 100000;
 export const DOCUMENT_FORMAT = 'browser-2d-draft';
 // Version 4 had no per-layer linetype/lineweight/printability (see
 // core/defaults.js and model/document.js's layer parsing for the migration).
-export const DOCUMENT_VERSION = 5;
+export const DOCUMENT_VERSION = 6;
 export const AUTOSAVE_KEY = `${DOCUMENT_FORMAT}.autosave`;
 export const AUTOSAVE_BACKUP_KEY = `${AUTOSAVE_KEY}.previous`;
 export const LEGACY_AUTOSAVE_KEYS = [`${DOCUMENT_FORMAT}.autosave.v1`];

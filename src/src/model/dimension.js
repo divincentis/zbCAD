@@ -1,7 +1,7 @@
 import { DIM_TEXT_PREFIX } from '../core/constants.js';
 import { DEFAULT_DIM_STYLE_ID } from '../core/defaults.js';
 import { dimSize, getDimStyle } from '../core/dimstyle.js';
-import { angleFromCenter, angleOnArc, circularPoint, dist } from '../core/math.js';
+import { angleFromCenter, angleOnArc, bulgeParam, bulgePointAt, circularPoint, dist } from '../core/math.js';
 import { formatLength } from '../core/units.js';
 import { isEntityVisible } from './layerQuery.js';
 import { state } from '../state.js';
@@ -119,11 +119,17 @@ export const REFERENCE_TOLERANCE = 1e-7;
 // entity.js already imports dimensionGeometry/dimensionSegments from this
 // file, so importing back would be a cycle. The logic is small enough that
 // keeping two copies is cheaper than restructuring the module graph for it.
+// The third element is the segment's bulge rather than the arc entity.js
+// derives from it, since both callers here want the raw number.
 function segmentPairs(entity) {
   const segments = [];
-  for (let i = 0; i < entity.points.length - 1; i++) segments.push([entity.points[i], entity.points[i + 1]]);
+  const bulgeAt = index => (Number.isFinite(entity.bulges?.[index]) ? entity.bulges[index] : 0);
+  for (let i = 0; i < entity.points.length - 1; i++) {
+    segments.push([entity.points[i], entity.points[i + 1], bulgeAt(i)]);
+  }
   if (entity.closed && entity.points.length >= 3) {
-    segments.push([entity.points[entity.points.length - 1], entity.points[0]]);
+    const last = entity.points.length - 1;
+    segments.push([entity.points[last], entity.points[0], bulgeAt(last)]);
   }
   return segments;
 }
@@ -205,8 +211,12 @@ export function resolveEntityReference(point) {
     if (entity.type === 'PLINE') {
       const segments = segmentPairs(entity);
       for (let index = 0; index < segments.length; index++) {
-        const [a, b] = segments[index];
-        const t = segmentParam(a, b, point);
+        const [a, b, bulge] = segments[index];
+        // On a curved segment the position runs along the arc, so the same
+        // 0-to-1 number keeps naming the same spot when the curve is reshaped.
+        const t = bulge
+          ? bulgeParam(a, b, bulge, point, REFERENCE_TOLERANCE)
+          : segmentParam(a, b, point);
         if (t !== null) return { entityId: entity.id, part: 'SEGMENT', segmentIndex: index, t };
       }
     }
@@ -277,8 +287,10 @@ export function pointForReference(entity, ref) {
     if (entity.type === 'PLINE') {
       const segments = segmentPairs(entity);
       if (!Number.isInteger(ref.segmentIndex) || ref.segmentIndex < 0 || ref.segmentIndex >= segments.length) return null;
-      const [a, b] = segments[ref.segmentIndex];
-      return { x: a.x + ref.t * (b.x - a.x), y: a.y + ref.t * (b.y - a.y) };
+      const [a, b, bulge] = segments[ref.segmentIndex];
+      return bulge
+        ? bulgePointAt(a, b, bulge, ref.t)
+        : { x: a.x + ref.t * (b.x - a.x), y: a.y + ref.t * (b.y - a.y) };
     }
     return null;
   }

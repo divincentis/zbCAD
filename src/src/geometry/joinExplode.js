@@ -1,6 +1,7 @@
 import { visibleSelectedEntities } from '../commands/inquiry.js';
-import { dist } from '../core/math.js';
+import { arcSweep, bulgeFromSweep, circularPoint, dist } from '../core/math.js';
 import { commitGeometry } from '../model/document.js';
+import { entitySegments, polylineBulge, withPolylineBulges } from '../model/entity.js';
 import { isEntityEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';
 
@@ -17,13 +18,48 @@ import { state } from '../state.js';
 // with a tolerance rather than by equality.
 export const JOIN_TOLERANCE = 1e-6;
 
-// Only open lines and polylines can be joined: a closed shape has no free end
-// to attach to, and joining an arc would need a polyline bulge, which this
-// drawing format does not have.
+// A path being chained: `points` vertices and the `bulges` of the segments
+// between them, so one entry shorter. Only open shapes can be joined — a
+// closed one has no free end to attach to — but an arc is now among them,
+// since a polyline can hold the curve as a bulge on its own segment.
 export function joinablePath(entity) {
-  if (entity.type === 'LINE') return [{ ...entity.a }, { ...entity.b }];
-  if (entity.type === 'PLINE' && !entity.closed) return entity.points.map(point => ({ ...point }));
+  if (entity.type === 'LINE') return { points: [{ ...entity.a }, { ...entity.b }], bulges: [0] };
+  if (entity.type === 'ARC') {
+    return {
+      points: [
+        circularPoint(entity.center, entity.radius, entity.startAngle),
+        circularPoint(entity.center, entity.radius, entity.endAngle),
+      ],
+      // Arcs are stored counter-clockwise from start to end, which is exactly
+      // the direction a positive bulge names.
+      bulges: [bulgeFromSweep(arcSweep(entity))],
+    };
+  }
+  if (entity.type === 'PLINE' && !entity.closed) {
+    return {
+      points: entity.points.map(point => ({ ...point })),
+      bulges: entity.points.slice(0, -1).map((vertex, index) => polylineBulge(entity, index)),
+    };
+  }
   return null;
+}
+
+// Walking a path backwards reverses the sense of every arc on it, so each
+// bulge changes sign as well as place — the same reflection rule MIRROR uses.
+export function reversePath(path) {
+  return {
+    points: [...path.points].reverse(),
+    bulges: [...path.bulges].reverse().map(bulge => (bulge === 0 ? 0 : -bulge)),
+  };
+}
+
+// Joins two paths that already meet: `second` starts where `first` ends, so
+// that shared vertex is stored once.
+export function concatPaths(first, second) {
+  return {
+    points: first.points.concat(second.points.slice(1)),
+    bulges: first.bulges.concat(second.bulges),
+  };
 }
 
 // Grows one chain outwards from the first path, reversing whatever attaches
@@ -32,22 +68,22 @@ export function joinablePath(entity) {
 // meet at one point the choice is arbitrary; the result is still a valid
 // chain through that vertex, just not necessarily the one the eye expects.
 export function chainPaths(paths) {
-  let chain = paths[0].slice();
+  let chain = paths[0];
   const remaining = paths.slice(1);
   let attached = true;
   while (remaining.length && attached) {
     attached = false;
     for (let i = 0; i < remaining.length; i++) {
       const path = remaining[i];
-      const head = chain[0];
-      const tail = chain[chain.length - 1];
-      const first = path[0];
-      const last = path[path.length - 1];
+      const head = chain.points[0];
+      const tail = chain.points[chain.points.length - 1];
+      const first = path.points[0];
+      const last = path.points[path.points.length - 1];
       let merged = null;
-      if (dist(tail, first) < JOIN_TOLERANCE) merged = chain.concat(path.slice(1));
-      else if (dist(tail, last) < JOIN_TOLERANCE) merged = chain.concat(path.slice(0, -1).reverse());
-      else if (dist(head, last) < JOIN_TOLERANCE) merged = path.slice(0, -1).concat(chain);
-      else if (dist(head, first) < JOIN_TOLERANCE) merged = path.slice(1).reverse().concat(chain);
+      if (dist(tail, first) < JOIN_TOLERANCE) merged = concatPaths(chain, path);
+      else if (dist(tail, last) < JOIN_TOLERANCE) merged = concatPaths(chain, reversePath(path));
+      else if (dist(head, last) < JOIN_TOLERANCE) merged = concatPaths(path, chain);
+      else if (dist(head, first) < JOIN_TOLERANCE) merged = concatPaths(reversePath(path), chain);
       if (!merged) continue;
       chain = merged;
       remaining.splice(i, 1);
@@ -65,7 +101,7 @@ export function joinSelection() {
   }
   const paths = selected.map(joinablePath);
   if (paths.some(path => !path)) {
-    return { error: 'Only open lines and polylines can be joined.' };
+    return { error: 'Only open lines, arcs and polylines can be joined.' };
   }
 
   const chain = chainPaths(paths);
@@ -73,36 +109,47 @@ export function joinSelection() {
 
   // A chain that returns to its own start is a closed shape, and a closed
   // polyline stores the start once rather than repeating it at the end.
-  const closed = chain.length >= 4 && dist(chain[0], chain[chain.length - 1]) < JOIN_TOLERANCE;
-  if (closed) chain.pop();
+  // Dropping that repeat also leaves the bulge list exactly the length the
+  // entity needs, with the closing segment's curve last.
+  const points = chain.points;
+  const closed = points.length >= 4 && dist(points[0], points[points.length - 1]) < JOIN_TOLERANCE;
+  if (closed) points.pop();
+  const bulges = closed ? chain.bulges : [...chain.bulges, 0];
 
   const sourceIds = new Set(selected.map(entity => entity.id));
-  const joined = {
+  const joined = withPolylineBulges({
     id: state.nextId,
     type: 'PLINE',
     // The result belongs where the first source object lived, which is the
     // only choice that does not depend on the order they were picked in.
     layerId: selected[0].layerId,
-    points: chain,
+    points,
     closed,
-  };
+  }, bulges);
   const entities = [...state.entities.filter(entity => !sourceIds.has(entity.id)), joined];
   if (!commitGeometry(entities, { nextId: state.nextId + 1 })) return { error: 'Joining would create invalid geometry.' };
   state.selected = new Set([joined.id]);
   return { joined: selected.length };
 }
 
-// Rectangles are stored as closed polylines, so this covers both.
+// Rectangles are stored as closed polylines, so this covers both. A curved
+// segment leaves as an ARC rather than as the chord across it, which is what
+// makes EXPLODE the honest escape hatch the commands that refuse a curved
+// polyline (OFFSET, TRIM, EXTEND) point users at.
 export function explodedPieces(entity) {
   if (entity.type !== 'PLINE') return null;
-  const points = entity.points;
-  const segmentCount = entity.closed ? points.length : points.length - 1;
   const pieces = [];
-  for (let i = 0; i < segmentCount; i++) {
-    const a = points[i];
-    const b = points[(i + 1) % points.length];
+  for (const [a, b, arc] of entitySegments(entity)) {
     if (dist(a, b) <= 1e-9) continue;
-    pieces.push({ type: 'LINE', layerId: entity.layerId, a: { ...a }, b: { ...b } });
+    if (arc) {
+      pieces.push({
+        type: 'ARC', layerId: entity.layerId,
+        center: { ...arc.center }, radius: arc.radius,
+        startAngle: arc.startAngle, endAngle: arc.endAngle,
+      });
+    } else {
+      pieces.push({ type: 'LINE', layerId: entity.layerId, a: { ...a }, b: { ...b } });
+    }
   }
   return pieces.length ? pieces : null;
 }

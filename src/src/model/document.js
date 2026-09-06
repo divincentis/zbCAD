@@ -1,7 +1,7 @@
 import { DEFAULT_LINETYPE, DEFAULT_LINEWEIGHT, DIM_REF_PARTS, DIM_TYPES, DOCUMENT_FORMAT, DOCUMENT_VERSION, LINETYPES, LINEWEIGHTS, TAU } from '../core/constants.js';
 import { DEFAULT_DIM_STYLE_ID, defaultDimStyle, derivedNextLayerId } from '../core/defaults.js';
 import { parseDimStyle } from '../core/dimstyle.js';
-import { dist, normalizeAngle } from '../core/math.js';
+import { bulgeArc, dist, normalizeAngle } from '../core/math.js';
 import { parseUnitSettings } from '../core/units.js';
 import { dimensionGeometry } from './dimension.js';
 import { cloneDimStyles, cloneEntities, cloneLayers, entityArea, entityBBox, entityLength } from './entity.js';
@@ -95,6 +95,32 @@ export function cleanEntityRefs(value) {
   return { value: cleaned };
 }
 
+// A polyline's curved segments. The array is rejected outright rather than
+// resized when its length disagrees with the points: every internal path that
+// reshapes a polyline has to reshape its bulges with it, and a stale array
+// silently truncated back into range would draw a plausible curve on the wrong
+// segment. A trailing entry on an open polyline names a segment that does not
+// exist, so that one is zeroed rather than refused — it is unambiguous.
+export function cleanPolylineBulges(value, points, closed) {
+  if (value === undefined || value === null) return { value: null };
+  if (!Array.isArray(value)) return { error: 'has an invalid polyline bulge list' };
+  if (value.length !== points.length) {
+    return { error: 'has a polyline bulge list that does not match its points' };
+  }
+  const bulges = [];
+  for (let index = 0; index < value.length; index++) {
+    const bulge = value[index];
+    if (!Number.isFinite(bulge)) return { error: 'has an invalid polyline bulge' };
+    if (!closed && index === points.length - 1) { bulges.push(0); continue; }
+    const next = closed && index === points.length - 1 ? points[0] : points[index + 1];
+    if (bulge !== 0 && !bulgeArc(points[index], next, bulge)) {
+      return { error: 'has a polyline bulge that describes no arc' };
+    }
+    bulges.push(bulge);
+  }
+  return { value: bulges.some(bulge => bulge !== 0) ? bulges : null };
+}
+
 export function cleanEntity(value, layerIds) {
   if (!value || typeof value !== 'object') return { error: 'must be an object' };
   if (!Number.isSafeInteger(value.id) || value.id <= 0 || value.id >= Number.MAX_SAFE_INTEGER) return { error: 'has an invalid ID' };
@@ -122,7 +148,11 @@ export function cleanEntity(value, layerIds) {
     if (closed && dist(points[0], points[points.length - 1]) <= 1e-9) {
       return { error: 'has a collapsed closing polyline segment' };
     }
-    return { entity: { ...common, points, closed } };
+    const bulges = cleanPolylineBulges(value.bulges, points, closed);
+    if (bulges.error) return { error: bulges.error };
+    const entity = { ...common, points, closed };
+    if (bulges.value) entity.bulges = bulges.value;
+    return { entity };
   }
 
   if (type === 'DIM') {

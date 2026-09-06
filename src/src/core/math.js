@@ -147,3 +147,113 @@ export function pointWithinSegment(p, a, b) {
 export function pointAlong(a, b, t) {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
+
+// ---------------------------------------------------------------------------
+// Polyline bulge
+//
+// A polyline segment is straight when its bulge is zero and a circular arc
+// otherwise. The number is DXF's: the tangent of a quarter of the arc's
+// included angle, signed positive when the arc sweeps counter-clockwise from
+// the segment's first point to its second. Storing the curve that way, rather
+// than as a centre and radius, is what lets a curved segment survive every
+// edit a straight one does: it is invariant under translation, rotation and
+// uniform scale, so MOVE/ROTATE/SCALE never have to know it exists, and only
+// MIRROR — which reverses the sense of rotation — has to touch it at all.
+// ---------------------------------------------------------------------------
+
+// Below this the segment is straight for every purpose. Squaring a bulge this
+// small underflows long before the arc it describes is a pixel off its chord.
+export const BULGE_TOLERANCE = 1e-12;
+
+export function bulgeSweep(bulge) {
+  return 4 * Math.atan(bulge);
+}
+
+export function bulgeFromSweep(sweep) {
+  return Math.tan(sweep / 4);
+}
+
+// The arc a bulged segment describes, or null when the segment is straight or
+// degenerate. Shaped so that every helper above which takes an ARC entity
+// (angleOnArc, pointOnCircularEntity, segmentCircularIntersections) accepts it
+// unchanged — hence `kind: 'ARC'`, which isArc() recognises. startAngle and
+// endAngle follow this app's counter-clockwise arc convention and so belong to
+// `b` rather than `a` whenever the bulge is negative; angleA/angleB name the
+// two endpoints individually for the callers that need to tell them apart.
+export function bulgeArc(a, b, bulge) {
+  if (!Number.isFinite(bulge) || Math.abs(bulge) < BULGE_TOLERANCE) return null;
+  const chord = dist(a, b);
+  if (chord < 1e-12) return null;
+  const sweep = bulgeSweep(bulge);
+  const radius = chord / (2 * Math.sin(Math.abs(sweep) / 2));
+  if (!Number.isFinite(radius) || radius <= 0) return null;
+  // Signed distance from the chord's midpoint to the centre, measured to the
+  // left of a→b. It goes negative past a half turn, which is exactly what puts
+  // the centre on the far side of the chord for a major arc.
+  const apothem = (chord / 2) / Math.tan(sweep / 2);
+  if (!Number.isFinite(apothem)) return null;
+  const ux = (b.x - a.x) / chord;
+  const uy = (b.y - a.y) / chord;
+  const center = {
+    x: (a.x + b.x) / 2 - apothem * uy,
+    y: (a.y + b.y) / 2 + apothem * ux,
+  };
+  const angleA = angleFromCenter(center, a);
+  const angleB = angleFromCenter(center, b);
+  const startAngle = sweep > 0 ? angleA : angleB;
+  return {
+    kind: 'ARC',
+    center,
+    radius,
+    startAngle,
+    endAngle: startAngle + Math.abs(sweep),
+    sweep,
+    angleA,
+    angleB,
+  };
+}
+
+// The bulge that reproduces an arc running from `angleA` to `angleB` around
+// `center` in the given direction — the inverse of bulgeArc(), used wherever a
+// constructed arc has to be written back into a polyline.
+export function bulgeForArc(center, angleA, angleB, counterclockwise) {
+  const sweep = counterclockwise
+    ? normalizeAngle(angleB - angleA)
+    : -normalizeAngle(angleA - angleB);
+  return bulgeFromSweep(sweep);
+}
+
+// The point a fraction `t` of the way along a segment, 0 at `a` and 1 at `b`,
+// following the arc when the segment is bulged.
+export function bulgePointAt(a, b, bulge, t) {
+  const arc = bulgeArc(a, b, bulge);
+  if (!arc) return pointAlong(a, b, t);
+  return circularPoint(arc.center, arc.radius, arc.angleA + arc.sweep * t);
+}
+
+// Where `point` sits along a bulged segment, on the same 0-at-a, 1-at-b scale,
+// or null when it is not on that arc within `tolerance`. The whole comparison
+// is made in angles rather than on the ratio, so that a point a rounding step
+// short of the start reads as the start rather than wrapping a full turn and
+// coming back as a parameter far past the end.
+export const BULGE_ANGLE_TOLERANCE = 1e-7;
+
+export function bulgeParam(a, b, bulge, point, tolerance) {
+  const arc = bulgeArc(a, b, bulge);
+  if (!arc) return null;
+  if (Math.abs(dist(point, arc.center) - arc.radius) > tolerance) return null;
+  const angle = angleFromCenter(arc.center, point);
+  const span = Math.abs(arc.sweep);
+  let offset = arc.sweep > 0
+    ? normalizeAngle(angle - arc.angleA)
+    : normalizeAngle(arc.angleA - angle);
+  if (offset > TAU - BULGE_ANGLE_TOLERANCE) offset = 0;
+  if (offset > span + BULGE_ANGLE_TOLERANCE) return null;
+  return Math.min(1, offset / span);
+}
+
+// How much area an arc adds beyond its own chord, signed the way the sweep is
+// so that a polygon's signed area and its segments' can simply be added up.
+export function circularSegmentArea(radius, sweep) {
+  return (radius * radius / 2) * (sweep - Math.sin(sweep));
+}

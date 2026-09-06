@@ -193,11 +193,18 @@ export function mirrorEntity(entity, axisA, axisB, id = entity.id) {
     };
   }
   if (entity.type === 'PLINE') {
-    return {
+    // Reflection reverses the sense of rotation, so every curved segment
+    // sweeps the other way round while keeping its shape — which for a bulge
+    // is exactly a change of sign. Translation, rotation and scale leave them
+    // alone, which is the whole reason a curve is stored this way.
+    const mirrored = {
       ...entity,
       id,
       points: entity.points.map(point => mirrorPoint(point, axisA, axisB)),
     };
+    return entity.bulges
+      ? { ...mirrored, bulges: entity.bulges.map(bulge => (bulge === 0 ? 0 : -bulge)) }
+      : mirrored;
   }
   if (entity.type === 'CIRCLE') {
     return { ...entity, id, center: mirrorPoint(entity.center, axisA, axisB) };

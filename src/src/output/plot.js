@@ -106,12 +106,13 @@ export function plotAreaBox(settings, entities = plottableEntities()) {
 
 // A cubic approximation of a circular arc, split so no piece sweeps more than
 // a quarter turn — past that the error stops being invisible.
-export function plotArcSubpath(center, radius, startAngle, endAngle, closed = false) {
-  const sweep = endAngle - startAngle;
+// The bezier pieces of an arc, without the subpath that carries them, so that
+// a polyline's curved segment can be spliced into a longer path rather than
+// having to become a subpath of its own.
+export function plotArcSegs(center, radius, startAngle, sweep) {
   const pieces = Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 2) - 1e-9));
   const step = sweep / pieces;
   const handle = (4 / 3) * Math.tan(step / 4);
-  const start = circularPoint(center, radius, startAngle);
   const segs = [];
   for (let piece = 0; piece < pieces; piece++) {
     const from = startAngle + step * piece;
@@ -125,7 +126,15 @@ export function plotArcSubpath(center, radius, startAngle, endAngle, closed = fa
       to: p1,
     });
   }
-  return { start, segs, closed };
+  return segs;
+}
+
+export function plotArcSubpath(center, radius, startAngle, endAngle, closed = false) {
+  return {
+    start: circularPoint(center, radius, startAngle),
+    segs: plotArcSegs(center, radius, startAngle, endAngle - startAngle),
+    closed,
+  };
 }
 
 // One plotted entity's operators. `context` carries the world-to-paper
@@ -172,11 +181,21 @@ export function plotEntityOps(entity, context) {
       toPaper(entity.center), entity.radius * context.mmPerUnit, entity.startAngle, entity.endAngle));
   } else if (entity.type === 'PLINE') {
     if (entity.points.length < 2) return [];
-    stroke.subpaths.push({
-      start: toPaper(entity.points[0]),
-      segs: entity.points.slice(1).map(point => ({ type: 'l', to: toPaper(point) })),
-      closed: Boolean(entity.closed) && entity.points.length >= 3,
-    });
+    const closed = Boolean(entity.closed) && entity.points.length >= 3;
+    const segments = entitySegments(entity);
+    const segs = [];
+    for (let index = 0; index < segments.length; index++) {
+      const [, b, arc] = segments[index];
+      if (arc) {
+        segs.push(...plotArcSegs(toPaper(arc.center), arc.radius * context.mmPerUnit, arc.angleA, arc.sweep));
+      } else if (!(closed && index === segments.length - 1)) {
+        // A straight closing segment is what the path's own close operator
+        // draws, so writing it out too would only repeat it. A curved one has
+        // no such shorthand and is emitted above like any other arc.
+        segs.push({ type: 'l', to: toPaper(b) });
+      }
+    }
+    stroke.subpaths.push({ start: toPaper(entity.points[0]), segs, closed });
   } else {
     const segments = entitySegments(entity);
     if (!segments.length) return [];

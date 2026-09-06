@@ -149,9 +149,18 @@ export function drawEntity(e, preview = false) {
     const center = worldToScreen(e.center);
     ctx.arc(center.x, center.y, e.radius * state.view.scale, -e.startAngle, -e.endAngle, true);
   } else {
-    for (const [a,b] of entitySegments(e)) {
+    for (const [a,b,arc] of entitySegments(e)) {
       const sa = worldToScreen(a), sb = worldToScreen(b);
-      ctx.moveTo(sa.x,sa.y); ctx.lineTo(sb.x,sb.y);
+      ctx.moveTo(sa.x,sa.y);
+      if (arc) {
+        // Screen Y runs opposite world Y, so the angles are negated and the
+        // sweep direction flips with them: a counter-clockwise world arc is
+        // drawn anticlockwise=true here, exactly as an ARC entity is above.
+        const center = worldToScreen(arc.center);
+        ctx.arc(center.x, center.y, arc.radius * state.view.scale, -arc.angleA, -arc.angleB, arc.sweep > 0);
+      } else {
+        ctx.lineTo(sb.x,sb.y);
+      }
     }
   }
   ctx.stroke();

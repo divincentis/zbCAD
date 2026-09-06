@@ -1,5 +1,5 @@
 import { TAU, TEXT_WIDTH_FACTOR } from '../core/constants.js';
-import { angleOnArc, arcSweep, circularPoint, dist, segmentCircularIntersections, segmentIntersection } from '../core/math.js';
+import { angleOnArc, arcSweep, bulgeArc, circularPoint, circularSegmentArea, dist, segmentCircularIntersections, segmentIntersection } from '../core/math.js';
 import { dimensionGeometry, dimensionSegments } from './dimension.js';
 import { allocateEntityId, state } from '../state.js';
 
@@ -68,13 +68,56 @@ export function polylineIsClosed(entity) {
   return Boolean(entity.closed) && entity.points.length >= 3;
 }
 
+// ---------------------------------------------------------------------------
+// Curved polyline segments
+//
+// A polyline's `bulges` array runs parallel to `points`: bulges[i] curves the
+// segment leaving vertex i, so the last entry belongs to the closing segment
+// and is unused on an open polyline. The array is absent altogether while
+// every segment is straight, which is the overwhelmingly common case and keeps
+// both saved files and this module's fast path unchanged — read it only
+// through polylineBulge(), never directly.
+// ---------------------------------------------------------------------------
+
+export function polylineBulge(entity, index) {
+  const value = entity.bulges?.[index];
+  return Number.isFinite(value) ? value : 0;
+}
+
+export function polylineHasBulges(entity) {
+  return entity.type === 'PLINE' && Array.isArray(entity.bulges) &&
+    entity.bulges.some((value, index) => polylineBulge(entity, index) !== 0 &&
+      (entity.closed || index < entity.points.length - 1));
+}
+
+// A bulges array sized to match `points`, for the callers that have to write
+// one back. Zero-filled when the polyline is entirely straight.
+export function polylineBulgeList(entity) {
+  return entity.points.map((vertex, index) => polylineBulge(entity, index));
+}
+
+// Drops an all-zero bulges array rather than storing one, so that a polyline
+// which has lost its last curve is indistinguishable from one that never had
+// any. Every path that writes bulges ends here.
+export function withPolylineBulges(entity, bulges) {
+  const next = { ...entity };
+  if (bulges.some(value => Number.isFinite(value) && value !== 0)) {
+    next.bulges = bulges.map(value => (Number.isFinite(value) ? value : 0));
+  } else {
+    delete next.bulges;
+  }
+  return next;
+}
+
 // Total length along the entity: perimeter for a closed shape, run length for
 // an open one, circumference or arc length for circular entities.
 export function entityLength(entity) {
   if (entity.type === 'CIRCLE') return TAU * entity.radius;
   if (entity.type === 'ARC') return arcSweep(entity) * entity.radius;
   let total = 0;
-  for (const [a, b] of entitySegments(entity)) total += dist(a, b);
+  for (const [a, b, arc] of entitySegments(entity)) {
+    total += arc ? Math.abs(arc.sweep) * arc.radius : dist(a, b);
+  }
   return total;
 }
 
@@ -82,7 +125,16 @@ export function entityLength(entity) {
 // arc do not enclose anything, and saying "0" would be a lie.
 export function entityArea(entity) {
   if (entity.type === 'CIRCLE') return Math.PI * entity.radius * entity.radius;
-  if (entity.type === 'PLINE' && polylineIsClosed(entity)) return Math.abs(polygonArea(entity.points));
+  if (entity.type === 'PLINE' && polylineIsClosed(entity)) {
+    // The straight-sided polygon through the vertices, plus whatever each arc
+    // adds beyond its own chord. Both terms are signed the same way round, so
+    // a bulge that cuts a bite out of the shape subtracts.
+    let total = polygonArea(entity.points);
+    for (const [, , arc] of entitySegments(entity)) {
+      if (arc) total += circularSegmentArea(arc.radius, arc.sweep);
+    }
+    return Math.abs(total);
+  }
   return null;
 }
 
@@ -132,17 +184,37 @@ export function cloneEntities() {
 export function cloneLayers() {
   return JSON.parse(JSON.stringify(state.layers));
 }
+// Each segment is [a, b, arc]: `arc` is null for a straight one and otherwise
+// the circular arc the segment's bulge describes (see bulgeArc). A caller that
+// predates curved segments destructures only [a, b] and so reads the chord,
+// which is why every caller for which that distinction matters is listed in
+// this module's sibling comment rather than left to be discovered.
 export function entitySegments(entity) {
-  if (entity.type === 'LINE') return [[entity.a, entity.b]];
+  if (entity.type === 'LINE') return [[entity.a, entity.b, null]];
   if (entity.type === 'PLINE') {
     const segs = [];
-    for (let i = 0; i < entity.points.length - 1; i++) segs.push([entity.points[i], entity.points[i + 1]]);
+    const push = (index, a, b) => segs.push([a, b, bulgeArc(a, b, polylineBulge(entity, index))]);
+    for (let i = 0; i < entity.points.length - 1; i++) push(i, entity.points[i], entity.points[i + 1]);
     if (entity.closed && entity.points.length >= 3) {
-      segs.push([entity.points[entity.points.length - 1], entity.points[0]]);
+      push(entity.points.length - 1, entity.points[entity.points.length - 1], entity.points[0]);
     }
     return segs;
   }
   return [];
+}
+
+// The extreme points of an arc: its two ends, plus whichever axis crossings it
+// actually passes through. Shared by bounding-box code for ARC entities and
+// for a polyline's curved segments, which need exactly the same treatment.
+export function circularExtremes(arc) {
+  const points = [
+    circularPoint(arc.center, arc.radius, arc.startAngle),
+    circularPoint(arc.center, arc.radius, arc.endAngle),
+  ];
+  for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+    if (angleOnArc(angle, arc)) points.push(circularPoint(arc.center, arc.radius, angle));
+  }
+  return points;
 }
 
 // Geometry for picking and bounds. Dimensions are pickable but are
@@ -174,13 +246,7 @@ export function entityBBox(e) {
     };
   }
   if (e.type === 'ARC') {
-    const points = [
-      circularPoint(e.center, e.radius, e.startAngle),
-      circularPoint(e.center, e.radius, e.endAngle),
-    ];
-    for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
-      if (angleOnArc(angle, e)) points.push(circularPoint(e.center, e.radius, angle));
-    }
+    const points = circularExtremes(e);
     return {
       minX: Math.min(...points.map(point => point.x)),
       maxX: Math.max(...points.map(point => point.x)),
@@ -189,7 +255,10 @@ export function entityBBox(e) {
     };
   }
   const pts = [];
-  for (const [a, b] of pickSegments(e)) pts.push(a, b);
+  for (const [a, b, arc] of pickSegments(e)) {
+    if (arc) pts.push(...circularExtremes(arc));
+    else pts.push(a, b);
+  }
   // The measured points sit outside the line work when extension lines are
   // suppressed, and zoom-extents should still frame them.
   if (e.type === 'DIM') pts.push(e.p1, e.p2, dimensionGeometry(e).textAnchor);
@@ -240,8 +309,12 @@ export function entityCrossesBox(entity, box) {
   if (entity.type === 'CIRCLE' || entity.type === 'ARC') {
     return edges.some(([a, b]) => segmentCircularIntersections(a, b, entity).length > 0);
   }
-  for (const [a, b] of pickSegments(entity)) {
+  for (const [a, b, arc] of pickSegments(entity)) {
     if (pointInBox(a, box) || pointInBox(b, box)) return true;
+    if (arc) {
+      if (edges.some(([c, d]) => segmentCircularIntersections(c, d, arc).length > 0)) return true;
+      continue;
+    }
     if (edges.some(([c, d]) => segmentIntersection(a, b, c, d))) return true;
   }
   return false;

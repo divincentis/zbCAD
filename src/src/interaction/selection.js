@@ -24,8 +24,19 @@ export function distanceToEntityPx(world, entity) {
   // a filled glyph area reads, rather than only near its outline.
   if (entity.type === 'TEXT' && textContainsPoint(entity, world)) return 0;
   let best = Infinity;
-  for (const [a, b] of pickSegments(entity)) {
-    const q = pointOnSegmentClosest(world, a, b);
+  for (const [a, b, arc] of pickSegments(entity)) {
+    // A curved segment is picked off its arc, not the chord across it — the
+    // same rule the standalone-curve branch above follows, including falling
+    // back to the nearer end once the cursor is past the sweep.
+    let q;
+    if (arc) {
+      const angle = angleFromCenter(arc.center, world);
+      q = angleOnArc(angle, arc)
+        ? circularPoint(arc.center, arc.radius, angle)
+        : (dist(world, a) <= dist(world, b) ? a : b);
+    } else {
+      q = pointOnSegmentClosest(world, a, b);
+    }
     const qs = worldToScreen(q);
     best = Math.min(best, Math.hypot(qs.x - state.mouseScreen.x, qs.y - state.mouseScreen.y));
   }
