@@ -536,6 +536,136 @@ reset();
   check('an empty drawing refuses to plot', Boolean(plan.error), JSON.stringify(plan.error));
 }
 
+// ---------------------------------------------------------------------------
+// The dialog's sheet preview. It draws the same plan the PDF writer
+// serialises, so what it has to get right is the mapping from paper
+// millimetres to the preview box — and that a plot running off the sheet is
+// shown running off it rather than quietly cropped.
+// ---------------------------------------------------------------------------
+
+// A canvas context that remembers what it was told to do, so the preview can
+// be measured without a browser.
+function recordingContext() {
+  const calls = [];
+  const record = name => (...args) => { calls.push({ name, args }); };
+  return {
+    calls,
+    of(name) { return calls.filter(call => call.name === name); },
+    measureText: text => ({ width: String(text).length * 6 }),
+    setTransform: record('setTransform'),
+    clearRect: record('clearRect'),
+    save: record('save'),
+    restore: record('restore'),
+    translate: record('translate'),
+    scale: record('scale'),
+    rotate: record('rotate'),
+    beginPath: record('beginPath'),
+    closePath: record('closePath'),
+    moveTo: record('moveTo'),
+    lineTo: record('lineTo'),
+    bezierCurveTo: record('bezierCurveTo'),
+    rect: record('rect'),
+    clip: record('clip'),
+    fill: record('fill'),
+    fillRect: record('fillRect'),
+    stroke: record('stroke'),
+    strokeRect: record('strokeRect'),
+    fillText: record('fillText'),
+    setLineDash: record('setLineDash'),
+  };
+}
+
+function previewCanvas(width = 300, height = 230) {
+  return { clientWidth: width, clientHeight: height, width: 0, height: 0 };
+}
+
+// A3 landscape, the default sheet.
+{
+  const page = api.paperSizeMM('a3', 'landscape');
+  const view = api.plotPreviewView(page, 300, 230);
+  const bottomLeft = view.toPx({ x: 0, y: 0 });
+  const topRight = view.toPx({ x: page.widthMM, y: page.heightMM });
+  check('the preview centres the sheet horizontally',
+    Math.abs(bottomLeft.x - (300 - topRight.x)) < 1e-6, `${bottomLeft.x} vs ${300 - topRight.x}`);
+  check('the preview centres the sheet vertically',
+    Math.abs(topRight.y - (230 - bottomLeft.y)) < 1e-6, `${topRight.y} vs ${230 - bottomLeft.y}`);
+  check('the preview keeps the sheet aspect',
+    Math.abs((topRight.x - bottomLeft.x) / (bottomLeft.y - topRight.y)
+      - page.widthMM / page.heightMM) < 1e-9);
+  check('the preview leaves room around the sheet for what falls off it',
+    bottomLeft.x >= 10 && topRight.y >= 10, `${bottomLeft.x}, ${topRight.y}`);
+  check('paper Y is up in the preview', topRight.y < bottomLeft.y);
+  // A portrait sheet is limited by the box height, a landscape one by its
+  // width, and neither may spill out of the box.
+  const portrait = api.plotPreviewView(api.paperSizeMM('a3', 'portrait'), 300, 230);
+  const portraitTop = portrait.toPx({ x: 0, y: api.paperSizeMM('a3', 'portrait').heightMM });
+  check('a portrait sheet fits the preview box', portraitTop.y >= 0 && portrait.toPx({ x: 0, y: 0 }).y <= 230,
+    `${portraitTop.y}`);
+}
+
+// Everything plotted lands on the sheet in the preview, at an arbitrary
+// scale rather than one that divides the page evenly.
+reset();
+{
+  drawLine({ x: 3.7, y: -2.4 }, { x: 214.9, y: 88.3 });
+  drawLine({ x: 214.9, y: 88.3 }, { x: 40.1, y: 132.6 });
+  const plan = api.buildPlotPlan(settings());
+  const view = api.plotPreviewView(plan.page, 300, 230);
+  const inside = planPoints(plan).every(point => {
+    const px = view.toPx(point);
+    const min = view.toPx({ x: plan.printable.xMM, y: plan.printable.yMM });
+    const max = view.toPx({
+      x: plan.printable.xMM + plan.printable.widthMM,
+      y: plan.printable.yMM + plan.printable.heightMM,
+    });
+    return px.x >= min.x - 1e-6 && px.x <= max.x + 1e-6 && px.y <= min.y + 1e-6 && px.y >= max.y - 1e-6;
+  });
+  check('a fitted plot previews entirely inside the printable border', inside);
+
+  const context = recordingContext();
+  const target = previewCanvas();
+  const drawn = api.renderPlotPreview(target, context, plan);
+  check('the preview sizes its backing store to the box', target.width === 300 && target.height === 230,
+    `${target.width}x${target.height}`);
+  check('the preview draws the sheet', context.of('fillRect').length === 1);
+  check('the preview strokes the plotted geometry', context.of('stroke').length >= 1);
+  check('the preview draws the plot in paper millimetres',
+    context.of('scale').some(call => Math.abs(call.args[0] - drawn.scale) < 1e-9
+      && Math.abs(call.args[1] + drawn.scale) < 1e-9), JSON.stringify(context.of('scale')[0]));
+  check('the preview clips to the printable area the way the PDF does',
+    context.of('clip').length === 2 && context.of('clip').some(call => call.args[0] === 'evenodd'),
+    JSON.stringify(context.of('clip').map(call => call.args)));
+}
+
+// A plot too big for the sheet is the case the preview exists for: the part
+// that will be clipped has to be drawn, in the clipped colour, outside the
+// printable border.
+reset();
+{
+  drawLine({ x: 0, y: 0 }, { x: 5000, y: 3000 });
+  const plan = api.buildPlotPlan(settings({ scaleMode: 'exact', scale: 1 }));
+  check('the oversized plot warns', plan.warnings.some(warning => /clipped/.test(warning)),
+    plan.warnings.join(' | '));
+  const view = api.plotPreviewView(plan.page, 300, 230);
+  const outside = planPoints(plan).some(point => {
+    const px = view.toPx(point);
+    const max = view.toPx({ x: plan.page.widthMM, y: plan.page.heightMM });
+    return px.x > max.x || px.y < max.y;
+  });
+  check('the preview shows the part of an oversized plot that runs off the sheet', outside);
+}
+
+// Nothing to plot still previews the chosen sheet, so the dialog is never
+// blank while the question of which paper to use is being answered.
+reset();
+{
+  const context = recordingContext();
+  const view = api.renderPlotPreview(previewCanvas(), context,
+    { page: api.paperSizeMM('a4', 'portrait'), ops: [] });
+  check('an unplottable drawing still previews its sheet', Boolean(view)
+    && context.of('fillRect').length === 1 && context.of('stroke').length === 0);
+}
+
 console.log(`${passed} passed, ${failures.length} failed`);
 if (failures.length) {
   console.log('FAILURES:');

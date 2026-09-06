@@ -33,6 +33,7 @@ import { applyUnitsDialog, closeUnitsDialog, coordinateFieldChars, openUnitsDial
 import { promptText } from './ui/prompt.js';
 import { drawNow } from './view/frame.js';
 import { chooseGridStep } from './view/grid.js';
+import { plotPreviewView, renderPlotPreview } from './view/plotPreview.js';
 import { frameLabelBoxes } from './view/render.js';
 import { screenToWorld, worldToScreen, zoomExtents } from './view/viewport.js';
 
@@ -171,6 +172,8 @@ window.__cadPrototype = {
   buildPdfDocument,
   pdfTextWidthMM,
   plotDownloadName,
+  plotPreviewView,
+  renderPlotPreview,
   openPlotDialog,
   closePlotDialog,
   runPlot,

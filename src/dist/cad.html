@@ -379,6 +379,8 @@ kbd { font-size: 9px; opacity: .65; }
 .dialog-card {
   width: 380px;
   max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
   padding: 16px 18px 14px;
   background: #242424;
   border: 1px solid #555;
@@ -424,6 +426,27 @@ kbd { font-size: 9px; opacity: .65; }
 .plot-window-summary { color: #8f8f8f; font-size: 10px; }
 .plot-warnings { color: #ffc857; }
 .plot-warnings:empty { display: none; }
+.plot-card { width: 700px; }
+.plot-layout { display: grid; grid-template-columns: 1fr 300px; gap: 18px; align-items: start; }
+.plot-preview-canvas {
+  display: block;
+  width: 100%;
+  height: 230px;
+  background: #1b1b1b;
+  border: 1px solid #383838;
+  border-radius: 3px;
+}
+.plot-preview-legend { margin: 6px 0 0; }
+.plot-clipped-key { color: #e0a03c; }
+.plot-preview-pane .dialog-preview { margin: 10px 0 8px; }
+/* Side by side needs room for both columns; below that the preview stacks
+   under the controls rather than squeezing them. A short window keeps the two
+   columns — the preview is worth less once it has been scrolled past. */
+@media (max-width: 760px) {
+  .plot-card { width: 380px; }
+  .plot-layout { grid-template-columns: 1fr; gap: 0; }
+}
+@media (max-height: 700px) { .plot-preview-canvas { height: 150px; } }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .dialog-actions .primary { background: #2e5d74; border-color: #56d6ff; }
 .dialog-actions .primary:hover { background: #37718c; }
@@ -695,12 +718,15 @@ kbd { font-size: 9px; opacity: .65; }
   </div>
 
   <div id="plotDialog" class="dialog" hidden>
-    <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="plotDialogTitle">
+    <div class="dialog-card plot-card" role="dialog" aria-modal="true" aria-labelledby="plotDialogTitle">
       <h2 id="plotDialogTitle">Plot to PDF</h2>
       <p class="dialog-note">
         Vector output at an exact scale, not a screenshot. Hidden and
         non-printable layers are left off the sheet.
       </p>
+
+      <div class="plot-layout">
+      <div class="plot-settings">
 
       <label for="plotPaper">Sheet size
         <select id="plotPaper"></select>
@@ -742,8 +768,18 @@ kbd { font-size: 9px; opacity: .65; }
         <span>Plot layer lineweights</span>
       </label>
 
-      <div class="dialog-preview">Plot: <strong id="plotPreview">&mdash;</strong></div>
-      <p class="dialog-note plot-warnings" id="plotWarnings"></p>
+      </div>
+      <div class="plot-preview-pane">
+        <canvas id="plotPreviewCanvas" class="plot-preview-canvas" aria-label="Plot preview"></canvas>
+        <p class="dialog-note plot-preview-legend">
+          The dashed border is the printable area. Anything drawn
+          <span class="plot-clipped-key">in amber</span> falls outside it and is
+          clipped off the sheet.
+        </p>
+        <div class="dialog-preview">Plot: <strong id="plotPreview">&mdash;</strong></div>
+        <p class="dialog-note plot-warnings" id="plotWarnings"></p>
+      </div>
+      </div>
 
       <div class="dialog-actions">
         <button id="plotCancel">Cancel</button>
@@ -815,6 +851,8 @@ kbd { font-size: 9px; opacity: .65; }
   const plotColorSelect = document.getElementById('plotColor');
   const plotLineweightsCheck = document.getElementById('plotLineweights');
   const plotPreview = document.getElementById('plotPreview');
+  const plotPreviewCanvas = document.getElementById('plotPreviewCanvas');
+  const plotPreviewCtx = plotPreviewCanvas.getContext('2d');
   const plotWarningsEl = document.getElementById('plotWarnings');
   const dimStyleDialog = document.getElementById('dimStyleDialog');
   const dimArrowTypeSelect = document.getElementById('dimArrowType');
@@ -2978,6 +3016,210 @@ kbd { font-size: 9px; opacity: .65; }
       plotWidthMM, plotHeightMM,
       entityCount: entities.length,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // view/plotPreview.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Plot preview
+  //
+  // The plot plan (output/plot.js) drawn onto a small canvas, so sheet, scale and
+  // area can be judged before a file is written. It reads the same plan that
+  // output/pdf.js serialises and nothing else: there is no second path from the
+  // drawing to paper that could drift out of step, so what this shows is what the
+  // PDF contains — including the clip at the printable border, which is the part
+  // of a plot that is otherwise impossible to guess.
+  // ---------------------------------------------------------------------------
+
+  // Room around the sheet for whatever falls off it. Without this a plot that
+  // overruns the paper would be cropped by the preview as well, which is exactly
+  // the information the preview exists to give.
+  const PLOT_PREVIEW_PAD_PX = 18;
+  // Plotted hairlines are a fraction of a millimetre and vanish at preview scale;
+  // the preview is about placement, not about honest line weights.
+  const PLOT_PREVIEW_MIN_STROKE_PX = 0.7;
+  // Everything outside the printable area is clipped out of the PDF. It is drawn
+  // anyway, in the same amber the warnings use, so a missing line has a visible
+  // reason rather than just being absent.
+  const PLOT_PREVIEW_CLIPPED_COLOR = '#e0a03c';
+  const PLOT_PREVIEW_CLIPPED_ALPHA = 0.5;
+
+  function plotPreviewCssColor(color) {
+    const [r, g, b] = color || [0, 0, 0];
+    return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+  }
+
+  // Where the sheet sits inside the preview box, and how to get from a paper
+  // millimetre (Y up, from the bottom-left corner) to a CSS pixel (Y down).
+  function plotPreviewView(page, widthPx, heightPx) {
+    const scale = Math.min(
+      (widthPx - PLOT_PREVIEW_PAD_PX * 2) / page.widthMM,
+      (heightPx - PLOT_PREVIEW_PAD_PX * 2) / page.heightMM,
+    );
+    if (!Number.isFinite(scale) || scale <= 0) return null;
+    const originX = (widthPx - page.widthMM * scale) / 2;
+    const originY = (heightPx + page.heightMM * scale) / 2;
+    return {
+      scale, originX, originY,
+      toPx: point => ({ x: originX + point.x * scale, y: originY - point.y * scale }),
+    };
+  }
+
+  // Runs `draw` with the context in paper millimetres, Y up — the plan's own
+  // coordinates, which is what lets the bezier and dash numbers be used as they
+  // stand instead of being converted a second time.
+  function inPaperFrame(context, view, draw) {
+    context.save();
+    context.translate(view.originX, view.originY);
+    context.scale(view.scale, -view.scale);
+    draw();
+    context.restore();
+  }
+
+  function drawPlotPreviewStroke(context, view, op, clipped) {
+    inPaperFrame(context, view, () => {
+      context.strokeStyle = clipped ? PLOT_PREVIEW_CLIPPED_COLOR : plotPreviewCssColor(op.color);
+      context.lineWidth = Math.max(op.widthMM, PLOT_PREVIEW_MIN_STROKE_PX / view.scale);
+      context.setLineDash(op.dash && op.dash.length ? op.dash : []);
+      context.beginPath();
+      for (const subpath of op.subpaths) {
+        context.moveTo(subpath.start.x, subpath.start.y);
+        for (const segment of subpath.segs) {
+          if (segment.type === 'c') {
+            context.bezierCurveTo(segment.c1.x, segment.c1.y, segment.c2.x, segment.c2.y,
+              segment.to.x, segment.to.y);
+          } else {
+            context.lineTo(segment.to.x, segment.to.y);
+          }
+        }
+        if (subpath.closed) context.closePath();
+      }
+      context.stroke();
+      context.setLineDash([]);
+    });
+  }
+
+  function drawPlotPreviewFill(context, view, op, clipped) {
+    inPaperFrame(context, view, () => {
+      context.fillStyle = clipped ? PLOT_PREVIEW_CLIPPED_COLOR : plotPreviewCssColor(op.color);
+      context.beginPath();
+      op.points.forEach((point, index) => {
+        if (index === 0) context.moveTo(point.x, point.y);
+        else context.lineTo(point.x, point.y);
+      });
+      context.closePath();
+      context.fill();
+    });
+  }
+
+  // Below this the glyphs are smaller than the strokes that draw them and come
+  // out as a smudge, so the string is greeked into a bar instead: unreadable
+  // either way, but a bar is honest about being an approximation, and leaving
+  // the text out altogether would hide annotation that is really on the sheet.
+  const PLOT_PREVIEW_GREEK_PX = 3;
+  const PLOT_PREVIEW_GREEK_ALPHA = 0.5;
+
+  // Text is placed in pixel space rather than in the flipped paper frame, so the
+  // font size stays a real pixel size the canvas can render. The anchor and
+  // baseline offsets are the ones output/pdf.js applies, so a centred dimension
+  // string lands in the preview where it lands on the sheet.
+  function drawPlotPreviewText(context, view, op, clipped) {
+    const family = op.font === 'courier' ? '"Courier New", Consolas, monospace' : 'Arial, Helvetica, sans-serif';
+    const sizePx = op.sizeMM * view.scale;
+    if (sizePx <= 0) return;
+    const widthPx = pdfTextWidthMM(op.text, op.font, op.sizeMM) * view.scale;
+    const u = op.anchor === 'center' ? -widthPx / 2 : 0;
+    const v = op.baseline === 'middle' ? -0.35 * sizePx : 0;
+    const anchor = view.toPx(op);
+    context.save();
+    context.translate(anchor.x, anchor.y);
+    // Screen Y points down, so a counter-clockwise paper angle is a clockwise
+    // canvas one.
+    context.rotate(-op.angle);
+    context.fillStyle = clipped ? PLOT_PREVIEW_CLIPPED_COLOR : plotPreviewCssColor(op.color);
+    if (sizePx < PLOT_PREVIEW_GREEK_PX) {
+      context.globalAlpha *= PLOT_PREVIEW_GREEK_ALPHA;
+      context.fillRect(u, -v - sizePx * 0.7, widthPx, sizePx * 0.7);
+    } else {
+      context.font = `${sizePx}px ${family}`;
+      context.textAlign = 'left';
+      context.textBaseline = 'alphabetic';
+      context.fillText(op.text, u, -v);
+    }
+    context.restore();
+  }
+
+  function drawPlotPreviewOps(context, view, ops, clipped) {
+    for (const op of ops) {
+      if (op.kind === 'stroke') drawPlotPreviewStroke(context, view, op, clipped);
+      else if (op.kind === 'fill') drawPlotPreviewFill(context, view, op, clipped);
+      else if (op.kind === 'text') drawPlotPreviewText(context, view, op, clipped);
+    }
+  }
+
+  function plotPreviewRect(context, view, box) {
+    const corner = view.toPx({ x: box.xMM, y: box.yMM + box.heightMM });
+    context.rect(corner.x, corner.y, box.widthMM * view.scale, box.heightMM * view.scale);
+  }
+
+  function renderPlotPreview(target, context, plan) {
+    const widthPx = target.clientWidth || target.width || 0;
+    const heightPx = target.clientHeight || target.height || 0;
+    const ratio = window.devicePixelRatio || 1;
+    if (widthPx <= 0 || heightPx <= 0) return null;
+    if (target.width !== Math.round(widthPx * ratio)) target.width = Math.round(widthPx * ratio);
+    if (target.height !== Math.round(heightPx * ratio)) target.height = Math.round(heightPx * ratio);
+
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.clearRect(0, 0, widthPx, heightPx);
+    const page = plan && plan.page;
+    if (!page) return null;
+    const view = plotPreviewView(page, widthPx, heightPx);
+    if (!view) return null;
+
+    const sheet = view.toPx({ x: 0, y: page.heightMM });
+    context.fillStyle = '#f4f4f4';
+    context.fillRect(sheet.x, sheet.y, page.widthMM * view.scale, page.heightMM * view.scale);
+
+    // Two passes over the same ops through complementary clips: the amber one
+    // outside the printable border, the real one inside it. Splitting them by
+    // clip rather than by op means a single line that crosses the border is
+    // shown half plotted and half lost, which is what actually happens.
+    const ops = plan.ops || [];
+    if (plan.printable) {
+      context.save();
+      context.beginPath();
+      context.rect(0, 0, widthPx, heightPx);
+      plotPreviewRect(context, view, plan.printable);
+      context.clip('evenodd');
+      context.globalAlpha = PLOT_PREVIEW_CLIPPED_ALPHA;
+      drawPlotPreviewOps(context, view, ops, true);
+      context.restore();
+
+      context.save();
+      context.beginPath();
+      plotPreviewRect(context, view, plan.printable);
+      context.clip();
+      drawPlotPreviewOps(context, view, ops, false);
+      context.restore();
+    }
+
+    context.strokeStyle = '#7a7a7a';
+    context.lineWidth = 1;
+    context.strokeRect(sheet.x + 0.5, sheet.y + 0.5,
+      page.widthMM * view.scale - 1, page.heightMM * view.scale - 1);
+
+    if (plan.printable) {
+      context.strokeStyle = '#a8a8a8';
+      context.setLineDash([4, 3]);
+      context.beginPath();
+      plotPreviewRect(context, view, plan.printable);
+      context.stroke();
+      context.setLineDash([]);
+    }
+    return view;
   }
 
   // ---------------------------------------------------------------------------
@@ -8227,10 +8469,15 @@ kbd { font-size: 9px; opacity: .65; }
 
     const plan = buildPlotPlan(pendingPlot);
     if (plan.error) {
+      // The sheet is still worth drawing when there is nothing on it: it says
+      // which paper the unanswered question is about.
+      renderPlotPreview(plotPreviewCanvas, plotPreviewCtx,
+        { page: paperSizeMM(pendingPlot.paperSizeId, pendingPlot.orientation), ops: [] });
       plotPreview.textContent = '—';
       plotWarningsEl.textContent = plan.error;
       return;
     }
+    renderPlotPreview(plotPreviewCanvas, plotPreviewCtx, plan);
     plotPreview.textContent =
       `${scalePresetLabel(plan.scale)} · ${plan.plotWidthMM.toFixed(1)} × ${plan.plotHeightMM.toFixed(1)} mm ` +
       `on ${plan.page.widthMM.toFixed(1)} × ${plan.page.heightMM.toFixed(1)} mm · ` +
@@ -10508,6 +10755,8 @@ kbd { font-size: 9px; opacity: .65; }
     buildPdfDocument,
     pdfTextWidthMM,
     plotDownloadName,
+    plotPreviewView,
+    renderPlotPreview,
     openPlotDialog,
     closePlotDialog,
     runPlot,

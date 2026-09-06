@@ -1,7 +1,8 @@
 import { defineCommand, requireIdle, setMode, startCommand } from '../../commands/registry.js';
-import { PAPER_ORIENTATIONS, PAPER_SIZES, scalePresetLabel, scalePresets } from '../../core/paper.js';
+import { PAPER_ORIENTATIONS, PAPER_SIZES, paperSizeMM, scalePresetLabel, scalePresets } from '../../core/paper.js';
 import { formatLengthLabel } from '../../core/units.js';
-import { canvas, ctx, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotPreview, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotScaleRow, plotWarningsEl, plotWindowRow, plotWindowSummary } from '../../dom.js';
+import { canvas, ctx, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotPreview, plotPreviewCanvas, plotPreviewCtx, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotScaleRow, plotWarningsEl, plotWindowRow, plotWindowSummary } from '../../dom.js';
+import { renderPlotPreview } from '../../view/plotPreview.js';
 import { downloadTextFile, safeDrawingFileName } from '../../model/persistence.js';
 import { buildPdfDocument } from '../../output/pdf.js';
 import { PLOT_AREAS, PLOT_COLOR_MODES, buildPlotPlan, defaultPlotSettings } from '../../output/plot.js';
@@ -55,10 +56,15 @@ export function refreshPlotDialog() {
 
   const plan = buildPlotPlan(pendingPlot);
   if (plan.error) {
+    // The sheet is still worth drawing when there is nothing on it: it says
+    // which paper the unanswered question is about.
+    renderPlotPreview(plotPreviewCanvas, plotPreviewCtx,
+      { page: paperSizeMM(pendingPlot.paperSizeId, pendingPlot.orientation), ops: [] });
     plotPreview.textContent = '—';
     plotWarningsEl.textContent = plan.error;
     return;
   }
+  renderPlotPreview(plotPreviewCanvas, plotPreviewCtx, plan);
   plotPreview.textContent =
     `${scalePresetLabel(plan.scale)} · ${plan.plotWidthMM.toFixed(1)} × ${plan.plotHeightMM.toFixed(1)} mm ` +
     `on ${plan.page.widthMM.toFixed(1)} × ${plan.page.heightMM.toFixed(1)} mm · ` +

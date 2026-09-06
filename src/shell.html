@@ -379,6 +379,8 @@ kbd { font-size: 9px; opacity: .65; }
 .dialog-card {
   width: 380px;
   max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
   padding: 16px 18px 14px;
   background: #242424;
   border: 1px solid #555;
@@ -424,6 +426,27 @@ kbd { font-size: 9px; opacity: .65; }
 .plot-window-summary { color: #8f8f8f; font-size: 10px; }
 .plot-warnings { color: #ffc857; }
 .plot-warnings:empty { display: none; }
+.plot-card { width: 700px; }
+.plot-layout { display: grid; grid-template-columns: 1fr 300px; gap: 18px; align-items: start; }
+.plot-preview-canvas {
+  display: block;
+  width: 100%;
+  height: 230px;
+  background: #1b1b1b;
+  border: 1px solid #383838;
+  border-radius: 3px;
+}
+.plot-preview-legend { margin: 6px 0 0; }
+.plot-clipped-key { color: #e0a03c; }
+.plot-preview-pane .dialog-preview { margin: 10px 0 8px; }
+/* Side by side needs room for both columns; below that the preview stacks
+   under the controls rather than squeezing them. A short window keeps the two
+   columns — the preview is worth less once it has been scrolled past. */
+@media (max-width: 760px) {
+  .plot-card { width: 380px; }
+  .plot-layout { grid-template-columns: 1fr; gap: 0; }
+}
+@media (max-height: 700px) { .plot-preview-canvas { height: 150px; } }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .dialog-actions .primary { background: #2e5d74; border-color: #56d6ff; }
 .dialog-actions .primary:hover { background: #37718c; }
@@ -695,12 +718,15 @@ kbd { font-size: 9px; opacity: .65; }
   </div>
 
   <div id="plotDialog" class="dialog" hidden>
-    <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="plotDialogTitle">
+    <div class="dialog-card plot-card" role="dialog" aria-modal="true" aria-labelledby="plotDialogTitle">
       <h2 id="plotDialogTitle">Plot to PDF</h2>
       <p class="dialog-note">
         Vector output at an exact scale, not a screenshot. Hidden and
         non-printable layers are left off the sheet.
       </p>
+
+      <div class="plot-layout">
+      <div class="plot-settings">
 
       <label for="plotPaper">Sheet size
         <select id="plotPaper"></select>
@@ -742,8 +768,18 @@ kbd { font-size: 9px; opacity: .65; }
         <span>Plot layer lineweights</span>
       </label>
 
-      <div class="dialog-preview">Plot: <strong id="plotPreview">&mdash;</strong></div>
-      <p class="dialog-note plot-warnings" id="plotWarnings"></p>
+      </div>
+      <div class="plot-preview-pane">
+        <canvas id="plotPreviewCanvas" class="plot-preview-canvas" aria-label="Plot preview"></canvas>
+        <p class="dialog-note plot-preview-legend">
+          The dashed border is the printable area. Anything drawn
+          <span class="plot-clipped-key">in amber</span> falls outside it and is
+          clipped off the sheet.
+        </p>
+        <div class="dialog-preview">Plot: <strong id="plotPreview">&mdash;</strong></div>
+        <p class="dialog-note plot-warnings" id="plotWarnings"></p>
+      </div>
+      </div>
 
       <div class="dialog-actions">
         <button id="plotCancel">Cancel</button>
