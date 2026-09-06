@@ -2,7 +2,7 @@ import { commandCapturesSpace, navigateHistory, startCommand } from '../commands
 import { LENGTH_FORMATS } from '../core/units.js';
 import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, toolbarAutohideBtn, topbar, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
 import { submitCommandInput } from '../interaction/pointer.js';
-import { writeAutosave } from '../model/dirty.js';
+import { writeAutosaveOnUnload } from '../model/dirty.js';
 import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, setLayerLinetype, setLayerLineweight, toggleLayerLock, toggleLayerPrintable, toggleLayerVisibility } from '../model/layers.js';
 import { chooseOpenFile, loadDocumentText, newDrawing, restoreAutosave, saveDrawing } from '../model/persistence.js';
 import { state } from '../state.js';
@@ -251,7 +251,7 @@ if (window.ResizeObserver) {
 window.addEventListener('beforeunload', () => {
   if (!state.documentDirty) return;
   try {
-    writeAutosave();
+    writeAutosaveOnUnload();
   } catch {
     // Manual Save remains available when browser storage is unavailable.
   }

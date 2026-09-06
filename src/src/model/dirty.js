@@ -1,9 +1,14 @@
 import { AUTOSAVE_BACKUP_KEY, AUTOSAVE_KEY } from '../core/constants.js';
+import { readAutosaveRecord, writeAutosaveRecord, writeAutosaveRecordSync } from './autosaveStore.js';
 import { exportDocumentText, parseDocumentText } from './document.js';
 import { state } from '../state.js';
 import { setFileStatus } from '../ui/status.js';
 
 export let autosaveTimer = null;
+
+// Bumped once per change to the document, so an autosave that resolves after a
+// later edit can tell that it no longer describes the drawing on screen.
+export let autosaveGeneration = 0;
 
 // The backup holds the drawing as it stood when the current one replaced it, and
 // is written ONCE per document. Rotating it on every autosave gave a recovery
@@ -17,14 +22,14 @@ export function releaseBackupPin() {
   backupPinned = false;
 }
 
-export function writeAutosave() {
+export async function writeAutosave() {
   // Validate first: an invalid live document must not touch either saved copy.
   const text = exportDocumentText(false);
   if (!backupPinned) {
-    const previous = window.localStorage.getItem(AUTOSAVE_KEY);
-    if (previous && previous !== text && !parseDocumentText(previous).error) {
+    const previous = await readAutosaveRecord(AUTOSAVE_KEY);
+    if (previous && previous.text !== text && !parseDocumentText(previous.text).error) {
       try {
-        window.localStorage.setItem(AUTOSAVE_BACKUP_KEY, previous);
+        await writeAutosaveRecord(AUTOSAVE_BACKUP_KEY, previous.text);
         backupPinned = true;
       } catch {
         // A full or unavailable store must not stop the primary autosave. The
@@ -33,24 +38,37 @@ export function writeAutosave() {
       }
     }
   }
-  window.localStorage.setItem(AUTOSAVE_KEY, text);
+  await writeAutosaveRecord(AUTOSAVE_KEY, text);
+  return true;
+}
+
+// The page is going away, and an IndexedDB transaction opened here would very
+// likely be aborted before it commits, so this one write stays synchronous.
+// It only ever covers the edits made since the last autosave settled — at most
+// the debounce window — and the next successful autosave clears it again.
+export function writeAutosaveOnUnload() {
+  writeAutosaveRecordSync(AUTOSAVE_KEY, exportDocumentText(false));
   return true;
 }
 
 export function scheduleAutosave() {
   if (!state.documentDirty) return;
+  autosaveGeneration += 1;
   if (autosaveTimer !== null) clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
     autosaveTimer = null;
-    try {
-      writeAutosave();
-      // Only clear the dirty flag once the write actually succeeded, so a failed
-      // autosave does not also suppress the beforeunload save.
+    const generation = autosaveGeneration;
+    writeAutosave().then(() => {
+      // The write is asynchronous now, so the drawing can have moved on while
+      // it was in flight. Clearing the flag for a save that no longer describes
+      // the document would also suppress the beforeunload write of the edits it
+      // missed, which is exactly the case that path exists for.
+      if (generation !== autosaveGeneration) return;
       state.documentDirty = false;
       setFileStatus(`${state.drawingName} · Autosaved`);
-    } catch (error) {
+    }, error => {
       setFileStatus(`Autosave failed — saved recovery copies retained. ${error.message || 'Use Save.'}`, true);
-    }
+    });
   }, 250);
 }
 

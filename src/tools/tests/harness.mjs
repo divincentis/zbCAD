@@ -105,7 +105,84 @@ function makeElement(id = '', tag = 'div') {
   });
 }
 
-export function boot(bundlePath) {
+// A minimal in-memory IndexedDB, enough for model/autosaveStore.js: open with
+// an upgrade, one object store, get/put/delete inside a transaction that
+// completes on a later turn. Requests resolve on a microtask and the
+// transaction completes on a timer, so a request's onsuccess still runs before
+// its transaction's oncomplete, the ordering the real API guarantees.
+// `broken: true` is the browser that opens a database and then refuses every
+// transaction — a storage policy or a private window that only fails on use.
+function makeIndexedDB({ broken = false } = {}) {
+  const databases = new Map();
+
+  function makeStoreHandle(record, name) {
+    const data = record.stores.get(name);
+    const op = apply => {
+      const request = { result: undefined, error: null, onsuccess: null, onerror: null };
+      request.result = apply(data);
+      queueMicrotask(() => request.onsuccess && request.onsuccess({ target: request }));
+      return request;
+    };
+    return {
+      get: key => op(map => map.get(key)),
+      put: (value, key) => op(map => { map.set(key, structuredClone(value)); return key; }),
+      delete: key => op(map => { map.delete(key); return undefined; }),
+      clear: () => op(map => { map.clear(); return undefined; }),
+    };
+  }
+
+  function makeDbHandle(record) {
+    return {
+      name: record.name,
+      get version() { return record.version; },
+      objectStoreNames: { contains: name => record.stores.has(name) },
+      createObjectStore(name) {
+        record.stores.set(name, new Map());
+        return makeStoreHandle(record, name);
+      },
+      transaction(name, mode = 'readonly') {
+        if (broken) throw new Error('storage is not allowed in this context');
+        const storeName = Array.isArray(name) ? name[0] : name;
+        if (!record.stores.has(storeName)) throw new Error(`no object store ${storeName}`);
+        const tx = {
+          mode,
+          error: null,
+          oncomplete: null,
+          onerror: null,
+          onabort: null,
+          objectStore: () => makeStoreHandle(record, storeName),
+        };
+        setTimeout(() => tx.oncomplete && tx.oncomplete({ target: tx }), 0);
+        return tx;
+      },
+      close: NOOP,
+    };
+  }
+
+  return {
+    databases,
+    open(name, version = 1) {
+      const request = { result: null, error: null, onsuccess: null, onerror: null, onupgradeneeded: null, onblocked: null };
+      let record = databases.get(name);
+      const upgrading = !record || version > record.version;
+      if (!record) { record = { name, version: 0, stores: new Map() }; databases.set(name, record); }
+      request.result = makeDbHandle(record);
+      setTimeout(() => {
+        if (upgrading) {
+          record.version = version;
+          if (request.onupgradeneeded) request.onupgradeneeded({ target: request });
+        }
+        if (request.onsuccess) request.onsuccess({ target: request });
+      }, 0);
+      return request;
+    },
+  };
+}
+
+// `options.indexedDB: false` boots as a browser that refuses to open a database
+// at all, and `'broken'` as one that opens it and then fails every read and
+// write, so both localStorage fallbacks can be tested.
+export function boot(bundlePath, options = {}) {
   const html = fs.readFileSync(bundlePath, 'utf8');
   // The bundle is one inline <script>; take the largest one so a small
   // bootstrap script elsewhere in the shell cannot be picked by mistake.
@@ -128,6 +205,9 @@ export function boot(bundlePath) {
     key: i => [...store.keys()][i] ?? null,
     get length() { return store.size; },
   };
+
+  const indexedDB = options.indexedDB === false ? null
+    : makeIndexedDB({ broken: options.indexedDB === 'broken' });
 
   const documentStub = {
     getElementById,
@@ -152,6 +232,7 @@ export function boot(bundlePath) {
     innerWidth: 1200,
     innerHeight: 800,
     localStorage,
+    indexedDB,
     addEventListener: NOOP,
     removeEventListener: NOOP,
     requestAnimationFrame: cb => { cb(0); return 1; },
@@ -169,6 +250,7 @@ export function boot(bundlePath) {
     window: windowStub,
     document: documentStub,
     localStorage,
+    indexedDB,
     navigator: { userAgent: 'node', platform: 'node', clipboard: { writeText: async () => {} } },
     location: { href: 'file:///cad.html', search: '', hash: '' },
     console,
@@ -176,6 +258,7 @@ export function boot(bundlePath) {
     requestAnimationFrame: windowStub.requestAnimationFrame,
     cancelAnimationFrame: NOOP,
     structuredClone,
+    queueMicrotask,
     performance: windowStub.performance,
     Blob: class { constructor(parts) { this.parts = parts; } },
     URL: { createObjectURL: () => 'blob:stub', revokeObjectURL: NOOP },
@@ -196,5 +279,5 @@ export function boot(bundlePath) {
 
   const api = windowStub.__cadPrototype || sandbox.__cadPrototype;
   if (!api) throw new Error('bundle did not publish window.__cadPrototype');
-  return { api, sandbox, localStorage };
+  return { api, sandbox, localStorage, indexedDB };
 }

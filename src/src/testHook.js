@@ -1,8 +1,8 @@
 import { COMMAND_ALIASES, resolveCommandName } from './commands/aliases.js';
 import { acceptInquirySelection, commitAreaKeyword, finishInquiryPoints } from './commands/inquiry.js';
-import { activeCommand, cancelCurrent, closeCurrentPath, commandAcceptsPoint, commandInProgress, commandPreviewReady, commandSelectsObjects, commandTakesDistance, commandUsesOrtho, commandUsesSnap, commitPoint, finishCurrent, navigateHistory, startCommand, undoLastPoint } from './commands/registry.js';
+import { COMMANDS, activeCommand, cancelCurrent, closeCurrentPath, commandAcceptsPoint, commandInProgress, commandPreviewReady, commandSelectsObjects, commandTakesDistance, commandUsesOrtho, commandUsesSnap, commitPoint, finishCurrent, navigateHistory, startCommand, undoLastPoint } from './commands/registry.js';
 import { acceptTransformSelection } from './commands/transform.js';
-import { AUTOSAVE_BACKUP_KEY, AUTOSAVE_KEY, DOCUMENT_VERSION } from './core/constants.js';
+import { AUTOSAVE_BACKUP_KEY, AUTOSAVE_KEY, DOCUMENT_VERSION, POLAR_INCREMENTS } from './core/constants.js';
 import { SNAP_TYPES, defaultDimStyle, defaultSnapTypes, defaultUnitSettings } from './core/defaults.js';
 import { dimSize, parseDimStyle, rebaseDimStyleUnit } from './core/dimstyle.js';
 import { bulgeArc, bulgePointAt, segmentIntersection, segmentWithinRadius } from './core/math.js';
@@ -17,6 +17,8 @@ import { acceptDefaultAction, submitCommandInput } from './interaction/pointer.j
 import { deleteSelected, selectAt } from './interaction/selection.js';
 import { getSnap } from './interaction/snap.js';
 import { getCommandBasePoint } from './interaction/tracking.js';
+import { readAutosaveRecord, writeAutosaveRecord } from './model/autosaveStore.js';
+import { writeAutosave, writeAutosaveOnUnload } from './model/dirty.js';
 import { buildDimension, dimensionGeometry, dimensionSegments, dimensionText, linearDimensionRotation, resolveEntityReference } from './model/dimension.js';
 import { buildPdfDocument, pdfTextWidthMM } from './output/pdf.js';
 import { buildPlotPlan, defaultPlotSettings, plotAreaBox } from './output/plot.js';
@@ -127,8 +129,15 @@ window.__cadPrototype = {
   exportDocumentText,
   importDocumentText: loadDocumentText,
   newDrawing: () => newDrawing(true),
+  // Autosave is asynchronous now, so every one of these returns a promise the
+  // caller has to wait on before asking what was stored.
   restoreAutosave: () => restoreAutosave(true),
   restoreBackup: () => restoreAutosave(true, true),
+  restoreAutosaveIfUntouched: () => restoreAutosave(true, false, true),
+  readAutosaveRecord,
+  writeAutosaveRecord,
+  writeAutosaveNow: () => writeAutosave(),
+  writeAutosaveOnUnload,
   get unitSettings() { return { ...state.unitSettings }; },
   formatLength,
   formatLengthLabel,

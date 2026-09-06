@@ -9,6 +9,14 @@ export const DOCUMENT_VERSION = 6;
 export const AUTOSAVE_KEY = `${DOCUMENT_FORMAT}.autosave`;
 export const AUTOSAVE_BACKUP_KEY = `${AUTOSAVE_KEY}.previous`;
 export const LEGACY_AUTOSAVE_KEYS = [`${DOCUMENT_FORMAT}.autosave.v1`];
+// The drawing itself lives in IndexedDB (see model/autosaveStore.js); these
+// name the database, its one store, and the sibling localStorage key that
+// timestamps the synchronous unload copy.
+export const AUTOSAVE_DB_NAME = `${DOCUMENT_FORMAT}.autosave`;
+export const AUTOSAVE_DB_VERSION = 1;
+export const AUTOSAVE_STORE_NAME = 'drawings';
+export const AUTOSAVE_STAMP_SUFFIX = '.at';
+export const AUTOSAVE_OPEN_TIMEOUT_MS = 1500;
 
 // The increments a draughtsman actually works to. 90 is ORTHO expressed as a
 // polar angle, which is why the two are mutually exclusive rather than

@@ -951,6 +951,14 @@ kbd { font-size: 9px; opacity: .65; }
   const AUTOSAVE_KEY = `${DOCUMENT_FORMAT}.autosave`;
   const AUTOSAVE_BACKUP_KEY = `${AUTOSAVE_KEY}.previous`;
   const LEGACY_AUTOSAVE_KEYS = [`${DOCUMENT_FORMAT}.autosave.v1`];
+  // The drawing itself lives in IndexedDB (see model/autosaveStore.js); these
+  // name the database, its one store, and the sibling localStorage key that
+  // timestamps the synchronous unload copy.
+  const AUTOSAVE_DB_NAME = `${DOCUMENT_FORMAT}.autosave`;
+  const AUTOSAVE_DB_VERSION = 1;
+  const AUTOSAVE_STORE_NAME = 'drawings';
+  const AUTOSAVE_STAMP_SUFFIX = '.at';
+  const AUTOSAVE_OPEN_TIMEOUT_MS = 1500;
 
   // The increments a draughtsman actually works to. 90 is ORTHO expressed as a
   // polar angle, which is why the two are mutually exclusive rather than
@@ -3992,10 +4000,158 @@ kbd { font-size: 9px; opacity: .65; }
   // Report shape: [{ title, rows: [[label, value], ...], note }]
 
   // ---------------------------------------------------------------------------
+  // model/autosaveStore.js
+  // ---------------------------------------------------------------------------
+
+  // Where the autosaved drawing lives.
+  //
+  // Autosave runs after every edit, so whatever it costs is paid on every edit.
+  // localStorage is synchronous: the write blocked the main thread for ~1.5 ms at
+  // 100 entities and ~20 ms at 4,000, on top of the serialisation. IndexedDB
+  // writes are asynchronous, so the same save costs the edit nothing beyond the
+  // serialising it was already doing.
+  //
+  // The one thing IndexedDB cannot do is finish a write while the page is being
+  // torn down — a transaction opened from `beforeunload` is routinely aborted.
+  // So that path still writes synchronously, to localStorage, and recovery
+  // compares the two copies by timestamp and takes the newer one. localStorage is
+  // therefore three things: the unload snapshot, the fallback when IndexedDB is
+  // unavailable (private windows refuse to open a database), and the place older
+  // versions of this app left their autosave.
+  //
+  // Timestamps live in a sibling `.at` key rather than in an envelope around the
+  // text, so the localStorage copy stays exactly what it has always been: the
+  // drawing JSON, readable by any version of this app.
+
+  let autosaveDbPromise = null;
+
+  // Resolves to null rather than rejecting when the database is unavailable, so
+  // every caller has one fallback path instead of two.
+  function openAutosaveDb() {
+    if (autosaveDbPromise) return autosaveDbPromise;
+    autosaveDbPromise = new Promise(resolve => {
+      let request;
+      try {
+        if (!window.indexedDB) { resolve(null); return; }
+        request = window.indexedDB.open(AUTOSAVE_DB_NAME, AUTOSAVE_DB_VERSION);
+      } catch {
+        resolve(null);
+        return;
+      }
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(AUTOSAVE_STORE_NAME)) db.createObjectStore(AUTOSAVE_STORE_NAME);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+      request.onblocked = () => resolve(null);
+      // A browser that neither opens the database nor refuses it — a blocked or
+      // wedged upgrade — would otherwise leave every autosave waiting forever on
+      // a promise that never settles. Falling back to localStorage for the rest
+      // of the session is worth more than the database was.
+      setTimeout(() => resolve(null), AUTOSAVE_OPEN_TIMEOUT_MS);
+    });
+    return autosaveDbPromise;
+  }
+
+  // Resolves on transaction completion rather than on request success: a request
+  // can succeed and its transaction still abort, and it is the commit that means
+  // the drawing survives the tab.
+  function runAutosaveTransaction(db, mode, run) {
+    return new Promise((resolve, reject) => {
+      let transaction;
+      let request;
+      try {
+        transaction = db.transaction(AUTOSAVE_STORE_NAME, mode);
+        request = run(transaction.objectStore(AUTOSAVE_STORE_NAME));
+      } catch (error) {
+        reject(error);
+        return;
+      }
+      transaction.oncomplete = () => resolve(request ? request.result : undefined);
+      transaction.onerror = () => reject(transaction.error || new Error('autosave store transaction failed'));
+      transaction.onabort = () => reject(transaction.error || new Error('autosave store transaction aborted'));
+    });
+  }
+
+  function localAutosaveRecord(key) {
+    const text = window.localStorage.getItem(key);
+    if (typeof text !== 'string' || !text) return null;
+    const stamp = Number(window.localStorage.getItem(key + AUTOSAVE_STAMP_SUFFIX));
+    return { text, savedAt: Number.isFinite(stamp) ? stamp : 0, source: 'local' };
+  }
+
+  function clearLocalAutosaveRecord(key) {
+    try {
+      if (window.localStorage.getItem(key) === null) return;
+      window.localStorage.removeItem(key);
+      window.localStorage.removeItem(key + AUTOSAVE_STAMP_SUFFIX);
+    } catch {
+      // Leaving the copy behind is harmless: it is older than the one just
+      // committed, and recovery compares timestamps.
+    }
+  }
+
+  // The newest copy of one slot, whichever store holds it. An untimestamped
+  // localStorage copy is an autosave written by an older version of this app, so
+  // it reads as the oldest thing on offer.
+  async function readAutosaveRecord(key) {
+    let stored = null;
+    const db = await openAutosaveDb();
+    if (db) {
+      try {
+        const record = await runAutosaveTransaction(db, 'readonly', store => store.get(key));
+        if (record && typeof record.text === 'string' && record.text) {
+          stored = { text: record.text, savedAt: Number(record.savedAt) || 0, source: 'db' };
+        }
+      } catch {
+        // A failed read is not a missing drawing: fall through to localStorage.
+      }
+    }
+    const local = localAutosaveRecord(key);
+    if (!stored) return local;
+    if (!local) return stored;
+    return local.savedAt > stored.savedAt ? local : stored;
+  }
+
+  async function writeAutosaveRecord(key, text) {
+    const db = await openAutosaveDb();
+    if (!db) {
+      writeAutosaveRecordSync(key, text);
+      return 'local';
+    }
+    try {
+      await runAutosaveTransaction(db, 'readwrite', store => store.put({ text, savedAt: Date.now() }, key));
+    } catch {
+      // A database that opens and then refuses to write (a storage policy, a
+      // quota) must not cost the drawing an autosave: degrade to the synchronous
+      // store, which recovery prefers anyway once it carries the newer stamp.
+      writeAutosaveRecordSync(key, text);
+      return 'local';
+    }
+    // The synchronous copy exists only to survive an unload. Once the same
+    // drawing is committed to the database, a duplicate left behind can only
+    // become a stale candidate for recovery.
+    clearLocalAutosaveRecord(key);
+    return 'db';
+  }
+
+  // The unload path. Throws like any other localStorage write when the store is
+  // full or unavailable; the caller decides what a failure there means.
+  function writeAutosaveRecordSync(key, text) {
+    window.localStorage.setItem(key, text);
+    window.localStorage.setItem(key + AUTOSAVE_STAMP_SUFFIX, String(Date.now()));
+  }
+
+  // ---------------------------------------------------------------------------
   // model/dirty.js
   // ---------------------------------------------------------------------------
 
   let autosaveTimer = null;
+
+  // Bumped once per change to the document, so an autosave that resolves after a
+  // later edit can tell that it no longer describes the drawing on screen.
+  let autosaveGeneration = 0;
 
   // The backup holds the drawing as it stood when the current one replaced it, and
   // is written ONCE per document. Rotating it on every autosave gave a recovery
@@ -4009,14 +4165,14 @@ kbd { font-size: 9px; opacity: .65; }
     backupPinned = false;
   }
 
-  function writeAutosave() {
+  async function writeAutosave() {
     // Validate first: an invalid live document must not touch either saved copy.
     const text = exportDocumentText(false);
     if (!backupPinned) {
-      const previous = window.localStorage.getItem(AUTOSAVE_KEY);
-      if (previous && previous !== text && !parseDocumentText(previous).error) {
+      const previous = await readAutosaveRecord(AUTOSAVE_KEY);
+      if (previous && previous.text !== text && !parseDocumentText(previous.text).error) {
         try {
-          window.localStorage.setItem(AUTOSAVE_BACKUP_KEY, previous);
+          await writeAutosaveRecord(AUTOSAVE_BACKUP_KEY, previous.text);
           backupPinned = true;
         } catch {
           // A full or unavailable store must not stop the primary autosave. The
@@ -4025,24 +4181,37 @@ kbd { font-size: 9px; opacity: .65; }
         }
       }
     }
-    window.localStorage.setItem(AUTOSAVE_KEY, text);
+    await writeAutosaveRecord(AUTOSAVE_KEY, text);
+    return true;
+  }
+
+  // The page is going away, and an IndexedDB transaction opened here would very
+  // likely be aborted before it commits, so this one write stays synchronous.
+  // It only ever covers the edits made since the last autosave settled — at most
+  // the debounce window — and the next successful autosave clears it again.
+  function writeAutosaveOnUnload() {
+    writeAutosaveRecordSync(AUTOSAVE_KEY, exportDocumentText(false));
     return true;
   }
 
   function scheduleAutosave() {
     if (!state.documentDirty) return;
+    autosaveGeneration += 1;
     if (autosaveTimer !== null) clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => {
       autosaveTimer = null;
-      try {
-        writeAutosave();
-        // Only clear the dirty flag once the write actually succeeded, so a failed
-        // autosave does not also suppress the beforeunload save.
+      const generation = autosaveGeneration;
+      writeAutosave().then(() => {
+        // The write is asynchronous now, so the drawing can have moved on while
+        // it was in flight. Clearing the flag for a save that no longer describes
+        // the document would also suppress the beforeunload write of the edits it
+        // missed, which is exactly the case that path exists for.
+        if (generation !== autosaveGeneration) return;
         state.documentDirty = false;
         setFileStatus(`${state.drawingName} · Autosaved`);
-      } catch (error) {
+      }, error => {
         setFileStatus(`Autosave failed — saved recovery copies retained. ${error.message || 'Use Save.'}`, true);
-      }
+      });
     }, 250);
   }
 
@@ -9246,16 +9415,21 @@ kbd { font-size: 9px; opacity: .65; }
     return true;
   }
 
-  function restoreAutosave(skipConfirmation = false, backupOnly = false) {
+  // Asynchronous, because the autosave store is: the drawing comes back a few
+  // milliseconds after boot rather than during it. `onlyIfUntouched` covers the
+  // gap that opens up — a recovery offer that arrives after the user has already
+  // started drawing must not take their work away from them.
+  async function restoreAutosave(skipConfirmation = false, backupOnly = false, onlyIfUntouched = false) {
     if (backupOnly && !requireIdle('recovering a backup')) return false;
     try {
       const keys = backupOnly ? [AUTOSAVE_BACKUP_KEY] :
         [AUTOSAVE_KEY, AUTOSAVE_BACKUP_KEY, ...LEGACY_AUTOSAVE_KEYS];
       for (const key of keys) {
-        const text = window.localStorage.getItem(key);
-        if (!text) continue;
-        const parsed = parseDocumentText(text);
+        const record = await readAutosaveRecord(key);
+        if (!record) continue;
+        const parsed = parseDocumentText(record.text);
         if (parsed.error) continue;
+        if (onlyIfUntouched && (state.entities.length || state.documentDirty)) return false;
         // Restoring without asking silently replaced a deliberately blank session
         // with the previous drawing, and the single autosave slot meant the
         // discarded one was then overwritten.
@@ -9268,8 +9442,11 @@ kbd { font-size: 9px; opacity: .65; }
         )) return false;
         if (autosaveTimer !== null) { clearTimeout(autosaveTimer); autosaveTimer = null; }
         applyDocument(parsed.document, false);
-        if (key !== AUTOSAVE_KEY) {
-          try { writeAutosave(); } catch {
+        // Anything but the live primary — a backup, a legacy key, or the copy the
+        // unload path left in localStorage — is promoted to the primary at once,
+        // so the next autosave cannot overwrite the drawing that was recovered.
+        if (key !== AUTOSAVE_KEY || record.source !== 'db') {
+          try { await writeAutosave(); } catch {
             setFileStatus('Drawing recovered; could not refresh autosave. Use Save.', true);
             return true;
           }
@@ -11514,7 +11691,7 @@ kbd { font-size: 9px; opacity: .65; }
   window.addEventListener('beforeunload', () => {
     if (!state.documentDirty) return;
     try {
-      writeAutosave();
+      writeAutosaveOnUnload();
     } catch {
       // Manual Save remains available when browser storage is unavailable.
     }
@@ -11614,8 +11791,15 @@ kbd { font-size: 9px; opacity: .65; }
     exportDocumentText,
     importDocumentText: loadDocumentText,
     newDrawing: () => newDrawing(true),
+    // Autosave is asynchronous now, so every one of these returns a promise the
+    // caller has to wait on before asking what was stored.
     restoreAutosave: () => restoreAutosave(true),
     restoreBackup: () => restoreAutosave(true, true),
+    restoreAutosaveIfUntouched: () => restoreAutosave(true, false, true),
+    readAutosaveRecord,
+    writeAutosaveRecord,
+    writeAutosaveNow: () => writeAutosave(),
+    writeAutosaveOnUnload,
     get unitSettings() { return { ...state.unitSettings }; },
     formatLength,
     formatLengthLabel,
@@ -11755,7 +11939,11 @@ kbd { font-size: 9px; opacity: .65; }
   renderUnitStatus();
   resize();
   refreshTrackingButtons();
-  if (!restoreAutosave()) setMode('SELECT');
+  setMode('SELECT');
+  // Recovery reads an asynchronous store, so it lands a moment after the app is
+  // already usable rather than before it; a drawing the user starts in that
+  // moment is theirs and is left alone.
+  restoreAutosave(false, false, true);
   engineStatus.textContent = 'ENGINE: READY';
   engineStatus.classList.remove('loading', 'error');
   engineStatus.classList.add('ready');

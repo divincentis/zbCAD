@@ -35,7 +35,7 @@ for n, b in enumerate(banners):
 prologue = body[:banners[0]]          # 'use strict' etc.
 
 # ---------------------------------------------------------------- symbol table
-DECL = re.compile(r'^  (?:export )?(function|class|const|let|var)\s+([A-Za-z_$][\w$]*)')
+DECL = re.compile(r'^  (?:export )?((?:async )?(?:function|class|const|let|var))\s+([A-Za-z_$][\w$]*)')
 owner, kind = {}, {}
 clashes = []
 for path, blines in modules:
@@ -56,7 +56,7 @@ STRIP = [
     (re.compile(r'"(?:\\.|[^"\\])*"'), ' STR '),
 ]
 MEMBER = re.compile(r'(?<!\.\.)\.\s*[A-Za-z_$][\w$]*')
-IDENT = re.compile(r'(?<![\w$.])[A-Za-z_$][\w$]*')
+IDENT = re.compile(r'(?<![\w$])(?<!(?<!\.)\.)[A-Za-z_$][\w$]*')
 
 
 def scrub(text):

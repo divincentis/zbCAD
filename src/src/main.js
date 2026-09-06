@@ -43,7 +43,11 @@ renderLayerManager();
 renderUnitStatus();
 resize();
 refreshTrackingButtons();
-if (!restoreAutosave()) setMode('SELECT');
+setMode('SELECT');
+// Recovery reads an asynchronous store, so it lands a moment after the app is
+// already usable rather than before it; a drawing the user starts in that
+// moment is theirs and is left alone.
+restoreAutosave(false, false, true);
 engineStatus.textContent = 'ENGINE: READY';
 engineStatus.classList.remove('loading', 'error');
 engineStatus.classList.add('ready');

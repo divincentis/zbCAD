@@ -8,7 +8,7 @@ zbCAD is a single-file, browser-based 2D CAD prototype (no server, no build depe
 
 There are two parallel representations of the same program:
 
-- `src/src/` — the real source, as ~58 ES modules (readable, one concern per file).
+- `src/src/` — the real source, as ~59 ES modules (readable, one concern per file).
 - `cad.html` (repo root) and `src/dist/cad.html` — the built single-file bundle. These two files are kept byte-identical; `cad.html` is the shippable artifact.
 - `src/shell.html` — the HTML/CSS shell (head, body markup, styles) with an empty `(() => { })();` IIFE that the bundler fills with the concatenated modules.
 
@@ -70,7 +70,7 @@ The app has no framework and no build-time dependencies — plain DOM APIs, a `<
 - **`dom.js`** — every DOM element lookup (`getElementById` etc.), done once, as named `const`s. Nothing else queries the DOM directly by id.
 - **`core/`** — pure, side-effect-free helpers: geometric math (`math.js`), unit conversion/formatting (`units.js`), dimension-style defaults (`dimstyle.js`), constants and factory defaults (`constants.js`, `defaults.js`).
 - **`state.js`** — the single mutable state object for the whole app (current drawing, mode, selection, view transform, active command's transient state, history stacks, etc.).
-- **`model/`** — the document model: entities (`entity.js`), layers (`layers.js`, `layerQuery.js`), dimensions (`dimension.js`), undo/redo (`history.js`), save/load/autosave (`persistence.js`, `document.js`, `dirty.js`).
+- **`model/`** — the document model: entities (`entity.js`), layers (`layers.js`, `layerQuery.js`), dimensions (`dimension.js`), undo/redo (`history.js`), save/load/autosave (`persistence.js`, `document.js`, `dirty.js`, `autosaveStore.js`). Autosave is **asynchronous**: the drawing lives in IndexedDB (`autosaveStore.js`), so `writeAutosave` and `restoreAutosave` return promises and recovery lands just after boot rather than during it. localStorage is left with one job — the snapshot `beforeunload` writes synchronously, because an IndexedDB transaction opened there is routinely aborted — plus the fallback when no database can be opened. Recovery reads both and takes the newer, which is what the sibling `.at` timestamp key is for.
 - **`geometry/`** — pure geometry operations used by commands: trim/extend, offset, stretch, grips, edge editing, join/explode, affine transforms. `tangentCircle.js` holds the "every circle of radius R tangent to these two edges" construction, shared by FILLET and by CIRCLE's Ttr option; put anything else that answers the same question there rather than in a command.
 - **`interaction/`** — turns raw input into domain actions: pointer/canvas hit-testing (`pointer.js`), typed command-line input parsing (`input.js`, e.g. `12<45` style point/distance/angle syntax), object snap (`snap.js`), ortho/polar tracking (`tracking.js`), selection (`selection.js`).
 - **`commands/registry.js`** — the core abstraction of the app. A "command" (LINE, CIRCLE, TRIM, ROTATE, …) is a plain object with optional hooks (`begin`, `point`, `distance`, `keyword`, `prompt`, `preview`, `finish`, `close`, `undoPoint`, etc. — see the extensive comment block at the top of the file for the full contract) registered once via `defineCommand`. The dispatcher in this file is the *only* place that branches on which stage a command is in; individual commands never touch each other or duplicate that dispatch logic. **When adding a new drawing/editing command, follow this pattern rather than adding ad hoc mode-branching elsewhere.**

@@ -185,7 +185,7 @@
       </p>
       <p>
         Everything lives in your browser tab. Drawings are saved to a local <code>.zbCAD.json</code>
-        file you download and re-open yourself, and an autosave copy is kept in the browser's local
+        file you download and re-open yourself, and an autosave copy is kept in the browser's own
         storage so an accidental tab close doesn't lose your work.
       </p>
       <p>
@@ -384,8 +384,11 @@
         confirmation if it isn't already empty).
       </p>
       <p>
-        Every change is also autosaved to the browser's local storage after a short delay, and the
-        previous autosave is kept as a backup slot. If a drawing is still open in browser storage when
+        Every change is also autosaved into the browser's own database (IndexedDB, or ordinary local
+        storage where the browser doesn't allow a database) after a short delay, and the previous
+        autosave is kept as a backup slot. Closing the tab during that delay
+        writes one last snapshot on the way out, so what you're offered back is the drawing you
+        actually last had. If a drawing is still open in browser storage when
         you return &mdash; a crash, an accidental tab close, forgetting to Save &mdash; zbCAD offers
         to recover it. <strong>Recover Backup</strong> in the toolbar explicitly restores the older,
         previously-autosaved slot (rather than the most recent one) if you need to step back one

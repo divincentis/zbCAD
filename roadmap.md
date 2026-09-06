@@ -43,9 +43,9 @@ That is the definition of a useful first product. A collection of drawing comman
 
 The architectural refactor (Phase 1) and most of Phase 2 have already happened:
 
-- 56-module ES architecture, zero dependency cycles, mutation-tested
+- 59-module ES architecture, zero dependency cycles, mutation-tested
 - Versioned native JSON document format, with a validate-before-commit gate that rejects a bad edit before it can reach history
-- Autosave with crash recovery (localStorage, not the IndexedDB originally planned — see Phase 1 below)
+- Autosave with crash recovery, in IndexedDB, with a synchronous localStorage snapshot written only as the tab closes
 - Deterministic entity IDs, command-level undo/redo
 - Draw: line, polyline, rectangle, circle, arc, single-line text
 - Modify: erase, move, copy, rotate, scale, mirror, stretch, grips, join, explode, offset, trim, extend, fillet, chamfer
@@ -153,15 +153,13 @@ The current all-in-one prototype is useful for experimentation but should not be
 
 ### Foundation work
 
-- **Status (September 2026): the two items below did not come up during the
-  refactor and are still open — not a deliberate decision to skip them.**
+- **Status (September 2026): the TypeScript item below did not come up during
+  the refactor and is still open — not a deliberate decision to skip it.**
 - Move production code to TypeScript modules. *(not done — still plain ES
   modules)*
-- Add local save/open, **IndexedDB** autosave, and crash recovery.
-  *(not done — currently `localStorage`. Worth prioritizing: per-edit cost
-  already scales with document size — ~1.5ms at 100 entities, ~20ms at
-  4,000 — and synchronous `localStorage` writes on every autosave are part
-  of that cost. This gets worse once text/blocks push entity counts up.)*
+- Add local save/open, **IndexedDB** autosave, and crash recovery. *(done —
+  September 2026. See the note under priority 8 below for what the move did
+  and did not buy.)*
 - Keep Canvas 2D unless measured performance proves it insufficient.
 - Separate the application into:
   - Document/entity model
@@ -496,9 +494,34 @@ note). What's left:
    and are **next**: a drawing can now be created, annotated and issued, but
    still cannot be traced from an existing PDF or image.
 7. Add controlled DXF export/import.
-8. IndexedDB autosave, once entity counts justify it — the per-edit
-   localStorage write is already ~1.5 ms at 100 entities and ~20 ms at 4,000,
-   and blocks and hatches will push that up.
+8. ~~IndexedDB autosave~~ — shipped September 2026. `model/autosaveStore.js`
+   holds the drawing in IndexedDB; localStorage now carries only the snapshot
+   written synchronously from `beforeunload` (an IndexedDB transaction opened
+   there is routinely aborted before it commits), plus autosaves left by
+   earlier versions. Recovery reads both slots and takes whichever is newer,
+   which is why the localStorage copy is timestamped in a sibling `.at` key.
+   Recovery is asynchronous now, so it lands just after boot rather than
+   during it and stands down if the user drew something first.
+
+   **What this did not fix, measured after the move:** the synchronous cost of
+   an autosave is no longer the write, it is `exportDocumentText` — ~32 ms at
+   4,000 entities on the development machine, of which only ~3 ms is
+   `JSON.stringify`. The rest is `documentSnapshot`'s deep clone plus
+   `validateDocumentData` re-walking every entity, on the debounce timer, on
+   the main thread. That validation is deliberate (an invalid live document
+   must never reach a saved copy), so the fix is to make it cheaper or
+   incremental rather than to drop it. This is the next thing to do about
+   autosave cost, and it matters more than the write ever did.
+
+   **Verified in a real browser**, since the doubt worth having was whether a
+   page opened straight off disk gets a database at all: driven over the
+   DevTools protocol in Chromium 152 at a `file://` URL, an edit autosaved to
+   IndexedDB (`source: "db"`, localStorage left empty), an edit made inside
+   the debounce window and then unloaded left the newer copy in localStorage,
+   and a *second browser session* on the same profile offered "Recover the
+   unsaved drawing (2 objects)?" at boot and restored it. The headless suite
+   additionally covers the two fallbacks — no database at all, and a database
+   that opens and then refuses every transaction — against a stub.
 9. TypeScript migration — **deliberately deferred**, on the strength of
    section 18. It is a large mechanical change that does not help anyone
    create, annotate, quantify or issue a plan. Reconsider only if type errors

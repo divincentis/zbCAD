@@ -1,8 +1,9 @@
 import { requireIdle, setMode } from '../commands/registry.js';
-import { AUTOSAVE_BACKUP_KEY, AUTOSAVE_KEY } from '../core/constants.js';
+import { AUTOSAVE_BACKUP_KEY, AUTOSAVE_KEY, LEGACY_AUTOSAVE_KEYS } from '../core/constants.js';
 import { createDefaultLayers, defaultDimStyle, defaultUnitSettings, derivedNextLayerId } from '../core/defaults.js';
 import { openInput } from '../dom.js';
 import { documentChanged } from '../events.js';
+import { readAutosaveRecord } from './autosaveStore.js';
 import { autosaveTimer, markDirty, releaseBackupPin, scheduleAutosave, writeAutosave } from './dirty.js';
 import { exportDocumentText, parseDocumentText } from './document.js';
 import { state } from '../state.js';
@@ -43,16 +44,21 @@ export function loadDocumentText(text, sourceName = '') {
   return true;
 }
 
-export function restoreAutosave(skipConfirmation = false, backupOnly = false) {
+// Asynchronous, because the autosave store is: the drawing comes back a few
+// milliseconds after boot rather than during it. `onlyIfUntouched` covers the
+// gap that opens up — a recovery offer that arrives after the user has already
+// started drawing must not take their work away from them.
+export async function restoreAutosave(skipConfirmation = false, backupOnly = false, onlyIfUntouched = false) {
   if (backupOnly && !requireIdle('recovering a backup')) return false;
   try {
     const keys = backupOnly ? [AUTOSAVE_BACKUP_KEY] :
       [AUTOSAVE_KEY, AUTOSAVE_BACKUP_KEY, ...LEGACY_AUTOSAVE_KEYS];
     for (const key of keys) {
-      const text = window.localStorage.getItem(key);
-      if (!text) continue;
-      const parsed = parseDocumentText(text);
+      const record = await readAutosaveRecord(key);
+      if (!record) continue;
+      const parsed = parseDocumentText(record.text);
       if (parsed.error) continue;
+      if (onlyIfUntouched && (state.entities.length || state.documentDirty)) return false;
       // Restoring without asking silently replaced a deliberately blank session
       // with the previous drawing, and the single autosave slot meant the
       // discarded one was then overwritten.
@@ -65,8 +71,11 @@ export function restoreAutosave(skipConfirmation = false, backupOnly = false) {
       )) return false;
       if (autosaveTimer !== null) { clearTimeout(autosaveTimer); autosaveTimer = null; }
       applyDocument(parsed.document, false);
-      if (key !== AUTOSAVE_KEY) {
-        try { writeAutosave(); } catch {
+      // Anything but the live primary — a backup, a legacy key, or the copy the
+      // unload path left in localStorage — is promoted to the primary at once,
+      // so the next autosave cannot overwrite the drawing that was recovered.
+      if (key !== AUTOSAVE_KEY || record.source !== 'db') {
+        try { await writeAutosave(); } catch {
           setFileStatus('Drawing recovered; could not refresh autosave. Use Save.', true);
           return true;
         }
