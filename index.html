@@ -1,7 +1,5 @@
 <!doctype html>
 <html lang="en">
-<script data-goatcounter="https://zbfraser.goatcounter.com/count"
-      async src="//gc.zgo.at/count.js"></script>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -546,6 +544,8 @@ kbd { font-size: 9px; opacity: .65; }
   .layer-row-main { grid-template-columns: 22px minmax(0, 1fr) 26px 36px 28px 28px; }
 }
   </style>
+  <script data-goatcounter="https://zbfraser.goatcounter.com/count"
+        async src="//gc.zgo.at/count.js"></script>
 </head>
 <body>
   <header id="topbar" class="topbar">
@@ -953,6 +953,14 @@ kbd { font-size: 9px; opacity: .65; }
   const AUTOSAVE_KEY = `${DOCUMENT_FORMAT}.autosave`;
   const AUTOSAVE_BACKUP_KEY = `${AUTOSAVE_KEY}.previous`;
   const LEGACY_AUTOSAVE_KEYS = [`${DOCUMENT_FORMAT}.autosave.v1`];
+  // The drawing itself lives in IndexedDB (see model/autosaveStore.js); these
+  // name the database, its one store, and the sibling localStorage key that
+  // timestamps the synchronous unload copy.
+  const AUTOSAVE_DB_NAME = `${DOCUMENT_FORMAT}.autosave`;
+  const AUTOSAVE_DB_VERSION = 1;
+  const AUTOSAVE_STORE_NAME = 'drawings';
+  const AUTOSAVE_STAMP_SUFFIX = '.at';
+  const AUTOSAVE_OPEN_TIMEOUT_MS = 1500;
 
   // The increments a draughtsman actually works to. 90 is ORTHO expressed as a
   // polar angle, which is why the two are mutually exclusive rather than
@@ -978,6 +986,11 @@ kbd { font-size: 9px; opacity: .65; }
   // monospace font specifically so this approximation stays close to what is
   // actually drawn.
   const TEXT_WIDTH_FACTOR = 0.6;
+
+  // MTEXT wraps at a fixed box width, so its lines need a vertical spacing —
+  // expressed as a multiple of character height, matching how word processors
+  // and other CAD programs describe line spacing.
+  const MTEXT_LINE_SPACING = 1.5;
 
   // Standard AutoCAD-style linetypes and lineweights, kept to the subset an
   // architectural roof plan actually needs. Dash patterns are screen pixels
@@ -2249,6 +2262,12 @@ kbd { font-size: 9px; opacity: .65; }
   // than measured — see TEXT_WIDTH_FACTOR. Used for bounding box, hit-testing,
   // and zoom-extents; the renderer draws with a monospace font specifically to
   // keep this approximation close to what actually appears.
+  //
+  // MTEXT shares this model rather than getting its own: it is TEXT with a
+  // fixed box width instead of a width derived from content, and with more than
+  // one line. Position is the baseline-left anchor of the first (topmost) line,
+  // exactly like TEXT's position — later lines just stack downward from it —
+  // so no separate "corner" concept is needed.
   // ---------------------------------------------------------------------------
 
   function rotateAroundOrigin(point, angle) {
@@ -2257,20 +2276,76 @@ kbd { font-size: 9px; opacity: .65; }
     return { x: point.x * cosine - point.y * sine, y: point.x * sine + point.y * cosine };
   }
 
+  // Character width has no real glyph metrics behind it either (see above), so
+  // wrapping is estimated from the same per-character factor the single-line
+  // footprint uses, which is also why the renderer uses a monospace font.
+  function mtextCharWidth(entity) {
+    return entity.height * TEXT_WIDTH_FACTOR;
+  }
+
+  function mtextLineHeight(entity) {
+    return entity.height * MTEXT_LINE_SPACING;
+  }
+
+  // Greedy word wrap against the estimated character width. A word wider than
+  // the box on its own is hard-broken rather than left to overflow, so a narrow
+  // box or a long unspaced token still produces a bounded footprint.
+  function mtextLines(entity) {
+    const maxChars = Math.max(1, Math.floor(entity.width / mtextCharWidth(entity)));
+    const lines = [];
+    for (const paragraph of entity.content.split('\n')) {
+      if (!paragraph) { lines.push(''); continue; }
+      let current = '';
+      for (let word of paragraph.split(' ')) {
+        while (word.length > maxChars) {
+          if (current) { lines.push(current); current = ''; }
+          lines.push(word.slice(0, maxChars));
+          word = word.slice(maxChars);
+        }
+        const candidate = current ? `${current} ${word}` : word;
+        if (candidate.length > maxChars && current) {
+          lines.push(current);
+          current = word;
+        } else {
+          current = candidate;
+        }
+      }
+      lines.push(current);
+    }
+    return lines.length ? lines : [''];
+  }
+
+  function textLocalBounds(entity) {
+    const descent = entity.height * 0.25;
+    if (entity.type === 'MTEXT') {
+      const lineCount = mtextLines(entity).length;
+      return {
+        width: entity.width,
+        minY: -descent - (lineCount - 1) * mtextLineHeight(entity),
+        maxY: entity.height,
+      };
+    }
+    return {
+      width: Math.max(entity.content.length, 1) * entity.height * TEXT_WIDTH_FACTOR,
+      minY: -descent,
+      maxY: entity.height,
+    };
+  }
+
   function textWidth(entity) {
-    return Math.max(entity.content.length, 1) * entity.height * TEXT_WIDTH_FACTOR;
+    return textLocalBounds(entity).width;
   }
 
   // Corners of the text's footprint, in drawing order, position first. The box
-  // extends from a quarter-height descender below the baseline (position) to
-  // the full nominal height above it — an approximation of ascender/descender,
-  // not a measurement of this particular string's actual glyphs.
+  // extends from a quarter-height descender below the baseline (position, or
+  // for MTEXT the last line's baseline) to the full nominal height above the
+  // first line's baseline — an approximation of ascender/descender, not a
+  // measurement of this particular string's actual glyphs.
   function textCorners(entity) {
-    const width = textWidth(entity);
-    const descent = entity.height * 0.25;
+    const { width, minY, maxY } = textLocalBounds(entity);
     const local = [
-      { x: 0, y: -descent }, { x: width, y: -descent },
-      { x: width, y: entity.height }, { x: 0, y: entity.height },
+      { x: 0, y: minY }, { x: width, y: minY },
+      { x: width, y: maxY }, { x: 0, y: maxY },
     ];
     return local.map(point => {
       const rotated = rotateAroundOrigin(point, entity.rotation);
@@ -2283,9 +2358,15 @@ kbd { font-size: 9px; opacity: .65; }
       { x: point.x - entity.position.x, y: point.y - entity.position.y },
       -entity.rotation,
     );
-    const width = textWidth(entity);
-    const descent = entity.height * 0.25;
-    return local.x >= 0 && local.x <= width && local.y >= -descent && local.y <= entity.height;
+    const { width, minY, maxY } = textLocalBounds(entity);
+    return local.x >= 0 && local.x <= width && local.y >= minY && local.y <= maxY;
+  }
+
+  // World-space baseline-left anchor of one wrapped line, for callers (the
+  // plotter) that need each line's own position rather than the whole box.
+  function mtextLinePosition(entity, index) {
+    const offset = rotateAroundOrigin({ x: 0, y: -index * mtextLineHeight(entity) }, entity.rotation);
+    return { x: entity.position.x + offset.x, y: entity.position.y + offset.y };
   }
 
   function polygonArea(points) {
@@ -2460,7 +2541,7 @@ kbd { font-size: 9px; opacity: .65; }
   // trimming to one, is never what anybody wants.
   function pickSegments(entity) {
     if (entity.type === 'DIM') return dimensionSegments(entity);
-    if (entity.type === 'TEXT') {
+    if (entity.type === 'TEXT' || entity.type === 'MTEXT') {
       const corners = textCorners(entity);
       return corners.map((point, index) => [point, corners[(index + 1) % corners.length]]);
     }
@@ -2468,7 +2549,7 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   function entityBBox(e) {
-    if (e.type === 'TEXT') {
+    if (e.type === 'TEXT' || e.type === 'MTEXT') {
       const corners = textCorners(e);
       return {
         minX: Math.min(...corners.map(p => p.x)), maxX: Math.max(...corners.map(p => p.x)),
@@ -3064,6 +3145,27 @@ kbd { font-size: 9px; opacity: .65; }
         baseline: 'alphabetic',
         color,
       }];
+    }
+    if (entity.type === 'MTEXT') {
+      if (!entity.content) return [];
+      // Map before filtering, so a blank wrapped line still occupies its index
+      // and every later line's y-position stays correct.
+      return mtextLines(entity).map((line, index) => {
+        if (!line) return null;
+        const anchor = toPaper(mtextLinePosition(entity, index));
+        return {
+          kind: 'text',
+          text: line,
+          x: anchor.x,
+          y: anchor.y,
+          angle: entity.rotation,
+          sizeMM: entity.height * context.mmPerUnit,
+          font: 'courier',
+          anchor: 'left',
+          baseline: 'alphabetic',
+          color,
+        };
+      }).filter(Boolean);
     }
 
     const widthMM = context.settings.lineweights
@@ -3843,6 +3945,28 @@ kbd { font-size: 9px; opacity: .65; }
       };
     }
 
+    if (type === 'MTEXT') {
+      const position = cleanPoint(value.position);
+      if (!position || !Number.isFinite(value.width) || value.width <= 1e-9) {
+        return { error: 'has invalid mtext placement' };
+      }
+      if (!Number.isFinite(value.height) || value.height <= 1e-9) return { error: 'has invalid mtext placement' };
+      if (!Number.isFinite(value.rotation)) return { error: 'has an invalid mtext rotation' };
+      if (typeof value.content !== 'string' || !value.content.trim() || value.content.length > 4000) {
+        return { error: 'has invalid mtext content' };
+      }
+      return {
+        entity: {
+          ...common,
+          position,
+          width: value.width,
+          height: value.height,
+          rotation: normalizeAngle(value.rotation),
+          content: value.content,
+        },
+      };
+    }
+
     return { error: `uses unsupported entity type ${type || '(missing)'}` };
   }
 
@@ -3994,10 +4118,158 @@ kbd { font-size: 9px; opacity: .65; }
   // Report shape: [{ title, rows: [[label, value], ...], note }]
 
   // ---------------------------------------------------------------------------
+  // model/autosaveStore.js
+  // ---------------------------------------------------------------------------
+
+  // Where the autosaved drawing lives.
+  //
+  // Autosave runs after every edit, so whatever it costs is paid on every edit.
+  // localStorage is synchronous: the write blocked the main thread for ~1.5 ms at
+  // 100 entities and ~20 ms at 4,000, on top of the serialisation. IndexedDB
+  // writes are asynchronous, so the same save costs the edit nothing beyond the
+  // serialising it was already doing.
+  //
+  // The one thing IndexedDB cannot do is finish a write while the page is being
+  // torn down — a transaction opened from `beforeunload` is routinely aborted.
+  // So that path still writes synchronously, to localStorage, and recovery
+  // compares the two copies by timestamp and takes the newer one. localStorage is
+  // therefore three things: the unload snapshot, the fallback when IndexedDB is
+  // unavailable (private windows refuse to open a database), and the place older
+  // versions of this app left their autosave.
+  //
+  // Timestamps live in a sibling `.at` key rather than in an envelope around the
+  // text, so the localStorage copy stays exactly what it has always been: the
+  // drawing JSON, readable by any version of this app.
+
+  let autosaveDbPromise = null;
+
+  // Resolves to null rather than rejecting when the database is unavailable, so
+  // every caller has one fallback path instead of two.
+  function openAutosaveDb() {
+    if (autosaveDbPromise) return autosaveDbPromise;
+    autosaveDbPromise = new Promise(resolve => {
+      let request;
+      try {
+        if (!window.indexedDB) { resolve(null); return; }
+        request = window.indexedDB.open(AUTOSAVE_DB_NAME, AUTOSAVE_DB_VERSION);
+      } catch {
+        resolve(null);
+        return;
+      }
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(AUTOSAVE_STORE_NAME)) db.createObjectStore(AUTOSAVE_STORE_NAME);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+      request.onblocked = () => resolve(null);
+      // A browser that neither opens the database nor refuses it — a blocked or
+      // wedged upgrade — would otherwise leave every autosave waiting forever on
+      // a promise that never settles. Falling back to localStorage for the rest
+      // of the session is worth more than the database was.
+      setTimeout(() => resolve(null), AUTOSAVE_OPEN_TIMEOUT_MS);
+    });
+    return autosaveDbPromise;
+  }
+
+  // Resolves on transaction completion rather than on request success: a request
+  // can succeed and its transaction still abort, and it is the commit that means
+  // the drawing survives the tab.
+  function runAutosaveTransaction(db, mode, run) {
+    return new Promise((resolve, reject) => {
+      let transaction;
+      let request;
+      try {
+        transaction = db.transaction(AUTOSAVE_STORE_NAME, mode);
+        request = run(transaction.objectStore(AUTOSAVE_STORE_NAME));
+      } catch (error) {
+        reject(error);
+        return;
+      }
+      transaction.oncomplete = () => resolve(request ? request.result : undefined);
+      transaction.onerror = () => reject(transaction.error || new Error('autosave store transaction failed'));
+      transaction.onabort = () => reject(transaction.error || new Error('autosave store transaction aborted'));
+    });
+  }
+
+  function localAutosaveRecord(key) {
+    const text = window.localStorage.getItem(key);
+    if (typeof text !== 'string' || !text) return null;
+    const stamp = Number(window.localStorage.getItem(key + AUTOSAVE_STAMP_SUFFIX));
+    return { text, savedAt: Number.isFinite(stamp) ? stamp : 0, source: 'local' };
+  }
+
+  function clearLocalAutosaveRecord(key) {
+    try {
+      if (window.localStorage.getItem(key) === null) return;
+      window.localStorage.removeItem(key);
+      window.localStorage.removeItem(key + AUTOSAVE_STAMP_SUFFIX);
+    } catch {
+      // Leaving the copy behind is harmless: it is older than the one just
+      // committed, and recovery compares timestamps.
+    }
+  }
+
+  // The newest copy of one slot, whichever store holds it. An untimestamped
+  // localStorage copy is an autosave written by an older version of this app, so
+  // it reads as the oldest thing on offer.
+  async function readAutosaveRecord(key) {
+    let stored = null;
+    const db = await openAutosaveDb();
+    if (db) {
+      try {
+        const record = await runAutosaveTransaction(db, 'readonly', store => store.get(key));
+        if (record && typeof record.text === 'string' && record.text) {
+          stored = { text: record.text, savedAt: Number(record.savedAt) || 0, source: 'db' };
+        }
+      } catch {
+        // A failed read is not a missing drawing: fall through to localStorage.
+      }
+    }
+    const local = localAutosaveRecord(key);
+    if (!stored) return local;
+    if (!local) return stored;
+    return local.savedAt > stored.savedAt ? local : stored;
+  }
+
+  async function writeAutosaveRecord(key, text) {
+    const db = await openAutosaveDb();
+    if (!db) {
+      writeAutosaveRecordSync(key, text);
+      return 'local';
+    }
+    try {
+      await runAutosaveTransaction(db, 'readwrite', store => store.put({ text, savedAt: Date.now() }, key));
+    } catch {
+      // A database that opens and then refuses to write (a storage policy, a
+      // quota) must not cost the drawing an autosave: degrade to the synchronous
+      // store, which recovery prefers anyway once it carries the newer stamp.
+      writeAutosaveRecordSync(key, text);
+      return 'local';
+    }
+    // The synchronous copy exists only to survive an unload. Once the same
+    // drawing is committed to the database, a duplicate left behind can only
+    // become a stale candidate for recovery.
+    clearLocalAutosaveRecord(key);
+    return 'db';
+  }
+
+  // The unload path. Throws like any other localStorage write when the store is
+  // full or unavailable; the caller decides what a failure there means.
+  function writeAutosaveRecordSync(key, text) {
+    window.localStorage.setItem(key, text);
+    window.localStorage.setItem(key + AUTOSAVE_STAMP_SUFFIX, String(Date.now()));
+  }
+
+  // ---------------------------------------------------------------------------
   // model/dirty.js
   // ---------------------------------------------------------------------------
 
   let autosaveTimer = null;
+
+  // Bumped once per change to the document, so an autosave that resolves after a
+  // later edit can tell that it no longer describes the drawing on screen.
+  let autosaveGeneration = 0;
 
   // The backup holds the drawing as it stood when the current one replaced it, and
   // is written ONCE per document. Rotating it on every autosave gave a recovery
@@ -4011,14 +4283,14 @@ kbd { font-size: 9px; opacity: .65; }
     backupPinned = false;
   }
 
-  function writeAutosave() {
+  async function writeAutosave() {
     // Validate first: an invalid live document must not touch either saved copy.
     const text = exportDocumentText(false);
     if (!backupPinned) {
-      const previous = window.localStorage.getItem(AUTOSAVE_KEY);
-      if (previous && previous !== text && !parseDocumentText(previous).error) {
+      const previous = await readAutosaveRecord(AUTOSAVE_KEY);
+      if (previous && previous.text !== text && !parseDocumentText(previous.text).error) {
         try {
-          window.localStorage.setItem(AUTOSAVE_BACKUP_KEY, previous);
+          await writeAutosaveRecord(AUTOSAVE_BACKUP_KEY, previous.text);
           backupPinned = true;
         } catch {
           // A full or unavailable store must not stop the primary autosave. The
@@ -4027,24 +4299,37 @@ kbd { font-size: 9px; opacity: .65; }
         }
       }
     }
-    window.localStorage.setItem(AUTOSAVE_KEY, text);
+    await writeAutosaveRecord(AUTOSAVE_KEY, text);
+    return true;
+  }
+
+  // The page is going away, and an IndexedDB transaction opened here would very
+  // likely be aborted before it commits, so this one write stays synchronous.
+  // It only ever covers the edits made since the last autosave settled — at most
+  // the debounce window — and the next successful autosave clears it again.
+  function writeAutosaveOnUnload() {
+    writeAutosaveRecordSync(AUTOSAVE_KEY, exportDocumentText(false));
     return true;
   }
 
   function scheduleAutosave() {
     if (!state.documentDirty) return;
+    autosaveGeneration += 1;
     if (autosaveTimer !== null) clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => {
       autosaveTimer = null;
-      try {
-        writeAutosave();
-        // Only clear the dirty flag once the write actually succeeded, so a failed
-        // autosave does not also suppress the beforeunload save.
+      const generation = autosaveGeneration;
+      writeAutosave().then(() => {
+        // The write is asynchronous now, so the drawing can have moved on while
+        // it was in flight. Clearing the flag for a save that no longer describes
+        // the document would also suppress the beforeunload write of the edits it
+        // missed, which is exactly the case that path exists for.
+        if (generation !== autosaveGeneration) return;
         state.documentDirty = false;
         setFileStatus(`${state.drawingName} · Autosaved`);
-      } catch (error) {
+      }, error => {
         setFileStatus(`Autosave failed — saved recovery copies retained. ${error.message || 'Use Save.'}`, true);
-      }
+      });
     }, 250);
   }
 
@@ -4181,6 +4466,10 @@ kbd { font-size: 9px; opacity: .65; }
   //   keyword(text)    consumes a command-local keyword, ahead of alias lookup
   //   value(text)      consumes typed input that is neither a point nor a
   //                    distance: an angle in degrees, a scale factor
+  //   liveValue(text)  the free-text box's uncommitted keystrokes, fired on
+  //                    every keystroke rather than on submit — lets a command
+  //                    preview what is being typed (TEXT/MTEXT content) on the
+  //                    canvas instead of only in the command-line input itself
   //   basePoint()      the anchor for ORTHO, relative entry, and direct
   //                    distance, for commands that do not track currentPoints
   //   previewReady()   whether preview() has enough state to draw; defaults to
@@ -4233,6 +4522,10 @@ kbd { font-size: 9px; opacity: .65; }
 
   function commandCapturesSpace(command = activeCommand()) {
     return command ? staged(command.capturesSpace, command) : false;
+  }
+
+  function commandLiveValue(text, command = activeCommand()) {
+    command?.liveValue?.(text);
   }
 
   function commandPreviewReady(command = activeCommand()) {
@@ -4882,7 +5175,7 @@ kbd { font-size: 9px; opacity: .65; }
         refs: entity.refs.map(ref => (ref ? { ...ref } : null)),
       };
     }
-    if (entity.type === 'TEXT') {
+    if (entity.type === 'TEXT' || entity.type === 'MTEXT') {
       return { ...entity, id, position: { x: entity.position.x + dx, y: entity.position.y + dy } };
     }
     return JSON.parse(JSON.stringify(entity));
@@ -4943,7 +5236,7 @@ kbd { font-size: 9px; opacity: .65; }
         refs: entity.refs.map(ref => (ref ? { ...ref } : null)),
       };
     }
-    if (entity.type === 'TEXT') {
+    if (entity.type === 'TEXT' || entity.type === 'MTEXT') {
       return {
         ...entity,
         id,
@@ -5001,6 +5294,17 @@ kbd { font-size: 9px; opacity: .65; }
       // Real CAD scales text height along with everything else, so a 2x SCALE
       // on a wall and its label keeps them in visual proportion.
       return { ...entity, id, position: scalePoint(entity.position, base, factor), height: entity.height * factor };
+    }
+    if (entity.type === 'MTEXT') {
+      // Width scales with height so the box's proportions — and therefore its
+      // wrapping — stay visually the same, not just the lettering inside it.
+      return {
+        ...entity,
+        id,
+        position: scalePoint(entity.position, base, factor),
+        height: entity.height * factor,
+        width: entity.width * factor,
+      };
     }
     return JSON.parse(JSON.stringify(entity));
   }
@@ -5095,7 +5399,7 @@ kbd { font-size: 9px; opacity: .65; }
         refs: entity.refs.map(ref => (ref ? { ...ref } : null)),
       };
     }
-    if (entity.type === 'TEXT') {
+    if (entity.type === 'TEXT' || entity.type === 'MTEXT') {
       // AutoCAD's MIRRTEXT default, and for the same reason: the insertion point
       // moves with everything else, but the lettering keeps its own angle rather
       // than becoming a mirror image of itself. A note on a mirrored roof half
@@ -6175,7 +6479,7 @@ kbd { font-size: 9px; opacity: .65; }
     }
     // A click anywhere inside a text run's footprint should select it, the way
     // a filled glyph area reads, rather than only near its outline.
-    if (entity.type === 'TEXT' && textContainsPoint(entity, world)) return 0;
+    if ((entity.type === 'TEXT' || entity.type === 'MTEXT') && textContainsPoint(entity, world)) return 0;
     let best = Infinity;
     for (const [a, b, arc] of pickSegments(entity)) {
       // A curved segment is picked off its arc, not the chord across it — the
@@ -6497,6 +6801,17 @@ kbd { font-size: 9px; opacity: .65; }
     if (entity.type === 'TEXT') {
       return [{ kind: 'TEXT_POSITION', point: entity.position }];
     }
+    if (entity.type === 'MTEXT') {
+      return [
+        { kind: 'MTEXT_POSITION', point: entity.position },
+        // Lets the wrap width be adjusted by drag, since there is no properties
+        // panel yet to type a new one into.
+        {
+          kind: 'MTEXT_WIDTH',
+          point: rotatePoint({ x: entity.position.x + entity.width, y: entity.position.y }, entity.position, entity.rotation),
+        },
+      ];
+    }
     return [];
   }
 
@@ -6624,6 +6939,19 @@ kbd { font-size: 9px; opacity: .65; }
 
     if (entity.type === 'TEXT' && descriptor.kind === 'TEXT_POSITION') {
       return { entity: { ...entity, position: { ...point } } };
+    }
+
+    if (entity.type === 'MTEXT' && descriptor.kind === 'MTEXT_POSITION') {
+      return { entity: { ...entity, position: { ...point } } };
+    }
+
+    if (entity.type === 'MTEXT' && descriptor.kind === 'MTEXT_WIDTH') {
+      // Project the drag onto the text's own rotated x-axis, so a drag that
+      // doesn't land exactly on that axis still yields a plain scalar width.
+      const local = rotatePoint(point, entity.position, -entity.rotation);
+      const width = local.x - entity.position.x;
+      if (width <= 1e-9) return { error: 'MTEXT width must be greater than zero.' };
+      return { entity: { ...entity, width } };
     }
 
     return { error: 'That grip cannot edit this entity.' };
@@ -6828,6 +7156,27 @@ kbd { font-size: 9px; opacity: .65; }
     ctx.restore();
   }
 
+  // One canvas transform for the whole entity, same as drawText, then each
+  // wrapped line is a separate fillText offset down the local y axis — which,
+  // inside this already-rotated/flipped frame, is simply "further down the
+  // page" regardless of the entity's own rotation.
+  function drawMText(e, preview, color) {
+    const screen = worldToScreen(e.position);
+    const heightPx = e.height * state.view.scale;
+    if (heightPx < 2) return;
+    const lineHeightPx = mtextLineHeight(e) * state.view.scale;
+    ctx.save();
+    ctx.translate(screen.x, screen.y);
+    ctx.rotate(-e.rotation);
+    ctx.font = `${heightPx}px monospace`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = color;
+    if (preview) ctx.globalAlpha = 0.6;
+    mtextLines(e).forEach((line, index) => ctx.fillText(line, 0, index * lineHeightPx));
+    ctx.restore();
+  }
+
   // Screen line width is a fixed pixel value derived from the layer's mm
   // lineweight (see LINEWEIGHT_PX_PER_MM), not something that scales with
   // zoom — matches how CAD programs keep lineweight legible at any view scale.
@@ -6851,6 +7200,10 @@ kbd { font-size: 9px; opacity: .65; }
     }
     if (e.type === 'TEXT') {
       drawText(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
+      return;
+    }
+    if (e.type === 'MTEXT') {
+      drawMText(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
       return;
     }
     if (preview) ctx.setLineDash([6,4]); else ctx.setLineDash(dashPatternForLayer(layer));
@@ -7906,6 +8259,15 @@ kbd { font-size: 9px; opacity: .65; }
         ['Rotation', formatAngle(normalizeAngle(entity.rotation))],
         ['Content', entity.content],
       );
+    } else if (entity.type === 'MTEXT') {
+      rows.push(
+        ['Position', describePoint(entity.position)],
+        ['Width', formatLengthLabel(entity.width)],
+        ['Height', formatLengthLabel(entity.height)],
+        ['Rotation', formatAngle(normalizeAngle(entity.rotation))],
+        ['Lines', String(mtextLines(entity).length)],
+        ['Content', entity.content],
+      );
     } else if (entity.type === 'ARC') {
       rows.push(
         ['Center', describePoint(entity.center)],
@@ -8207,23 +8569,31 @@ kbd { font-size: 9px; opacity: .65; }
   defineCommand('DIMDIAMETER', radialDimensionCommand('DIAMETER', 'DIMDIAMETER'));
 
   // ---------------------------------------------------------------------------
-  // TEXT
+  // TEXT / MTEXT
   //
-  // Follows the AutoCAD single-line TEXT flow: insertion point, height,
-  // rotation, then the content itself. The first three are point/distance/angle
-  // entry like every other command; content is not, so it goes through value()
-  // instead of point() — acceptsPoint() shuts point/coordinate parsing off once
-  // content is being typed, so a string that happens to contain a comma or
-  // start with '@' is never mistaken for a coordinate.
+  // MTEXT is TEXT with a fixed box width instead of one derived from content,
+  // and more than one line, so both run off one factory: insertion point,
+  // [box width, MTEXT only], height, rotation, then content. The point/distance/
+  // angle stages are entry like every other command; content is not, so it
+  // goes through value() instead of point() — acceptsPoint() shuts point/
+  // coordinate parsing off once content is being typed, so a string that
+  // happens to contain a comma or start with '@' is never mistaken for a
+  // coordinate. TEXT's content finishes on the first Enter; MTEXT's content is
+  // multi-line, so each Enter commits one line and stays in CONTENT — a blank
+  // Enter (finish()) is what ends entry, the way AutoCAD's command-line MTEXT
+  // works. T and MT stay separate typed commands (see aliases.js) so single-
+  // line entry never grows an extra prompt; only the runtime behind them is
+  // shared, the way DIMLINEAR/DIMALIGNED share dimensionCommand() above.
   // ---------------------------------------------------------------------------
 
-  function addText(position, height, rotation, content) {
+  function addText(kind, position, height, rotation, content, width) {
     if (!currentLayerIsEditable()) return false;
     const entity = {
       id: state.nextId,
-      type: 'TEXT',
+      type: kind,
       layerId: state.currentLayerId,
       position: { ...position },
+      ...(kind === 'MTEXT' ? { width } : {}),
       height,
       rotation,
       content,
@@ -8238,127 +8608,245 @@ kbd { font-size: 9px; opacity: .65; }
     return dimSize(getDimStyle(DEFAULT_DIM_STYLE_ID), 'textHeight');
   }
 
-  defineCommand('TEXT', {
-    creates: true,
-    usesOrtho: true,
+  // A generous default so Enter-for-default at MTEXT's WIDTH stage still
+  // produces something a few words wide, mirroring TEXT's <default> convention
+  // even though AutoCAD's own MTEXT has no true default (it always asks for
+  // the opposite corner).
+  function defaultMTextWidth() {
+    return defaultTextHeight() * 20;
+  }
 
-    takesDistance() {
-      return state.text?.stage === 'HEIGHT';
-    },
+  function textCommand(kind, label) {
+    const hasWidth = kind === 'MTEXT';
 
-    // A space typed while entering content is a word break, not Enter.
-    capturesSpace() {
-      return state.text?.stage === 'CONTENT';
-    },
+    return {
+      creates: true,
+      usesOrtho: true,
 
-    begin() {
-      state.text = { stage: 'POINT', position: null, height: null, rotation: null };
-    },
+      takesDistance() {
+        return hasWidth
+          ? ['WIDTH', 'HEIGHT'].includes(state.text?.stage)
+          : state.text?.stage === 'HEIGHT';
+      },
 
-    prompt() {
-      const stage = state.text?.stage;
-      if (stage === 'HEIGHT') return `TEXT — Specify height <${formatLength(defaultTextHeight())}>:`;
-      if (stage === 'ROTATION') return 'TEXT — Specify rotation angle <0>:';
-      if (stage === 'CONTENT') return 'TEXT — Enter the text:';
-      return 'TEXT — Specify start point:';
-    },
+      // A space typed while entering content is a word break, not Enter.
+      capturesSpace() {
+        return state.text?.stage === 'CONTENT';
+      },
 
-    acceptsPoint() {
-      return ['POINT', 'HEIGHT'].includes(state.text?.stage);
-    },
+      begin() {
+        state.text = {
+          kind, stage: 'POINT', position: null, width: null, height: null, rotation: null,
+          lines: [], liveContent: '',
+        };
+      },
 
-    previewReady() {
-      return ['HEIGHT', 'ROTATION'].includes(state.text?.stage);
-    },
+      prompt() {
+        const stage = state.text?.stage;
+        if (stage === 'WIDTH') return `${label} — Specify opposite corner <${formatLength(defaultMTextWidth())} wide>:`;
+        if (stage === 'HEIGHT') return `${label} — Specify height <${formatLength(defaultTextHeight())}>:`;
+        if (stage === 'ROTATION') return `${label} — Specify rotation angle <0>:`;
+        if (stage === 'CONTENT') {
+          return hasWidth ? `${label} — Enter a line of text, blank line to finish:` : `${label} — Enter the text:`;
+        }
+        return `${label} — Specify ${hasWidth ? 'first corner' : 'start point'}:`;
+      },
 
-    point(p) {
-      const operation = state.text;
-      if (operation.stage === 'POINT') {
-        operation.position = { ...p };
-        operation.stage = 'HEIGHT';
-        updatePrompt();
-        return;
-      }
-      if (operation.stage === 'HEIGHT') {
-        const height = dist(operation.position, p);
-        if (height <= 1e-9) { updatePrompt('Height must be greater than zero.'); return; }
-        operation.height = height;
-        operation.stage = 'ROTATION';
-        updatePrompt();
-      }
-    },
+      acceptsPoint() {
+        return (hasWidth ? ['POINT', 'WIDTH', 'HEIGHT'] : ['POINT', 'HEIGHT']).includes(state.text?.stage);
+      },
 
-    distance(value) {
-      const operation = state.text;
-      if (operation?.stage !== 'HEIGHT') return false;
-      if (value <= 1e-9) { updatePrompt('Height must be greater than zero.'); return true; }
-      operation.height = value;
-      operation.stage = 'ROTATION';
-      updatePrompt();
-      draw();
-      return true;
-    },
+      previewReady() {
+        const stage = state.text?.stage;
+        // Nothing has been typed yet the moment CONTENT begins, so there is
+        // nothing to preview until liveValue() reports a first keystroke.
+        if (stage === 'CONTENT') {
+          return hasWidth
+            ? Boolean(state.text.lines.length || state.text.liveContent)
+            : Boolean(state.text.liveContent);
+        }
+        return (hasWidth ? ['WIDTH', 'HEIGHT', 'ROTATION'] : ['HEIGHT', 'ROTATION']).includes(stage);
+      },
 
-    value(text) {
-      const operation = state.text;
-      if (operation?.stage === 'ROTATION') {
-        const match = text.trim().match(DEGREES);
-        if (!match) { updatePrompt('Invalid angle. Enter degrees.'); return true; }
-        operation.rotation = Number(match[1]) * Math.PI / 180;
-        operation.stage = 'CONTENT';
+      point(p) {
+        const operation = state.text;
+        if (operation.stage === 'POINT') {
+          operation.position = { ...p };
+          operation.stage = hasWidth ? 'WIDTH' : 'HEIGHT';
+          updatePrompt();
+          return;
+        }
+        if (operation.stage === 'WIDTH') {
+          const width = dist(operation.position, p);
+          if (width <= 1e-9) { updatePrompt('Width must be greater than zero.'); return; }
+          operation.width = width;
+          operation.stage = 'HEIGHT';
+          updatePrompt();
+          return;
+        }
+        if (operation.stage === 'HEIGHT') {
+          const height = dist(operation.position, p);
+          if (height <= 1e-9) { updatePrompt('Height must be greater than zero.'); return; }
+          operation.height = height;
+          operation.stage = 'ROTATION';
+          updatePrompt();
+        }
+      },
+
+      distance(value) {
+        const operation = state.text;
+        const stage = operation?.stage;
+        if (!hasWidth) {
+          if (stage !== 'HEIGHT') return false;
+          if (value <= 1e-9) { updatePrompt('Height must be greater than zero.'); return true; }
+          operation.height = value;
+          operation.stage = 'ROTATION';
+          updatePrompt();
+          draw();
+          return true;
+        }
+        if (stage !== 'WIDTH' && stage !== 'HEIGHT') return false;
+        if (value <= 1e-9) {
+          updatePrompt(`${stage === 'WIDTH' ? 'Width' : 'Height'} must be greater than zero.`);
+          return true;
+        }
+        operation[stage === 'WIDTH' ? 'width' : 'height'] = value;
+        operation.stage = stage === 'WIDTH' ? 'HEIGHT' : 'ROTATION';
         updatePrompt();
         draw();
         return true;
-      }
-      if (operation?.stage === 'CONTENT') {
-        if (!text) { updatePrompt('Enter the text to place:'); return true; }
-        if (addText(operation.position, operation.height, operation.rotation, text)) setMode('SELECT');
-        return true;
-      }
-      return false;
-    },
+      },
 
-    // Enter/Space with nothing typed accepts the bracketed default for the
-    // current stage, matching AutoCAD's <default> convention.
-    finish() {
-      const operation = state.text;
-      if (!operation || operation.stage === 'POINT') return false;
-      if (operation.stage === 'HEIGHT') {
-        operation.height = defaultTextHeight();
-        operation.stage = 'ROTATION';
-        updatePrompt();
-        draw();
-        return;
-      }
-      if (operation.stage === 'ROTATION') {
-        operation.rotation = 0;
-        operation.stage = 'CONTENT';
-        updatePrompt();
-        draw();
-        return;
-      }
-      // CONTENT: nothing typed yet, nothing to place.
-      updatePrompt('Enter the text to place:');
-      return false;
-    },
+      value(text) {
+        const operation = state.text;
+        if (operation?.stage === 'ROTATION') {
+          const match = text.trim().match(DEGREES);
+          if (!match) { updatePrompt('Invalid angle. Enter degrees.'); return true; }
+          operation.rotation = Number(match[1]) * Math.PI / 180;
+          operation.stage = 'CONTENT';
+          updatePrompt();
+          draw();
+          return true;
+        }
+        if (operation?.stage === 'CONTENT') {
+          if (hasWidth) {
+            // A non-blank submission is one more line, not the end of entry —
+            // a blank Enter (finish(), below) is what closes the entity out.
+            operation.lines.push(text);
+            operation.liveContent = '';
+            updatePrompt();
+            draw();
+            return true;
+          }
+          if (!text) { updatePrompt('Enter the text to place:'); return true; }
+          if (addText(kind, operation.position, operation.height, operation.rotation, text)) setMode('SELECT');
+          return true;
+        }
+        return false;
+      },
 
-    preview(p) {
-      const operation = state.text;
-      if (operation.stage === 'HEIGHT') {
-        drawEntity({ type: 'LINE', a: operation.position, b: p }, true);
-        return;
-      }
-      if (operation.stage === 'ROTATION') {
-        drawEntity({
-          type: 'TEXT',
-          position: operation.position,
-          height: operation.height,
-          rotation: Math.atan2(p.y - operation.position.y, p.x - operation.position.x),
-          content: '(text)',
-        }, true);
-      }
-    },
-  });
+      // Fires on every keystroke, ahead of Enter — see liveValue() in the
+      // registry's hook contract. Kept separate from value() so the committed
+      // text always comes from the same trimmed, Enter-terminated string it
+      // always has, while the canvas gets to see it as it's typed.
+      liveValue(text) {
+        const operation = state.text;
+        if (operation?.stage !== 'CONTENT') return;
+        operation.liveContent = text;
+        draw();
+      },
+
+      // Enter/Space with nothing typed accepts the bracketed default for the
+      // current stage, matching AutoCAD's <default> convention — except at
+      // MTEXT's CONTENT, where a blank line is the multi-line terminator
+      // instead.
+      finish() {
+        const operation = state.text;
+        if (!operation || operation.stage === 'POINT') return false;
+        if (operation.stage === 'WIDTH') {
+          operation.width = defaultMTextWidth();
+          operation.stage = 'HEIGHT';
+          updatePrompt();
+          draw();
+          return;
+        }
+        if (operation.stage === 'HEIGHT') {
+          operation.height = defaultTextHeight();
+          operation.stage = 'ROTATION';
+          updatePrompt();
+          draw();
+          return;
+        }
+        if (operation.stage === 'ROTATION') {
+          operation.rotation = 0;
+          operation.stage = 'CONTENT';
+          updatePrompt();
+          draw();
+          return;
+        }
+        // CONTENT
+        if (hasWidth) {
+          if (!operation.lines.length) {
+            updatePrompt('Enter at least one line of text.');
+            return false;
+          }
+          if (addText(kind, operation.position, operation.height, operation.rotation, operation.lines.join('\n'), operation.width)) {
+            setMode('SELECT');
+          }
+          return;
+        }
+        // Nothing typed yet, nothing to place.
+        updatePrompt('Enter the text to place:');
+        return false;
+      },
+
+      preview(p) {
+        const operation = state.text;
+        if (operation.stage === 'WIDTH' || operation.stage === 'HEIGHT') {
+          drawEntity({ type: 'LINE', a: operation.position, b: p }, true);
+          return;
+        }
+        if (operation.stage === 'ROTATION') {
+          drawEntity({
+            type: kind,
+            position: operation.position,
+            ...(hasWidth ? { width: operation.width } : {}),
+            height: operation.height,
+            rotation: Math.atan2(p.y - operation.position.y, p.x - operation.position.x),
+            content: '(text)',
+          }, true);
+          return;
+        }
+        if (operation.stage !== 'CONTENT') return;
+        if (hasWidth) {
+          const content = [...operation.lines, operation.liveContent].join('\n');
+          if (content.trim()) {
+            drawEntity({
+              type: kind,
+              position: operation.position,
+              width: operation.width,
+              height: operation.height,
+              rotation: operation.rotation,
+              content,
+            }, true);
+          }
+          return;
+        }
+        if (operation.liveContent) {
+          drawEntity({
+            type: kind,
+            position: operation.position,
+            height: operation.height,
+            rotation: operation.rotation,
+            content: operation.liveContent,
+          }, true);
+        }
+      },
+    };
+  }
+
+  defineCommand('TEXT', textCommand('TEXT', 'TEXT'));
+  defineCommand('MTEXT', textCommand('MTEXT', 'MTEXT'));
 
   // ---------------------------------------------------------------------------
   // interaction/input.js
@@ -9248,16 +9736,21 @@ kbd { font-size: 9px; opacity: .65; }
     return true;
   }
 
-  function restoreAutosave(skipConfirmation = false, backupOnly = false) {
+  // Asynchronous, because the autosave store is: the drawing comes back a few
+  // milliseconds after boot rather than during it. `onlyIfUntouched` covers the
+  // gap that opens up — a recovery offer that arrives after the user has already
+  // started drawing must not take their work away from them.
+  async function restoreAutosave(skipConfirmation = false, backupOnly = false, onlyIfUntouched = false) {
     if (backupOnly && !requireIdle('recovering a backup')) return false;
     try {
       const keys = backupOnly ? [AUTOSAVE_BACKUP_KEY] :
         [AUTOSAVE_KEY, AUTOSAVE_BACKUP_KEY, ...LEGACY_AUTOSAVE_KEYS];
       for (const key of keys) {
-        const text = window.localStorage.getItem(key);
-        if (!text) continue;
-        const parsed = parseDocumentText(text);
+        const record = await readAutosaveRecord(key);
+        if (!record) continue;
+        const parsed = parseDocumentText(record.text);
         if (parsed.error) continue;
+        if (onlyIfUntouched && (state.entities.length || state.documentDirty)) return false;
         // Restoring without asking silently replaced a deliberately blank session
         // with the previous drawing, and the single autosave slot meant the
         // discarded one was then overwritten.
@@ -9270,8 +9763,11 @@ kbd { font-size: 9px; opacity: .65; }
         )) return false;
         if (autosaveTimer !== null) { clearTimeout(autosaveTimer); autosaveTimer = null; }
         applyDocument(parsed.document, false);
-        if (key !== AUTOSAVE_KEY) {
-          try { writeAutosave(); } catch {
+        // Anything but the live primary — a backup, a legacy key, or the copy the
+        // unload path left in localStorage — is promoted to the primary at once,
+        // so the next autosave cannot overwrite the drawing that was recovered.
+        if (key !== AUTOSAVE_KEY || record.source !== 'db') {
+          try { await writeAutosave(); } catch {
             setFileStatus('Drawing recovered; could not refresh autosave. Use Save.', true);
             return true;
           }
@@ -10204,7 +10700,9 @@ kbd { font-size: 9px; opacity: .65; }
     }
     // Text has one anchor point and no vertices of its own, so — like a circle
     // or arc — it answers to that point: caught, it travels; missed, it stays.
-    if (entity.type === 'TEXT') return { ...entity, position: shift(entity.position) };
+    // MTEXT's box width is a property of the entity, not a second point, so it
+    // follows the same rule.
+    if (entity.type === 'TEXT' || entity.type === 'MTEXT') return { ...entity, position: shift(entity.position) };
     return { ...entity };
   }
 
@@ -10778,6 +11276,7 @@ kbd { font-size: 9px; opacity: .65; }
     DDI:'DIMDIAMETER', DIMDIAMETER:'DIMDIAMETER', DIMDIA:'DIMDIAMETER',
     DST:'DIMSTYLE', DIMSTYLE:'DIMSTYLE', DDIM:'DIMSTYLE',
     T:'TEXT', TEXT:'TEXT', DT:'TEXT', DTEXT:'TEXT',
+    MT:'MTEXT', MTEXT:'MTEXT',
     AA:'AREA', AREA:'AREA',
     ID:'ID', LI:'LIST', LIST:'LIST',
   });
@@ -11294,6 +11793,11 @@ kbd { font-size: 9px; opacity: .65; }
     submitCommandInput();
   });
 
+  // A free-text stage (TEXT/MTEXT content) previously only showed what was
+  // typed in this input box, not on the drawing, until Enter committed it —
+  // every keystroke now also updates the on-canvas preview.
+  commandInput.addEventListener('input', () => commandLiveValue(commandInput.value));
+
   document.querySelectorAll('[data-command]').forEach(btn => btn.addEventListener('click', () => {
     startCommand(btn.dataset.command);
     canvas.focus();
@@ -11516,7 +12020,7 @@ kbd { font-size: 9px; opacity: .65; }
   window.addEventListener('beforeunload', () => {
     if (!state.documentDirty) return;
     try {
-      writeAutosave();
+      writeAutosaveOnUnload();
     } catch {
       // Manual Save remains available when browser storage is unavailable.
     }
@@ -11549,6 +12053,8 @@ kbd { font-size: 9px; opacity: .65; }
     polylineBulge,
     polylineHasBulges,
     entityBBox,
+    mtextLines,
+    mtextLinePosition,
     boxesOverlap,
     entityCrossesBox,
     dimSize,
@@ -11616,8 +12122,15 @@ kbd { font-size: 9px; opacity: .65; }
     exportDocumentText,
     importDocumentText: loadDocumentText,
     newDrawing: () => newDrawing(true),
+    // Autosave is asynchronous now, so every one of these returns a promise the
+    // caller has to wait on before asking what was stored.
     restoreAutosave: () => restoreAutosave(true),
     restoreBackup: () => restoreAutosave(true, true),
+    restoreAutosaveIfUntouched: () => restoreAutosave(true, false, true),
+    readAutosaveRecord,
+    writeAutosaveRecord,
+    writeAutosaveNow: () => writeAutosave(),
+    writeAutosaveOnUnload,
     get unitSettings() { return { ...state.unitSettings }; },
     formatLength,
     formatLengthLabel,
@@ -11681,6 +12194,10 @@ kbd { font-size: 9px; opacity: .65; }
     setUnitRescale(value) { unitRescaleCheck.checked = Boolean(value); refreshUnitsDialog(); },
     get promptText() { return promptEl.textContent; },
     submitCommandText(text = '') { commandInput.value = text; submitCommandInput(); },
+    // Mirrors the commandInput 'input' listener wired in ui/shell.js, so tests
+    // can drive the on-canvas live-typing preview without simulating a real
+    // keystroke event against the DOM stub.
+    commandLiveValue,
     acceptDefaultAction,
     cancelCurrent,
     navigateHistory,
@@ -11757,7 +12274,11 @@ kbd { font-size: 9px; opacity: .65; }
   renderUnitStatus();
   resize();
   refreshTrackingButtons();
-  if (!restoreAutosave()) setMode('SELECT');
+  setMode('SELECT');
+  // Recovery reads an asynchronous store, so it lands a moment after the app is
+  // already usable rather than before it; a drawing the user starts in that
+  // moment is theirs and is left alone.
+  restoreAutosave(false, false, true);
   engineStatus.textContent = 'ENGINE: READY';
   engineStatus.classList.remove('loading', 'error');
   engineStatus.classList.add('ready');
