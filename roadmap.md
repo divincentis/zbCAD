@@ -503,6 +503,26 @@ note). What's left:
    section 18. It is a large mechanical change that does not help anyone
    create, annotate, quantify or issue a plan. Reconsider only if type errors
    start causing real defects.
+10. Light/dark mode toggle — **deliberately deferred**, same rule as above:
+    UI polish, not a drafting capability, and fails the section 18 test as
+    stated. Logged because the user asked about scope (2026-09-05), not
+    because it's scheduled. Scoped so a future session doesn't have to
+    re-derive this: the app is dark-themed only today, with no color
+    variables anywhere. `src/shell.html`'s CSS has ~30+ hardcoded hex colors
+    for chrome (toolbar, panels, dialogs, command line), and canvas drawing
+    code (`view/render.js`, `view/grid.js`, `view/plotPreview.js`) has
+    another ~30+ hardcoded `strokeStyle`/`fillStyle` literals for grid,
+    entities, selection highlight, snap markers, dimension previews, and the
+    plot preview — none of it routed through variables. A real
+    implementation needs: CSS custom properties for chrome plus a light
+    palette, a parallel canvas color palette the render code reads instead
+    of literals, a toggle control with `localStorage` persistence, and a
+    manual pass over every drawing mode in both themes to make sure nothing
+    goes invisible (e.g. a white selection highlight over a white
+    background). Rough estimate: a half-day-ish focused pass, not a
+    one-liner. Revisit if it's ever bundled with other UI-polish work, or if
+    the product moves toward external/commercial distribution (Phase 7)
+    where a dark-only UI becomes a harder sell.
 
 **Update 2026-09-05: FILLET and CHAMFER extended to polyline corners.** Both
 now accept a polyline segment wherever they previously required a plain LINE,
