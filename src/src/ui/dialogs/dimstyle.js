@@ -4,7 +4,7 @@ import { ARROW_TYPES, DIM_NUMERIC_STYLE_FIELDS, getDimStyle, parseDimStyle } fro
 import { scalePresets } from '../../core/paper.js';
 import { LENGTH_FORMATS, formatLengthLabel } from '../../core/units.js';
 import { canvas, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimStylePreview, dimTextHeightInput } from '../../dom.js';
-import { commitGeometry } from '../../model/document.js';
+import { commitGeometry } from '../../model/history.js';
 import { state } from '../../state.js';
 import { fillSelect } from './units.js';
 import { updatePrompt } from '../prompt.js';

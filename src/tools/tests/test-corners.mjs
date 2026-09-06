@@ -37,6 +37,12 @@ function lineHasEnds(id, p, q, tol = 1e-6) {
   return matches(p, q) || matches(q, p);
 }
 function arcs() { return api.entities.filter(e => e.type === 'ARC'); }
+// The point halfway along an arc descriptor, whichever way it was travelled:
+// startAngle/endAngle are always stored counter-clockwise.
+function arcMidpoint(arc) {
+  const angle = (arc.startAngle + arc.endAngle) / 2;
+  return P(arc.center.x + arc.radius * Math.cos(angle), arc.center.y + arc.radius * Math.sin(angle));
+}
 function distance(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 function arcPointAt(arc, t) {
   const angle = arc.startAngle + (arc.endAngle - arc.startAngle) * t;
@@ -440,19 +446,109 @@ reset();
     points.some(p => pointNear(p, 10, 3)), JSON.stringify(points));
 }
 
-// FILLET needs a curved segment, which this app's polylines cannot hold, so a
-// shared polyline vertex is refused by name rather than silently mishandled.
+// Rounding a rectangle's own corner: the arc becomes a bulge on the polyline's
+// new segment, so the result is still one closed PLINE with no ARC beside it.
 reset();
 {
   const rect = drawRectangle(P(0, 0), P(10, 10));
-  const before = JSON.stringify(api.entities);
+  startFillet(2);
+  api.commitPoint(P(8, 0));   // segment (0,0)-(10,0), near the (10,0) corner
+  api.commitPoint(P(10, 3));  // segment (10,0)-(10,10), same corner
+  const filleted = entityById(rect.id);
+  check('FILLET on a polyline corner keeps a single entity', api.entityCount === 1, `count ${api.entityCount}`);
+  check('FILLET on a polyline corner adds no separate ARC', arcs().length === 0);
+  check('FILLET on a polyline corner stays closed', filleted.closed === true);
+  check('FILLET on a polyline corner splits the shared vertex', filleted.points.length === 5,
+    `${filleted.points.length} points`);
+  check('FILLET on a polyline corner tangent point on the first edge',
+    filleted.points.some(p => pointNear(p, 8, 0)), JSON.stringify(filleted.points));
+  check('FILLET on a polyline corner tangent point on the second edge',
+    filleted.points.some(p => pointNear(p, 10, 2)), JSON.stringify(filleted.points));
+
+  const curved = api.entitySegments(filleted).filter(([, , arc]) => arc);
+  check('FILLET on a polyline corner leaves exactly one curved segment', curved.length === 1,
+    `${curved.length} curved`);
+  const arc = curved[0]?.[2];
+  check('the polyline arc has the requested radius', arc && near(arc.radius, 2), arc && arc.radius);
+  check('the polyline arc is centred on the corner bisector',
+    arc && pointNear(arc.center, 8, 2), arc && JSON.stringify(arc.center));
+  check('the polyline arc turns a quarter circle', arc && near(Math.abs(arc.sweep), Math.PI / 2),
+    arc && arc.sweep);
+  // The corner is convex going round this rectangle, so the fillet cuts across
+  // it rather than bulging outward: shorter perimeter, smaller area.
+  check('the polyline arc crown sits inside the old corner',
+    arc && distance(arcMidpoint(arc), P(10, 0)) < 2, arc && JSON.stringify(arcMidpoint(arc)));
+  check('the polyline perimeter is shorter than the sharp rectangle',
+    api.entityLength(filleted) < 40 - 1e-9 && api.entityLength(filleted) > 38,
+    String(api.entityLength(filleted)));
+  check('the polyline area is smaller than the sharp rectangle',
+    api.entityArea(filleted) < 100 - 1e-9 && api.entityArea(filleted) > 99,
+    String(api.entityArea(filleted)));
+}
+
+// The same corner, filleted from the other pair of picks, must round the same
+// way: which segment is named first does not change the geometry.
+reset();
+{
+  const rect = drawRectangle(P(0, 0), P(10, 10));
+  startFillet(2);
+  api.commitPoint(P(10, 3));
+  api.commitPoint(P(8, 0));
+  const filleted = entityById(rect.id);
+  const curved = api.entitySegments(filleted).filter(([, , arc]) => arc);
+  check('FILLET on a polyline corner is order-independent', curved.length === 1 &&
+    near(curved[0][2].radius, 2) && pointNear(curved[0][2].center, 8, 2),
+    JSON.stringify(curved.map(c => c[2] && { r: c[2].radius, c: c[2].center })));
+}
+
+// Rounding every corner of a rectangle leaves one polyline with four arcs —
+// the case the whole feature exists for.
+reset();
+{
+  const rect = drawRectangle(P(0, 0), P(20, 10));
+  const corners = [
+    [P(18, 0), P(20, 3)],
+    [P(20, 8), P(18, 10)],
+    [P(2, 10), P(0, 8)],
+    [P(0, 2), P(2, 0)],
+  ];
+  for (const [first, second] of corners) {
+    startFillet(1);
+    api.commitPoint(first);
+    api.commitPoint(second);
+  }
+  const rounded = entityById(rect.id);
+  check('four filleted corners stay one entity', api.entityCount === 1, `count ${api.entityCount}`);
+  const curved = rounded ? api.entitySegments(rounded).filter(([, , arc]) => arc) : [];
+  check('four filleted corners leave four arcs', curved.length === 4, `${curved.length} curved`);
+  check('four filleted corners all have the requested radius',
+    curved.every(([, , arc]) => near(arc.radius, 1)), JSON.stringify(curved.map(c => c[2].radius)));
+  // A 20x10 rectangle with 1-radius corners: the straight runs lose 2 per
+  // corner and four quarter-circles replace them.
+  check('the rounded rectangle perimeter is right',
+    near(api.entityLength(rounded), 2 * 18 + 2 * 8 + 2 * Math.PI * 1, 1e-6),
+    String(api.entityLength(rounded)));
+  check('the rounded rectangle area is right',
+    near(api.entityArea(rounded), 200 - 4 * (1 - Math.PI / 4), 1e-6),
+    String(api.entityArea(rounded)));
+}
+
+// A corner that is already rounded has no straight direction to fillet from,
+// so re-filleting it is refused by name rather than measured off the chord.
+reset();
+{
+  const rect = drawRectangle(P(0, 0), P(10, 10));
   startFillet(2);
   api.commitPoint(P(8, 0));
   api.commitPoint(P(10, 3));
-  check('FILLET refuses a shared polyline corner',
-    /polylines here can't hold a curved segment/.test(api.promptText), api.promptText);
-  check('a refused polyline fillet changes nothing', JSON.stringify(api.entities) === before);
-  void rect;
+  const before = JSON.stringify(api.entities);
+  const arc = api.entitySegments(entityById(rect.id)).find(([, , a]) => a)[2];
+  startFillet(1);
+  api.commitPoint(arcMidpoint(arc));
+  check('FILLET refuses an already-curved polyline segment',
+    /already curved/.test(api.promptText), api.promptText);
+  check('a refused fillet on a curved segment changes nothing',
+    JSON.stringify(api.entities) === before);
 }
 
 // FILLET 0 on a polyline corner is the ordinary "close this corner exactly"

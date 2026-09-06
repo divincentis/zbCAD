@@ -3,7 +3,7 @@ import { circularPoint, dist } from '../core/math.js';
 import { formatAngle, formatLength, formatLengthLabel } from '../core/units.js';
 import { mirrorEntity, rotateEntity, scaleEntity, translateEntity } from '../geometry/transform.js';
 import { parseDistance } from '../interaction/input.js';
-import { commitGeometry } from '../model/document.js';
+import { commitGeometry } from '../model/history.js';
 import { duplicateEntities, entityBBox } from '../model/entity.js';
 import { isEntityEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';

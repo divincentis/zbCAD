@@ -1,8 +1,10 @@
 import { TAU } from '../core/constants.js';
-import { angleFromCenter, circleCircleIntersections, dist, isArc, normalizeAngle, pointOnInfiniteLine, unwrappedArcAngle } from '../core/math.js';
+import { angleFromCenter, bulgeForArc, dist, isArc, normalizeAngle, unwrappedArcAngle } from '../core/math.js';
 import { hitTestSegment } from './edgeEdit.js';
-import { infiniteLineIntersection, shiftSegment } from './offset.js';
-import { commitGeometry } from '../model/document.js';
+import { infiniteLineIntersection } from './offset.js';
+import { edgeRef, tangentCircleSolutions } from './tangentCircle.js';
+import { commitGeometry } from '../model/history.js';
+import { polylineBulgeList, withPolylineBulges } from '../model/entity.js';
 import { isEntityEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';
 import { updatePrompt } from '../ui/prompt.js';
@@ -18,17 +20,17 @@ import { draw } from '../view/frame.js';
 // cleanup — the tangent length falls out as zero and the two edges simply meet
 // at their intersection.
 //
-// An "edge" is a LINE entity or one segment of a PLINE — see edgeRef(). The
-// two edges are ordinarily two different entities, each trimmed/extended by
-// rewriting its own endpoint. When they are instead the two segments either
-// side of one polyline vertex (the everyday "round this rectangle's corner"
-// case), that shared vertex has to become two separate points rather than
-// one — see sharedVertexIndex()/spliceEntity() — since it is the single point
-// where both edges currently meet. Polylines here have no curved (bulge)
-// segment, so a shared vertex can be chamfered (the new points are a straight
-// cut, which a polyline can represent natively) but not filleted; that case
-// is refused by name rather than either faking a straight "arc" or breaking
-// the polyline into pieces to carry a real one.
+// An "edge" is a LINE entity or one segment of a PLINE — see edgeRef() in
+// tangentCircle.js. The two edges are ordinarily two different entities, each
+// trimmed or extended by rewriting its own endpoint. When they are instead the
+// two segments either side of one polyline vertex (the everyday "round this
+// rectangle's corner" case), that shared vertex has to become two separate
+// points rather than one — see sharedVertexIndex()/spliceEntity() — since it
+// is the single point where both edges currently meet. Both operations write
+// their result back into the polyline itself: a chamfer as the straight
+// segment between the two new points, a fillet as that segment's bulge (see
+// core/math.js). Either way the polyline stays one object, which is what
+// rounding a rectangle's corner is supposed to leave you with.
 //
 // FILLET also accepts ARC and CIRCLE edges, in any combination with each
 // other or with a line/polyline segment — see filletCurved() below. A CIRCLE
@@ -39,7 +41,9 @@ import { draw } from '../view/frame.js';
 // CHAMFER has no equivalent: a straight cut at an arc-length distance from an
 // arc/circle is a murkier idea than a radius, so it still refuses them by
 // name, per the roadmap's rule that an unsupported case is reported and the
-// original geometry preserved.
+// original geometry preserved. Neither works from a polyline segment that is
+// already curved: a rounded corner has no straight direction to build the next
+// one from, and that is refused by name too — see cornerPick().
 // ---------------------------------------------------------------------------
 
 export const CORNER_TOLERANCE = 1e-9;
@@ -115,29 +119,6 @@ export function cornerLayerId(first, second) {
   return first.layerId === second.layerId ? first.layerId : state.currentLayerId;
 }
 
-// An edge for corner purposes: a LINE entity (its whole a/b span), or one
-// segment of a PLINE, named by the point-array indices of its two ends so a
-// result can be written back to just that part of the polyline. `a`/`b` are
-// the actual point objects the entity stores, not copies, so arm.far — itself
-// one of `a`/`b`, see cornerArm() — can be matched back to its index by
-// reference in sharedVertexIndex()/buildIndependentUpdates().
-export function edgeRef(entity, segmentIndex) {
-  if (entity.type === 'LINE') {
-    return { entity, layerId: entity.layerId, kind: 'line', a: entity.a, b: entity.b, pointIndexA: null, pointIndexB: null };
-  }
-  if (entity.type === 'ARC' || entity.type === 'CIRCLE') {
-    return { entity, layerId: entity.layerId, kind: 'circle', center: entity.center, radius: entity.radius };
-  }
-  const count = entity.points.length;
-  const pointIndexA = segmentIndex;
-  const pointIndexB = (segmentIndex + 1) % count;
-  return {
-    entity, layerId: entity.layerId, kind: 'line',
-    a: entity.points[pointIndexA], b: entity.points[pointIndexB],
-    pointIndexA, pointIndexB,
-  };
-}
-
 // Two edges share a polyline corner when they are segments of the same
 // polyline and one's endpoint is the other's — the ordinary case of picking
 // the two edges either side of one vertex. Returns that vertex's index, or
@@ -156,15 +137,36 @@ export function sharedVertexIndex(ref1, ref2) {
 // the later one. Coincident points (FILLET 0's exact-intersection case, which
 // for an already-sharp polyline vertex is the vertex itself) collapse back to
 // one point rather than leaving a zero-length duplicate segment behind.
-export function spliceEntity(ref1, ref2, sharedIndex, t1, t2) {
+//
+// `arc` names the fillet circle the new segment should follow, or null for a
+// chamfer's straight cut. The new segment takes the vertex's own index, so the
+// segment that used to leave this vertex shifts along by one and every bulge
+// after it moves with it.
+export function spliceEntity(ref1, ref2, sharedIndex, t1, t2, arc = null) {
   const [into, outOf] = ref1.pointIndexB === sharedIndex ? [t1, t2] : [t2, t1];
   const points = ref1.entity.points.map(point => ({ ...point }));
+  const bulges = polylineBulgeList(ref1.entity);
   if (dist(into, outOf) < CORNER_TOLERANCE) {
     points[sharedIndex] = into;
-  } else {
-    points.splice(sharedIndex, 1, into, outOf);
+    return withPolylineBulges({ ...ref1.entity, points }, bulges);
   }
-  return { ...ref1.entity, points };
+  points.splice(sharedIndex, 1, into, outOf);
+  bulges.splice(sharedIndex, 0, arc ? filletBulge(arc.center, into, outOf) : 0);
+  return withPolylineBulges({ ...ref1.entity, points }, bulges);
+}
+
+// The bulge of a fillet arc travelled from `into` to `outOf`. A fillet never
+// sweeps more than half a turn, so the sign of the cross product settles the
+// direction outright: positive means the short way round is counter-clockwise.
+export function filletBulge(center, into, outOf) {
+  const cross = (into.x - center.x) * (outOf.y - center.y) -
+    (into.y - center.y) * (outOf.x - center.x);
+  return bulgeForArc(
+    center,
+    angleFromCenter(center, into),
+    angleFromCenter(center, outOf),
+    cross > 0,
+  );
 }
 
 // The ordinary case: each edge's near endpoint (arm.far is the one kept, see
@@ -194,100 +196,15 @@ export function buildIndependentUpdates(ref1, arm1, t1, ref2, arm2, t2) {
 // ---------------------------------------------------------------------------
 // FILLET on a curved edge (ARC or CIRCLE), alone or paired with another one.
 //
-// A line/line corner has one well-defined intersection point to build from.
-// Two general curves generally don't — a line and a circle can cross twice or
-// not at all, so there is no single "corner" to bisect. Real CAD fillet works
-// around this by constructing loci instead: the set of points a candidate
-// fillet centre could sit at, one locus per edge, then intersecting them.
-//
-// For a line, that locus is the line shifted by the radius, on either side
-// (two candidates). For a circle of radius r, it is a concentric circle of
-// radius r+R (the fillet arc sits outside it, the common "round this corner"
-// case) or |r-R| (the fillet arc is internally tangent — nested either way
-// round, wrapping inside a bore or swallowing a small circle whole).
-//
-// Pairing every locus of one edge against every locus of the other, and
-// keeping every intersection, produces every geometrically valid tangent
-// circle — up to eight of them for two curved edges. Exactly one is what the
-// user meant, and there is no way to know which from the radius alone; it is
-// picked by the same rule a person uses when AutoCAD asks the same question:
-// whichever solution's tangent points fall nearest the two points actually
-// clicked.
+// There is no single "corner" to bisect when a curve is involved: a line and a
+// circle can cross twice or not at all. The construction that answers it
+// instead — every circle of the given radius tangent to both edges — lives in
+// tangentCircle.js, because CIRCLE's Ttr option asks precisely the same
+// question and keeps the whole circle rather than an arc of it. What is left
+// here is only what makes an answer a *fillet*: the tangent point has to land
+// on the arc's actual sweep, and the arc that survives is the short way round
+// between the two contact points.
 // ---------------------------------------------------------------------------
-
-// An infinite line's intersections with a circle, unlike segmentCircleIntersections
-// (core/math.js), which clips to the a–b segment: a fillet's offset line is a
-// construction line, not the edge itself, so it must extend past both ends.
-function infiniteLineCircleIntersections(a, b, center, radius) {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const qa = dx * dx + dy * dy;
-  if (qa < CORNER_TOLERANCE || radius <= 0) return [];
-  const fx = a.x - center.x;
-  const fy = a.y - center.y;
-  const qb = 2 * (fx * dx + fy * dy);
-  const qc = fx * fx + fy * fy - radius * radius;
-  const discriminant = qb * qb - 4 * qa * qc;
-  if (discriminant < -1e-9) return [];
-  const root = Math.sqrt(Math.max(0, discriminant));
-  const points = [];
-  for (const t of [(-qb - root) / (2 * qa), (-qb + root) / (2 * qa)]) {
-    const point = { x: a.x + t * dx, y: a.y + t * dy };
-    if (points.some(p => dist(p, point) < 1e-7)) continue;
-    points.push(point);
-  }
-  return points;
-}
-
-// The loci a fillet-arc centre could sit at, at distance `radius` from this
-// edge. A circle locus carries `sign`: the tangent point sits at
-// center + sign*radius*unit(candidateCentre - center) — see
-// circularTangentPoint(). That is +1 for the ordinary "outside" tangency and
-// for the "this edge's circle swallows the fillet" nesting, and -1 only for
-// the opposite nesting (the fillet swallows this edge's circle) — the one
-// case where the tangent point sits on the far side of this edge's centre
-// from the candidate fillet centre rather than the near side.
-function offsetLoci(ref, radius) {
-  if (ref.kind === 'line') {
-    const loci = [];
-    for (const side of [1, -1]) {
-      const shifted = shiftSegment(ref.a, ref.b, radius, side);
-      if (shifted) loci.push({ kind: 'line', a: shifted[0], b: shifted[1] });
-    }
-    return loci;
-  }
-  const loci = [{ kind: 'circle', center: ref.center, radius: ref.radius + radius, sign: 1 }];
-  const nested = Math.abs(ref.radius - radius);
-  if (nested > CORNER_TOLERANCE) {
-    loci.push({ kind: 'circle', center: ref.center, radius: nested, sign: radius > ref.radius ? -1 : 1 });
-  }
-  return loci;
-}
-
-function locusIntersections(first, second) {
-  if (first.kind === 'line' && second.kind === 'line') {
-    const point = infiniteLineIntersection(first.a, first.b, second.a, second.b);
-    return point ? [point] : [];
-  }
-  if (first.kind === 'line') return infiniteLineCircleIntersections(first.a, first.b, second.center, second.radius);
-  if (second.kind === 'line') return infiniteLineCircleIntersections(second.a, second.b, first.center, first.radius);
-  return circleCircleIntersections(first, second);
-}
-
-function circularTangentPoint(ref, locus, candidateCenter) {
-  const ux = candidateCenter.x - ref.center.x;
-  const uy = candidateCenter.y - ref.center.y;
-  const length = Math.hypot(ux, uy);
-  if (length < CORNER_TOLERANCE) return null;
-  const sign = locus.sign;
-  return { x: ref.center.x + sign * ref.radius * ux / length, y: ref.center.y + sign * ref.radius * uy / length };
-}
-
-function edgeTangentPoint(ref, locus, candidateCenter) {
-  return ref.kind === 'line'
-    ? pointOnInfiniteLine(candidateCenter, ref.a, ref.b)
-    : circularTangentPoint(ref, locus, candidateCenter);
-}
 
 // An ARC can only be trimmed to a tangent point that actually lies on its
 // current sweep — extending an arc's angular span the way a line can be
@@ -315,19 +232,11 @@ function filletCurved(ref1, ref2, pickFirst, pickSecond, radius) {
   if (radius <= 0) {
     return { error: 'FILLET needs a radius greater than zero when an arc or circle is involved.' };
   }
-  const loci1 = offsetLoci(ref1, radius);
-  const loci2 = offsetLoci(ref2, radius);
   let best = null;
-  for (const locus1 of loci1) {
-    for (const locus2 of loci2) {
-      for (const center of locusIntersections(locus1, locus2)) {
-        const t1 = edgeTangentPoint(ref1, locus1, center);
-        const t2 = edgeTangentPoint(ref2, locus2, center);
-        if (!t1 || !t2 || !tangentWithinSweep(ref1, t1) || !tangentWithinSweep(ref2, t2)) continue;
-        const score = dist(t1, pickFirst) + dist(t2, pickSecond);
-        if (!best || score < best.score) best = { center, t1, t2, score };
-      }
-    }
+  for (const { center, t1, t2 } of tangentCircleSolutions(ref1, ref2, radius)) {
+    if (!tangentWithinSweep(ref1, t1) || !tangentWithinSweep(ref2, t2)) continue;
+    const score = dist(t1, pickFirst) + dist(t2, pickSecond);
+    if (!best || score < best.score) best = { center, t1, t2, score };
   }
   if (!best) return { error: 'That radius does not fit here.' };
 
@@ -382,9 +291,6 @@ export function filletCorner(ref1, ref2, pickFirst, pickSecond, radius) {
   }
 
   const shared = sharedVertexIndex(ref1, ref2);
-  if (shared !== null && radius > 0) {
-    return { error: "That polyline corner can't be filleted — polylines here can't hold a curved segment. Try CHAMFER, or fillet two separate lines instead." };
-  }
 
   const t1 = { x: corner.x + tangent * arm1.direction.x, y: corner.y + tangent * arm1.direction.y };
   const t2 = { x: corner.x + tangent * arm2.direction.x, y: corner.y + tangent * arm2.direction.y };
@@ -418,6 +324,14 @@ export function filletCorner(ref1, ref2, pickFirst, pickSecond, radius) {
     sweep = TAU - sweep;
   }
   if (sweep <= 1e-8) return { error: 'That radius does not fit this corner.' };
+
+  // Two segments of one polyline round into that polyline: the arc becomes the
+  // bulge of the new segment between the tangent points, exactly where the
+  // chamfer's straight cut would have gone. A separate ARC entity is only for
+  // edges that belong to different objects and have nothing to write into.
+  if (shared !== null) {
+    return { updated: [spliceEntity(ref1, ref2, shared, t1, t2, { center })], addition: null };
+  }
 
   return {
     updated: buildIndependentUpdates(ref1, arm1, t1, ref2, arm2, t2),
@@ -471,6 +385,12 @@ export function cornerPick(world, excludedIds = null) {
     return { error: `${type} works on ${allowed}; that is a ${entity.type}.` };
   }
   if (!isEntityEditable(entity)) return { error: 'That line is on a locked or hidden layer.' };
+  // The corner maths below works from a straight edge's direction, which a
+  // curved polyline segment does not have. Filleting against one would mean
+  // treating an already-rounded corner as its chord, so it is refused by name.
+  if (hit.arc) {
+    return { error: `That polyline segment is already curved; ${type} works from its straight segments.` };
+  }
   return { entity, point: hit.point, segmentIndex: hit.segmentIndex };
 }
 

@@ -3,13 +3,15 @@ import { editableSelectionIds } from './transform.js';
 import { formatAngle, formatLengthLabel } from '../core/units.js';
 import { finishEdgeEdit } from '../geometry/edgeEdit.js';
 import { extendAt } from '../geometry/extend.js';
-import { applyCorner, chamferCorner, cornerPick, edgeRef, filletCorner } from '../geometry/fillet.js';
+import { applyCorner, chamferCorner, cornerPick, filletCorner } from '../geometry/fillet.js';
+import { edgeRef } from '../geometry/tangentCircle.js';
 import { applyGripEdit, gripEditedEntity } from '../geometry/grips.js';
 import { explodeNote, explodeSelection, joinNote, joinSelection } from '../geometry/joinExplode.js';
 import { acceptOffsetSource, applyOffset, isOffsettable, offsetEntity, setOffsetDistance } from '../geometry/offset.js';
 import { applyStretch, pointInStretchWindow, stretchIsDegenerate, stretchedEntity } from '../geometry/stretch.js';
 import { trimAt } from '../geometry/trim.js';
 import { eraseNote, eraseSelection } from '../interaction/selection.js';
+import { polylineHasBulges } from '../model/entity.js';
 import { isEntityEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';
 import { notePrompt, updatePrompt } from '../ui/prompt.js';
@@ -21,8 +23,12 @@ defineCommand('OFFSET', {
   // so the command skips straight from the distance to the side. Anything
   // else is an unrelated selection and is cleared rather than guessed at.
   begin() {
+    // A curved polyline is deliberately not accepted here, so the refusal is
+    // made at the selection stage by name rather than after a distance and a
+    // side have already been given — see acceptOffsetSource.
     const preselected = state.entities.filter(entity =>
-      state.selected.has(entity.id) && isEntityEditable(entity) && isOffsettable(entity),
+      state.selected.has(entity.id) && isEntityEditable(entity) && isOffsettable(entity) &&
+      !polylineHasBulges(entity),
     );
     const source = preselected.length === 1 && state.selected.size === 1 ? preselected[0] : null;
     if (!source) state.selected.clear();

@@ -7,7 +7,7 @@ import { angleFromCenter, angleOnArc, circularPoint, dist, normalizeAngle } from
 import { hitTestSegment } from '../geometry/edgeEdit.js';
 import { formatLength } from '../core/units.js';
 import { buildDimension, dimensionGeometry, resolveEntityReference } from '../model/dimension.js';
-import { commitGeometry } from '../model/document.js';
+import { commitGeometry } from '../model/history.js';
 import { currentLayerIsEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';
 import { draw } from '../view/frame.js';

@@ -5,7 +5,7 @@ import { acceptTransformSelection } from './commands/transform.js';
 import { AUTOSAVE_BACKUP_KEY, AUTOSAVE_KEY, DOCUMENT_VERSION } from './core/constants.js';
 import { SNAP_TYPES, defaultDimStyle, defaultSnapTypes, defaultUnitSettings } from './core/defaults.js';
 import { dimSize, parseDimStyle, rebaseDimStyleUnit } from './core/dimstyle.js';
-import { segmentIntersection, segmentWithinRadius } from './core/math.js';
+import { bulgeArc, bulgePointAt, segmentIntersection, segmentWithinRadius } from './core/math.js';
 import { DRAWING_UNITS, formatAngle, formatArea, formatLength, formatLengthLabel, formatsForUnit, groupDigits, parseUnitSettings, unitConversion } from './core/units.js';
 import { PAPER_SIZES, POINTS_PER_MM, paperSizeMM, scalePresets } from './core/paper.js';
 import { commandInput, inquiryBody, inquiryPanel, plotDialog, polarDialog, promptEl, snapDialog, unitRescaleCheck } from './dom.js';
@@ -14,14 +14,14 @@ import { finishEdgeEdit } from './geometry/edgeEdit.js';
 import { entityGrips } from './geometry/grips.js';
 import { commitAngleInput, commitCircleKeyword, commitDistance, commitScaleInput, parseDistance, parsePoint } from './interaction/input.js';
 import { acceptDefaultAction, submitCommandInput } from './interaction/pointer.js';
-import { deleteSelected } from './interaction/selection.js';
+import { deleteSelected, selectAt } from './interaction/selection.js';
 import { getSnap } from './interaction/snap.js';
 import { getCommandBasePoint } from './interaction/tracking.js';
 import { buildDimension, dimensionGeometry, dimensionSegments, dimensionText, linearDimensionRotation, resolveEntityReference } from './model/dimension.js';
 import { buildPdfDocument, pdfTextWidthMM } from './output/pdf.js';
 import { buildPlotPlan, defaultPlotSettings, plotAreaBox } from './output/plot.js';
 import { cleanEntityRefs, exportDocumentText, parseDocumentText } from './model/document.js';
-import { boxesOverlap, cloneEntities, cloneLayers, duplicateEntities, entityArea, entityBBox, entityCrossesBox, entityLength, entitySegments, pickSegments, polygonArea, polylineIsClosed } from './model/entity.js';
+import { boxesOverlap, cloneEntities, cloneLayers, duplicateEntities, entityArea, entityBBox, entityCrossesBox, entityLength, entitySegments, pickSegments, polygonArea, polylineBulge, polylineHasBulges, polylineIsClosed } from './model/entity.js';
 import { redo, undo } from './model/history.js';
 import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, setLayerLinetype, setLayerLineweight, toggleLayerLock, toggleLayerPrintable, toggleLayerVisibility } from './model/layers.js';
 import { loadDocumentText, newDrawing, restoreAutosave } from './model/persistence.js';
@@ -55,6 +55,10 @@ window.__cadPrototype = {
   parseDocumentText,
   entitySegments,
   pickSegments,
+  bulgeArc,
+  bulgePointAt,
+  polylineBulge,
+  polylineHasBulges,
   entityBBox,
   boxesOverlap,
   entityCrossesBox,
@@ -203,6 +207,7 @@ window.__cadPrototype = {
   acceptTransformSelection,
   finishEdgeEdit,
   deleteSelected,
+  selectAt,
   undo,
   redo,
   closeCurrentPath,

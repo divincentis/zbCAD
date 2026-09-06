@@ -1,6 +1,6 @@
 import { activeCommand, commandSelectsObjects } from '../commands/registry.js';
 import { angleFromCenter, angleOnArc, circularPoint, dist, pointOnSegmentClosest } from '../core/math.js';
-import { commitGeometry } from '../model/document.js';
+import { commitGeometry } from '../model/history.js';
 import { boxContains, entityBBox, entityCrossesBox, pickSegments, textContainsPoint } from '../model/entity.js';
 import { isEntityEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';

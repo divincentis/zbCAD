@@ -3,7 +3,7 @@ import { rebaseDimStyleUnit, unitSummary } from '../../core/dimstyle.js';
 import { DRAWING_UNITS, LENGTH_FORMATS, formatLength, formatLengthLabel, formatsForUnit, unitConversion } from '../../core/units.js';
 import { canvas, coordXEl, coordYEl, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitPreview, unitRescaleCheck, unitRescaleRow, unitStatus, unitsDialog } from '../../dom.js';
 import { scaleEntity } from '../../geometry/transform.js';
-import { commitGeometry } from '../../model/document.js';
+import { commitGeometry } from '../../model/history.js';
 import { state } from '../../state.js';
 import { updatePrompt } from '../prompt.js';
 import { setFileStatus } from '../status.js';

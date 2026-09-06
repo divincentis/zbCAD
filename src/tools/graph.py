@@ -50,6 +50,21 @@ print('modules:', len(order))
 print('missing import targets:', missing or 'none')
 print('cycles:', cycles or 'none')
 
+# imports that name something the target module does not export. The bundle is
+# one flat scope, so a stale import still resolves there and the mistake only
+# shows up as a module graph that no longer describes the program.
+EXPORT = re.compile(r'^export (?:async )?(?:function|class|const|let|var) ([A-Za-z_$][\w$]*)', re.M)
+exports = {rel: set(EXPORT.findall(open(os.path.join(SRC, rel)).read())) for rel in order}
+unexported = []
+for rel in order:
+    text = open(os.path.join(SRC, rel)).read()
+    for names_raw, target in IMPORT.findall(text):
+        dep = os.path.normpath(os.path.join(os.path.dirname(rel), target)).replace(os.sep, '/')
+        for name in (n.strip() for n in names_raw.split(',')):
+            if name and dep in exports and name not in exports[dep]:
+                unexported.append(f'{rel}: {name} is not exported by {dep}')
+print('imports of missing exports:', unexported or 'none')
+
 # unused imports: name never appears in the body below the import header
 unused = []
 for rel in order:
@@ -61,4 +76,4 @@ for rel in order:
 print('unused imports:', len(unused))
 for u in unused[:20]:
     print('  ', u)
-sys.exit(1 if cycles or missing else 0)
+sys.exit(1 if cycles or missing or unexported else 0)

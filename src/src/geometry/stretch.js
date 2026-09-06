@@ -1,7 +1,7 @@
 import { setMode } from '../commands/registry.js';
 import { dist } from '../core/math.js';
 import { dimensionGeometry } from '../model/dimension.js';
-import { commitGeometry } from '../model/document.js';
+import { commitGeometry } from '../model/history.js';
 import { pointInBox } from '../model/entity.js';
 import { isEntityEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';

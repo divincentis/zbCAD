@@ -1,6 +1,7 @@
 import { setMode } from '../commands/registry.js';
 import { dist, pointOnSegmentClosest } from '../core/math.js';
-import { cleanPoint, commitGeometry } from '../model/document.js';
+import { cleanPoint } from '../model/document.js';
+import { commitGeometry } from '../model/history.js';
 import { entitySegments, polylineHasBulges } from '../model/entity.js';
 import { isEntityEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';

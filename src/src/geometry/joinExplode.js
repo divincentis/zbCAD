@@ -1,6 +1,6 @@
 import { visibleSelectedEntities } from '../commands/inquiry.js';
 import { arcSweep, bulgeFromSweep, circularPoint, dist } from '../core/math.js';
-import { commitGeometry } from '../model/document.js';
+import { commitGeometry } from '../model/history.js';
 import { entitySegments, polylineBulge, withPolylineBulges } from '../model/entity.js';
 import { isEntityEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';

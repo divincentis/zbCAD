@@ -1,6 +1,8 @@
 import { defineCommand, setMode } from './registry.js';
 import { dist } from '../core/math.js';
 import { addCircle, addLine, addPolyline, addRectangle, addThreePointArc, addThreePointCircle, circumcircleFromThreePoints, threePointArc } from '../geometry/construct.js';
+import { hitTestSegment } from '../geometry/edgeEdit.js';
+import { edgeRef, tangentTangentRadiusCircle } from '../geometry/tangentCircle.js';
 import { snapSegments } from '../interaction/snap.js';
 import { markDirty } from '../model/dirty.js';
 import { restoreEditSnapshot } from '../model/document.js';
@@ -179,6 +181,54 @@ defineCommand('RECTANGLE', {
   },
 });
 
+// ---------------------------------------------------------------------------
+// CIRCLE Ttr
+//
+// Two objects and a radius. The construction — every circle of that radius
+// touching both — is shared with FILLET and lives in geometry/tangentCircle.js;
+// what belongs here is only the command's side of it: which objects were
+// picked, and where on them, since that is what decides which of the several
+// valid answers the user meant.
+// ---------------------------------------------------------------------------
+
+export function pickTangentEdge(world, alreadyPicked) {
+  const hit = hitTestSegment(world, 10, null, true);
+  // hitTestSegment already skips anything on a locked or hidden layer, and a
+  // DIM or TEXT contributes no segments to it, so a hit here is always an
+  // object a circle can legitimately be tangent to.
+  if (!hit) return { error: 'CIRCLE Ttr — No object there. Click a line, polyline segment, arc, or circle.' };
+  // A curved polyline segment has a centre and radius of its own that edgeRef
+  // does not carry, so tangency to it would silently be computed against its
+  // chord. Refused by name, as FILLET refuses the same segment.
+  if (hit.arc) return { error: 'CIRCLE Ttr — That polyline segment is curved; pick a straight one, or an arc.' };
+  const segmentIndex = hit.kind === 'SEGMENT' ? hit.segmentIndex : 0;
+  if (alreadyPicked.some(picked => picked.entityId === hit.entity.id && picked.segmentIndex === segmentIndex)) {
+    return { error: 'CIRCLE Ttr — Pick a second, different object or segment.' };
+  }
+  return { entityId: hit.entity.id, segmentIndex, point: hit.point };
+}
+
+export function solveTangentCircle(operation, radius) {
+  const refs = operation.tangents.map(picked => {
+    const entity = state.entities.find(candidate => candidate.id === picked.entityId);
+    return entity ? edgeRef(entity, picked.segmentIndex) : null;
+  });
+  if (refs.length < 2 || refs.some(ref => !ref)) {
+    return { error: 'One of those objects is no longer in the drawing.' };
+  }
+  return tangentTangentRadiusCircle(refs[0], refs[1], operation.tangents[0].point, operation.tangents[1].point, radius);
+}
+
+export function commitTangentCircle(operation, radius) {
+  const solved = solveTangentCircle(operation, radius);
+  if (solved.error) {
+    updatePrompt(solved.error);
+    return;
+  }
+  if (addCircle(solved.center, solved.radius)) setMode('SELECT');
+  else updatePrompt('That tangent circle could not be created on this layer.');
+}
+
 defineCommand('CIRCLE', {
   creates: true,
   // 2P and 3P treat a number as a directed distance from the last point.
@@ -202,16 +252,40 @@ defineCommand('CIRCLE', {
       if (stage === 'SECOND') return 'CIRCLE 3P — Specify second point:';
       return 'CIRCLE 3P — Specify third point:';
     }
+    if (method === 'TTR') {
+      if (stage === 'FIRST') return 'CIRCLE Ttr — Specify point on object for first tangent:';
+      if (stage === 'SECOND') return 'CIRCLE Ttr — Specify point on object for second tangent:';
+      return 'CIRCLE Ttr — Specify radius of circle:';
+    }
     if (method === 'CENTER_DIAMETER') {
       return 'CIRCLE Diameter — Specify diameter or point:';
     }
     return stage === 'CENTER'
-      ? 'CIRCLE — Specify center point or [2P/3P]:'
+      ? 'CIRCLE — Specify center point or [2P/3P/Ttr]:'
       : 'CIRCLE — Specify radius or [Diameter]:';
   },
 
   point(p) {
     const operation = state.circle;
+    if (operation.method === 'TTR') {
+      if (operation.stage === 'RADIUS') {
+        // No centre exists yet to rubber-band a radius from, so the length is
+        // measured from the first point picked on an object — the preview
+        // shows the circle that produces, which is what makes it readable.
+        commitTangentCircle(operation, dist(operation.tangents[0].point, p));
+      } else {
+        const picked = pickTangentEdge(p, operation.tangents);
+        if (picked.error) {
+          updatePrompt(picked.error);
+        } else {
+          operation.tangents.push(picked);
+          operation.stage = operation.tangents.length === 1 ? 'SECOND' : 'RADIUS';
+          updatePrompt();
+        }
+      }
+      draw();
+      return;
+    }
     if (operation.method === 'TWO_POINT') {
       if (operation.stage === 'FIRST') {
         state.currentPoints = [{ ...p }];
@@ -261,6 +335,18 @@ defineCommand('CIRCLE', {
 
   distance(value) {
     const operation = state.circle;
+    if (operation?.method === 'TTR') {
+      // A number is only ever the radius here. Claiming it at the earlier
+      // stages too is what lets those stages say what they actually want
+      // instead of the entry falling through as an unknown command.
+      if (operation.stage !== 'RADIUS') {
+        updatePrompt('CIRCLE Ttr — Pick an object to be tangent to, not a distance.');
+        draw();
+        return true;
+      }
+      commitTangentCircle(operation, value);
+      return true;
+    }
     if (!state.currentPoints.length ||
         !['CENTER_RADIUS', 'CENTER_DIAMETER'].includes(operation?.method)) return false;
     const radius = operation.method === 'CENTER_DIAMETER' ? value / 2 : value;
@@ -299,6 +385,18 @@ defineCommand('CIRCLE', {
       }
       return true;
     }
+    if (['T', 'TTR', 'TAN'].includes(keyword)) {
+      if (operation.stage !== 'CENTER' || state.currentPoints.length) {
+        updatePrompt('Choose Ttr before specifying the center point.');
+      } else {
+        operation.method = 'TTR';
+        operation.stage = 'FIRST';
+        operation.tangents = [];
+        updatePrompt();
+        draw();
+      }
+      return true;
+    }
     if (['D', 'DIA', 'DIAMETER'].includes(keyword)) {
       if (operation.method !== 'CENTER_RADIUS' || operation.stage !== 'RADIUS' || !state.currentPoints.length) {
         updatePrompt('Specify the circle center before choosing Diameter.');
@@ -313,8 +411,19 @@ defineCommand('CIRCLE', {
     return false;
   },
 
+  previewReady() {
+    return state.circle?.method === 'TTR'
+      ? state.circle.stage === 'RADIUS'
+      : state.currentPoints.length > 0;
+  },
+
   preview(p) {
     const method = state.circle?.method || 'CENTER_RADIUS';
+    if (method === 'TTR') {
+      const solved = solveTangentCircle(state.circle, dist(state.circle.tangents[0].point, p));
+      if (!solved.error) drawEntity({ type: 'CIRCLE', center: solved.center, radius: solved.radius }, true);
+      return;
+    }
     if (method === 'TWO_POINT') {
       const first = state.currentPoints[0];
       drawEntity({

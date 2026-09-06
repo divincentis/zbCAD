@@ -479,9 +479,11 @@
 
       <div class="cmd-card">
         <h4><span class="name">CIRCLE</span><span class="aliases">alias C</span></h4>
-        <p>Draws a circle. Three construction methods, chosen before the center is picked.</p>
+        <p>Draws a circle. Four construction methods, chosen before the center is picked.</p>
         <p class="steps"><strong>Center-Radius</strong> (default): click the center, then click a point or type a number for the radius.</p>
         <p class="keys"><code>D</code>/<code>DIA</code>/<code>DIAMETER</code>: switch to Center-Diameter &mdash; same picks, but the value sets diameter instead of radius &middot; <code>2P</code>: switch to two-point mode &mdash; click each end of a diameter &middot; <code>3P</code>: switch to three-point mode &mdash; click three non-collinear points on the circumference. Degenerate input (zero size, collinear 3P points) is rejected with a prompt, keeping the command open.</p>
+        <p class="steps"><strong>Tangent-Tangent-Radius</strong> (<code>T</code>/<code>TTR</code>): click a point on each of two objects &mdash; a line, a polyline segment, an arc or a circle &mdash; then type the radius (or click a point, which measures the radius from the first tangent pick). The circle of that radius touching both appears.</p>
+        <p class="keys">Where a radius allows several answers &mdash; and it usually does &mdash; <em>where</em> you clicked on each object decides which one you get: the solution whose contact points land nearest your two picks wins. Click the inside of a corner for the circle that fits into it, the outside for the one that wraps around. A circle tangent to two lines that don't actually reach each other is offered too, touching their extensions, but only when nothing on the drawn segments fits. If no circle of that radius can touch both, the command says so and stays open for another radius.</p>
       </div>
 
       <div class="cmd-card">
@@ -504,7 +506,7 @@
 
       <div class="cmd-card">
         <h4><span class="name">TRIM</span><span class="aliases">alias TR</span> &nbsp;/&nbsp; <span class="name">EXTEND</span><span class="aliases">alias EX</span></h4>
-        <p>TRIM shortens a line/polyline/circle/arc against boundary geometry; EXTEND lengthens an open end to meet boundary geometry. The two share one command flow.</p>
+        <p>TRIM shortens a line/polyline/circle/arc against boundary geometry; EXTEND lengthens an open end to meet boundary geometry. The two share one command flow. Neither reshapes a polyline that has a curved segment, and nor does OFFSET &mdash; each says so and leaves the polyline alone; EXPLODE it first if you need the edit.</p>
         <p class="steps">If objects are selected before starting, those act as the boundary set; otherwise every other visible, editable object in the drawing is a valid boundary. Click the portion to remove (TRIM) or the end to extend (EXTEND) &mdash; repeat for as many edits as needed.</p>
         <p class="keys">Enter / right-click / Esc: finish. Picks are unsnapped, since they name which piece of which object is meant, not a coordinate.</p>
       </div>
@@ -513,12 +515,13 @@
         <h4><span class="name">FILLET</span><span class="aliases">alias F</span> &nbsp;/&nbsp; <span class="name">CHAMFER</span><span class="aliases">alias CHA</span></h4>
         <p>FILLET rounds a corner between two lines/polyline segments with an arc of a set radius; CHAMFER bevels it with a straight cut at set distance(s). Both work on independent LINE entities and on individual polyline segments/corners, and both remember the last radius/distance(s) you used between separate command runs.</p>
         <p class="steps">Click the first line/segment, then click the second line/segment to complete that corner. The command loops back to "select the first line," so several corners can be cleaned up in one run.</p>
+        <p class="keys">Rounding a corner of a polyline &mdash; two segments meeting at one of its own vertices &mdash; leaves it a single polyline with a genuinely curved segment, not a polyline plus a loose arc: round all four corners of a rectangle and you still have one object. FILLET also accepts arcs and circles in any combination, including against a line or polyline segment. CHAMFER does not: a straight cut measured along a curve is a murkier idea than a radius, so it says so rather than guessing. Neither will work from a segment that is <em>already</em> curved &mdash; a rounded corner has no straight direction to build the next one from.</p>
         <p class="keys">FILLET: type <code>R</code>/<code>RAD</code>/<code>RADIUS</code> first to set the radius &middot; CHAMFER: type <code>D</code>/<code>DIST</code>/<code>DISTANCE</code> first to set the first distance, then a second (defaults to match the first &mdash; give a different value for an asymmetric chamfer) &middot; Enter/right-click/Esc: finish &middot; a zero value squares off the corner; negative values are rejected &middot; picks are unsnapped, since each identifies an edge and a side of the corner.</p>
       </div>
 
       <div class="cmd-card">
         <h4><span class="name">JOIN</span><span class="aliases">alias J</span> &nbsp;/&nbsp; <span class="name">EXPLODE</span><span class="aliases">alias X</span> &nbsp;/&nbsp; <span class="name">ERASE</span><span class="aliases">alias E, DEL, DELETE</span></h4>
-        <p>JOIN merges compatible selected entities (e.g. collinear/contiguous lines or polyline segments) into one. EXPLODE breaks a polyline or other composite entity into its independent constituent entities. ERASE deletes the selection (also bound to the <kbd>Delete</kbd> key outside of any command).</p>
+        <p>JOIN merges selected open lines, arcs and polylines that meet end to end into one polyline; an arc becomes a curved segment of it. EXPLODE is the inverse, breaking a polyline into its independent constituent LINEs and ARCs. ERASE deletes the selection (also bound to the <kbd>Delete</kbd> key outside of any command).</p>
         <p class="steps">If objects are already selected when the command starts, it applies immediately. Otherwise it prompts "select objects" and applies once you press Enter/right-click.</p>
       </div>
 
@@ -620,7 +623,7 @@
         <h4><span class="name">LIST</span><span class="aliases">alias LI</span></h4>
         <p>Reports full geometric detail for the selected entities.</p>
         <p class="steps">If nothing is preselected, prompts "select objects," then Enter/right-click reports. If you select first and then type LIST, it reports immediately.</p>
-        <p class="keys">Per-type detail: <strong>LINE</strong> (endpoints, length, angle) &middot; <strong>PLINE</strong> (vertex count, open/closed, length or perimeter, area if closed) &middot; <strong>CIRCLE</strong> (center, radius, diameter, circumference, area) &middot; <strong>ARC</strong> (center, radius, start/end/included angle, arc length, chord) &middot; <strong>TEXT</strong> (position, height, rotation, content) &middot; <strong>DIM</strong> (type, measured text and exact value, endpoints, style name, and associativity: Yes/Partial/No, based on how many of its reference points still resolve to live geometry). A multi-entity selection also gets a summary (object count, total length, total area where applicable); only the first 20 entities are detailed, with a count of how many more weren't listed.</p>
+        <p class="keys">Per-type detail: <strong>LINE</strong> (endpoints, length, angle) &middot; <strong>PLINE</strong> (vertex count, open/closed, curved segment count if any, length or perimeter, area if closed &mdash; both measured along the curves) &middot; <strong>CIRCLE</strong> (center, radius, diameter, circumference, area) &middot; <strong>ARC</strong> (center, radius, start/end/included angle, arc length, chord) &middot; <strong>TEXT</strong> (position, height, rotation, content) &middot; <strong>DIM</strong> (type, measured text and exact value, endpoints, style name, and associativity: Yes/Partial/No, based on how many of its reference points still resolve to live geometry). A multi-entity selection also gets a summary (object count, total length, total area where applicable); only the first 20 entities are detailed, with a count of how many more weren't listed.</p>
       </div>
     </section>
 

@@ -66,7 +66,10 @@ function makeElement(id = '', tag = 'div') {
     children,
     options: [],
     parentNode: null,
-    getContext: () => makeCtx(),
+    // Cached, the way a real canvas hands back the same context every time.
+    // dom.js captures its context once at boot, so a fresh stub per call would
+    // leave what the renderer actually draws impossible to observe.
+    getContext: () => (base.context ??= makeCtx()),
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 1200, height: 800, right: 1200, bottom: 800, x: 0, y: 0 }),
     appendChild(child) { children.push(child); child.parentNode = base; return child; },
     removeChild(child) { const i = children.indexOf(child); if (i >= 0) children.splice(i, 1); return child; },

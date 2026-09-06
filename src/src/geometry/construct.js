@@ -1,6 +1,7 @@
 import { TAU } from '../core/constants.js';
 import { angleFromCenter, dist, normalizeAngle } from '../core/math.js';
-import { commitGeometry } from '../model/document.js';
+import { commitGeometry } from '../model/history.js';
+import { withPolylineBulges } from '../model/entity.js';
 import { currentLayerIsEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';
 
@@ -15,29 +16,39 @@ export function addLine(a, b) {
   }], { nextId: state.nextId + 1 });
 }
 
-export function addPolyline(points, forceClosed = false) {
+// `bulges` is optional and runs parallel to `points`: entry i curves the
+// segment leaving vertex i (see model/entity.js). It is carried through the
+// same duplicate-point pruning as the points themselves, so a caller never has
+// to keep the two arrays in step by hand.
+export function addPolyline(points, forceClosed = false, bulges = null) {
   if (points.length < 2 || !currentLayerIsEditable()) return false;
   // Never write what the loader will not read back. Every caller funnels
   // through here, so this is the one place duplicate consecutive points can be
   // ruled out for good rather than guarded at each entry point.
   const storedPoints = [];
-  for (const point of points) {
+  const storedBulges = [];
+  for (let index = 0; index < points.length; index++) {
+    const point = points[index];
     const last = storedPoints[storedPoints.length - 1];
     if (last && dist(last, point) <= 1e-9) continue;
     storedPoints.push({ ...point });
+    storedBulges.push(Number.isFinite(bulges?.[index]) ? bulges[index] : 0);
   }
   if (storedPoints.length < 2) return false;
   const closesAtStart = storedPoints.length >= 4 && dist(storedPoints[0], storedPoints[storedPoints.length - 1]) < 1e-7;
-  if (closesAtStart) storedPoints.pop();
+  // Dropping the repeated start point drops the entry that would have curved
+  // the segment leaving it — a segment an open path does not have and a closed
+  // one already describes with the entry before it.
+  if (closesAtStart) { storedPoints.pop(); storedBulges.pop(); }
   const closed = forceClosed || closesAtStart;
   if (closed && storedPoints.length < 3) return false;
-  return commitGeometry([...state.entities, {
+  return commitGeometry([...state.entities, withPolylineBulges({
     id: state.nextId,
     type: 'PLINE',
     layerId: state.currentLayerId,
     points: storedPoints,
     closed,
-  }], { nextId: state.nextId + 1 });
+  }, storedBulges)], { nextId: state.nextId + 1 });
 }
 
 export function addRectangle(first, opposite) {

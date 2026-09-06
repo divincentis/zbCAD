@@ -1,7 +1,7 @@
 import { TAU } from '../core/constants.js';
 import { angleFromCenter, circularEntityIntersections, segmentCircularIntersections, unwrappedArcAngle } from '../core/math.js';
 import { buildTrimPieces, editBoundarySegments, hitTestSegment, makeArc, pathPointsBetween, segmentIntersectionParameters } from './edgeEdit.js';
-import { commitGeometry } from '../model/document.js';
+import { commitGeometry } from '../model/history.js';
 import { entitySegments, polylineHasBulges } from '../model/entity.js';
 import { state } from '../state.js';
 import { updatePrompt } from '../ui/prompt.js';

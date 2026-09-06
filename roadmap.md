@@ -57,7 +57,7 @@ The architectural refactor (Phase 1) and most of Phase 2 have already happened:
 
 **Correction, September 2026:** this section previously claimed a "full command set" while ERASE, MIRROR, FILLET, CHAMFER, DIMRADIUS and DIMDIAMETER did not exist — there was no way to erase except the Delete key, and no way to type it at all. All six have since been added. Phase 2's exit gate ("benchmark roof geometry can be built without manual workarounds") was not honestly met before that, because a symmetric plan with filleted corners could not be drawn without them.
 
-**Known gaps in what is listed above:** there is no properties panel for multi-selection editing. FILLET and CHAMFER now also handle polyline segments (including the shared vertex of two adjacent segments, the everyday "round/chamfer this corner" case) as well as plain lines; FILLET refuses a shared polyline vertex specifically, since this app's polylines have no curved (bulge) segment to hold the arc.
+**Known gaps in what is listed above:** there is no properties panel for multi-selection editing. FILLET and CHAMFER handle polyline segments (including the shared vertex of two adjacent segments, the everyday "round/chamfer this corner" case) as well as plain lines, arcs and circles; polylines now hold a curved segment, so rounding a polyline corner leaves one polyline rather than a polyline plus a loose arc. OFFSET, TRIM and EXTEND do not reshape a polyline that has a curved segment and refuse it by name (EXPLODE first).
 
 **Update September 2026: layer record completed (linetype, lineweight, printability).** Each layer now carries a `linetype` (continuous/dashed/dotted/dashdot/center), a `lineweight` (the standard CAD mm table, e.g. 0.25, 0.50, 1.00) and a `printable` flag, editable from the layer panel. Rendering applies a layer's linetype and lineweight to its entities' strokes (dimension and text entities are exempt, matching standard CAD convention that dimension lines/text carry their own style rather than the layer's); on-screen line width is a fixed pixel-per-mm multiple rather than something that scales with zoom, so lineweight stays legible at any view scale, and the multiplier was chosen so the previous default (0.25mm) reproduces the exact pre-feature line width — existing drawings render unchanged. `printable` had no effect when it shipped, since PDF output did not exist yet; it was stored so PDF output (the next item) would have something to read instead of adding it retroactively, and it now excludes a layer from the plotted sheet. Legacy files (pre-version-5, no linetype/lineweight/printable on their layers) open with all three defaulted exactly as a v4 file would have looked if it could have held them; garbage/out-of-table values in a hand-edited file are cleaned to those same defaults rather than rejected. `model/layers.js`, `model/document.js`, `core/constants.js`, `core/defaults.js`, `view/render.js`, `ui/layerPanel.js`. 36 new headless checks in `test-layers.mjs` (covering defaults, setter validation, save/reload round-trip, and legacy/garbage-file migration), full suite still green. Verified live in a real (headless) Chromium session: layer panel renders correctly with multiple layers, and lines drawn on layers with different linetypes/lineweights/printability render visibly distinctly.
 
@@ -541,8 +541,8 @@ bridging them. `geometry/fillet.js`, 19 new headless checks in
 
 **Extensions the current work leaves open:** a dimension referencing an
 intersection, perpendicular or tangent point, which has no reference type and
-so does not associate; FILLET on a polyline's own shared vertex, which would
-need either bulge (curved-segment) support or splitting the polyline apart.
+so does not associate. (FILLET on a polyline's own shared vertex, listed here
+until September 2026, is done — see the curved-segment update below.)
 
 **Update 2026-09-05: FILLET extended to arcs and circles, in any combination.**
 Previously FILLET (like CHAMFER) refused any ARC or CIRCLE by name. It now
@@ -566,6 +566,73 @@ headless checks in `test-corners.mjs`, covering line/circle, line/arc
 circle/circle, plus the zero-radius and no-valid-solution refusals; asserted
 by tangency and distance-from-centre rather than only precomputed
 coordinates, per this file's own geometry-testing discipline.
+
+**Update September 2026: polylines hold curved segments, and FILLET rounds a
+polyline's own corner.** The one case FILLET refused — two adjacent segments of
+the same polyline meeting at one of its vertices, the everyday "round this
+rectangle's corner" — now works, and leaves a single polyline rather than a
+polyline plus a loose arc. Round all four corners of a rectangle and you still
+have one object; its reported perimeter and area follow the arcs.
+
+A polyline segment is curved by a **bulge**: DXF's number, the tangent of a
+quarter of the arc's included angle, signed positive counter-clockwise, stored
+in an optional `bulges` array parallel to `points` (entry *i* curves the
+segment leaving vertex *i*). Storing the curve that way rather than as a centre
+and radius is what makes the change survive the rest of the app: a bulge is
+invariant under translation, rotation and uniform scale, so MOVE/ROTATE/SCALE
+never had to learn about it, and only MIRROR — which reverses the sense of
+rotation — touches it, by changing its sign. The array is omitted entirely
+while every segment is straight, so an all-straight polyline is byte-identical
+to one saved before the feature existed.
+
+`entitySegments()` in `model/entity.js` is the choke point: every segment it
+returns is now `[a, b, arc]`, with `arc` null for a straight one. Callers that
+predate curved segments destructure `[a, b]` and read the chord, so each was
+visited deliberately rather than left to be discovered — rendering, picking,
+object snap (a curved segment now snaps as an arc: endpoint, midpoint, centre,
+quadrant, perpendicular, tangent, nearest, intersection), window/crossing
+selection, bounding box and zoom-extents, length and area, associative
+dimension references along a segment, PDF plotting (bezier pieces spliced into
+the polyline's own path), EXPLODE (a curve leaves as a real ARC) and JOIN
+(which now accepts an arc, since there is somewhere to put it — the comment
+saying it could not has been there since JOIN shipped).
+
+**What deliberately does not handle a curve, and says so:** OFFSET, TRIM and
+EXTEND. Each is built on straight segments in a way that would have to be
+re-derived rather than extended — offsetting means offset arcs joined by
+arc/line intersections, trimming means rebuilding a path that can hold curves —
+and each refuses by name and points at EXPLODE, per this file's rule that an
+unsupported case is reported and the original geometry preserved. FILLET and
+CHAMFER likewise refuse a segment that is *already* curved: a rounded corner
+has no straight direction to build the next one from.
+
+`DOCUMENT_VERSION` 5 → 6. A bulge list whose length disagrees with the points
+is rejected rather than resized, deliberately: every internal path that
+reshapes a polyline has to reshape its bulges with it, and a stale array
+quietly truncated back into range would draw a plausible curve on the wrong
+segment. 71 new headless checks in `test-bulges.mjs`.
+
+**Update September 2026: CIRCLE gained Tangent-Tangent-Radius (Ttr).** Pick a
+point on each of two objects — line, polyline segment, arc or circle — and give
+a radius; the circle of that radius touching both is drawn. The construction is
+the one FILLET already used for curved edges, so it moved into a new
+`geometry/tangentCircle.js` that both commands consume rather than being
+written twice: for each edge, the loci a candidate centre could sit at (an
+offset line either side, or a concentric circle at radius ± R), intersected in
+every pairing, giving up to eight valid answers. Which one the user meant is
+decided the same way a person decides it — the solution whose contact points
+land nearest the two points actually clicked — with a preference, ahead of
+that, for solutions touching the drawn objects rather than their extensions.
+Tangency to an extension is still offered when nothing else fits, since a
+circle tangent to where two walls *would* have met is a real construction.
+42 new headless checks in `test-ttr.mjs`.
+
+Moving that construction out also let `graph.py` gain a check it was missing:
+that an imported name is actually exported by the module named. The bundle is
+one flat scope, so a stale import still resolves there and only shows up as a
+module graph that no longer describes the program — which is exactly what had
+happened to `commitGeometry`, imported from `model/document.js` by twelve
+modules when it lives in `model/history.js`. All twelve are corrected.
 
 <details>
 <summary>Already shipped (original items 4–10)</summary>

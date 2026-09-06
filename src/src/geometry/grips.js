@@ -2,7 +2,7 @@ import { setMode } from '../commands/registry.js';
 import { arcSweep, circularPoint, dist } from '../core/math.js';
 import { threePointArc } from './construct.js';
 import { dimensionGeometry, resolveEntityReference } from '../model/dimension.js';
-import { commitGeometry } from '../model/document.js';
+import { commitGeometry } from '../model/history.js';
 import { isEntityEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';
 import { updatePrompt } from '../ui/prompt.js';
