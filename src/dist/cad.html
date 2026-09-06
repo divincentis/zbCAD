@@ -28,7 +28,11 @@ body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 
 }
 .brand { font-weight: 700; white-space: nowrap; }
 .version { color: #9e9e9e; font-size: 11px; font-weight: 400; }
-.tools { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 6px 0; }
+/* display:contents lets .tools' own tool-groups (Select/Draw/Modify/Annotate)
+   pack directly into the topbar's flex-wrap row alongside File/Edit/View/
+   Inquiry, instead of wrapping as one atomic block. Autohide mode below
+   turns .tools back into a real box so it can be pulled out of flow. */
+.tools { display: contents; }
 .toolbar-autohide-btn { flex: 0 0 auto; }
 /* Auto-hide takes .tools out of flow and floats it as an overlay below the
    slim brand bar, so opening it on hover never resizes the canvas the way
@@ -36,6 +40,10 @@ body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 
    shell.js). Collapsed height comes for free: with .tools out of flow, the
    header simply shrinks to the brand row's own height. */
 .topbar.autohide .tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 0;
   position: absolute;
   top: 100%;
   left: 0;
@@ -541,20 +549,32 @@ kbd { font-size: 9px; opacity: .65; }
   <header id="topbar" class="topbar">
     <div class="brand">zbCAD <span class="version">v0.24.3</span></div>
     <button id="toolbarAutohideBtn" class="toolbar-autohide-btn toggle" title="Auto-hide the toolbar; mouse over this bar (or Tab into it) to show it again" aria-pressed="false">Auto-hide</button>
+    <div class="tool-group">
+      <span class="group-label">File</span>
+      <button id="newBtn">New</button>
+      <button id="openBtn">Open</button>
+      <button id="saveBtn">Save</button>
+      <button id="recoverBackupBtn" title="Recover the previous validated autosave">Recover Backup</button>
+      <button id="plotBtn" title="Plot to a scaled PDF">Plot (PLT)</button>
+    </div>
+    <div class="tool-group">
+      <span class="group-label">Edit</span>
+      <button id="undoBtn">Undo</button>
+      <button id="redoBtn">Redo</button>
+    </div>
+    <div class="tool-group">
+      <span class="group-label">View</span>
+      <button id="fitBtn">Zoom Extents</button>
+      <button id="unitsBtn">Units (UN)</button>
+    </div>
+    <div class="tool-group">
+      <span class="group-label">Inquiry</span>
+      <button data-command="DIST">Dist (DI)</button>
+      <button data-command="AREA">Area (AA)</button>
+      <button data-command="ID">ID</button>
+      <button data-command="LIST">List (LI)</button>
+    </div>
     <div class="tools">
-      <div class="tool-group">
-        <span class="group-label">File</span>
-        <button id="newBtn">New</button>
-        <button id="openBtn">Open</button>
-        <button id="saveBtn">Save</button>
-        <button id="recoverBackupBtn" title="Recover the previous validated autosave">Recover Backup</button>
-        <button id="plotBtn" title="Plot to a scaled PDF">Plot (PLT)</button>
-      </div>
-      <div class="tool-group">
-        <span class="group-label">Edit</span>
-        <button id="undoBtn">Undo</button>
-        <button id="redoBtn">Redo</button>
-      </div>
       <div class="tool-group">
         <button data-command="SELECT" class="active">Select</button>
       </div>
@@ -591,18 +611,6 @@ kbd { font-size: 9px; opacity: .65; }
         <button data-command="DIMDIAMETER">Dim Diameter (DDI)</button>
         <button data-command="TEXT">Text (T)</button>
         <button id="dimStyleBtn">Dim Style (DST)</button>
-      </div>
-      <div class="tool-group">
-        <span class="group-label">Inquiry</span>
-        <button data-command="DIST">Dist (DI)</button>
-        <button data-command="AREA">Area (AA)</button>
-        <button data-command="ID">ID</button>
-        <button data-command="LIST">List (LI)</button>
-      </div>
-      <div class="tool-group">
-        <span class="group-label">View</span>
-        <button id="fitBtn">Zoom Extents</button>
-        <button id="unitsBtn">Units (UN)</button>
       </div>
     </div>
     <a id="docsLink" class="docs-link" href="docs.html" target="_blank" rel="noopener">Docs</a>
