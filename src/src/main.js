@@ -4,6 +4,7 @@ import { onDocumentChanged } from './events.js';
 import { restoreAutosave } from './model/persistence.js';
 import { openDimStyleDialog } from './ui/dialogs/dimstyle.js';
 import { refreshTrackingButtons } from './ui/dialogs/drafting.js';
+import { openPlotDialog } from './ui/dialogs/plot.js';
 import { openUnitsDialog, renderUnitStatus } from './ui/dialogs/units.js';
 import { renderLayerManager } from './ui/layerPanel.js';
 import { setFrameRenderer } from './view/frame.js';
@@ -26,11 +27,12 @@ import { resize, zoomExtents } from './view/viewport.js';
 // a repaint actually is.
 setFrameRenderer(render);
 
-// The three commands that are finished the moment they are typed. The registry
-// holds the names; the layers that can actually perform them hold the work.
+// The commands that are finished the moment they are typed. The registry holds
+// the names; the layers that can actually perform them hold the work.
 registerDirectAction('ZOOMEXTENTS', zoomExtents);
 registerDirectAction('UNITS', openUnitsDialog);
 registerDirectAction('DIMSTYLE', openDimStyleDialog);
+registerDirectAction('PLOT', openPlotDialog);
 
 // Chrome that has to be rebuilt whenever the whole document is replaced.
 onDocumentChanged(renderLayerManager);

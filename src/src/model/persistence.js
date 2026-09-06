@@ -107,25 +107,37 @@ export function newDrawing(skipConfirmation = false) {
   return true;
 }
 
-export function drawingDownloadName() {
+// The drawing name reduced to something a file system will accept, without a
+// suffix — the caller adds the one that describes what it is writing.
+export function safeDrawingFileName() {
   const safeName = state.drawingName
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-')
     .replace(/[. ]+$/g, '')
     .trim();
-  return `${safeName || 'drawing'}.zbCAD.json`;
+  return safeName || 'drawing';
+}
+
+export function drawingDownloadName() {
+  return `${safeDrawingFileName()}.zbCAD.json`;
+}
+
+// The browser's only "save as" is a click on an anchor, so every file this app
+// hands the user leaves through here rather than each writer repeating it.
+export function downloadTextFile(text, filename, mimeType) {
+  const blob = new Blob([text], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export function saveDrawing() {
   try {
-    const blob = new Blob([exportDocumentText(true)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = drawingDownloadName();
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    downloadTextFile(exportDocumentText(true), drawingDownloadName(), 'application/json');
     setFileStatus(`${state.drawingName} · Saved file`);
     return true;
   } catch (error) {

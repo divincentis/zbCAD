@@ -1,6 +1,6 @@
 import { commandCapturesSpace, navigateHistory, startCommand } from '../commands/registry.js';
 import { LENGTH_FORMATS } from '../core/units.js';
-import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
+import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
 import { submitCommandInput } from '../interaction/pointer.js';
 import { writeAutosave } from '../model/dirty.js';
 import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, setLayerLinetype, setLayerLineweight, toggleLayerLock, toggleLayerPrintable, toggleLayerVisibility } from '../model/layers.js';
@@ -8,6 +8,7 @@ import { chooseOpenFile, loadDocumentText, newDrawing, restoreAutosave, saveDraw
 import { state } from '../state.js';
 import { applyDimStyleDialog, closeDimStyleDialog, openDimStyleDialog, pendingDimStyle, refreshDimStyleDialog } from './dialogs/dimstyle.js';
 import { closePolarDialog, closeSnapDialog, openPolarDialog, openSnapDialog, setAllSnapTypes, setOrtho, setPolar, setPolarIncrement } from './dialogs/drafting.js';
+import { closePlotDialog, openPlotDialog, runPlot, setPendingPlot, startPlotWindowPick } from './dialogs/plot.js';
 import { applyUnitsDialog, closeUnitsDialog, openUnitsDialog, pendingUnits, refreshUnitsDialog } from './dialogs/units.js';
 import { hideInquiryReport } from './inquiry.js';
 import { setFileStatus } from './status.js';
@@ -71,6 +72,27 @@ unitPrecisionSelect.addEventListener('change', () => {
   refreshUnitsDialog();
 });
 unitRescaleCheck.addEventListener('change', refreshUnitsDialog);
+
+document.getElementById('plotBtn').addEventListener('click', openPlotDialog);
+document.getElementById('plotCancel').addEventListener('click', closePlotDialog);
+document.getElementById('plotRun').addEventListener('click', runPlot);
+plotWindowBtn.addEventListener('click', startPlotWindowPick);
+plotDialog.addEventListener('click', ev => { if (ev.target === plotDialog) closePlotDialog(); });
+for (const [select, field] of [[plotPaperSelect, 'paperSizeId'], [plotOrientationSelect, 'orientation'],
+  [plotAreaSelect, 'area'], [plotScaleModeSelect, 'scaleMode'], [plotColorSelect, 'color']]) {
+  select.addEventListener('change', () => setPendingPlot({ [field]: select.value }));
+}
+plotScalePresetSelect.addEventListener('change', () => {
+  if (plotScalePresetSelect.value === 'custom') return;
+  setPendingPlot({ scale: Number(plotScalePresetSelect.value) });
+});
+plotScaleInput.addEventListener('input', () => {
+  const value = Number(plotScaleInput.value);
+  if (!Number.isFinite(value) || value <= 0) return;
+  setPendingPlot({ scale: value });
+});
+plotCenterCheck.addEventListener('change', () => setPendingPlot({ center: plotCenterCheck.checked }));
+plotLineweightsCheck.addEventListener('change', () => setPendingPlot({ lineweights: plotLineweightsCheck.checked }));
 
 document.getElementById('dimStyleBtn').addEventListener('click', openDimStyleDialog);
 document.getElementById('dimStyleCancel').addEventListener('click', closeDimStyleDialog);

@@ -1,6 +1,7 @@
 import { requireIdle } from '../../commands/registry.js';
 import { DEFAULT_DIM_STYLE_ID } from '../../core/defaults.js';
 import { ARROW_TYPES, DIM_NUMERIC_STYLE_FIELDS, getDimStyle, parseDimStyle } from '../../core/dimstyle.js';
+import { scalePresets } from '../../core/paper.js';
 import { LENGTH_FORMATS, formatLengthLabel } from '../../core/units.js';
 import { canvas, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimStylePreview, dimTextHeightInput } from '../../dom.js';
 import { commitGeometry } from '../../model/document.js';
@@ -9,22 +10,6 @@ import { fillSelect } from './units.js';
 import { updatePrompt } from '../prompt.js';
 import { setFileStatus } from '../status.js';
 import { draw } from '../../view/frame.js';
-
-export const IMPERIAL_SCALE_PRESETS = [
-  ['Full size (1:1)', 1], ['3" = 1\'-0"', 4], ['1 1/2" = 1\'-0"', 8],
-  ['1" = 1\'-0"', 12], ['3/4" = 1\'-0"', 16], ['1/2" = 1\'-0"', 24],
-  ['3/8" = 1\'-0"', 32], ['1/4" = 1\'-0"', 48], ['3/16" = 1\'-0"', 64],
-  ['1/8" = 1\'-0"', 96], ['1/16" = 1\'-0"', 192],
-];
-export const METRIC_SCALE_PRESETS = [
-  ['Full size (1:1)', 1], ['1:2', 2], ['1:5', 5], ['1:10', 10], ['1:20', 20],
-  ['1:50', 50], ['1:100', 100], ['1:200', 200], ['1:500', 500],
-];
-
-export function scalePresets() {
-  return state.unitSettings.drawingUnit === 'inches' || state.unitSettings.drawingUnit === 'feet'
-    ? IMPERIAL_SCALE_PRESETS : METRIC_SCALE_PRESETS;
-}
 
 export let pendingDimStyle = null;
 

@@ -1,6 +1,6 @@
 import { resolveCommandName } from '../commands/aliases.js';
 import { activeCommand, cancelCurrent, commandSelectsObjects, commitPoint, finishCurrent, navigateHistory, startCommand } from '../commands/registry.js';
-import { canvas, commandInput, currentLayerSelect, dimStyleDialog, polarDialog, snapDialog, unitsDialog } from '../dom.js';
+import { canvas, commandInput, currentLayerSelect, dimStyleDialog, plotDialog, polarDialog, snapDialog, unitsDialog } from '../dom.js';
 import { hitTestGrip, startGripEdit } from '../geometry/grips.js';
 import { commitCommandKeyword, commitCommandValue, commitDistance, commitPointInput, parseDistance } from './input.js';
 import { deleteSelected, distanceToEntityPx, finishBoxSelection, selectAt } from './selection.js';
@@ -10,6 +10,7 @@ import { chooseOpenFile, newDrawing, saveDrawing } from '../model/persistence.js
 import { state } from '../state.js';
 import { applyDimStyleDialog, closeDimStyleDialog } from '../ui/dialogs/dimstyle.js';
 import { closePolarDialog, closeSnapDialog, setOrtho, setPolar } from '../ui/dialogs/drafting.js';
+import { closePlotDialog, openPlotDialog, runPlot } from '../ui/dialogs/plot.js';
 import { applyUnitsDialog, closeUnitsDialog } from '../ui/dialogs/units.js';
 import { updatePrompt } from '../ui/prompt.js';
 import { draw } from '../view/frame.js';
@@ -136,6 +137,11 @@ document.addEventListener('keydown', ev => {
     else if (ev.key === 'Enter') { ev.preventDefault(); applyDimStyleDialog(); }
     return;
   }
+  if (!plotDialog.hidden) {
+    if (ev.key === 'Escape') { ev.preventDefault(); closePlotDialog(); }
+    else if (ev.key === 'Enter') { ev.preventDefault(); runPlot(); }
+    return;
+  }
   if (!polarDialog.hidden) {
     if (ev.key === 'Escape' || ev.key === 'Enter') { ev.preventDefault(); closePolarDialog(); }
     return;
@@ -173,6 +179,7 @@ document.addEventListener('keydown', ev => {
     if (key === 's') { ev.preventDefault(); saveDrawing(); return; }
     if (key === 'o') { ev.preventDefault(); chooseOpenFile(); return; }
     if (key === 'n') { ev.preventDefault(); newDrawing(); return; }
+    if (key === 'p') { ev.preventDefault(); openPlotDialog(); return; }
   }
 
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); navigateHistory('UNDO'); return; }

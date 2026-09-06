@@ -43,7 +43,7 @@ That is the definition of a useful first product. A collection of drawing comman
 
 The architectural refactor (Phase 1) and most of Phase 2 have already happened:
 
-- 52-module ES architecture, zero dependency cycles, mutation-tested
+- 56-module ES architecture, zero dependency cycles, mutation-tested
 - Versioned native JSON document format, with a validate-before-commit gate that rejects a bad edit before it can reach history
 - Autosave with crash recovery (localStorage, not the IndexedDB originally planned — see Phase 1 below)
 - Deterministic entity IDs, command-level undo/redo
@@ -59,9 +59,11 @@ The architectural refactor (Phase 1) and most of Phase 2 have already happened:
 
 **Known gaps in what is listed above:** there is no properties panel for multi-selection editing. FILLET and CHAMFER now also handle polyline segments (including the shared vertex of two adjacent segments, the everyday "round/chamfer this corner" case) as well as plain lines; FILLET refuses a shared polyline vertex specifically, since this app's polylines have no curved (bulge) segment to hold the arc.
 
-**Update September 2026: layer record completed (linetype, lineweight, printability).** Each layer now carries a `linetype` (continuous/dashed/dotted/dashdot/center), a `lineweight` (the standard CAD mm table, e.g. 0.25, 0.50, 1.00) and a `printable` flag, editable from the layer panel. Rendering applies a layer's linetype and lineweight to its entities' strokes (dimension and text entities are exempt, matching standard CAD convention that dimension lines/text carry their own style rather than the layer's); on-screen line width is a fixed pixel-per-mm multiple rather than something that scales with zoom, so lineweight stays legible at any view scale, and the multiplier was chosen so the previous default (0.25mm) reproduces the exact pre-feature line width — existing drawings render unchanged. `printable` is stored and toggle-able now but has no effect yet since PDF output does not exist; it is there so PDF output (next) has something to read instead of adding it retroactively. Legacy files (pre-version-5, no linetype/lineweight/printable on their layers) open with all three defaulted exactly as a v4 file would have looked if it could have held them; garbage/out-of-table values in a hand-edited file are cleaned to those same defaults rather than rejected. `model/layers.js`, `model/document.js`, `core/constants.js`, `core/defaults.js`, `view/render.js`, `ui/layerPanel.js`. 36 new headless checks in `test-layers.mjs` (covering defaults, setter validation, save/reload round-trip, and legacy/garbage-file migration), full suite still green. Verified live in a real (headless) Chromium session: layer panel renders correctly with multiple layers, and lines drawn on layers with different linetypes/lineweights/printability render visibly distinctly.
+**Update September 2026: layer record completed (linetype, lineweight, printability).** Each layer now carries a `linetype` (continuous/dashed/dotted/dashdot/center), a `lineweight` (the standard CAD mm table, e.g. 0.25, 0.50, 1.00) and a `printable` flag, editable from the layer panel. Rendering applies a layer's linetype and lineweight to its entities' strokes (dimension and text entities are exempt, matching standard CAD convention that dimension lines/text carry their own style rather than the layer's); on-screen line width is a fixed pixel-per-mm multiple rather than something that scales with zoom, so lineweight stays legible at any view scale, and the multiplier was chosen so the previous default (0.25mm) reproduces the exact pre-feature line width — existing drawings render unchanged. `printable` had no effect when it shipped, since PDF output did not exist yet; it was stored so PDF output (the next item) would have something to read instead of adding it retroactively, and it now excludes a layer from the plotted sheet. Legacy files (pre-version-5, no linetype/lineweight/printable on their layers) open with all three defaulted exactly as a v4 file would have looked if it could have held them; garbage/out-of-table values in a hand-edited file are cleaned to those same defaults rather than rejected. `model/layers.js`, `model/document.js`, `core/constants.js`, `core/defaults.js`, `view/render.js`, `ui/layerPanel.js`. 36 new headless checks in `test-layers.mjs` (covering defaults, setter validation, save/reload round-trip, and legacy/garbage-file migration), full suite still green. Verified live in a real (headless) Chromium session: layer panel renders correctly with multiple layers, and lines drawn on layers with different linetypes/lineweights/printability render visibly distinctly.
 
-**Not yet started:** multiline text, blocks, leaders and callouts, hatches, a multi-selection properties panel, underlays, PDF/DXF output (Phase 3 remainder and all of Phase 4).
+**Update September 2026: exact-scale PDF output shipped.** `PLOT` (`PLT`/`PRINT`, Ctrl/Cmd+P) writes the drawing as vector PDF at an exact drawing scale or fitted to the sheet — see the Phase 4 status note for what is and is not covered. Two new modules do the work: `output/plot.js` reduces the drawing to a plot plan (primitives in millimetres on the sheet, Y up) and `output/pdf.js` serialises that plan into PDF operators, using only the base-14 fonts so nothing has to be embedded. Keeping the plan separate from the writer is what makes the roadmap's scale acceptance test assertable directly rather than by rendering a page and measuring pixels. The drawing-scale preset list moved to a new `core/paper.js` and is now shared with the dimension style dialog, which needs the same number for its DIMSCALE — and gained the engineering scales (1" = 20' and friends) a roof plan is actually drawn at.
+
+**Not yet started:** multiline text, blocks, leaders and callouts, hatches, a multi-selection properties panel, underlays, DXF import/export (Phase 3 remainder and the input half of Phase 4).
 
 **Process note:** Phase 0's benchmark validation was run retroactively — the mechanical pass headlessly (see the Phase 0 status note), and the human feel-pass by the product owner in September 2026. Phase 0 is closed.
 
@@ -313,6 +315,39 @@ complete as originally scoped below.
 
 ## 9. Phase 4 — Handle Inputs and Deliverables
 
+### Status — exact-scale PDF output shipped (September 2026)
+
+The PDF half of this phase is built. `PLOT` (`PLT`/`PRINT`, Ctrl/Cmd+P) writes
+the drawing as real vector geometry — no rasterisation, no library — through a
+plot plan (`output/plot.js`) that reduces the drawing to primitives in
+millimetres on the sheet, and a serialiser (`output/pdf.js`) that writes those
+primitives as PDF operators. Splitting it that way is what lets the scale
+acceptance test below be asserted directly rather than inferred from a
+rendered page.
+
+Shipped: the ANSI/ARCH/ISO sheet sizes in both orientations with a half-inch
+margin; extents, display and picked-window plot areas; fit-to-sheet and exact
+scale, with the drawing-scale list now shared with the dimension style dialog
+(and extended with the engineering scales a roof plan is actually drawn at);
+centred or corner placement; monochrome or layer colors; layer lineweights in
+their real millimetres; layer linetypes as paper-length dashes. Hidden and
+non-printable layers are excluded, which is the first thing the `printable`
+flag added with the layer record actually does. An exact-scale plot too large
+for the sheet is clipped to the printable area and warned about rather than
+silently cropped or rescaled.
+
+**The scale acceptance test below passes**, asserted two ways in
+`tools/tests/test-plot.mjs`: in millimetres on the plan, and in points parsed
+back out of the finished PDF's content stream. Output is deterministic (no
+timestamps), so two plots of the same drawing are byte-identical and can be
+diffed. Files were verified to open in poppler and Ghostscript and to render
+correctly.
+
+Deliberately not built yet: plot styles/pen tables, multi-sheet output, a
+graphical print preview (the dialog reports the plotted size, scale and
+warnings as text instead), and any title block — a title block wants blocks,
+which are still not started.
+
 ### Underlays
 
 - Import PDF pages, PNG, and JPEG.
@@ -456,9 +491,10 @@ note). What's left:
 5. ~~**Complete the layer record: linetype, lineweight, printability.**~~ —
    shipped September 2026. Was a prerequisite for PDF/DXF's lineweight and
    ByLayer semantics, done before rather than after Phase 4 for that reason.
-6. Add calibrated underlays and exact-scale PDF output. This is the half of
-   the product definition that is still at zero: a drawing can be created and
-   annotated but cannot be issued.
+6. ~~**Exact-scale PDF output.**~~ — shipped September 2026. See the Phase 4
+   status note below. Calibrated underlays are the remaining half of item 6
+   and are **next**: a drawing can now be created, annotated and issued, but
+   still cannot be traced from an existing PDF or image.
 7. Add controlled DXF export/import.
 8. IndexedDB autosave, once entity counts justify it — the per-edit
    localStorage write is already ~1.5 ms at 100 entities and ~20 ms at 4,000,

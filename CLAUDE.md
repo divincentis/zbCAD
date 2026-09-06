@@ -8,7 +8,7 @@ zbCAD is a single-file, browser-based 2D CAD prototype (no server, no build depe
 
 There are two parallel representations of the same program:
 
-- `src/src/` — the real source, as ~52 ES modules (readable, one concern per file).
+- `src/src/` — the real source, as ~56 ES modules (readable, one concern per file).
 - `cad.html` (repo root) and `src/dist/cad.html` — the built single-file bundle. These two files are kept byte-identical; `cad.html` is the shippable artifact.
 - `src/shell.html` — the HTML/CSS shell (head, body markup, styles) with an empty `(() => { })();` IIFE that the bundler fills with the concatenated modules.
 
@@ -74,6 +74,7 @@ The app has no framework and no build-time dependencies — plain DOM APIs, a `<
 - **`interaction/`** — turns raw input into domain actions: pointer/canvas hit-testing (`pointer.js`), typed command-line input parsing (`input.js`, e.g. `12<45` style point/distance/angle syntax), object snap (`snap.js`), ortho/polar tracking (`tracking.js`), selection (`selection.js`).
 - **`commands/registry.js`** — the core abstraction of the app. A "command" (LINE, CIRCLE, TRIM, ROTATE, …) is a plain object with optional hooks (`begin`, `point`, `distance`, `keyword`, `prompt`, `preview`, `finish`, `close`, `undoPoint`, etc. — see the extensive comment block at the top of the file for the full contract) registered once via `defineCommand`. The dispatcher in this file is the *only* place that branches on which stage a command is in; individual commands never touch each other or duplicate that dispatch logic. **When adding a new drawing/editing command, follow this pattern rather than adding ad hoc mode-branching elsewhere.**
 - **`commands/{draw,modify,transform,annotate,inquiry,aliases}.js`** — the actual command definitions, registered via `commands/registry.js`'s `defineCommand`/`registerDirectAction`, grouped by category. `aliases.js` maps short typed command names (e.g. `L`, `C`) to canonical ones.
+- **`output/`** — writing the drawing out to a file for someone else to read. `plot.js` reduces the drawing to a *plot plan*: primitives measured in millimetres from the bottom-left of a sheet, Y up, with no knowledge of any file format. `pdf.js` serialises that plan into PDF operators (base-14 fonts only, no embedding, no library, deterministic output). Keeping the plan separate from the writer is what lets a test assert that a hundred-foot line came out five inches long without parsing a PDF. **Any future export format (DXF next) should consume a plan-like intermediate the same way rather than walking `state.entities` itself.**
 - **`view/`** — canvas rendering (`render.js`, `grid.js`), the world↔screen coordinate transform (`viewport.js`), and the render-scheduling handle (`frame.js`, the one deliberate indirection point: everything asks `frame.js` for a repaint, and `main.js` is what tells it what a repaint actually does, via `setFrameRenderer(render)`).
 - **`events.js`** — a tiny pub/sub for "document changed" (used to trigger UI chrome refreshes like the layer panel, independent of rendering).
 - **`ui/`** — non-canvas UI: the command-line prompt, status bar, layer panel, inquiry report panel, and modal dialogs (units, dimension style, snap/polar settings) under `ui/dialogs/`.

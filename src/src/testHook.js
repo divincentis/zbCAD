@@ -7,7 +7,8 @@ import { SNAP_TYPES, defaultDimStyle, defaultSnapTypes, defaultUnitSettings } fr
 import { dimSize, parseDimStyle, rebaseDimStyleUnit } from './core/dimstyle.js';
 import { segmentIntersection, segmentWithinRadius } from './core/math.js';
 import { DRAWING_UNITS, formatAngle, formatArea, formatLength, formatLengthLabel, formatsForUnit, groupDigits, parseUnitSettings, unitConversion } from './core/units.js';
-import { commandInput, inquiryBody, inquiryPanel, polarDialog, promptEl, snapDialog, unitRescaleCheck } from './dom.js';
+import { PAPER_SIZES, POINTS_PER_MM, paperSizeMM, scalePresets } from './core/paper.js';
+import { commandInput, inquiryBody, inquiryPanel, plotDialog, polarDialog, promptEl, snapDialog, unitRescaleCheck } from './dom.js';
 import { addPolyline } from './geometry/construct.js';
 import { finishEdgeEdit } from './geometry/edgeEdit.js';
 import { entityGrips } from './geometry/grips.js';
@@ -17,6 +18,8 @@ import { deleteSelected } from './interaction/selection.js';
 import { getSnap } from './interaction/snap.js';
 import { getCommandBasePoint } from './interaction/tracking.js';
 import { buildDimension, dimensionGeometry, dimensionSegments, dimensionText, linearDimensionRotation, resolveEntityReference } from './model/dimension.js';
+import { buildPdfDocument, pdfTextWidthMM } from './output/pdf.js';
+import { buildPlotPlan, defaultPlotSettings, plotAreaBox } from './output/plot.js';
 import { cleanEntityRefs, exportDocumentText, parseDocumentText } from './model/document.js';
 import { boxesOverlap, cloneEntities, cloneLayers, duplicateEntities, entityArea, entityBBox, entityCrossesBox, entityLength, entitySegments, pickSegments, polygonArea, polylineIsClosed } from './model/entity.js';
 import { redo, undo } from './model/history.js';
@@ -25,6 +28,7 @@ import { loadDocumentText, newDrawing, restoreAutosave } from './model/persisten
 import { state } from './state.js';
 import { applyDimStyleDialog, closeDimStyleDialog, openDimStyleDialog, pendingDimStyle, refreshDimStyleDialog } from './ui/dialogs/dimstyle.js';
 import { closePolarDialog, closeSnapDialog, openPolarDialog, openSnapDialog, setAllSnapTypes, setOrtho, setPolar, setPolarIncrement, setSnapType } from './ui/dialogs/drafting.js';
+import { closePlotDialog, openPlotDialog, pendingPlot, plotDownloadName, runPlot, setPendingPlot, startPlotWindowPick } from './ui/dialogs/plot.js';
 import { applyUnitsDialog, closeUnitsDialog, coordinateFieldChars, openUnitsDialog, pendingUnits, refreshUnitsDialog } from './ui/dialogs/units.js';
 import { promptText } from './ui/prompt.js';
 import { drawNow } from './view/frame.js';
@@ -157,6 +161,23 @@ window.__cadPrototype = {
   applyDimStyleDialog,
   setPendingDimStyle(patch) { if (pendingDimStyle) { Object.assign(pendingDimStyle, patch); refreshDimStyleDialog(); } },
   get inquiryText() { return inquiryPanel.hidden ? null : inquiryBody.textContent; },
+  PAPER_SIZES,
+  POINTS_PER_MM,
+  paperSizeMM,
+  scalePresets,
+  defaultPlotSettings,
+  buildPlotPlan,
+  plotAreaBox,
+  buildPdfDocument,
+  pdfTextWidthMM,
+  plotDownloadName,
+  openPlotDialog,
+  closePlotDialog,
+  runPlot,
+  startPlotWindowPick,
+  setPendingPlot,
+  get plotDialogVisible() { return !plotDialog.hidden; },
+  get plotSettings() { return pendingPlot ? { ...pendingPlot } : null; },
   openUnitsDialog,
   closeUnitsDialog,
   applyUnitsDialog,
