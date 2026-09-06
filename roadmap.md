@@ -544,6 +544,29 @@ intersection, perpendicular or tangent point, which has no reference type and
 so does not associate; FILLET on a polyline's own shared vertex, which would
 need either bulge (curved-segment) support or splitting the polyline apart.
 
+**Update 2026-09-05: FILLET extended to arcs and circles, in any combination.**
+Previously FILLET (like CHAMFER) refused any ARC or CIRCLE by name. It now
+fillets a line/polyline segment against an arc or circle, or two arcs/circles
+against each other. A line/line corner has one intersection point to build
+the arc from; two general curves generally don't (a line and a circle can
+cross twice, once, or not at all), so the new path instead constructs, for
+each edge, the loci a fillet centre of the given radius could sit at (an
+offset line, or a concentric circle at radius±R), intersects every pairing of
+the two edges' loci, and keeps whichever resulting tangent circle's contact
+points land nearest the two points actually clicked — the same
+closest-to-your-picks rule a person uses when disambiguating this by hand. A
+CIRCLE is never trimmed (it has no endpoint to move); an ARC's nearer
+endpoint moves to the tangent point, same as a LINE's. CHAMFER is unchanged
+and still refuses arcs/circles by name — a straight cut at an arc-length
+distance from a curve is a murkier idea than a radius, and was judged out of
+scope here. `geometry/fillet.js`, `commands/modify.js` (FILLET's prompt now
+says "edge" rather than "line," since it's no longer only lines). 26 new
+headless checks in `test-corners.mjs`, covering line/circle, line/arc
+(including that the arc's *far* endpoint is the one that moves), and
+circle/circle, plus the zero-radius and no-valid-solution refusals; asserted
+by tangency and distance-from-centre rather than only precomputed
+coordinates, per this file's own geometry-testing discipline.
+
 <details>
 <summary>Already shipped (original items 4–10)</summary>
 

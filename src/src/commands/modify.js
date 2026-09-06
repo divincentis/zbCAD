@@ -234,12 +234,13 @@ export function cornerCommand(type) {
       if (stage === 'RADIUS') return `FILLET — Specify fillet radius <${formatLengthLabel(operation.radius)}>:`;
       if (stage === 'DISTANCE1') return `CHAMFER — Specify first chamfer distance <${formatLengthLabel(operation.firstDistance)}>:`;
       if (stage === 'DISTANCE2') return `CHAMFER — Specify second chamfer distance <${formatLengthLabel(operation.secondDistance)}>:`;
-      if (stage === 'SECOND') return `${type} — Select the second line:`;
+      const noun = type === 'FILLET' ? 'edge' : 'line';
+      if (stage === 'SECOND') return `${type} — Select the second ${noun}:`;
       const setting = type === 'FILLET'
         ? `radius ${formatLengthLabel(operation?.radius ?? 0)}`
         : `${formatLengthLabel(operation?.firstDistance ?? 0)} × ${formatLengthLabel(operation?.secondDistance ?? 0)}`;
       const option = type === 'FILLET' ? 'Radius' : 'Distance';
-      return `${type} — Select the first line or [${option}] (${setting}); Enter/right-click/Esc to finish:`;
+      return `${type} — Select the first ${noun} or [${option}] (${setting}); Enter/right-click/Esc to finish:`;
     },
 
     keyword(text) {

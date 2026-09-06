@@ -205,6 +205,8 @@ reset();
   check('a parallel refusal changes nothing', JSON.stringify(api.entities) === before);
 }
 
+// CHAMFER still refuses arcs/circles by name (only FILLET was extended to
+// them — see the FILLET/circle section below).
 reset();
 {
   drawLine(P(0, 0), P(10, 0));
@@ -212,11 +214,11 @@ reset();
   api.commitPoint(P(20, 0));
   api.commitPoint(P(23, 0));
   const before = JSON.stringify(api.entities);
-  startFillet(1);
+  startChamfer(1, 1);
   api.commitPoint(P(23, 0)); // on the circle
-  check('FILLET names the unsupported type rather than ignoring the click',
+  check('CHAMFER names the unsupported type rather than ignoring the click',
     /CIRCLE/.test(api.promptText), api.promptText);
-  check('FILLET is still waiting for a first line', api.operationStage === 'FIRST', api.operationStage);
+  check('CHAMFER is still waiting for a first line', api.operationStage === 'FIRST', api.operationStage);
   check('an unsupported pick changes nothing', JSON.stringify(api.entities) === before);
 }
 
@@ -517,6 +519,143 @@ reset();
   api.commitPoint(P(6, 0));
   api.commitPoint(P(4, 0)); // same segment again
   check('FILLET refuses the same polyline segment twice', /different line or segment/.test(api.promptText), api.promptText);
+}
+
+// ---------------------------------------------------------------------------
+// FILLET on arcs and circles
+// ---------------------------------------------------------------------------
+
+function drawCircle(center, radius) {
+  api.startCommand('CIRCLE');
+  api.commitPoint(center);
+  api.commitPoint(P(center.x + radius, center.y));
+  return api.entities[api.entityCount - 1];
+}
+function drawArc(a, b, c) {
+  api.startCommand('ARC');
+  api.commitPoint(a);
+  api.commitPoint(b);
+  api.commitPoint(c);
+  return api.entities[api.entityCount - 1];
+}
+
+// A line filleted against a full circle: the circle has no endpoint, so it
+// must come back completely unchanged, and only the line trims.
+reset();
+{
+  const line = drawLine(P(-20, 0), P(20, 0));
+  const circle = drawCircle(P(0, 10), 5);
+  const before = JSON.stringify(entityById(circle.id));
+  startFillet(2.5);
+  api.commitPoint(P(10, 0)); // keep the positive half of the line
+  api.commitPoint(P(0, 5));  // the bottom of the circle
+
+  check('FILLET line/circle creates exactly one arc', arcs().length === 1, `${arcs().length} arcs`);
+  const arc = arcs()[0];
+  check('FILLET line/circle leaves the circle untouched',
+    JSON.stringify(entityById(circle.id)) === before, JSON.stringify(entityById(circle.id)));
+  check('FILLET line/circle trims the line to the tangent point',
+    lineHasEnds(line.id, P(20, 0), P(0, 0)), JSON.stringify(lineById(line.id)));
+  check('the fillet arc has the requested radius', near(arc.radius, 2.5), String(arc.radius));
+  check('the fillet centre is one radius from the line', near(arc.center.y, 2.5), JSON.stringify(arc.center));
+  check('the fillet centre is one radius outside the circle',
+    near(distance(arc.center, circle.center), circle.radius + 2.5), String(distance(arc.center, circle.center)));
+  const ends = [arcPointAt(arc, 0), arcPointAt(arc, 1)];
+  check('the fillet arc ends on the line and on the circle',
+    ends.some(p => pointNear(p, 0, 0)) && ends.some(p => pointNear(p, 0, 5)), JSON.stringify(ends));
+}
+
+// A line filleted against an arc: unlike a circle, an arc DOES trim, at
+// whichever of its two endpoints is nearer the tangent point.
+reset();
+{
+  const line = drawLine(P(-20, 0), P(20, 0));
+  // The bottom half of the same circle as above, from (-5,10) through the
+  // bottom (0,5) to (5,10) — so the tangent point (0,5) sits mid-sweep, and
+  // trimming has to actually move an endpoint rather than land on one.
+  const arc = drawArc(P(-5, 10), P(0, 5), P(5, 10));
+  startFillet(2.5);
+  api.commitPoint(P(10, 0));                          // keep the positive half of the line
+  api.commitPoint(P(-3.5355339059, 6.4644660941));     // left of the tangent point, on the arc
+
+  check('FILLET line/arc creates exactly one fillet arc', arcs().length === 2, `${arcs().length} arcs`);
+  const fillet = arcs().find(a => a.id !== arc.id);
+  check('FILLET line/arc trims the line to the tangent point',
+    lineHasEnds(line.id, P(20, 0), P(0, 0)), JSON.stringify(lineById(line.id)));
+  const trimmed = entityById(arc.id);
+  check('FILLET line/arc keeps the endpoint on the picked side',
+    pointNear({ x: trimmed.center.x + trimmed.radius * Math.cos(trimmed.startAngle), y: trimmed.center.y + trimmed.radius * Math.sin(trimmed.startAngle) }, -5, 10),
+    JSON.stringify(trimmed));
+  check('FILLET line/arc trims the far endpoint back to the tangent point',
+    pointNear({ x: trimmed.center.x + trimmed.radius * Math.cos(trimmed.endAngle), y: trimmed.center.y + trimmed.radius * Math.sin(trimmed.endAngle) }, 0, 5),
+    JSON.stringify(trimmed));
+  check('the fillet arc has the requested radius', near(fillet.radius, 2.5), String(fillet?.radius));
+  const ends = [arcPointAt(fillet, 0), arcPointAt(fillet, 1)];
+  check('the fillet arc ends on the line and on the trimmed arc',
+    ends.some(p => pointNear(p, 0, 0)) && ends.some(p => pointNear(p, 0, 5)), JSON.stringify(ends));
+}
+
+// Two full circles filleted together: neither has an endpoint, so both come
+// back unchanged and only the bridging arc is new. Checked by tangency
+// (distance-to-centre), not by precomputed centre coordinates, per the
+// project's rule to test with properties rather than only canonical numbers.
+reset();
+{
+  const a = drawCircle(P(0, 0), 3);
+  const b = drawCircle(P(10, 0), 4);
+  const beforeA = JSON.stringify(entityById(a.id));
+  const beforeB = JSON.stringify(entityById(b.id));
+  startFillet(5);
+  api.commitPoint(P(0, 3));   // top of circle a
+  api.commitPoint(P(10, 4));  // top of circle b
+
+  check('FILLET circle/circle creates exactly one arc', arcs().length === 1, `${arcs().length} arcs`);
+  const arc = arcs()[0];
+  check('FILLET circle/circle leaves the first circle untouched', JSON.stringify(entityById(a.id)) === beforeA);
+  check('FILLET circle/circle leaves the second circle untouched', JSON.stringify(entityById(b.id)) === beforeB);
+  check('the fillet has the requested radius', near(arc.radius, 5), String(arc.radius));
+  check('the fillet centre sits one radius outside the first circle',
+    near(distance(arc.center, a.center), a.radius + 5), String(distance(arc.center, a.center)));
+  check('the fillet centre sits one radius outside the second circle',
+    near(distance(arc.center, b.center), b.radius + 5), String(distance(arc.center, b.center)));
+  const ends = [arcPointAt(arc, 0), arcPointAt(arc, 1)];
+  check('the fillet is tangent to the first circle at exactly its radius',
+    ends.some(p => near(distance(p, a.center), a.radius)), JSON.stringify(ends));
+  check('the fillet is tangent to the second circle at exactly its radius',
+    ends.some(p => near(distance(p, b.center), b.radius)), JSON.stringify(ends));
+  check('the chosen solution is the one nearest the picks, bulging upward over both circles',
+    arc.center.y > 0, String(arc.center.y));
+}
+
+// A zero radius has no meaning for a curve with no corner to close exactly.
+reset();
+{
+  drawLine(P(-20, 0), P(20, 0));
+  drawCircle(P(0, 10), 5);
+  const before = JSON.stringify(api.entities);
+  startFillet(0);
+  api.commitPoint(P(10, 0));
+  api.commitPoint(P(0, 5));
+  check('FILLET 0 refuses a circle rather than guessing',
+    /greater than zero/.test(api.promptText), api.promptText);
+  check('a refused zero-radius circle fillet changes nothing', JSON.stringify(api.entities) === before);
+}
+
+// Two circles too far apart for this radius to bridge at all: every one of
+// the (up to eight) candidate tangent circles requires centres closer
+// together than these actually are, so none exists — refused, not guessed.
+reset();
+{
+  const a = drawCircle(P(0, 0), 3);
+  const b = drawCircle(P(20, 0), 4);
+  const before = JSON.stringify(api.entities);
+  startFillet(5); // 3+5 and 4+5 don't add up to the 20 units between centres
+  api.commitPoint(P(0, 3));
+  api.commitPoint(P(20, 4));
+  check('FILLET refuses a radius that finds no valid tangent circle',
+    /does not fit/.test(api.promptText), api.promptText);
+  check('a refused circle/circle fillet changes nothing', JSON.stringify(api.entities) === before);
+  void a; void b;
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
