@@ -46,6 +46,26 @@
   nav.toc ul.sub a { font-size: 12px; color: var(--muted); padding: 3px 8px; }
   nav.toc ul.sub a:hover { color: var(--text); background: #262626; }
 
+  .search-box { position: relative; margin: 0 0 14px; }
+  .search-box input {
+    width: 100%; background: #111; border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-size: 13px; padding: 7px 26px 7px 10px; font-family: inherit;
+  }
+  .search-box input::placeholder { color: #6f6f6f; }
+  .search-box input:focus { outline: none; border-color: var(--accent); }
+  .search-box input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+  .search-box .clear {
+    position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; color: var(--muted); font-size: 15px; line-height: 1;
+    cursor: pointer; padding: 4px 6px;
+  }
+  .search-box .clear:hover { color: var(--text); }
+  .search-box .clear[hidden] { display: none; }
+
+  .no-results {
+    color: var(--muted); font-size: 13.5px; padding: 8px 0;
+  }
+
   main { flex: 1 1 auto; min-width: 0; padding: 40px 48px 120px; max-width: 880px; }
   h1 { font-size: 26px; margin: 0 0 8px; }
   h1 + p.lede { color: var(--muted); font-size: 15px; margin-top: 0; }
@@ -115,7 +135,11 @@
     <a class="back" href="cad.html">&larr; Back to zbCAD</a>
     <p class="brand">zbCAD</p>
     <span class="version">Documentation</span>
-    <ul>
+    <div class="search-box">
+      <input type="search" id="doc-search" placeholder="Search docs&hellip;" autocomplete="off" spellcheck="false" aria-label="Search documentation" />
+      <button type="button" class="clear" id="doc-search-clear" hidden aria-label="Clear search">&times;</button>
+    </div>
+    <ul id="doc-toc">
       <li><a class="section" href="#overview">Overview</a></li>
       <li><a class="section" href="#interface">The interface</a></li>
       <li><a class="section" href="#concepts">Core concepts</a>
@@ -147,6 +171,7 @@
 
     <h1 id="overview">zbCAD Documentation</h1>
     <p class="lede">A single-file, browser-based 2D CAD prototype. No install, no account, no server &mdash; open the HTML file and start drawing.</p>
+    <p class="no-results" id="no-results" hidden>No topics match your search.</p>
 
     <section>
       <p>
@@ -158,7 +183,7 @@
         most of this will already feel familiar.
       </p>
       <p>
-        Everything lives in your browser tab. Drawings are saved to a local <code>.draft2d.json</code>
+        Everything lives in your browser tab. Drawings are saved to a local <code>.zbCAD.json</code>
         file you download and re-open yourself, and an autosave copy is kept in the browser's local
         storage so an accidental tab close doesn't lose your work.
       </p>
@@ -319,9 +344,9 @@
     <section>
       <h3 id="files">Files &amp; autosave</h3>
       <p>
-        <strong>Save</strong> downloads the current drawing as a <code>&lt;name&gt;.draft2d.json</code>
+        <strong>Save</strong> downloads the current drawing as a <code>&lt;name&gt;.zbCAD.json</code>
         file through the browser's normal download mechanism. <strong>Open</strong> loads a
-        <code>.draft2d.json</code> file back in. <strong>New</strong> clears the canvas (with a
+        <code>.zbCAD.json</code> file back in. <strong>New</strong> clears the canvas (with a
         confirmation if it isn't already empty).
       </p>
       <p>
@@ -550,5 +575,109 @@
 
     <footer>zbCAD is a prototype. This page documents its current behavior and will change as the app does.</footer>
   </main>
+
+  <script>
+    (() => {
+      const input = document.getElementById('doc-search');
+      const clearBtn = document.getElementById('doc-search-clear');
+      const noResults = document.getElementById('no-results');
+      const main = document.querySelector('main');
+      const tocLinks = document.querySelectorAll('#doc-toc a[href^="#"]');
+
+      const normalize = (s) => s.toLowerCase();
+      const textMatches = (el, terms) => {
+        const text = normalize(el.textContent);
+        return terms.every((t) => text.includes(t));
+      };
+      const isEffectivelyVisible = (el) => {
+        let node = el;
+        while (node && node !== document.body) {
+          if (node.hidden) return false;
+          node = node.parentElement;
+        }
+        return true;
+      };
+
+      function runFilter() {
+        const raw = input.value.trim();
+        const terms = normalize(raw).split(/\s+/).filter(Boolean);
+        const noQuery = terms.length === 0;
+        clearBtn.hidden = noQuery;
+
+        // Leaf-level: individual command cards.
+        document.querySelectorAll('.cmd-card').forEach((card) => {
+          card.hidden = !noQuery && !textMatches(card, terms);
+        });
+
+        // Section-level: either a card container, or a standalone topic.
+        document.querySelectorAll('main > section').forEach((section) => {
+          if (noQuery) { section.hidden = false; return; }
+          const cards = section.querySelectorAll('.cmd-card');
+          if (cards.length) {
+            const anyCardVisible = Array.from(cards).some((c) => !c.hidden);
+            const heading = section.querySelector('h3, h4');
+            section.hidden = !(anyCardVisible || (heading && textMatches(heading, terms)));
+          } else {
+            section.hidden = !textMatches(section, terms);
+          }
+        });
+
+        // Group-level: an <h2> plus every sibling up to the next <h2>.
+        let currentH2 = null;
+        let group = [];
+        const flush = () => {
+          if (!currentH2) { group = []; return; }
+          if (noQuery) {
+            currentH2.hidden = false;
+            group.forEach((el) => { if (el.tagName !== 'SECTION') el.hidden = false; });
+          } else {
+            const groupVisible = group.some((el) => !el.hidden);
+            currentH2.hidden = !(groupVisible || textMatches(currentH2, terms));
+            group.forEach((el) => {
+              if (el.tagName !== 'SECTION') el.hidden = currentH2.hidden;
+            });
+          }
+          group = [];
+        };
+        Array.from(main.children).forEach((child) => {
+          if (child.tagName === 'H2') {
+            flush();
+            currentH2 = child;
+          } else if (child.tagName === 'FOOTER') {
+            flush();
+            currentH2 = null;
+          } else if (currentH2) {
+            group.push(child);
+          }
+        });
+        flush();
+
+        // Table of contents follows the visibility of what it links to.
+        tocLinks.forEach((a) => {
+          const target = document.getElementById(a.getAttribute('href').slice(1));
+          const li = a.closest('li');
+          li.hidden = (!noQuery && target) ? !isEffectivelyVisible(target) : false;
+        });
+
+        const anythingVisible = Array.from(
+          document.querySelectorAll('main > section, main > h2')
+        ).some((el) => !el.hidden);
+        noResults.hidden = noQuery || anythingVisible;
+      }
+
+      input.addEventListener('input', runFilter);
+      clearBtn.addEventListener('click', () => {
+        input.value = '';
+        input.focus();
+        runFilter();
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && input.value) {
+          input.value = '';
+          runFilter();
+        }
+      });
+    })();
+  </script>
 </body>
 </html>

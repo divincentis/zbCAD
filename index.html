@@ -475,7 +475,7 @@ kbd { font-size: 9px; opacity: .65; }
       </div>
     </div>
     <a id="docsLink" class="docs-link" href="docs.html" target="_blank" rel="noopener">Docs</a>
-    <input id="openInput" type="file" accept=".json,.draft2d.json,application/json" hidden />
+    <input id="openInput" type="file" accept=".json,.zbCAD.json,application/json" hidden />
   </header>
 
   <main class="workspace">
@@ -7164,7 +7164,7 @@ kbd { font-size: 9px; opacity: .65; }
       return false;
     }
     if (parsed.document.name === 'Untitled' && sourceName) {
-      parsed.document.name = sourceName.replace(/(?:\.draft2d)?\.json$/i, '').trim() || 'Untitled';
+      parsed.document.name = sourceName.replace(/(?:\.zbCAD)?\.json$/i, '').trim() || 'Untitled';
     }
     applyDocument(parsed.document, true);
     setFileStatus(`${state.drawingName} · Opened`);
@@ -7240,7 +7240,7 @@ kbd { font-size: 9px; opacity: .65; }
       .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-')
       .replace(/[. ]+$/g, '')
       .trim();
-    return `${safeName || 'drawing'}.draft2d.json`;
+    return `${safeName || 'drawing'}.zbCAD.json`;
   }
 
   function saveDrawing() {
