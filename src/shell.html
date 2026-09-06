@@ -29,6 +29,32 @@ body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 
 .brand { font-weight: 700; white-space: nowrap; }
 .version { color: #9e9e9e; font-size: 11px; font-weight: 400; }
 .tools { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 6px 0; }
+.toolbar-autohide-btn { flex: 0 0 auto; }
+/* Auto-hide takes .tools out of flow and floats it as an overlay below the
+   slim brand bar, so opening it on hover never resizes the canvas the way
+   the always-visible toolbar's own row-wrap does (see the ResizeObserver in
+   shell.js). Collapsed height comes for free: with .tools out of flow, the
+   header simply shrinks to the brand row's own height. */
+.topbar.autohide .tools {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 0 10px;
+  max-height: 0;
+  overflow: hidden;
+  background: #252525;
+  border-bottom: 1px solid #3a3a3a;
+  transition: max-height .12s ease-out;
+}
+.topbar.autohide:hover .tools,
+.topbar.autohide:focus-within .tools {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 8px 10px;
+}
 .docs-link {
   position: absolute;
   top: 6px;
@@ -512,8 +538,9 @@ kbd { font-size: 9px; opacity: .65; }
   </style>
 </head>
 <body>
-  <header class="topbar">
+  <header id="topbar" class="topbar">
     <div class="brand">zbCAD <span class="version">v0.24.3</span></div>
+    <button id="toolbarAutohideBtn" class="toolbar-autohide-btn toggle" title="Auto-hide the toolbar; mouse over this bar (or Tab into it) to show it again" aria-pressed="false">Auto-hide</button>
     <div class="tools">
       <div class="tool-group">
         <span class="group-label">File</span>

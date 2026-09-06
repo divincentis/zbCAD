@@ -1,6 +1,6 @@
 import { commandCapturesSpace, navigateHistory, startCommand } from '../commands/registry.js';
 import { LENGTH_FORMATS } from '../core/units.js';
-import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
+import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, toolbarAutohideBtn, topbar, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
 import { submitCommandInput } from '../interaction/pointer.js';
 import { writeAutosave } from '../model/dirty.js';
 import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, setLayerLinetype, setLayerLineweight, toggleLayerLock, toggleLayerPrintable, toggleLayerVisibility } from '../model/layers.js';
@@ -210,6 +210,31 @@ try {
   // Fall back to expanded.
 }
 setLayerPanelCollapsed(layerPanelInitiallyCollapsed);
+
+// Same per-browser convenience as the layer panel above: whether the toolbar
+// auto-hides is a display preference, not drawing data.
+const TOOLBAR_AUTOHIDE_KEY = 'zbcad.toolbarAutohide';
+function setToolbarAutohide(enabled) {
+  topbar.classList.toggle('autohide', enabled);
+  toolbarAutohideBtn.classList.toggle('on', enabled);
+  toolbarAutohideBtn.setAttribute('aria-pressed', String(enabled));
+  try {
+    window.localStorage.setItem(TOOLBAR_AUTOHIDE_KEY, enabled ? '1' : '0');
+  } catch {
+    // Private browsing or storage disabled: the toggle still works this session.
+  }
+}
+toolbarAutohideBtn.addEventListener('click', () => {
+  setToolbarAutohide(!topbar.classList.contains('autohide'));
+  canvas.focus();
+});
+let toolbarAutohideInitially = false;
+try {
+  toolbarAutohideInitially = window.localStorage.getItem(TOOLBAR_AUTOHIDE_KEY) === '1';
+} catch {
+  // Fall back to always-visible.
+}
+setToolbarAutohide(toolbarAutohideInitially);
 
 window.addEventListener('error', () => {
   engineStatus.textContent = 'ENGINE: ERROR';
