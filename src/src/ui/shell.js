@@ -1,6 +1,6 @@
 import { commandCapturesSpace, navigateHistory, startCommand } from '../commands/registry.js';
 import { LENGTH_FORMATS } from '../core/units.js';
-import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
+import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
 import { submitCommandInput } from '../interaction/pointer.js';
 import { writeAutosave } from '../model/dirty.js';
 import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, setLayerLinetype, setLayerLineweight, toggleLayerLock, toggleLayerPrintable, toggleLayerVisibility } from '../model/layers.js';
@@ -125,14 +125,26 @@ layerList.addEventListener('click', event => {
   else if (action === 'lock') toggleLayerLock(id);
   else if (action === 'printable') toggleLayerPrintable(id);
   else if (action === 'delete') deleteLayer(id);
+  else if (action === 'color') {
+    activeColorLayerId = id;
+    layerColorPicker.value = event.target.dataset.layerColor;
+    layerColorPicker.click();
+  }
 });
 layerList.addEventListener('change', event => {
   const action = event.target?.dataset?.layerAction;
   const id = event.target?.dataset?.layerId;
   if (action === 'name') renameLayer(id, event.target.value);
-  else if (action === 'color') setLayerColor(id, event.target.value);
   else if (action === 'linetype') setLayerLinetype(id, event.target.value);
   else if (action === 'lineweight') setLayerLineweight(id, event.target.value);
+});
+// The picker anchor lives outside the layer rows (see .layer-color-anchor in
+// shell.html) so Chrome's native popup always has room to open — a row's own
+// swatch button sits flush against the docked panel's right edge, and that
+// popup clips instead of flipping when it's anchored there.
+let activeColorLayerId = null;
+layerColorPicker.addEventListener('change', () => {
+  if (activeColorLayerId) setLayerColor(activeColorLayerId, layerColorPicker.value);
 });
 openInput.addEventListener('change', async () => {
   const file = openInput.files?.[0];

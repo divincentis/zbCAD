@@ -22,7 +22,7 @@ export function renderLayerManager() {
         <div class="layer-row-main">
           <button class="layer-current${current ? ' on' : ''}" data-layer-action="current" data-layer-id="${escapeHtml(layer.id)}" title="Make current" aria-label="Make ${escapeHtml(layer.name)} current">${current ? '●' : '○'}</button>
           <input class="layer-name" data-layer-action="name" data-layer-id="${escapeHtml(layer.id)}" value="${escapeHtml(layer.name)}" aria-label="Layer name"${layer.id === '0' ? ' disabled title="Layer 0 cannot be renamed"' : ''} />
-          <input class="layer-color" type="color" data-layer-action="color" data-layer-id="${escapeHtml(layer.id)}" value="${escapeHtml(layer.color)}" title="Layer color" aria-label="${escapeHtml(layer.name)} color" />
+          <button type="button" class="layer-color" data-layer-action="color" data-layer-id="${escapeHtml(layer.id)}" data-layer-color="${escapeHtml(layer.color)}" style="background-color: ${escapeHtml(layer.color)};" title="Layer color" aria-label="${escapeHtml(layer.name)} color"></button>
           <button data-layer-action="visibility" data-layer-id="${escapeHtml(layer.id)}" title="Toggle visibility">${layer.visible ? 'On' : 'Off'}</button>
           <button class="layer-lock" data-layer-action="lock" data-layer-id="${escapeHtml(layer.id)}" title="${lockTitle}" aria-label="${lockTitle}">${layer.locked ? '🔒' : '🔓'}</button>
           <button class="layer-delete" data-layer-action="delete" data-layer-id="${escapeHtml(layer.id)}" title="${protectedLayer ? (layer.id === '0' ? 'Layer 0 cannot be deleted' : 'The current layer cannot be deleted') : 'Delete layer'}" aria-label="Delete ${escapeHtml(layer.name)}"${protectedLayer ? ' disabled' : ''}>Del</button>

@@ -21,6 +21,7 @@ export const currentLayerSelect = document.getElementById('currentLayerSelect');
 export const addLayerBtn = document.getElementById('addLayerBtn');
 export const assignLayerBtn = document.getElementById('assignLayerBtn');
 export const layerList = document.getElementById('layerList');
+export const layerColorPicker = document.getElementById('layerColorPicker');
 export const layerPanel = document.getElementById('layerPanel');
 export const layerPanelToggle = document.getElementById('layerPanelToggle');
 export const help = document.getElementById('help');

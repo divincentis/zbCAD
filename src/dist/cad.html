@@ -190,13 +190,28 @@ button.active, button.on { background: #565656; border-color: #888; }
   font-size: 11px;
 }
 .layer-name:disabled { color: #bbb; opacity: 1; }
-.layer-color {
+button.layer-color {
   width: 28px;
   height: 24px;
   padding: 1px;
   border: 1px solid #4a4a4a;
-  background: #303030;
   cursor: pointer;
+}
+/* Chrome's native color-picker popup anchors to this element's on-screen
+   position and clips instead of flipping when that position sits near the
+   viewport's right edge — which the docked layer panel always does. Rows
+   trigger the picker on this single offscreen anchor instead of their own
+   swatch button, so the popup always has room to open. */
+.layer-color-anchor {
+  position: fixed;
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 .layer-hint { margin-top: auto; color: #888; font-size: 10px; line-height: 1.35; }
 
@@ -526,6 +541,7 @@ kbd { font-size: 9px; opacity: .65; }
       </div>
     </div>
     <aside id="layerPanel" class="layer-panel" aria-label="Layer manager">
+      <input id="layerColorPicker" type="color" class="layer-color-anchor" tabindex="-1" aria-hidden="true" />
       <div class="layer-heading">
         <strong>Layers</strong>
         <div class="layer-heading-actions">
@@ -706,6 +722,7 @@ kbd { font-size: 9px; opacity: .65; }
   const addLayerBtn = document.getElementById('addLayerBtn');
   const assignLayerBtn = document.getElementById('assignLayerBtn');
   const layerList = document.getElementById('layerList');
+  const layerColorPicker = document.getElementById('layerColorPicker');
   const layerPanel = document.getElementById('layerPanel');
   const layerPanelToggle = document.getElementById('layerPanelToggle');
   const help = document.getElementById('help');
@@ -2211,7 +2228,7 @@ kbd { font-size: 9px; opacity: .65; }
           <div class="layer-row-main">
             <button class="layer-current${current ? ' on' : ''}" data-layer-action="current" data-layer-id="${escapeHtml(layer.id)}" title="Make current" aria-label="Make ${escapeHtml(layer.name)} current">${current ? '●' : '○'}</button>
             <input class="layer-name" data-layer-action="name" data-layer-id="${escapeHtml(layer.id)}" value="${escapeHtml(layer.name)}" aria-label="Layer name"${layer.id === '0' ? ' disabled title="Layer 0 cannot be renamed"' : ''} />
-            <input class="layer-color" type="color" data-layer-action="color" data-layer-id="${escapeHtml(layer.id)}" value="${escapeHtml(layer.color)}" title="Layer color" aria-label="${escapeHtml(layer.name)} color" />
+            <button type="button" class="layer-color" data-layer-action="color" data-layer-id="${escapeHtml(layer.id)}" data-layer-color="${escapeHtml(layer.color)}" style="background-color: ${escapeHtml(layer.color)};" title="Layer color" aria-label="${escapeHtml(layer.name)} color"></button>
             <button data-layer-action="visibility" data-layer-id="${escapeHtml(layer.id)}" title="Toggle visibility">${layer.visible ? 'On' : 'Off'}</button>
             <button class="layer-lock" data-layer-action="lock" data-layer-id="${escapeHtml(layer.id)}" title="${lockTitle}" aria-label="${lockTitle}">${layer.locked ? '🔒' : '🔓'}</button>
             <button class="layer-delete" data-layer-action="delete" data-layer-id="${escapeHtml(layer.id)}" title="${protectedLayer ? (layer.id === '0' ? 'Layer 0 cannot be deleted' : 'The current layer cannot be deleted') : 'Delete layer'}" aria-label="Delete ${escapeHtml(layer.name)}"${protectedLayer ? ' disabled' : ''}>Del</button>
@@ -9295,14 +9312,26 @@ kbd { font-size: 9px; opacity: .65; }
     else if (action === 'lock') toggleLayerLock(id);
     else if (action === 'printable') toggleLayerPrintable(id);
     else if (action === 'delete') deleteLayer(id);
+    else if (action === 'color') {
+      activeColorLayerId = id;
+      layerColorPicker.value = event.target.dataset.layerColor;
+      layerColorPicker.click();
+    }
   });
   layerList.addEventListener('change', event => {
     const action = event.target?.dataset?.layerAction;
     const id = event.target?.dataset?.layerId;
     if (action === 'name') renameLayer(id, event.target.value);
-    else if (action === 'color') setLayerColor(id, event.target.value);
     else if (action === 'linetype') setLayerLinetype(id, event.target.value);
     else if (action === 'lineweight') setLayerLineweight(id, event.target.value);
+  });
+  // The picker anchor lives outside the layer rows (see .layer-color-anchor in
+  // shell.html) so Chrome's native popup always has room to open — a row's own
+  // swatch button sits flush against the docked panel's right edge, and that
+  // popup clips instead of flipping when it's anchored there.
+  let activeColorLayerId = null;
+  layerColorPicker.addEventListener('change', () => {
+    if (activeColorLayerId) setLayerColor(activeColorLayerId, layerColorPicker.value);
   });
   openInput.addEventListener('change', async () => {
     const file = openInput.files?.[0];
