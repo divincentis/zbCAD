@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>zbCAD Documentation</title>
+<style>
+  :root {
+    --bg: #151515;
+    --panel: #1c1c1c;
+    --border: #3a3a3a;
+    --text: #e8e8e8;
+    --muted: #9e9e9e;
+    --accent: #7fb4ff;
+    --code-bg: #232323;
+    font-family: -apple-system, "Segoe UI", Arial, Helvetica, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body { display: flex; min-height: 100vh; line-height: 1.55; }
+
+  a { color: var(--accent); }
+
+  nav.toc {
+    flex: 0 0 240px;
+    border-right: 1px solid var(--border);
+    padding: 20px 14px;
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    height: 100vh;
+    overflow-y: auto;
+  }
+  nav.toc .brand { font-weight: 700; font-size: 15px; margin: 0 0 2px; }
+  nav.toc .version { color: var(--muted); font-size: 11px; display: block; margin-bottom: 4px; }
+  nav.toc .back { display: inline-block; margin-bottom: 16px; font-size: 12px; color: var(--muted); }
+  nav.toc .back:hover { color: var(--text); }
+  nav.toc ul { list-style: none; margin: 0; padding: 0; }
+  nav.toc li { margin: 0; }
+  nav.toc a.section {
+    display: block; padding: 5px 8px; border-radius: 4px; font-size: 13px;
+    color: #cfcfcf; text-decoration: none;
+  }
+  nav.toc a.section:hover { background: #262626; color: #fff; }
+  nav.toc ul.sub { padding-left: 12px; }
+  nav.toc ul.sub a { font-size: 12px; color: var(--muted); padding: 3px 8px; }
+  nav.toc ul.sub a:hover { color: var(--text); background: #262626; }
+
+  main { flex: 1 1 auto; min-width: 0; padding: 40px 48px 120px; max-width: 880px; }
+  h1 { font-size: 26px; margin: 0 0 8px; }
+  h1 + p.lede { color: var(--muted); font-size: 15px; margin-top: 0; }
+  h2 {
+    font-size: 19px; margin: 48px 0 12px; padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  section:first-of-type h2:first-of-type { border-top: none; padding-top: 0; }
+  h3 { font-size: 15px; margin: 22px 0 8px; color: #f2f2f2; }
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+
+  code, kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 3px; padding: 1px 5px; font-size: 12.5px; color: #ffd08a;
+  }
+  kbd { color: #cfe0ff; }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px 14px; overflow-x: auto; font-size: 12.5px;
+  }
+  pre code { border: none; background: none; padding: 0; color: #dfe8ff; }
+
+  table { border-collapse: collapse; width: 100%; margin: 12px 0 20px; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  tr:hover td { background: #1a1a1a; }
+  td code { white-space: nowrap; }
+
+  .note {
+    border-left: 3px solid var(--accent); background: #182230; padding: 8px 14px;
+    border-radius: 0 6px 6px 0; margin: 14px 0; font-size: 13.5px;
+  }
+  .note strong { color: var(--accent); }
+
+  .cmd-card {
+    border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px;
+    margin: 10px 0; background: var(--panel);
+  }
+  .cmd-card h4 {
+    margin: 0 0 6px; font-size: 14px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  }
+  .cmd-card h4 .name { color: #fff; }
+  .cmd-card h4 .aliases { font-size: 11px; color: var(--muted); font-weight: 400; }
+  .cmd-card p { margin: 4px 0; font-size: 13px; }
+  .cmd-card .steps { margin: 6px 0 0; font-size: 12.5px; color: #d3d3d3; }
+  .cmd-card .keys { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+
+  .placeholder {
+    border: 1px dashed #4a4a4a; border-radius: 6px; padding: 14px 16px;
+    color: var(--muted); font-size: 13px; background: #1a1a1a;
+  }
+
+  footer { color: var(--muted); font-size: 12px; margin-top: 60px; }
+
+  @media (max-width: 760px) {
+    body { flex-direction: column; }
+    nav.toc { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); width: 100%; }
+    main { padding: 24px; max-width: none; }
+  }
+</style>
+</head>
+<body>
+  <nav class="toc">
+    <a class="back" href="cad.html">&larr; Back to zbCAD</a>
+    <p class="brand">zbCAD</p>
+    <span class="version">Documentation</span>
+    <ul>
+      <li><a class="section" href="#overview">Overview</a></li>
+      <li><a class="section" href="#interface">The interface</a></li>
+      <li><a class="section" href="#concepts">Core concepts</a>
+        <ul class="sub">
+          <li><a href="#command-line">The command line</a></li>
+          <li><a href="#points">Entering points &amp; distances</a></li>
+          <li><a href="#snap">Object snap</a></li>
+          <li><a href="#ortho-polar">Ortho &amp; polar tracking</a></li>
+          <li><a href="#selection">Selection &amp; grips</a></li>
+          <li><a href="#layers">Layers</a></li>
+          <li><a href="#units">Units &amp; dimension style</a></li>
+          <li><a href="#files">Files &amp; autosave</a></li>
+        </ul>
+      </li>
+      <li><a class="section" href="#shortcuts">Keyboard shortcuts</a></li>
+      <li><a class="section" href="#commands">Command reference</a>
+        <ul class="sub">
+          <li><a href="#cmd-draw">Draw</a></li>
+          <li><a href="#cmd-modify">Modify</a></li>
+          <li><a href="#cmd-transform">Transform</a></li>
+          <li><a href="#cmd-annotate">Annotate</a></li>
+          <li><a href="#cmd-inquiry">Inquiry</a></li>
+        </ul>
+      </li>
+    </ul>
+  </nav>
+
+  <main>
+
+    <h1 id="overview">zbCAD Documentation</h1>
+    <p class="lede">A single-file, browser-based 2D CAD prototype. No install, no account, no server &mdash; open the HTML file and start drawing.</p>
+
+    <section>
+      <p>
+        zbCAD is a 2D drafting tool modeled on the drawing conventions of desktop CAD software
+        (AutoCAD, QCAD, and similar): a typed command line that accepts abbreviations, keyboard
+        shortcuts, and coordinate expressions like <code>@3,2</code> or <code>@5&lt;45</code>; object
+        snap to precisely pick existing geometry; layers; and associative dimensions that stay
+        attached to the geometry they measure. If you've used AutoCAD or a similar package before,
+        most of this will already feel familiar.
+      </p>
+      <p>
+        Everything lives in your browser tab. Drawings are saved to a local <code>.draft2d.json</code>
+        file you download and re-open yourself, and an autosave copy is kept in the browser's local
+        storage so an accidental tab close doesn't lose your work.
+      </p>
+    </section>
+
+    <h2 id="interface">The interface</h2>
+    <section>
+      <p>The window is divided into a few fixed regions:</p>
+      <ul>
+        <li><strong>Toolbar</strong> (top) &mdash; grouped buttons for File, Edit, Draw, Modify, Annotate, Inquiry, and View. Buttons that start a command show its keyboard alias in parentheses, e.g. <strong>Line (L)</strong>.</li>
+        <li><strong>Canvas</strong> (center) &mdash; the drawing area. Left-click to pick points or select objects, scroll to zoom, middle-drag to pan, right-click or <kbd>Enter</kbd> to accept the current command's default action.</li>
+        <li><strong>Layers panel</strong> (right) &mdash; lists every layer with its visibility, lock, and color controls; collapsible via the <strong>&#9656;</strong> / <strong>&#9666;</strong> toggle at its top.</li>
+        <li><strong>Command line &amp; status bar</strong> (bottom) &mdash; the text input where you type commands, coordinates, and keywords, plus toggle buttons for <strong>SNAP</strong>, <strong>ORTHO</strong>, <strong>POLAR</strong>, the active object-snap set, the drawing units, the current file name, and the live cursor coordinates.</li>
+        <li><strong>Inquiry panel</strong> &mdash; a small overlay that appears with the result of <code>DIST</code>, <code>AREA</code>, <code>ID</code>, or <code>LIST</code>; close it with the &times; button or <kbd>Esc</kbd>.</li>
+      </ul>
+    </section>
+
+    <h2 id="concepts">Core concepts</h2>
+
+    <section>
+      <h3 id="command-line">The command line</h3>
+      <p>
+        Click a toolbar button, or click the command-line input and type a command name (or its
+        alias, e.g. <code>L</code> for <code>LINE</code>) and press <kbd>Enter</kbd> or
+        <kbd>Space</kbd>. You don't need to click into the input first &mdash; typing any single
+        character while the canvas has focus jumps into the command line automatically.
+      </p>
+      <p>While a command is running, the same input accepts, in order of precedence:</p>
+      <ol>
+        <li>A <strong>keyword</strong> the active command is listening for (its prompt tells you which letters are live, e.g. <code>C</code> to close a polyline, <code>U</code> to undo the last point).</li>
+        <li>A <strong>point</strong>, typed as <code>x,y</code>, <code>@x,y</code> (relative to the last point), or <code>@distance&lt;angle</code> (polar, relative).</li>
+        <li>A command-specific <strong>value</strong> (an angle for <code>ROTATE</code>, a scale factor for <code>SCALE</code>, etc.).</li>
+        <li>A bare <strong>distance</strong>, applied along the direction from the last point toward the current cursor position &mdash; type a number right after picking a start point and dragging toward a direction to draw an exact length without doing the trigonometry yourself.</li>
+      </ol>
+      <p>An unrecognized string that matches none of the above is looked up as a new command name.</p>
+      <div class="note"><strong>Space vs. Enter.</strong> Space submits the command line exactly like Enter, except while a command is actively capturing free text (currently only <code>TEXT</code>'s content), where a space is a literal word break instead.</div>
+    </section>
+
+    <section>
+      <h3 id="points">Entering points &amp; distances</h3>
+      <table>
+        <tr><th>Syntax</th><th>Meaning</th></tr>
+        <tr><td><code>12,8</code></td><td>Absolute point at x=12, y=8, in drawing units.</td></tr>
+        <tr><td><code>@4,-2</code></td><td>Point 4 right and 2 down from the last point (or the command's current base point).</td></tr>
+        <tr><td><code>@5&lt;30</code></td><td>Point 5 units away at 30&deg; from the last point (polar/relative).</td></tr>
+        <tr><td><code>3.5</code></td><td>A bare distance &mdash; drives along the current tracked direction from the last point.</td></tr>
+        <tr><td><code>6"</code>, <code>150mm</code>, <code>2m</code></td><td>A physical length with an explicit unit suffix, converted into drawing units automatically.</td></tr>
+        <tr><td><code>5'6"</code>, <code>5'6-1/2"</code></td><td>Feet and inches, including mixed fractions (hyphen-separated, since a bare space is a command terminator).</td></tr>
+        <tr><td><code>3/4</code>, <code>1-1/2</code></td><td>A plain or mixed fraction, interpreted in drawing units.</td></tr>
+      </table>
+      <p>A leading <code>-</code> negates a distance; a leading <code>+</code> is accepted and ignored.</p>
+    </section>
+
+    <section>
+      <h3 id="snap">Object snap</h3>
+      <p>
+        With <strong>SNAP</strong> on (the default), moving the cursor near existing geometry pulls
+        the pick point onto a precise feature of it &mdash; essential for drawing connected geometry
+        instead of eyeballing it. Click the snap-type readout in the status bar (next to the SNAP
+        toggle) to choose which snap types are active:
+      </p>
+      <table>
+        <tr><th>Type</th><th>Snaps to</th></tr>
+        <tr><td>Endpoint</td><td>The end of a line/arc segment or polyline vertex.</td></tr>
+        <tr><td>Intersection</td><td>Where two segments, or a segment and a circle/arc, or two circles/arcs, cross.</td></tr>
+        <tr><td>Midpoint</td><td>The midpoint of a segment or arc.</td></tr>
+        <tr><td>Center</td><td>The center of a circle or arc.</td></tr>
+        <tr><td>Quadrant</td><td>The 0&deg;/90&deg;/180&deg;/270&deg; points of a circle or arc.</td></tr>
+        <tr><td>Perpendicular</td><td>The point on a line/circle/arc that forms a right angle with the command's current base point. Only available once a command has a base point.</td></tr>
+        <tr><td>Tangent</td><td>The point on a circle/arc that a line from the current base point touches tangentially. Only available once a command has a base point, and only from outside the curve.</td></tr>
+        <tr><td>Nearest</td><td>The closest point on any segment/curve to the cursor &mdash; the fallback snap, consulted only when nothing more specific is under the pick aperture.</td></tr>
+      </table>
+      <p>When several snap points coincide on screen, the one listed first above wins, rather than whichever happens to be a pixel closer.</p>
+    </section>
+
+    <section>
+      <h3 id="ortho-polar">Ortho &amp; polar tracking</h3>
+      <p>
+        <strong>ORTHO</strong> (<kbd>F8</kbd>) constrains the next point to be exactly horizontal or
+        vertical from the current base point. <strong>POLAR</strong> (<kbd>F10</kbd>) instead locks
+        onto the nearest multiple of a chosen angle increment (45&deg; by default &mdash; change it
+        via the polar readout in the status bar) whenever the cursor comes close to that alignment
+        ray; move further off the ray and the lock releases. The two are mutually exclusive &mdash;
+        ORTHO is really polar tracking at a fixed 90&deg; increment, so turning one on turns the other off.
+        Both only apply to commands that opt into tracked point entry (drawing and most modify commands);
+        commands that ask you to pick a location rather than a measured point (e.g. which side of a line
+        to keep when trimming) ignore both.
+      </p>
+    </section>
+
+    <section>
+      <h3 id="selection">Selection &amp; grips</h3>
+      <p>
+        With no command running, click an object to select it, or drag a box: dragging left-to-right
+        selects only objects fully enclosed by the box, dragging right-to-left selects anything the
+        box touches. Hold <kbd>Shift</kbd> to add to the current selection instead of replacing it.
+        <kbd>Delete</kbd> erases the current selection. Commands that operate on a selection
+        (<code>MOVE</code>, <code>COPY</code>, <code>ERASE</code>, ...) use the same picking and
+        box-selection behavior at their "select objects" prompt.
+      </p>
+      <p>
+        Selected objects show small square <strong>grips</strong> at their defining points (endpoints,
+        center, etc.). Click and drag a grip to reshape or reposition that point directly, without
+        starting a command; click a grip without dragging to leave the edit live and then type or pick
+        a destination point.
+      </p>
+    </section>
+
+    <section>
+      <h3 id="layers">Layers</h3>
+      <p>
+        Every object lives on exactly one layer. The layers panel lists each with a radio-style
+        "make current" marker, an editable name, a color swatch, a visibility toggle, a lock toggle,
+        and a delete button. New objects are drawn onto the current layer, chosen from the dropdown
+        above the panel or by clicking a layer's marker. Locked layers can't be edited; hidden layers
+        don't render and aren't picked by selection or snap.
+      </p>
+      <p>
+        <strong>Assign selection to current</strong> moves the selected objects onto whichever layer
+        is current. Layer <code>0</code> can't be renamed or deleted, and the current layer can't be
+        deleted while it's current.
+      </p>
+    </section>
+
+    <section>
+      <h3 id="units">Units &amp; dimension style</h3>
+      <p>
+        Open <strong>Units (UN)</strong> to set the drawing's physical unit (inches, feet, millimeters,
+        centimeters, meters) and how lengths are displayed:
+      </p>
+      <table>
+        <tr><th>Format</th><th>Looks like</th><th>Notes</th></tr>
+        <tr><td>Decimal</td><td><code>18.50</code></td><td>Any drawing unit.</td></tr>
+        <tr><td>Fractional</td><td><code>18 1/2</code></td><td>Any drawing unit.</td></tr>
+        <tr><td>Architectural</td><td><code>1'-6 1/2&quot;</code></td><td>Inches only.</td></tr>
+        <tr><td>Engineering</td><td><code>1'-6.50&quot;</code></td><td>Inches only.</td></tr>
+      </table>
+      <p>
+        The units dialog offers to rescale existing geometry when you change the drawing unit, so
+        switching from inches to millimeters mid-drawing doesn't silently change what your geometry
+        means.
+      </p>
+      <p>
+        <strong>Dim Style (DST)</strong> controls how dimension objects are drawn: arrowhead style
+        (tick or arrow), overall scale, text height, arrow size, and text precision (or "follow the
+        document" to always match the current unit precision). New drawings default to arrows in
+        metric units and ticks otherwise, matching common drafting convention.
+      </p>
+      <div class="note">
+        <strong>Associative dimensions.</strong> A dimension remembers which geometry it measures, not
+        just the number it displayed when placed &mdash; move or resize that geometry and the
+        dimension updates with it. If the referenced geometry is deleted or changed beyond what the
+        reference can resolve, the dimension freezes at its last known value rather than disappearing
+        or erroring.
+      </div>
+    </section>
+
+    <section>
+      <h3 id="files">Files &amp; autosave</h3>
+      <p>
+        <strong>Save</strong> downloads the current drawing as a <code>&lt;name&gt;.draft2d.json</code>
+        file through the browser's normal download mechanism. <strong>Open</strong> loads a
+        <code>.draft2d.json</code> file back in. <strong>New</strong> clears the canvas (with a
+        confirmation if it isn't already empty).
+      </p>
+      <p>
+        Every change is also autosaved to the browser's local storage after a short delay, and the
+        previous autosave is kept as a backup slot. If a drawing is still open in browser storage when
+        you return &mdash; a crash, an accidental tab close, forgetting to Save &mdash; zbCAD offers
+        to recover it. <strong>Recover Backup</strong> in the toolbar explicitly restores the older,
+        previously-autosaved slot (rather than the most recent one) if you need to step back one
+        version, and replaces the current drawing when used, so Save first if you want to keep a copy
+        of what's currently open.
+      </p>
+      <p>Autosave and manual Save are a convenience, not a substitute for keeping your own backups &mdash; both live only in this browser's storage or wherever you chose to save the downloaded file.</p>
+    </section>
+
+    <h2 id="shortcuts">Keyboard shortcuts</h2>
+    <section>
+      <table>
+        <tr><th>Key</th><th>Action</th></tr>
+        <tr><td><kbd>Enter</kbd> / <kbd>Space</kbd> / right-click</td><td>Accept the active command's default action (finish it), or repeat the last command if idle.</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Cancel the active command. Never commits geometry &mdash; use Enter/Space/right-click for that.</td></tr>
+        <tr><td><kbd>Delete</kbd></td><td>Erase the current selection.</td></tr>
+        <tr><td><kbd>F8</kbd></td><td>Toggle ORTHO.</td></tr>
+        <tr><td><kbd>F10</kbd></td><td>Toggle POLAR.</td></tr>
+        <tr><td>Any letter/digit key</td><td>Jump focus to the command line and start typing (no need to click it first).</td></tr>
+        <tr><td><kbd>C</kbd> / <kbd>Close</kbd> (typed, mid-command)</td><td>Close a line/polyline back to its start point, for commands that support it.</td></tr>
+        <tr><td><kbd>U</kbd> / <kbd>Undo</kbd> (typed, mid-command)</td><td>Undo the last point placed in the current command.</td></tr>
+        <tr><td><kbd>Ctrl/Cmd+Z</kbd></td><td>Undo.</td></tr>
+        <tr><td><kbd>Ctrl/Cmd+Y</kbd></td><td>Redo.</td></tr>
+        <tr><td><kbd>Ctrl/Cmd+S</kbd></td><td>Save.</td></tr>
+        <tr><td><kbd>Ctrl/Cmd+O</kbd></td><td>Open.</td></tr>
+        <tr><td><kbd>Ctrl/Cmd+N</kbd></td><td>New drawing.</td></tr>
+        <tr><td>Scroll wheel</td><td>Zoom in/out, centered on the cursor.</td></tr>
+        <tr><td>Middle-drag</td><td>Pan the view.</td></tr>
+      </table>
+    </section>
+
+    <h2 id="commands">Command reference</h2>
+    <p>
+      Every command below can be started by clicking its toolbar button, or by typing its
+      canonical name or alias on the command line and pressing Enter/Space. Commands marked
+      <strong>ORTHO/POLAR</strong> honor tracking and object snap on the picks noted; picks
+      described as identifying "which object/side/piece" are deliberately unsnapped, since
+      snapping would change which piece of geometry you meant.
+    </p>
+
+    <section id="cmd-draw">
+      <h3>Draw</h3>
+
+      <div class="cmd-card">
+        <h4><span class="name">LINE</span><span class="aliases">alias L</span></h4>
+        <p>Draws one or more straight segments as independent LINE entities.</p>
+        <p class="steps">Click a first point, then click each next point (repeats). Each segment is added to the drawing as soon as it's drawn, not only when you finish.</p>
+        <p class="keys">Enter / right-click: finish &middot; <code>C</code>/Close: closes the run back to the start (needs 2+ segments already drawn) &middot; <code>U</code>/Undo: removes the last segment and lets you keep going &middot; a typed number after the first point is a distance along the tracked direction &middot; ORTHO/POLAR apply.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">PLINE</span><span class="aliases">alias PL, P</span></h4>
+        <p>Draws a single connected polyline entity (unlike LINE, whose segments are independent objects).</p>
+        <p class="steps">Click a start point, then click each next vertex, Enter to finish (needs 2+ points to create anything).</p>
+        <p class="keys"><code>C</code>/Close: closes the shape (needs 3+ points) and finishes &middot; <code>U</code>/Undo: removes the last vertex &middot; a typed number is a distance along the tracked direction &middot; ORTHO/POLAR apply &middot; a repeated point (same spot twice in a row) is rejected rather than silently producing a zero-length segment.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">RECTANGLE</span><span class="aliases">alias REC, RECTANG</span></h4>
+        <p>Draws a closed 4-vertex polyline from two opposite corners.</p>
+        <p class="steps">Click one corner, click the opposite corner.</p>
+        <p class="keys">A degenerate rectangle (zero width or height) is rejected.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">CIRCLE</span><span class="aliases">alias C</span></h4>
+        <p>Draws a circle. Three construction methods, chosen before the center is picked.</p>
+        <p class="steps"><strong>Center-Radius</strong> (default): click the center, then click a point or type a number for the radius.</p>
+        <p class="keys"><code>D</code>/<code>DIA</code>/<code>DIAMETER</code>: switch to Center-Diameter &mdash; same picks, but the value sets diameter instead of radius &middot; <code>2P</code>: switch to two-point mode &mdash; click each end of a diameter &middot; <code>3P</code>: switch to three-point mode &mdash; click three non-collinear points on the circumference. Degenerate input (zero size, collinear 3P points) is rejected with a prompt, keeping the command open.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">ARC</span><span class="aliases">alias A</span></h4>
+        <p>Draws a three-point arc.</p>
+        <p class="steps">Click the start point, click a point the arc passes through, click the endpoint. The three points must be distinct and non-collinear.</p>
+        <p class="keys">A typed number is a directed distance from the previous point &middot; ORTHO/POLAR apply.</p>
+      </div>
+    </section>
+
+    <section id="cmd-modify">
+      <h3>Modify</h3>
+
+      <div class="cmd-card">
+        <h4><span class="name">OFFSET</span><span class="aliases">alias O</span></h4>
+        <p>Creates a parallel copy of a line, polyline, circle, or arc at a fixed distance.</p>
+        <p class="steps">If a single offsettable object is already selected, it becomes the source immediately. Otherwise: type (or otherwise supply) the offset distance, click the source object, then click the side you want the copy to appear on.</p>
+        <p class="keys">The side-pick is unsnapped &mdash; it only indicates a direction. Only one offset is produced per run; start OFFSET again for another.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">TRIM</span><span class="aliases">alias TR</span> &nbsp;/&nbsp; <span class="name">EXTEND</span><span class="aliases">alias EX</span></h4>
+        <p>TRIM shortens a line/polyline/circle/arc against boundary geometry; EXTEND lengthens an open end to meet boundary geometry. The two share one command flow.</p>
+        <p class="steps">If objects are selected before starting, those act as the boundary set; otherwise every other visible, editable object in the drawing is a valid boundary. Click the portion to remove (TRIM) or the end to extend (EXTEND) &mdash; repeat for as many edits as needed.</p>
+        <p class="keys">Enter / right-click / Esc: finish. Picks are unsnapped, since they name which piece of which object is meant, not a coordinate.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">FILLET</span><span class="aliases">alias F</span> &nbsp;/&nbsp; <span class="name">CHAMFER</span><span class="aliases">alias CHA</span></h4>
+        <p>FILLET rounds a corner between two lines/polyline segments with an arc of a set radius; CHAMFER bevels it with a straight cut at set distance(s). Both work on independent LINE entities and on individual polyline segments/corners, and both remember the last radius/distance(s) you used between separate command runs.</p>
+        <p class="steps">Click the first line/segment, then click the second line/segment to complete that corner. The command loops back to "select the first line," so several corners can be cleaned up in one run.</p>
+        <p class="keys">FILLET: type <code>R</code>/<code>RAD</code>/<code>RADIUS</code> first to set the radius &middot; CHAMFER: type <code>D</code>/<code>DIST</code>/<code>DISTANCE</code> first to set the first distance, then a second (defaults to match the first &mdash; give a different value for an asymmetric chamfer) &middot; Enter/right-click/Esc: finish &middot; a zero value squares off the corner; negative values are rejected &middot; picks are unsnapped, since each identifies an edge and a side of the corner.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">JOIN</span><span class="aliases">alias J</span> &nbsp;/&nbsp; <span class="name">EXPLODE</span><span class="aliases">alias X</span> &nbsp;/&nbsp; <span class="name">ERASE</span><span class="aliases">alias E, DEL, DELETE</span></h4>
+        <p>JOIN merges compatible selected entities (e.g. collinear/contiguous lines or polyline segments) into one. EXPLODE breaks a polyline or other composite entity into its independent constituent entities. ERASE deletes the selection (also bound to the <kbd>Delete</kbd> key outside of any command).</p>
+        <p class="steps">If objects are already selected when the command starts, it applies immediately. Otherwise it prompts "select objects" and applies once you press Enter/right-click.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">STRETCH</span><span class="aliases">alias ST</span></h4>
+        <p>Moves the vertices of selected geometry that fall inside a crossing (partial) selection window, reshaping rather than only translating &mdash; an ordinary object pick instead moves that whole entity, matching how AutoCAD's STRETCH behaves.</p>
+        <p class="steps">Make a crossing-window selection (or pick whole objects), Enter/right-click to confirm, click a base point, then click a destination.</p>
+        <p class="keys">A typed distance, a relative <code>@</code> point, and ORTHO/POLAR all apply to the destination pick, same as MOVE.</p>
+      </div>
+    </section>
+
+    <section id="cmd-transform">
+      <h3>Transform</h3>
+
+      <div class="cmd-card">
+        <h4><span class="name">MOVE</span><span class="aliases">alias M</span> &nbsp;/&nbsp; <span class="name">COPY</span><span class="aliases">alias CO, CP</span></h4>
+        <p>MOVE translates the selection; COPY duplicates it at an offset, leaving the originals in place.</p>
+        <p class="steps">Select objects (Enter/right-click to confirm, or start with a preselection to skip straight to the base point), click a base point, then click a destination.</p>
+        <p class="keys">A typed distance or relative <code>@</code> point works instead of a click &middot; ORTHO/POLAR apply to the destination pick.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">ROTATE</span><span class="aliases">alias RO</span></h4>
+        <p>Rotates the selection about a base point.</p>
+        <p class="steps">Select objects, click a base point, then either click a point (angle measured from base point to cursor) or type a number of degrees.</p>
+        <p class="keys"><code>R</code>/<code>REF</code>/<code>REFERENCE</code>: rotate by reference &mdash; give a current angle (click/type), then the target absolute angle; the rotation applied is the difference &middot; ORTHO applies to the plain-angle pick only, not to reference picks &middot; a net rotation of exactly 0 is rejected.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">SCALE</span><span class="aliases">alias SC</span></h4>
+        <p>Scales the selection about a base point.</p>
+        <p class="steps">Select objects, click a base point, then either click a point (factor = distance from base) or type a factor (a trailing <code>x</code> is accepted, e.g. <code>2x</code>).</p>
+        <p class="keys"><code>R</code>/<code>REF</code>/<code>REFERENCE</code>: scale by reference &mdash; give a current reference length (two clicks or a typed length), then the new length; factor = new &divide; reference &middot; a factor of exactly 1, a non-positive factor, or one that would produce invalid geometry is rejected.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">MIRROR</span><span class="aliases">alias MI</span></h4>
+        <p>Reflects the selection across a line.</p>
+        <p class="steps">Select objects, click the first point of the mirror line, click the second point, then answer "Erase source objects? [Yes/No] &lt;No&gt;".</p>
+        <p class="keys">Type <code>Y</code>/<code>YES</code> or <code>N</code>/<code>NO</code>, or press Enter to accept the default (No &mdash; keep the originals, so the default behaves like a mirrored copy) &middot; ORTHO applies to the second mirror-line point &middot; a mirrored associative dimension stays linked to its mirrored copy of the geometry, not the original.</p>
+      </div>
+    </section>
+
+    <section id="cmd-annotate">
+      <h3>Annotate</h3>
+
+      <div class="cmd-card">
+        <h4><span class="name">DIMLINEAR</span><span class="aliases">alias DLI, DIMLIN</span> &nbsp;/&nbsp; <span class="name">DIMALIGNED</span><span class="aliases">alias DAL, DIMALI</span></h4>
+        <p>DIMLINEAR measures a strictly horizontal or vertical distance; DIMALIGNED measures the true distance along the line between the two points regardless of angle.</p>
+        <p class="steps">Click the first extension-line origin, click the second, then click where the dimension line and text should sit.</p>
+        <p class="keys">ORTHO applies to the first two picks, not the placement pick &middot; both origins are captured associatively when snapped onto real geometry, so the dimension updates if that geometry moves later (see LIST for associativity status) &middot; for DIMLINEAR, the placement pick's offset direction determines whether the result reads as horizontal or vertical &mdash; an ambiguous placement is rejected with a prompt &middot; requires the current layer to be unlocked and visible.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">DIMRADIUS</span><span class="aliases">alias DRA, DIMRAD</span> &nbsp;/&nbsp; <span class="name">DIMDIAMETER</span><span class="aliases">alias DDI, DIMDIA</span></h4>
+        <p>Radial and diameter dimensions on a circle or arc. DIMDIAMETER only accepts circles &mdash; an arc has no real point opposite its diameter, so it's refused with a message pointing you to DIMRADIUS instead.</p>
+        <p class="steps">Click the circle/arc to measure, then click again to set which way the leader points and how far out the text sits.</p>
+        <p class="keys">Neither pick is snapped: the first names an object, the second is a free direction/distance.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">TEXT</span><span class="aliases">alias T, DT, DTEXT</span></h4>
+        <p>Places a single line of text.</p>
+        <p class="steps">Click the insertion point &rarr; click a point or type a value for height (Enter accepts the current dimension style's text height) &rarr; click a point or type degrees for rotation (Enter accepts 0&deg;) &rarr; type the text content and press Enter.</p>
+        <p class="keys">ORTHO applies to the height pick &middot; while typing content, Space is a literal space rather than the command terminator, so multi-word text is typed normally.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">DIMSTYLE</span><span class="aliases">alias DST, DDIM</span></h4>
+        <p>Opens the Dimension Style dialog (see <a href="#units">Units &amp; dimension style</a>) &mdash; a direct action, not a drawing command.</p>
+      </div>
+    </section>
+
+    <section id="cmd-inquiry">
+      <h3>Inquiry</h3>
+      <p>Inquiry commands are read-only: they never modify the drawing or create an undo entry.</p>
+
+      <div class="cmd-card">
+        <h4><span class="name">DIST</span><span class="aliases">alias DI, DISTANCE</span></h4>
+        <p>Reports the distance and angle between two points.</p>
+        <p class="steps">Click a first point, click a second point &rarr; a report panel shows Distance, Angle (in the XY plane), Delta X, Delta Y, and both endpoint coordinates.</p>
+        <p class="keys">ORTHO applies to the picks.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">ID</span><span class="aliases">alias ID</span></h4>
+        <p>Reports the coordinate of a single point.</p>
+        <p class="steps">Click a point &rarr; a report panel shows its X and Y.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">AREA</span><span class="aliases">alias AA</span></h4>
+        <p>Computes an area and perimeter, two ways.</p>
+        <p class="steps"><strong>Point mode</strong> (default): click points one at a time; once 3+ are picked, Enter reports Area, Perimeter, and point count. The polygon shades live as you add points, with a running preview of the closing segment.</p>
+        <p class="keys">Type <code>O</code>/<code>OBJECT</code> to switch to object mode instead: select a single closed polyline or circle and its Area and Perimeter/Circumference are read directly from the entity. Type <code>P</code>/<code>POINT</code>/<code>POINTS</code> to switch back. Switching modes clears any points picked or selection made so far. Point mode requires 3+ points; object mode requires exactly one closed polyline or circle.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">LIST</span><span class="aliases">alias LI</span></h4>
+        <p>Reports full geometric detail for the selected entities.</p>
+        <p class="steps">If nothing is preselected, prompts "select objects," then Enter/right-click reports. If you select first and then type LIST, it reports immediately.</p>
+        <p class="keys">Per-type detail: <strong>LINE</strong> (endpoints, length, angle) &middot; <strong>PLINE</strong> (vertex count, open/closed, length or perimeter, area if closed) &middot; <strong>CIRCLE</strong> (center, radius, diameter, circumference, area) &middot; <strong>ARC</strong> (center, radius, start/end/included angle, arc length, chord) &middot; <strong>TEXT</strong> (position, height, rotation, content) &middot; <strong>DIM</strong> (type, measured text and exact value, endpoints, style name, and associativity: Yes/Partial/No, based on how many of its reference points still resolve to live geometry). A multi-entity selection also gets a summary (object count, total length, total area where applicable); only the first 20 entities are detailed, with a count of how many more weren't listed.</p>
+      </div>
+    </section>
+
+    <section id="cmd-other">
+      <h3>Other commands</h3>
+      <table>
+        <tr><th>Command</th><th>Alias</th><th>Effect</th></tr>
+        <tr><td>ZOOMEXTENTS</td><td><code>Z</code>, <code>ZE</code></td><td>Fits the view to the drawing extents (same as the Zoom Extents toolbar button).</td></tr>
+        <tr><td>UNITS</td><td><code>UN</code>, <code>DDUNITS</code></td><td>Opens the Units dialog.</td></tr>
+        <tr><td>SELECT</td><td><code>S</code></td><td>The idle mode everything returns to &mdash; click to pick objects, drag for a window/crossing selection. Not a drawing command in its own right.</td></tr>
+      </table>
+    </section>
+
+    <footer>zbCAD is a prototype. This page documents its current behavior and will change as the app does.</footer>
+  </main>
+</body>
+</html>
