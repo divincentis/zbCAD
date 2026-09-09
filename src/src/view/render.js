@@ -14,6 +14,13 @@ import { state } from '../state.js';
 import { drawGrid } from './grid.js';
 import { worldToScreen } from './viewport.js';
 
+// A selected entity used to be recolored solid white, which erased the one
+// thing (its layer color) a draughtsman uses to tell entities apart at a
+// glance. A halo drawn behind the entity's own color keeps that readable.
+export const SELECTION_HALO_COLOR = 'rgba(86, 214, 255, 0.65)';
+export const SELECTION_HALO_LINE_EXTRA_PX = 5;
+export const SELECTION_HALO_TEXT_WIDTH_PX = 3;
+
 export function drawArrowHead(tip, direction, sizePx, color) {
   const width = sizePx * 0.36;
   const backX = tip.x - direction.x * sizePx;
@@ -29,27 +36,38 @@ export function drawArrowHead(tip, direction, sizePx, color) {
   ctx.fill();
 }
 
-export function drawDimension(entity, preview, color) {
+export function drawDimension(entity, preview, color, selected = false) {
   const geometry = dimensionGeometry(entity);
   const style = geometry.style;
   const scale = state.view.scale;
   const q1 = worldToScreen(geometry.q1);
   const q2 = worldToScreen(geometry.q2);
 
+  const strokeDimensionLine = () => {
+    ctx.beginPath();
+    ctx.moveTo(q1.x, q1.y);
+    ctx.lineTo(q2.x, q2.y);
+    for (const extension of [geometry.extension1, geometry.extension2]) {
+      if (!extension) continue;
+      const a = worldToScreen(extension[0]);
+      const b = worldToScreen(extension[1]);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+    }
+    ctx.stroke();
+  };
+
+  if (selected) {
+    ctx.strokeStyle = SELECTION_HALO_COLOR;
+    ctx.lineWidth = (preview ? 1 : 1.1) + SELECTION_HALO_LINE_EXTRA_PX;
+    ctx.setLineDash([]);
+    strokeDimensionLine();
+  }
+
   ctx.strokeStyle = color;
   ctx.lineWidth = preview ? 1 : 1.1;
   ctx.setLineDash(preview ? [6, 4] : []);
-  ctx.beginPath();
-  ctx.moveTo(q1.x, q1.y);
-  ctx.lineTo(q2.x, q2.y);
-  for (const extension of [geometry.extension1, geometry.extension2]) {
-    if (!extension) continue;
-    const a = worldToScreen(extension[0]);
-    const b = worldToScreen(extension[1]);
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-  }
-  ctx.stroke();
+  strokeDimensionLine();
   ctx.setLineDash([]);
 
   // Terminators. Screen direction, not world direction, because the Y axis is
@@ -89,6 +107,11 @@ export function drawDimension(entity, preview, color) {
     const width = ctx.measureText(text).width;
     ctx.fillStyle = 'rgba(17, 17, 17, .82)';
     ctx.fillRect(-width / 2 - heightPx * 0.2, -heightPx * 0.62, width + heightPx * 0.4, heightPx * 1.24);
+    if (selected) {
+      ctx.lineWidth = SELECTION_HALO_TEXT_WIDTH_PX;
+      ctx.strokeStyle = SELECTION_HALO_COLOR;
+      ctx.strokeText(text, 0, 0);
+    }
     ctx.fillStyle = color;
     ctx.fillText(text, 0, 0);
     ctx.restore();
@@ -97,7 +120,7 @@ export function drawDimension(entity, preview, color) {
   }
 }
 
-export function drawText(e, preview, color) {
+export function drawText(e, preview, color, selected = false) {
   const screen = worldToScreen(e.position);
   const heightPx = e.height * state.view.scale;
   if (heightPx < 2) return; // Illegible below this; skip rather than draw a smear.
@@ -109,8 +132,13 @@ export function drawText(e, preview, color) {
   ctx.font = `${heightPx}px monospace`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = color;
   if (preview) ctx.globalAlpha = 0.6;
+  if (selected) {
+    ctx.lineWidth = SELECTION_HALO_TEXT_WIDTH_PX;
+    ctx.strokeStyle = SELECTION_HALO_COLOR;
+    ctx.strokeText(e.content, 0, 0);
+  }
+  ctx.fillStyle = color;
   ctx.fillText(e.content, 0, 0);
   ctx.restore();
 }
@@ -119,7 +147,7 @@ export function drawText(e, preview, color) {
 // wrapped line is a separate fillText offset down the local y axis — which,
 // inside this already-rotated/flipped frame, is simply "further down the
 // page" regardless of the entity's own rotation.
-export function drawMText(e, preview, color) {
+export function drawMText(e, preview, color, selected = false) {
   const screen = worldToScreen(e.position);
   const heightPx = e.height * state.view.scale;
   if (heightPx < 2) return;
@@ -130,8 +158,13 @@ export function drawMText(e, preview, color) {
   ctx.font = `${heightPx}px monospace`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = color;
   if (preview) ctx.globalAlpha = 0.6;
+  if (selected) {
+    ctx.lineWidth = SELECTION_HALO_TEXT_WIDTH_PX;
+    ctx.strokeStyle = SELECTION_HALO_COLOR;
+    mtextLines(e).forEach((line, index) => ctx.strokeText(line, 0, index * lineHeightPx));
+  }
+  ctx.fillStyle = color;
   mtextLines(e).forEach((line, index) => ctx.fillText(line, 0, index * lineHeightPx));
   ctx.restore();
 }
@@ -150,48 +183,69 @@ export function dashPatternForLayer(layer) {
 
 export function drawEntity(e, preview = false) {
   const layer = getLayer(e.layerId);
-  ctx.lineWidth = preview ? 1 : lineWidthForLayer(layer);
   const layerColor = layer?.color || '#d6d6d6';
-  ctx.strokeStyle = preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor;
+  const color = preview ? '#bdbdbd' : layerColor;
+  const selected = !preview && state.selected.has(e.id);
+
   if (e.type === 'DIM') {
-    drawDimension(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
+    drawDimension(e, preview, color, selected);
     return;
   }
   if (e.type === 'TEXT') {
-    drawText(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
+    drawText(e, preview, color, selected);
     return;
   }
   if (e.type === 'MTEXT') {
-    drawMText(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
+    drawMText(e, preview, color, selected);
     return;
   }
-  if (preview) ctx.setLineDash([6,4]); else ctx.setLineDash(dashPatternForLayer(layer));
-  ctx.beginPath();
-  if (e.type === 'CIRCLE') {
-    const center = worldToScreen(e.center);
-    ctx.arc(center.x, center.y, e.radius * state.view.scale, 0, TAU);
-  } else if (e.type === 'ARC') {
-    const center = worldToScreen(e.center);
-    ctx.arc(center.x, center.y, e.radius * state.view.scale, -e.startAngle, -e.endAngle, true);
-  } else {
-    for (const [a,b,arc] of entitySegments(e)) {
-      const sa = worldToScreen(a), sb = worldToScreen(b);
-      ctx.moveTo(sa.x,sa.y);
-      if (arc) {
-        // Screen Y runs opposite world Y, so the angles are negated and the
-        // sweep direction flips with them: a counter-clockwise world arc is
-        // drawn anticlockwise=true here, exactly as an ARC entity is above.
-        const center = worldToScreen(arc.center);
-        ctx.arc(center.x, center.y, arc.radius * state.view.scale, -arc.angleA, -arc.angleB, arc.sweep > 0);
-      } else {
-        ctx.lineTo(sb.x,sb.y);
+
+  const baseWidth = preview ? 1 : lineWidthForLayer(layer);
+  const buildPath = () => {
+    ctx.beginPath();
+    if (e.type === 'CIRCLE') {
+      const center = worldToScreen(e.center);
+      ctx.arc(center.x, center.y, e.radius * state.view.scale, 0, TAU);
+    } else if (e.type === 'ARC') {
+      const center = worldToScreen(e.center);
+      ctx.arc(center.x, center.y, e.radius * state.view.scale, -e.startAngle, -e.endAngle, true);
+    } else {
+      for (const [a,b,arc] of entitySegments(e)) {
+        const sa = worldToScreen(a), sb = worldToScreen(b);
+        ctx.moveTo(sa.x,sa.y);
+        if (arc) {
+          // Screen Y runs opposite world Y, so the angles are negated and the
+          // sweep direction flips with them: a counter-clockwise world arc is
+          // drawn anticlockwise=true here, exactly as an ARC entity is above.
+          const center = worldToScreen(arc.center);
+          ctx.arc(center.x, center.y, arc.radius * state.view.scale, -arc.angleA, -arc.angleB, arc.sweep > 0);
+        } else {
+          ctx.lineTo(sb.x,sb.y);
+        }
       }
     }
+  };
+
+  // The halo is a wider, translucent stroke of the same path drawn first, so
+  // the entity's own layer color still reads on top of it — replacing that
+  // color outright (as this used to) made every selected entity look the
+  // same regardless of which layer it was on.
+  if (selected) {
+    ctx.strokeStyle = SELECTION_HALO_COLOR;
+    ctx.lineWidth = baseWidth + SELECTION_HALO_LINE_EXTRA_PX;
+    ctx.setLineDash([]);
+    buildPath();
+    ctx.stroke();
   }
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = baseWidth;
+  if (preview) ctx.setLineDash([6,4]); else ctx.setLineDash(dashPatternForLayer(layer));
+  buildPath();
   ctx.stroke();
   ctx.setLineDash([]);
 
-  if (state.selected.has(e.id) && !preview) {
+  if (selected) {
     const points = entityGrips(e).map(grip => grip.point);
     ctx.fillStyle = '#fff';
     for (const p of points) {
@@ -412,7 +466,9 @@ export function render() {
   ctx.fillRect(0,0,canvas.clientWidth,canvas.clientHeight);
   drawGrid();
   for (const e of state.entities) {
-    if (isEntityVisible(e)) drawEntity(e);
+    // The entity currently being retyped (EDITTEXT/DDEDIT-style) is represented
+    // by the command's own live preview instead, so it isn't drawn twice.
+    if (isEntityVisible(e) && e.id !== state.text?.editingId) drawEntity(e);
   }
   drawPreview();
   drawPolarTracking();

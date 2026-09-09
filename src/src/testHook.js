@@ -1,5 +1,6 @@
 import { COMMAND_ALIASES, resolveCommandName } from './commands/aliases.js';
 import { acceptInquirySelection, commitAreaKeyword, finishInquiryPoints } from './commands/inquiry.js';
+import { startTextEdit, updateTextContent } from './commands/annotate.js';
 import { COMMANDS, activeCommand, cancelCurrent, closeCurrentPath, commandAcceptsPoint, commandInProgress, commandLiveValue, commandPreviewReady, commandSelectsObjects, commandTakesDistance, commandUsesOrtho, commandUsesSnap, commitPoint, finishCurrent, navigateHistory, startCommand, undoLastPoint } from './commands/registry.js';
 import { acceptTransformSelection } from './commands/transform.js';
 import { AUTOSAVE_BACKUP_KEY, AUTOSAVE_KEY, DOCUMENT_VERSION, POLAR_INCREMENTS } from './core/constants.js';
@@ -223,6 +224,8 @@ window.__cadPrototype = {
   finishEdgeEdit,
   deleteSelected,
   selectAt,
+  startTextEdit,
+  updateTextContent,
   undo,
   redo,
   closeCurrentPath,

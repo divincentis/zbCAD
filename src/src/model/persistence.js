@@ -7,7 +7,7 @@ import { readAutosaveRecord } from './autosaveStore.js';
 import { autosaveTimer, markDirty, releaseBackupPin, scheduleAutosave, writeAutosave } from './dirty.js';
 import { exportDocumentText, parseDocumentText } from './document.js';
 import { state } from '../state.js';
-import { setFileStatus } from '../ui/status.js';
+import { setAutosaveStatus, setFileStatus } from '../ui/status.js';
 import { zoomExtents } from '../view/viewport.js';
 
 export function applyDocument(documentData, dirty = true) {
@@ -25,6 +25,7 @@ export function applyDocument(documentData, dirty = true) {
   state.future = [];
   state.documentDirty = dirty;
   if (dirty) scheduleAutosave();
+  else setAutosaveStatus('saved');
   setMode('SELECT');
   documentChanged();
   zoomExtents();

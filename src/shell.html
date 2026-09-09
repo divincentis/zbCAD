@@ -247,6 +247,39 @@ button.layer-color {
   pointer-events: none;
 }
 .layer-hint { margin-top: auto; color: #888; font-size: 10px; line-height: 1.35; }
+.color-menu {
+  position: fixed;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: repeat(8, 20px);
+  gap: 4px;
+  padding: 8px;
+  background: #2b2b2b;
+  border: 1px solid #4a4a4a;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.45);
+}
+.color-menu[hidden] { display: none; }
+.color-swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #4a4a4a;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.color-swatch.current { border-color: #56d6ff; box-shadow: 0 0 0 1px #56d6ff; }
+.color-menu-custom {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: #333;
+  border: 1px solid #4a4a4a;
+  border-radius: 2px;
+  color: #ddd;
+  font-size: 11px;
+  cursor: pointer;
+}
 
 .statusbar {
   display: flex;
@@ -321,6 +354,15 @@ kbd { font-size: 9px; opacity: .65; }
   white-space: nowrap;
 }
 .file-status.error { color: #ff8b8b; }
+/* fileStatus already prints one-shot messages like "Autosaved" or "Opened",
+   but those get overwritten by the next unrelated message (a new layer,
+   an assign, an error) within seconds — this is a second, dedicated readout
+   that always answers "is autosave current right now", independent of
+   whatever fileStatus happens to be showing at that moment. */
+.autosave-status { min-width: 74px; font: 10px Consolas, monospace; text-align: center; }
+.autosave-status.saved { color: #69d285; }
+.autosave-status.pending { color: #ffc857; }
+.autosave-status.error { color: #ff6b6b; }
 /* The coordinate readout is the last item in an auto-width flex row, so any
    change in its width used to push every control to its left. Each axis now
    gets its own fixed-width cell, sized from the current unit format rather than
@@ -635,6 +677,7 @@ kbd { font-size: 9px; opacity: .65; }
     </div>
     <aside id="layerPanel" class="layer-panel" aria-label="Layer manager">
       <input id="layerColorPicker" type="color" class="layer-color-anchor" tabindex="-1" aria-hidden="true" />
+      <div id="layerColorMenu" class="color-menu" role="menu" aria-label="Layer color" hidden></div>
       <div class="layer-heading">
         <strong>Layers</strong>
         <div class="layer-heading-actions">
@@ -663,6 +706,7 @@ kbd { font-size: 9px; opacity: .65; }
       <button id="polarStatus" class="snap-status" title="Polar tracking increment">45&deg;</button>
       <button id="unitStatus" class="unit-status" title="Drawing units and display format">—</button>
       <span id="fileStatus" class="file-status">Untitled</span>
+      <span id="autosaveStatus" class="autosave-status saved" title="Autosave is up to date">SAVED</span>
       <span id="engineStatus" class="engine-status loading">ENGINE: LOADING</span>
       <span id="coords">
         <span class="axis"><span class="axis-label">X</span><span id="coordX" class="axis-value">0</span></span>

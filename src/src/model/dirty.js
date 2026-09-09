@@ -2,7 +2,7 @@ import { AUTOSAVE_BACKUP_KEY, AUTOSAVE_KEY } from '../core/constants.js';
 import { readAutosaveRecord, writeAutosaveRecord, writeAutosaveRecordSync } from './autosaveStore.js';
 import { exportDocumentText, parseDocumentText } from './document.js';
 import { state } from '../state.js';
-import { setFileStatus } from '../ui/status.js';
+import { setAutosaveStatus, setFileStatus } from '../ui/status.js';
 
 export let autosaveTimer = null;
 
@@ -53,6 +53,7 @@ export function writeAutosaveOnUnload() {
 
 export function scheduleAutosave() {
   if (!state.documentDirty) return;
+  setAutosaveStatus('pending');
   autosaveGeneration += 1;
   if (autosaveTimer !== null) clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
@@ -66,8 +67,10 @@ export function scheduleAutosave() {
       if (generation !== autosaveGeneration) return;
       state.documentDirty = false;
       setFileStatus(`${state.drawingName} · Autosaved`);
+      setAutosaveStatus('saved');
     }, error => {
       setFileStatus(`Autosave failed — saved recovery copies retained. ${error.message || 'Use Save.'}`, true);
+      setAutosaveStatus('error');
     });
   }, 250);
 }

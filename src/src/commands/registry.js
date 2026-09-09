@@ -23,7 +23,12 @@ import { draw } from '../view/frame.js';
 //
 // A command may define:
 //   stateMode        optional shared runtime mode used while this command runs
-//   creates          clears the selection and requires an editable layer
+//   creates          boolean or predicate: clears the selection and requires
+//                    an editable current layer (TEXT/MTEXT turn this off when
+//                    re-entering to edit an existing entity in place, since
+//                    that checks the entity's own layer instead — see
+//                    isEntityEditable() — and must not disturb the selection
+//                    the double-click just made)
 //   canBegin()       validates activation; returning false refuses the command
 //   usesOrtho        boolean or predicate controlling ORTHO for this stage
 //   takesDistance    boolean or predicate: a typed number is a direct distance
@@ -147,7 +152,7 @@ export function requireIdle(what) {
 export function activateCommandMode(commandName) {
   const command = COMMANDS.get(commandName);
   if (command?.canBegin && !command.canBegin()) return false;
-  if (command?.creates) {
+  if (staged(command?.creates, command)) {
     if (!currentLayerIsEditable()) return false;
     // Existing selection is unrelated to creation and would otherwise remain
     // highlighted throughout the command. New geometry also stays unselected.

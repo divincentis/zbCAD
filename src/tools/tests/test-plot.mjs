@@ -255,6 +255,24 @@ reset();
     colored.warnings.some(warning => /faint/.test(warning)));
 }
 
+reset();
+{
+  // White is the traditional "screen white, paper black" CAD color — plotted
+  // literally it would be invisible ink on white paper.
+  api.setLayerColor('0', '#ffffff');
+  drawLine({ x: 0, y: 0 }, { x: 10, y: 0 });
+  const colored = api.buildPlotPlan(settings({ color: 'layer' }));
+  const rgb = colored.ops.find(op => op.kind === 'stroke').color;
+  check('white layer color plots black', rgb.every(channel => channel === 0), JSON.stringify(rgb));
+
+  // A deliberately chosen off-white is left alone rather than also mapped.
+  api.setLayerColor('0', '#f5f0e8');
+  const offWhite = api.buildPlotPlan(settings({ color: 'layer' }));
+  const offWhiteRgb = offWhite.ops.find(op => op.kind === 'stroke').color;
+  check('a near-white but non-white layer color plots as itself',
+    offWhiteRgb.some(channel => channel !== 0), JSON.stringify(offWhiteRgb));
+}
+
 // ---------------------------------------------------------------------------
 // Curved and annotated geometry
 // ---------------------------------------------------------------------------

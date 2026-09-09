@@ -1,6 +1,7 @@
 import { commandCapturesSpace, commandLiveValue, navigateHistory, startCommand } from '../commands/registry.js';
+import { LAYER_BASIC_COLORS } from '../core/constants.js';
 import { LENGTH_FORMATS } from '../core/units.js';
-import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, toolbarAutohideBtn, topbar, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
+import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, layerColorMenu, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, toolbarAutohideBtn, topbar, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
 import { submitCommandInput } from '../interaction/pointer.js';
 import { writeAutosaveOnUnload } from '../model/dirty.js';
 import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, setLayerLinetype, setLayerLineweight, toggleLayerLock, toggleLayerPrintable, toggleLayerVisibility } from '../model/layers.js';
@@ -160,8 +161,7 @@ layerList.addEventListener('click', event => {
   else if (action === 'delete') deleteLayer(id);
   else if (action === 'color') {
     activeColorLayerId = id;
-    layerColorPicker.value = event.target.dataset.layerColor;
-    layerColorPicker.click();
+    openColorMenu(event.target, event.target.dataset.layerColor);
   }
 });
 layerList.addEventListener('change', event => {
@@ -178,6 +178,51 @@ layerList.addEventListener('change', event => {
 let activeColorLayerId = null;
 layerColorPicker.addEventListener('change', () => {
   if (activeColorLayerId) setLayerColor(activeColorLayerId, layerColorPicker.value);
+});
+
+// A basic-colors swatch menu answers the common case ("make this layer red")
+// without the OS picker's extra clicks; "Custom…" still reaches it for
+// anything not in the palette. Built once since the palette is fixed.
+layerColorMenu.innerHTML = LAYER_BASIC_COLORS.map(color =>
+  `<button type="button" class="color-swatch" data-color="${color}" style="background-color: ${color};" title="${color}" aria-label="${color}"></button>`,
+).join('') + '<button type="button" class="color-menu-custom" data-color-custom>Custom…</button>';
+
+function openColorMenu(anchorEl, currentColor) {
+  for (const swatch of layerColorMenu.querySelectorAll('.color-swatch')) {
+    swatch.classList.toggle('current', swatch.dataset.color === currentColor);
+  }
+  const rect = anchorEl.getBoundingClientRect();
+  layerColorMenu.hidden = false;
+  // Flip left of the button instead of clipping off the right edge of the
+  // docked panel, the same problem the native-picker anchor trick works
+  // around above.
+  const menuWidth = layerColorMenu.offsetWidth;
+  layerColorMenu.style.left = `${Math.max(4, rect.left - menuWidth + rect.width)}px`;
+  layerColorMenu.style.top = `${rect.bottom + 4}px`;
+}
+
+function closeColorMenu() {
+  layerColorMenu.hidden = true;
+}
+
+layerColorMenu.addEventListener('click', event => {
+  const color = event.target?.dataset?.color;
+  if (color) {
+    if (activeColorLayerId) setLayerColor(activeColorLayerId, color);
+    closeColorMenu();
+  } else if (event.target?.dataset?.colorCustom !== undefined) {
+    layerColorPicker.value = layerColorMenu.querySelector('.color-swatch.current')?.dataset.color || '#ffffff';
+    closeColorMenu();
+    layerColorPicker.click();
+  }
+});
+document.addEventListener('click', event => {
+  if (!layerColorMenu.hidden && !layerColorMenu.contains(event.target) && event.target.dataset?.layerAction !== 'color') {
+    closeColorMenu();
+  }
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !layerColorMenu.hidden) closeColorMenu();
 });
 openInput.addEventListener('change', async () => {
   const file = openInput.files?.[0];

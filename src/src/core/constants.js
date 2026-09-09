@@ -77,6 +77,15 @@ export const LINEWEIGHTS = Object.freeze([
 ]);
 export const DEFAULT_LINEWEIGHT = 0.25;
 
+// A basic-colors palette for the layer color swatch menu — the OS color
+// picker (still reachable via "Custom…") is precise but slow for the common
+// case of just wanting "red" or "green". Hue wheel plus a grayscale ramp,
+// matching the kind of fixed palette every CAD/drawing program offers.
+export const LAYER_BASIC_COLORS = Object.freeze([
+  '#ff0000', '#ff7f00', '#ffff00', '#7fff00', '#00ff00', '#00ff7f', '#00ffff', '#007fff',
+  '#0000ff', '#7f00ff', '#ff00ff', '#ff007f', '#ffffff', '#bfbfbf', '#7f7f7f', '#404040',
+]);
+
 // On-screen line width is a fixed multiple of the millimeter lineweight
 // rather than something that scales with zoom, matching how CAD programs
 // keep lineweight legible regardless of view scale. The multiplier is chosen

@@ -1,4 +1,5 @@
 import { resolveCommandName } from '../commands/aliases.js';
+import { startTextEdit } from '../commands/annotate.js';
 import { activeCommand, cancelCurrent, commandSelectsObjects, commitPoint, finishCurrent, navigateHistory, startCommand } from '../commands/registry.js';
 import { canvas, commandInput, currentLayerSelect, dimStyleDialog, plotDialog, polarDialog, snapDialog, unitsDialog } from '../dom.js';
 import { hitTestGrip, startGripEdit } from '../geometry/grips.js';
@@ -109,6 +110,24 @@ canvas.addEventListener('mouseup', ev => {
       commitPoint(getActivePoint());
     }
   }
+});
+
+// AutoCAD's DDEDIT is a typed command; a double-click is the mouse-driven
+// shortcut most drawing programs offer for the same thing, so it lives here
+// rather than as a typed alias. Only TEXT/MTEXT are hit-tested — a
+// double-click on other entity types has nothing to hand off to yet.
+canvas.addEventListener('dblclick', ev => {
+  if (state.mode !== 'SELECT') return;
+  const world = screenToWorld(canvasPoint(ev));
+  let hit = null;
+  let best = 8;
+  for (const entity of state.entities) {
+    if (entity.type !== 'TEXT' && entity.type !== 'MTEXT') continue;
+    if (!isEntityEditable(entity)) continue;
+    const d = distanceToEntityPx(world, entity);
+    if (d < best) { best = d; hit = entity; }
+  }
+  if (hit) startTextEdit(hit);
 });
 
 canvas.addEventListener('contextmenu', ev => {

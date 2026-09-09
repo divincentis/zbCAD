@@ -1,4 +1,4 @@
-import { defineCommand, setMode } from './registry.js';
+import { COMMAND_COMPLETE, defineCommand, setMode, startCommand } from './registry.js';
 import { DEGREES } from './transform.js';
 import { DEFAULT_DIM_STYLE_ID } from '../core/defaults.js';
 import { TAU } from '../core/constants.js';
@@ -8,10 +8,10 @@ import { hitTestSegment } from '../geometry/edgeEdit.js';
 import { formatLength } from '../core/units.js';
 import { buildDimension, dimensionGeometry, resolveEntityReference } from '../model/dimension.js';
 import { commitGeometry } from '../model/history.js';
-import { currentLayerIsEditable } from '../model/layerQuery.js';
+import { currentLayerIsEditable, isEntityEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';
 import { draw } from '../view/frame.js';
-import { updatePrompt } from '../ui/prompt.js';
+import { notePrompt, updatePrompt } from '../ui/prompt.js';
 import { drawEntity } from '../view/render.js';
 
 export function dimensionCommand(dimType, label) {
@@ -275,6 +275,33 @@ export function addText(kind, position, height, rotation, content, width) {
   return commitGeometry([...state.entities, entity], { nextId: state.nextId + 1 });
 }
 
+export function updateTextContent(id, content) {
+  const entity = state.entities.find(e => e.id === id);
+  if (!entity || !isEntityEditable(entity)) return false;
+  return commitGeometry(state.entities.map(e => (e.id === id ? { ...e, content } : e)));
+}
+
+// A double-click hands off the id here rather than through state.text, which
+// setMode() unconditionally nulls out on the way into textCommand's own
+// begin() — see the pendingTextEditId read there.
+let pendingTextEditId = null;
+
+export function startTextEdit(entity) {
+  if (!entity || (entity.type !== 'TEXT' && entity.type !== 'MTEXT')) return false;
+  if (!isEntityEditable(entity)) {
+    updatePrompt('That layer is locked or hidden.');
+    return false;
+  }
+  pendingTextEditId = entity.id;
+  const started = startCommand(entity.type);
+  // startCommand refuses (another command already running, say) without ever
+  // reaching textCommand's begin() — the one place that normally consumes
+  // this — so an unconsumed id here would otherwise poison the next
+  // unrelated TEXT/MTEXT placement into thinking it's an edit too.
+  if (!started) pendingTextEditId = null;
+  return started;
+}
+
 // A style's textHeight is already the "what does normal annotation text look
 // like in this drawing" answer — dimension text uses exactly this number —
 // so plain TEXT defaults to it too rather than inventing a second default.
@@ -294,7 +321,13 @@ export function textCommand(kind, label) {
   const hasWidth = kind === 'MTEXT';
 
   return {
-    creates: true,
+    // Placing new text needs an editable current layer and an empty
+    // selection; editing an existing one in place (see pendingTextEditId)
+    // checks that entity's own layer instead and must leave the selection
+    // startTextEdit just made alone — see registry.js's activateCommandMode.
+    creates() {
+      return pendingTextEditId == null;
+    },
     usesOrtho: true,
 
     takesDistance() {
@@ -309,6 +342,31 @@ export function textCommand(kind, label) {
     },
 
     begin() {
+      if (pendingTextEditId != null) {
+        const id = pendingTextEditId;
+        pendingTextEditId = null;
+        const entity = state.entities.find(e => e.id === id && e.type === kind);
+        if (!entity) {
+          // Deleted, or its layer changed, between the double-click and here.
+          notePrompt('That text is no longer editable.');
+          return COMMAND_COMPLETE;
+        }
+        state.text = {
+          kind, stage: 'CONTENT',
+          position: entity.position, width: entity.width ?? null,
+          height: entity.height, rotation: entity.rotation,
+          // The old content previews as-is until the first keystroke, but
+          // typing starts a fresh multi-line entry rather than appending to
+          // it — lines stays empty so retyping doesn't have to first "erase"
+          // committed old lines, which this line-by-line entry has no way
+          // to do anyway.
+          lines: [],
+          liveContent: entity.content,
+          editingId: entity.id,
+        };
+        state.selected = new Set([entity.id]);
+        return;
+      }
       state.text = {
         kind, stage: 'POINT', position: null, width: null, height: null, rotation: null,
         lines: [], liveContent: '',
@@ -413,7 +471,14 @@ export function textCommand(kind, label) {
           return true;
         }
         if (!text) { updatePrompt('Enter the text to place:'); return true; }
-        if (addText(kind, operation.position, operation.height, operation.rotation, text)) setMode('SELECT');
+        const editingId = operation.editingId;
+        const committed = editingId != null
+          ? updateTextContent(editingId, text)
+          : addText(kind, operation.position, operation.height, operation.rotation, text);
+        if (committed) {
+          if (editingId != null) state.selected = new Set([editingId]);
+          setMode('SELECT');
+        }
         return true;
       }
       return false;
@@ -464,7 +529,13 @@ export function textCommand(kind, label) {
           updatePrompt('Enter at least one line of text.');
           return false;
         }
-        if (addText(kind, operation.position, operation.height, operation.rotation, operation.lines.join('\n'), operation.width)) {
+        const content = operation.lines.join('\n');
+        const editingId = operation.editingId;
+        const committed = editingId != null
+          ? updateTextContent(editingId, content)
+          : addText(kind, operation.position, operation.height, operation.rotation, content, operation.width);
+        if (committed) {
+          if (editingId != null) state.selected = new Set([editingId]);
           setMode('SELECT');
         }
         return;

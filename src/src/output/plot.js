@@ -75,6 +75,10 @@ export function plottableEntities() {
 export function plotHexColor(hex) {
   const match = /^#([0-9a-fA-F]{6})$/.exec(String(hex || ''));
   if (!match) return [0, 0, 0];
+  // White is the traditional "screen white, paper black" CAD color — the one
+  // color guaranteed to vanish into white paper otherwise. Only exact white
+  // maps; a deliberately chosen off-white/cream layer color is left alone.
+  if (match[1].toLowerCase() === 'ffffff') return [0, 0, 0];
   const value = parseInt(match[1], 16);
   return [((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255];
 }
