@@ -142,8 +142,7 @@ button.active, button.on { background: #565656; border-color: #888; }
 .layer-panel.collapsed #currentLayerSelect,
 .layer-panel.collapsed .assign-layer,
 .layer-panel.collapsed .layer-list,
-.layer-panel.collapsed .layer-hint,
-.layer-panel.collapsed #dimensionNotice {
+.layer-panel.collapsed .layer-hint {
   display: none;
 }
 /* :has() lets the collapse state live purely on the panel's own class, so
@@ -248,6 +247,39 @@ button.layer-color {
   pointer-events: none;
 }
 .layer-hint { margin-top: auto; color: #888; font-size: 10px; line-height: 1.35; }
+.color-menu {
+  position: fixed;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: repeat(8, 20px);
+  gap: 4px;
+  padding: 8px;
+  background: #2b2b2b;
+  border: 1px solid #4a4a4a;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.45);
+}
+.color-menu[hidden] { display: none; }
+.color-swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #4a4a4a;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.color-swatch.current { border-color: #56d6ff; box-shadow: 0 0 0 1px #56d6ff; }
+.color-menu-custom {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: #333;
+  border: 1px solid #4a4a4a;
+  border-radius: 2px;
+  color: #ddd;
+  font-size: 11px;
+  cursor: pointer;
+}
 
 .statusbar {
   display: flex;
@@ -322,6 +354,15 @@ kbd { font-size: 9px; opacity: .65; }
   white-space: nowrap;
 }
 .file-status.error { color: #ff8b8b; }
+/* fileStatus already prints one-shot messages like "Autosaved" or "Opened",
+   but those get overwritten by the next unrelated message (a new layer,
+   an assign, an error) within seconds — this is a second, dedicated readout
+   that always answers "is autosave current right now", independent of
+   whatever fileStatus happens to be showing at that moment. */
+.autosave-status { min-width: 74px; font: 10px Consolas, monospace; text-align: center; }
+.autosave-status.saved { color: #69d285; }
+.autosave-status.pending { color: #ffc857; }
+.autosave-status.error { color: #ff6b6b; }
 /* The coordinate readout is the last item in an auto-width flex row, so any
    change in its width used to push every control to its left. Each axis now
    gets its own fixed-width cell, sized from the current unit format rather than
@@ -636,6 +677,7 @@ kbd { font-size: 9px; opacity: .65; }
     </div>
     <aside id="layerPanel" class="layer-panel" aria-label="Layer manager">
       <input id="layerColorPicker" type="color" class="layer-color-anchor" tabindex="-1" aria-hidden="true" />
+      <div id="layerColorMenu" class="color-menu" role="menu" aria-label="Layer color" hidden></div>
       <div class="layer-heading">
         <strong>Layers</strong>
         <div class="layer-heading-actions">
@@ -648,7 +690,6 @@ kbd { font-size: 9px; opacity: .65; }
       <button id="assignLayerBtn" class="assign-layer" title="Move selected objects to the current layer">Assign selection to current</button>
       <div id="layerList" class="layer-list"></div>
       <div class="layer-hint">Hidden layers do not snap or edit. Locked layers stay visible and snappable.</div>
-      <div id="dimensionNotice" class="layer-hint" hidden><strong>Associative dimensions:</strong> a dimension follows the geometry it was placed on. A reference that stops resolving (its geometry was deleted or restructured) freezes at its last value.</div>
     </aside>
   </main>
 
@@ -665,6 +706,7 @@ kbd { font-size: 9px; opacity: .65; }
       <button id="polarStatus" class="snap-status" title="Polar tracking increment">45&deg;</button>
       <button id="unitStatus" class="unit-status" title="Drawing units and display format">—</button>
       <span id="fileStatus" class="file-status">Untitled</span>
+      <span id="autosaveStatus" class="autosave-status saved" title="Autosave is up to date">SAVED</span>
       <span id="engineStatus" class="engine-status loading">ENGINE: LOADING</span>
       <span id="coords">
         <span class="axis"><span class="axis-label">X</span><span id="coordX" class="axis-value">0</span></span>
@@ -890,12 +932,14 @@ kbd { font-size: 9px; opacity: .65; }
   const polarIncrementSelect = document.getElementById('polarIncrement');
   const engineStatus = document.getElementById('engineStatus');
   const fileStatus = document.getElementById('fileStatus');
+  const autosaveStatus = document.getElementById('autosaveStatus');
   const openInput = document.getElementById('openInput');
   const currentLayerSelect = document.getElementById('currentLayerSelect');
   const addLayerBtn = document.getElementById('addLayerBtn');
   const assignLayerBtn = document.getElementById('assignLayerBtn');
   const layerList = document.getElementById('layerList');
   const layerColorPicker = document.getElementById('layerColorPicker');
+  const layerColorMenu = document.getElementById('layerColorMenu');
   const layerPanel = document.getElementById('layerPanel');
   const layerPanelToggle = document.getElementById('layerPanelToggle');
   const topbar = document.getElementById('topbar');
@@ -1020,6 +1064,15 @@ kbd { font-size: 9px; opacity: .65; }
     0.53, 0.60, 0.70, 0.80, 0.90, 1.00, 1.06, 1.20, 1.40, 1.58, 2.00, 2.11,
   ]);
   const DEFAULT_LINEWEIGHT = 0.25;
+
+  // A basic-colors palette for the layer color swatch menu — the OS color
+  // picker (still reachable via "Custom…") is precise but slow for the common
+  // case of just wanting "red" or "green". Hue wheel plus a grayscale ramp,
+  // matching the kind of fixed palette every CAD/drawing program offers.
+  const LAYER_BASIC_COLORS = Object.freeze([
+    '#ff0000', '#ff7f00', '#ffff00', '#7fff00', '#00ff00', '#00ff7f', '#00ffff', '#007fff',
+    '#0000ff', '#7f00ff', '#ff00ff', '#ff007f', '#ffffff', '#bfbfbf', '#7f7f7f', '#404040',
+  ]);
 
   // On-screen line width is a fixed multiple of the millimeter lineweight
   // rather than something that scales with zoom, matching how CAD programs
@@ -3060,6 +3113,10 @@ kbd { font-size: 9px; opacity: .65; }
   function plotHexColor(hex) {
     const match = /^#([0-9a-fA-F]{6})$/.exec(String(hex || ''));
     if (!match) return [0, 0, 0];
+    // White is the traditional "screen white, paper black" CAD color — the one
+    // color guaranteed to vanish into white paper otherwise. Only exact white
+    // maps; a deliberately chosen off-white/cream layer color is left alone.
+    if (match[1].toLowerCase() === 'ffffff') return [0, 0, 0];
     const value = parseInt(match[1], 16);
     return [((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255];
   }
@@ -3623,6 +3680,23 @@ kbd { font-size: 9px; opacity: .65; }
     fileStatus.classList.toggle('error', error);
   }
 
+  const AUTOSAVE_STATUS_LABELS = { saved: 'SAVED', pending: 'UNSAVED', error: 'SAVE FAILED' };
+  const AUTOSAVE_STATUS_TITLES = {
+    saved: 'Autosave is up to date',
+    pending: 'Changes since the last autosave — will save automatically',
+    error: 'Autosave failed — recovery copies are retained, use Save to be sure',
+  };
+
+  // A dedicated, always-current readout, separate from fileStatus's one-shot
+  // messages (which the next unrelated action overwrites within seconds) —
+  // this is the answer to "is autosave current right now" at any moment.
+  function setAutosaveStatus(status) {
+    autosaveStatus.textContent = AUTOSAVE_STATUS_LABELS[status] || AUTOSAVE_STATUS_LABELS.saved;
+    autosaveStatus.title = AUTOSAVE_STATUS_TITLES[status] || AUTOSAVE_STATUS_TITLES.saved;
+    autosaveStatus.classList.remove('saved', 'pending', 'error');
+    autosaveStatus.classList.add(status in AUTOSAVE_STATUS_LABELS ? status : 'saved');
+  }
+
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, character => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -3633,7 +3707,7 @@ kbd { font-size: 9px; opacity: .65; }
   // ui/layerPanel.js
   // ---------------------------------------------------------------------------
 
-  function renderLayerManager() {
+  function renderLayerManager(focusLayerId) {
     if (!currentLayerSelect || !layerList) return;
     currentLayerSelect.innerHTML = state.layers.map(layer => {
       const unavailable = !layer.visible || layer.locked;
@@ -3669,6 +3743,16 @@ kbd { font-size: 9px; opacity: .65; }
         </div>`;
     }).join('');
     if (assignLayerBtn) assignLayerBtn.disabled = !state.selected.size;
+
+    // Naming a new layer is the very next thing someone does after clicking
+    // "add" — a fresh "Layer 3" is a placeholder, not a chosen name.
+    if (focusLayerId) {
+      const nameInput = layerList.querySelector(`.layer-name[data-layer-id="${focusLayerId}"]`);
+      if (nameInput) {
+        nameInput.focus();
+        nameInput.select();
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -4314,6 +4398,7 @@ kbd { font-size: 9px; opacity: .65; }
 
   function scheduleAutosave() {
     if (!state.documentDirty) return;
+    setAutosaveStatus('pending');
     autosaveGeneration += 1;
     if (autosaveTimer !== null) clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => {
@@ -4327,8 +4412,10 @@ kbd { font-size: 9px; opacity: .65; }
         if (generation !== autosaveGeneration) return;
         state.documentDirty = false;
         setFileStatus(`${state.drawingName} · Autosaved`);
+        setAutosaveStatus('saved');
       }, error => {
         setFileStatus(`Autosave failed — saved recovery copies retained. ${error.message || 'Use Save.'}`, true);
+        setAutosaveStatus('error');
       });
     }, 250);
   }
@@ -4440,7 +4527,12 @@ kbd { font-size: 9px; opacity: .65; }
   //
   // A command may define:
   //   stateMode        optional shared runtime mode used while this command runs
-  //   creates          clears the selection and requires an editable layer
+  //   creates          boolean or predicate: clears the selection and requires
+  //                    an editable current layer (TEXT/MTEXT turn this off when
+  //                    re-entering to edit an existing entity in place, since
+  //                    that checks the entity's own layer instead — see
+  //                    isEntityEditable() — and must not disturb the selection
+  //                    the double-click just made)
   //   canBegin()       validates activation; returning false refuses the command
   //   usesOrtho        boolean or predicate controlling ORTHO for this stage
   //   takesDistance    boolean or predicate: a typed number is a direct distance
@@ -4564,7 +4656,7 @@ kbd { font-size: 9px; opacity: .65; }
   function activateCommandMode(commandName) {
     const command = COMMANDS.get(commandName);
     if (command?.canBegin && !command.canBegin()) return false;
-    if (command?.creates) {
+    if (staged(command?.creates, command)) {
       if (!currentLayerIsEditable()) return false;
       // Existing selection is unrelated to creation and would otherwise remain
       // highlighted throughout the command. New geometry also stays unselected.
@@ -4666,6 +4758,7 @@ kbd { font-size: 9px; opacity: .65; }
       hideInquiryReport();
     } else {
       state.selected.clear();
+      updatePrompt();
       draw();
     }
     commandInput.value = '';
@@ -4724,7 +4817,13 @@ kbd { font-size: 9px; opacity: .65; }
   // is what remains when nothing is registered for the active mode.
   setPromptProvider(() => {
     const command = activeCommand();
-    return command?.prompt ? command.prompt() : 'Command:';
+    if (command?.prompt) return command.prompt();
+    // Shift-click add/remove has no other affordance in the UI, so surface it
+    // right when it's relevant — once there's a selection to add to or trim.
+    if (state.mode === 'SELECT' && state.selected.size) {
+      return `Command: (${state.selected.size} selected — Shift-click to add or remove)`;
+    }
+    return 'Command:';
   });
 
   // ---------------------------------------------------------------------------
@@ -6109,9 +6208,11 @@ kbd { font-size: 9px; opacity: .65; }
 
   function getActivePoint() {
     const command = activeCommand();
-    // A pick that names a place on the screen — which side of a line, which
-    // piece to cut — must not be pulled onto nearby geometry.
-    if (!commandUsesSnap(command)) {
+    // The plain SELECT tool has no command of its own to opt out of snapping —
+    // commandUsesSnap defaults to true for "no active command" so every other
+    // command doesn't have to declare it — but idle SELECT is exactly the case
+    // where a snap marker is a false promise: clicking doesn't place a point.
+    if (state.mode === 'SELECT' || !commandUsesSnap(command)) {
       state.snap = null;
       return { ...state.mouseWorld };
     }
@@ -6514,8 +6615,9 @@ kbd { font-size: 9px; opacity: .65; }
       else state.selected.add(hit.id);
       activeCommand()?.noteSelection?.({ entityId: hit.id });
     }
-    // Any command gathering a selection may be reporting how many it has.
-    if (commandSelectsObjects()) updatePrompt();
+    // A command gathering a selection may be reporting how many it has, and
+    // idle SELECT surfaces its own Shift-click add/remove hint the same way.
+    updatePrompt();
     draw();
   }
 
@@ -6539,7 +6641,7 @@ kbd { font-size: 9px; opacity: .65; }
     }
     activeCommand()?.noteSelection?.({ box, crossing });
     state.dragSelect = null;
-    if (commandSelectsObjects()) updatePrompt();
+    updatePrompt();
     draw();
   }
 
@@ -6555,6 +6657,7 @@ kbd { font-size: 9px; opacity: .65; }
       return { error: 'That deletion was rejected.', erased: 0 };
     }
     state.selected.clear();
+    updatePrompt();
     draw();
     return { erased: deletable.size };
   }
@@ -7055,6 +7158,13 @@ kbd { font-size: 9px; opacity: .65; }
   // view/render.js
   // ---------------------------------------------------------------------------
 
+  // A selected entity used to be recolored solid white, which erased the one
+  // thing (its layer color) a draughtsman uses to tell entities apart at a
+  // glance. A halo drawn behind the entity's own color keeps that readable.
+  const SELECTION_HALO_COLOR = 'rgba(86, 214, 255, 0.65)';
+  const SELECTION_HALO_LINE_EXTRA_PX = 5;
+  const SELECTION_HALO_TEXT_WIDTH_PX = 3;
+
   function drawArrowHead(tip, direction, sizePx, color) {
     const width = sizePx * 0.36;
     const backX = tip.x - direction.x * sizePx;
@@ -7070,27 +7180,38 @@ kbd { font-size: 9px; opacity: .65; }
     ctx.fill();
   }
 
-  function drawDimension(entity, preview, color) {
+  function drawDimension(entity, preview, color, selected = false) {
     const geometry = dimensionGeometry(entity);
     const style = geometry.style;
     const scale = state.view.scale;
     const q1 = worldToScreen(geometry.q1);
     const q2 = worldToScreen(geometry.q2);
 
+    const strokeDimensionLine = () => {
+      ctx.beginPath();
+      ctx.moveTo(q1.x, q1.y);
+      ctx.lineTo(q2.x, q2.y);
+      for (const extension of [geometry.extension1, geometry.extension2]) {
+        if (!extension) continue;
+        const a = worldToScreen(extension[0]);
+        const b = worldToScreen(extension[1]);
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+      }
+      ctx.stroke();
+    };
+
+    if (selected) {
+      ctx.strokeStyle = SELECTION_HALO_COLOR;
+      ctx.lineWidth = (preview ? 1 : 1.1) + SELECTION_HALO_LINE_EXTRA_PX;
+      ctx.setLineDash([]);
+      strokeDimensionLine();
+    }
+
     ctx.strokeStyle = color;
     ctx.lineWidth = preview ? 1 : 1.1;
     ctx.setLineDash(preview ? [6, 4] : []);
-    ctx.beginPath();
-    ctx.moveTo(q1.x, q1.y);
-    ctx.lineTo(q2.x, q2.y);
-    for (const extension of [geometry.extension1, geometry.extension2]) {
-      if (!extension) continue;
-      const a = worldToScreen(extension[0]);
-      const b = worldToScreen(extension[1]);
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-    }
-    ctx.stroke();
+    strokeDimensionLine();
     ctx.setLineDash([]);
 
     // Terminators. Screen direction, not world direction, because the Y axis is
@@ -7130,6 +7251,11 @@ kbd { font-size: 9px; opacity: .65; }
       const width = ctx.measureText(text).width;
       ctx.fillStyle = 'rgba(17, 17, 17, .82)';
       ctx.fillRect(-width / 2 - heightPx * 0.2, -heightPx * 0.62, width + heightPx * 0.4, heightPx * 1.24);
+      if (selected) {
+        ctx.lineWidth = SELECTION_HALO_TEXT_WIDTH_PX;
+        ctx.strokeStyle = SELECTION_HALO_COLOR;
+        ctx.strokeText(text, 0, 0);
+      }
       ctx.fillStyle = color;
       ctx.fillText(text, 0, 0);
       ctx.restore();
@@ -7138,7 +7264,7 @@ kbd { font-size: 9px; opacity: .65; }
     }
   }
 
-  function drawText(e, preview, color) {
+  function drawText(e, preview, color, selected = false) {
     const screen = worldToScreen(e.position);
     const heightPx = e.height * state.view.scale;
     if (heightPx < 2) return; // Illegible below this; skip rather than draw a smear.
@@ -7150,8 +7276,13 @@ kbd { font-size: 9px; opacity: .65; }
     ctx.font = `${heightPx}px monospace`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = color;
     if (preview) ctx.globalAlpha = 0.6;
+    if (selected) {
+      ctx.lineWidth = SELECTION_HALO_TEXT_WIDTH_PX;
+      ctx.strokeStyle = SELECTION_HALO_COLOR;
+      ctx.strokeText(e.content, 0, 0);
+    }
+    ctx.fillStyle = color;
     ctx.fillText(e.content, 0, 0);
     ctx.restore();
   }
@@ -7160,7 +7291,7 @@ kbd { font-size: 9px; opacity: .65; }
   // wrapped line is a separate fillText offset down the local y axis — which,
   // inside this already-rotated/flipped frame, is simply "further down the
   // page" regardless of the entity's own rotation.
-  function drawMText(e, preview, color) {
+  function drawMText(e, preview, color, selected = false) {
     const screen = worldToScreen(e.position);
     const heightPx = e.height * state.view.scale;
     if (heightPx < 2) return;
@@ -7171,8 +7302,13 @@ kbd { font-size: 9px; opacity: .65; }
     ctx.font = `${heightPx}px monospace`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = color;
     if (preview) ctx.globalAlpha = 0.6;
+    if (selected) {
+      ctx.lineWidth = SELECTION_HALO_TEXT_WIDTH_PX;
+      ctx.strokeStyle = SELECTION_HALO_COLOR;
+      mtextLines(e).forEach((line, index) => ctx.strokeText(line, 0, index * lineHeightPx));
+    }
+    ctx.fillStyle = color;
     mtextLines(e).forEach((line, index) => ctx.fillText(line, 0, index * lineHeightPx));
     ctx.restore();
   }
@@ -7191,48 +7327,69 @@ kbd { font-size: 9px; opacity: .65; }
 
   function drawEntity(e, preview = false) {
     const layer = getLayer(e.layerId);
-    ctx.lineWidth = preview ? 1 : lineWidthForLayer(layer);
     const layerColor = layer?.color || '#d6d6d6';
-    ctx.strokeStyle = preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor;
+    const color = preview ? '#bdbdbd' : layerColor;
+    const selected = !preview && state.selected.has(e.id);
+
     if (e.type === 'DIM') {
-      drawDimension(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
+      drawDimension(e, preview, color, selected);
       return;
     }
     if (e.type === 'TEXT') {
-      drawText(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
+      drawText(e, preview, color, selected);
       return;
     }
     if (e.type === 'MTEXT') {
-      drawMText(e, preview, preview ? '#bdbdbd' : state.selected.has(e.id) ? '#ffffff' : layerColor);
+      drawMText(e, preview, color, selected);
       return;
     }
-    if (preview) ctx.setLineDash([6,4]); else ctx.setLineDash(dashPatternForLayer(layer));
-    ctx.beginPath();
-    if (e.type === 'CIRCLE') {
-      const center = worldToScreen(e.center);
-      ctx.arc(center.x, center.y, e.radius * state.view.scale, 0, TAU);
-    } else if (e.type === 'ARC') {
-      const center = worldToScreen(e.center);
-      ctx.arc(center.x, center.y, e.radius * state.view.scale, -e.startAngle, -e.endAngle, true);
-    } else {
-      for (const [a,b,arc] of entitySegments(e)) {
-        const sa = worldToScreen(a), sb = worldToScreen(b);
-        ctx.moveTo(sa.x,sa.y);
-        if (arc) {
-          // Screen Y runs opposite world Y, so the angles are negated and the
-          // sweep direction flips with them: a counter-clockwise world arc is
-          // drawn anticlockwise=true here, exactly as an ARC entity is above.
-          const center = worldToScreen(arc.center);
-          ctx.arc(center.x, center.y, arc.radius * state.view.scale, -arc.angleA, -arc.angleB, arc.sweep > 0);
-        } else {
-          ctx.lineTo(sb.x,sb.y);
+
+    const baseWidth = preview ? 1 : lineWidthForLayer(layer);
+    const buildPath = () => {
+      ctx.beginPath();
+      if (e.type === 'CIRCLE') {
+        const center = worldToScreen(e.center);
+        ctx.arc(center.x, center.y, e.radius * state.view.scale, 0, TAU);
+      } else if (e.type === 'ARC') {
+        const center = worldToScreen(e.center);
+        ctx.arc(center.x, center.y, e.radius * state.view.scale, -e.startAngle, -e.endAngle, true);
+      } else {
+        for (const [a,b,arc] of entitySegments(e)) {
+          const sa = worldToScreen(a), sb = worldToScreen(b);
+          ctx.moveTo(sa.x,sa.y);
+          if (arc) {
+            // Screen Y runs opposite world Y, so the angles are negated and the
+            // sweep direction flips with them: a counter-clockwise world arc is
+            // drawn anticlockwise=true here, exactly as an ARC entity is above.
+            const center = worldToScreen(arc.center);
+            ctx.arc(center.x, center.y, arc.radius * state.view.scale, -arc.angleA, -arc.angleB, arc.sweep > 0);
+          } else {
+            ctx.lineTo(sb.x,sb.y);
+          }
         }
       }
+    };
+
+    // The halo is a wider, translucent stroke of the same path drawn first, so
+    // the entity's own layer color still reads on top of it — replacing that
+    // color outright (as this used to) made every selected entity look the
+    // same regardless of which layer it was on.
+    if (selected) {
+      ctx.strokeStyle = SELECTION_HALO_COLOR;
+      ctx.lineWidth = baseWidth + SELECTION_HALO_LINE_EXTRA_PX;
+      ctx.setLineDash([]);
+      buildPath();
+      ctx.stroke();
     }
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = baseWidth;
+    if (preview) ctx.setLineDash([6,4]); else ctx.setLineDash(dashPatternForLayer(layer));
+    buildPath();
     ctx.stroke();
     ctx.setLineDash([]);
 
-    if (state.selected.has(e.id) && !preview) {
+    if (selected) {
       const points = entityGrips(e).map(grip => grip.point);
       ctx.fillStyle = '#fff';
       for (const p of points) {
@@ -7444,8 +7601,6 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   function render() {
-    document.getElementById('dimensionNotice').hidden = state.mode !== 'DIM' &&
-      !state.entities.some(entity => entity.type === 'DIM');
     resetFrameLabels();
     state.activePoint = getActivePoint();
     coordXEl.textContent = formatLength(state.activePoint.x);
@@ -7455,7 +7610,9 @@ kbd { font-size: 9px; opacity: .65; }
     ctx.fillRect(0,0,canvas.clientWidth,canvas.clientHeight);
     drawGrid();
     for (const e of state.entities) {
-      if (isEntityVisible(e)) drawEntity(e);
+      // The entity currently being retyped (EDITTEXT/DDEDIT-style) is represented
+      // by the command's own live preview instead, so it isn't drawn twice.
+      if (isEntityVisible(e) && e.id !== state.text?.editingId) drawEntity(e);
     }
     drawPreview();
     drawPolarTracking();
@@ -8601,6 +8758,33 @@ kbd { font-size: 9px; opacity: .65; }
     return commitGeometry([...state.entities, entity], { nextId: state.nextId + 1 });
   }
 
+  function updateTextContent(id, content) {
+    const entity = state.entities.find(e => e.id === id);
+    if (!entity || !isEntityEditable(entity)) return false;
+    return commitGeometry(state.entities.map(e => (e.id === id ? { ...e, content } : e)));
+  }
+
+  // A double-click hands off the id here rather than through state.text, which
+  // setMode() unconditionally nulls out on the way into textCommand's own
+  // begin() — see the pendingTextEditId read there.
+  let pendingTextEditId = null;
+
+  function startTextEdit(entity) {
+    if (!entity || (entity.type !== 'TEXT' && entity.type !== 'MTEXT')) return false;
+    if (!isEntityEditable(entity)) {
+      updatePrompt('That layer is locked or hidden.');
+      return false;
+    }
+    pendingTextEditId = entity.id;
+    const started = startCommand(entity.type);
+    // startCommand refuses (another command already running, say) without ever
+    // reaching textCommand's begin() — the one place that normally consumes
+    // this — so an unconsumed id here would otherwise poison the next
+    // unrelated TEXT/MTEXT placement into thinking it's an edit too.
+    if (!started) pendingTextEditId = null;
+    return started;
+  }
+
   // A style's textHeight is already the "what does normal annotation text look
   // like in this drawing" answer — dimension text uses exactly this number —
   // so plain TEXT defaults to it too rather than inventing a second default.
@@ -8620,7 +8804,13 @@ kbd { font-size: 9px; opacity: .65; }
     const hasWidth = kind === 'MTEXT';
 
     return {
-      creates: true,
+      // Placing new text needs an editable current layer and an empty
+      // selection; editing an existing one in place (see pendingTextEditId)
+      // checks that entity's own layer instead and must leave the selection
+      // startTextEdit just made alone — see registry.js's activateCommandMode.
+      creates() {
+        return pendingTextEditId == null;
+      },
       usesOrtho: true,
 
       takesDistance() {
@@ -8635,6 +8825,31 @@ kbd { font-size: 9px; opacity: .65; }
       },
 
       begin() {
+        if (pendingTextEditId != null) {
+          const id = pendingTextEditId;
+          pendingTextEditId = null;
+          const entity = state.entities.find(e => e.id === id && e.type === kind);
+          if (!entity) {
+            // Deleted, or its layer changed, between the double-click and here.
+            notePrompt('That text is no longer editable.');
+            return COMMAND_COMPLETE;
+          }
+          state.text = {
+            kind, stage: 'CONTENT',
+            position: entity.position, width: entity.width ?? null,
+            height: entity.height, rotation: entity.rotation,
+            // The old content previews as-is until the first keystroke, but
+            // typing starts a fresh multi-line entry rather than appending to
+            // it — lines stays empty so retyping doesn't have to first "erase"
+            // committed old lines, which this line-by-line entry has no way
+            // to do anyway.
+            lines: [],
+            liveContent: entity.content,
+            editingId: entity.id,
+          };
+          state.selected = new Set([entity.id]);
+          return;
+        }
         state.text = {
           kind, stage: 'POINT', position: null, width: null, height: null, rotation: null,
           lines: [], liveContent: '',
@@ -8739,7 +8954,14 @@ kbd { font-size: 9px; opacity: .65; }
             return true;
           }
           if (!text) { updatePrompt('Enter the text to place:'); return true; }
-          if (addText(kind, operation.position, operation.height, operation.rotation, text)) setMode('SELECT');
+          const editingId = operation.editingId;
+          const committed = editingId != null
+            ? updateTextContent(editingId, text)
+            : addText(kind, operation.position, operation.height, operation.rotation, text);
+          if (committed) {
+            if (editingId != null) state.selected = new Set([editingId]);
+            setMode('SELECT');
+          }
           return true;
         }
         return false;
@@ -8790,7 +9012,13 @@ kbd { font-size: 9px; opacity: .65; }
             updatePrompt('Enter at least one line of text.');
             return false;
           }
-          if (addText(kind, operation.position, operation.height, operation.rotation, operation.lines.join('\n'), operation.width)) {
+          const content = operation.lines.join('\n');
+          const editingId = operation.editingId;
+          const committed = editingId != null
+            ? updateTextContent(editingId, content)
+            : addText(kind, operation.position, operation.height, operation.rotation, content, operation.width);
+          if (committed) {
+            if (editingId != null) state.selected = new Set([editingId]);
             setMode('SELECT');
           }
           return;
@@ -9717,6 +9945,7 @@ kbd { font-size: 9px; opacity: .65; }
     state.future = [];
     state.documentDirty = dirty;
     if (dirty) scheduleAutosave();
+    else setAutosaveStatus('saved');
     setMode('SELECT');
     documentChanged();
     zoomExtents();
@@ -10760,6 +10989,11 @@ kbd { font-size: 9px; opacity: .65; }
   // commands/modify.js
   // ---------------------------------------------------------------------------
 
+  // OFFSET keeps the last distance between invocations, the way FILLET/CHAMFER
+  // keep cornerSettings — tracing a wall of parallel lines means typing the
+  // same distance over and over otherwise.
+  let lastOffsetDistance = null;
+
   defineCommand('OFFSET', {
     // Exactly one offsettable object already selected answers "which object",
     // so the command skips straight from the distance to the side. Anything
@@ -10783,7 +11017,11 @@ kbd { font-size: 9px; opacity: .65; }
 
     prompt() {
       const stage = state.offset?.stage || 'DISTANCE';
-      if (stage === 'DISTANCE') return 'OFFSET — Specify offset distance:';
+      if (stage === 'DISTANCE') {
+        return lastOffsetDistance != null
+          ? `OFFSET — Specify offset distance <${formatLengthLabel(lastOffsetDistance)}>:`
+          : 'OFFSET — Specify offset distance:';
+      }
       if (stage === 'SOURCE') return 'OFFSET — Select one line, polyline, circle, or arc:';
       return `OFFSET — Specify side (${formatLengthLabel(state.offset.distance)} offset):`;
     },
@@ -10797,7 +11035,9 @@ kbd { font-size: 9px; opacity: .65; }
     commitsOnPick: true,
 
     distance(value) {
-      return setOffsetDistance(value);
+      const accepted = setOffsetDistance(value);
+      if (state.offset?.distance != null) lastOffsetDistance = state.offset.distance;
+      return accepted;
     },
 
     // The side is a direction, not a location: snapping it to nearby geometry
@@ -10827,7 +11067,12 @@ kbd { font-size: 9px; opacity: .65; }
       if (preview) drawEntity(preview, true);
     },
 
+    // Enter with nothing typed at DISTANCE accepts the bracketed default
+    // (the last distance used), matching AutoCAD's <default> convention.
     finish() {
+      if (state.offset?.stage === 'DISTANCE' && state.offset.distance == null && lastOffsetDistance != null) {
+        return setOffsetDistance(lastOffsetDistance);
+      }
       return acceptOffsetSource();
     },
   });
@@ -11384,6 +11629,24 @@ kbd { font-size: 9px; opacity: .65; }
     }
   });
 
+  // AutoCAD's DDEDIT is a typed command; a double-click is the mouse-driven
+  // shortcut most drawing programs offer for the same thing, so it lives here
+  // rather than as a typed alias. Only TEXT/MTEXT are hit-tested — a
+  // double-click on other entity types has nothing to hand off to yet.
+  canvas.addEventListener('dblclick', ev => {
+    if (state.mode !== 'SELECT') return;
+    const world = screenToWorld(canvasPoint(ev));
+    let hit = null;
+    let best = 8;
+    for (const entity of state.entities) {
+      if (entity.type !== 'TEXT' && entity.type !== 'MTEXT') continue;
+      if (!isEntityEditable(entity)) continue;
+      const d = distanceToEntityPx(world, entity);
+      if (d < best) { best = d; hit = entity; }
+    }
+    if (hit) startTextEdit(hit);
+  });
+
   canvas.addEventListener('contextmenu', ev => {
     ev.preventDefault();
     acceptDefaultAction();
@@ -11571,7 +11834,7 @@ kbd { font-size: 9px; opacity: .65; }
     });
     state.currentLayerId = id;
     state.nextLayerId = number + 1;
-    renderLayerManager();
+    renderLayerManager(id);
     setFileStatus(`${state.drawingName} · Created ${layerName}`);
     draw();
     return id;
@@ -11900,8 +12163,11 @@ kbd { font-size: 9px; opacity: .65; }
   document.getElementById('saveBtn').addEventListener('click', saveDrawing);
   document.getElementById('recoverBackupBtn').addEventListener('click', () => restoreAutosave(false, true));
   addLayerBtn.addEventListener('click', () => {
+    // Unlike every other layer-panel button, this one leaves focus where
+    // renderLayerManager() just put it (the new layer's name field) instead of
+    // returning it to the canvas — renaming a fresh "Layer 3" is the very next
+    // thing a user does.
     createLayer();
-    canvas.focus();
   });
   assignLayerBtn.addEventListener('click', () => {
     assignSelectionToLayer();
@@ -11921,8 +12187,7 @@ kbd { font-size: 9px; opacity: .65; }
     else if (action === 'delete') deleteLayer(id);
     else if (action === 'color') {
       activeColorLayerId = id;
-      layerColorPicker.value = event.target.dataset.layerColor;
-      layerColorPicker.click();
+      openColorMenu(event.target, event.target.dataset.layerColor);
     }
   });
   layerList.addEventListener('change', event => {
@@ -11939,6 +12204,51 @@ kbd { font-size: 9px; opacity: .65; }
   let activeColorLayerId = null;
   layerColorPicker.addEventListener('change', () => {
     if (activeColorLayerId) setLayerColor(activeColorLayerId, layerColorPicker.value);
+  });
+
+  // A basic-colors swatch menu answers the common case ("make this layer red")
+  // without the OS picker's extra clicks; "Custom…" still reaches it for
+  // anything not in the palette. Built once since the palette is fixed.
+  layerColorMenu.innerHTML = LAYER_BASIC_COLORS.map(color =>
+    `<button type="button" class="color-swatch" data-color="${color}" style="background-color: ${color};" title="${color}" aria-label="${color}"></button>`,
+  ).join('') + '<button type="button" class="color-menu-custom" data-color-custom>Custom…</button>';
+
+  function openColorMenu(anchorEl, currentColor) {
+    for (const swatch of layerColorMenu.querySelectorAll('.color-swatch')) {
+      swatch.classList.toggle('current', swatch.dataset.color === currentColor);
+    }
+    const rect = anchorEl.getBoundingClientRect();
+    layerColorMenu.hidden = false;
+    // Flip left of the button instead of clipping off the right edge of the
+    // docked panel, the same problem the native-picker anchor trick works
+    // around above.
+    const menuWidth = layerColorMenu.offsetWidth;
+    layerColorMenu.style.left = `${Math.max(4, rect.left - menuWidth + rect.width)}px`;
+    layerColorMenu.style.top = `${rect.bottom + 4}px`;
+  }
+
+  function closeColorMenu() {
+    layerColorMenu.hidden = true;
+  }
+
+  layerColorMenu.addEventListener('click', event => {
+    const color = event.target?.dataset?.color;
+    if (color) {
+      if (activeColorLayerId) setLayerColor(activeColorLayerId, color);
+      closeColorMenu();
+    } else if (event.target?.dataset?.colorCustom !== undefined) {
+      layerColorPicker.value = layerColorMenu.querySelector('.color-swatch.current')?.dataset.color || '#ffffff';
+      closeColorMenu();
+      layerColorPicker.click();
+    }
+  });
+  document.addEventListener('click', event => {
+    if (!layerColorMenu.hidden && !layerColorMenu.contains(event.target) && event.target.dataset?.layerAction !== 'color') {
+      closeColorMenu();
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !layerColorMenu.hidden) closeColorMenu();
   });
   openInput.addEventListener('change', async () => {
     const file = openInput.files?.[0];
@@ -12214,6 +12524,8 @@ kbd { font-size: 9px; opacity: .65; }
     finishEdgeEdit,
     deleteSelected,
     selectAt,
+    startTextEdit,
+    updateTextContent,
     undo,
     redo,
     closeCurrentPath,
