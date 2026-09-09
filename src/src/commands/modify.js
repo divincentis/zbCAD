@@ -18,6 +18,11 @@ import { notePrompt, updatePrompt } from '../ui/prompt.js';
 import { draw } from '../view/frame.js';
 import { drawEntity, drawExtendPreview, drawTransformGuide, drawTrimPreview } from '../view/render.js';
 
+// OFFSET keeps the last distance between invocations, the way FILLET/CHAMFER
+// keep cornerSettings — tracing a wall of parallel lines means typing the
+// same distance over and over otherwise.
+let lastOffsetDistance = null;
+
 defineCommand('OFFSET', {
   // Exactly one offsettable object already selected answers "which object",
   // so the command skips straight from the distance to the side. Anything
@@ -41,7 +46,11 @@ defineCommand('OFFSET', {
 
   prompt() {
     const stage = state.offset?.stage || 'DISTANCE';
-    if (stage === 'DISTANCE') return 'OFFSET — Specify offset distance:';
+    if (stage === 'DISTANCE') {
+      return lastOffsetDistance != null
+        ? `OFFSET — Specify offset distance <${formatLengthLabel(lastOffsetDistance)}>:`
+        : 'OFFSET — Specify offset distance:';
+    }
     if (stage === 'SOURCE') return 'OFFSET — Select one line, polyline, circle, or arc:';
     return `OFFSET — Specify side (${formatLengthLabel(state.offset.distance)} offset):`;
   },
@@ -55,7 +64,9 @@ defineCommand('OFFSET', {
   commitsOnPick: true,
 
   distance(value) {
-    return setOffsetDistance(value);
+    const accepted = setOffsetDistance(value);
+    if (state.offset?.distance != null) lastOffsetDistance = state.offset.distance;
+    return accepted;
   },
 
   // The side is a direction, not a location: snapping it to nearby geometry
@@ -85,7 +96,12 @@ defineCommand('OFFSET', {
     if (preview) drawEntity(preview, true);
   },
 
+  // Enter with nothing typed at DISTANCE accepts the bracketed default
+  // (the last distance used), matching AutoCAD's <default> convention.
   finish() {
+    if (state.offset?.stage === 'DISTANCE' && state.offset.distance == null && lastOffsetDistance != null) {
+      return setOffsetDistance(lastOffsetDistance);
+    }
     return acceptOffsetSource();
   },
 });

@@ -142,8 +142,7 @@ button.active, button.on { background: #565656; border-color: #888; }
 .layer-panel.collapsed #currentLayerSelect,
 .layer-panel.collapsed .assign-layer,
 .layer-panel.collapsed .layer-list,
-.layer-panel.collapsed .layer-hint,
-.layer-panel.collapsed #dimensionNotice {
+.layer-panel.collapsed .layer-hint {
   display: none;
 }
 /* :has() lets the collapse state live purely on the panel's own class, so
@@ -648,7 +647,6 @@ kbd { font-size: 9px; opacity: .65; }
       <button id="assignLayerBtn" class="assign-layer" title="Move selected objects to the current layer">Assign selection to current</button>
       <div id="layerList" class="layer-list"></div>
       <div class="layer-hint">Hidden layers do not snap or edit. Locked layers stay visible and snappable.</div>
-      <div id="dimensionNotice" class="layer-hint" hidden><strong>Associative dimensions:</strong> a dimension follows the geometry it was placed on. A reference that stops resolving (its geometry was deleted or restructured) freezes at its last value.</div>
     </aside>
   </main>
 

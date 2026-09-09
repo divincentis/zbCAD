@@ -3,7 +3,7 @@ import { assignLayerBtn, currentLayerSelect, layerList } from '../dom.js';
 import { state } from '../state.js';
 import { escapeHtml } from './status.js';
 
-export function renderLayerManager() {
+export function renderLayerManager(focusLayerId) {
   if (!currentLayerSelect || !layerList) return;
   currentLayerSelect.innerHTML = state.layers.map(layer => {
     const unavailable = !layer.visible || layer.locked;
@@ -39,4 +39,14 @@ export function renderLayerManager() {
       </div>`;
   }).join('');
   if (assignLayerBtn) assignLayerBtn.disabled = !state.selected.size;
+
+  // Naming a new layer is the very next thing someone does after clicking
+  // "add" — a fresh "Layer 3" is a placeholder, not a chosen name.
+  if (focusLayerId) {
+    const nameInput = layerList.querySelector(`.layer-name[data-layer-id="${focusLayerId}"]`);
+    if (nameInput) {
+      nameInput.focus();
+      nameInput.select();
+    }
+  }
 }

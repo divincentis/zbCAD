@@ -249,6 +249,7 @@ export function cancelCurrent() {
     hideInquiryReport();
   } else {
     state.selected.clear();
+    updatePrompt();
     draw();
   }
   commandInput.value = '';
@@ -307,5 +308,11 @@ export function startCommand(name) {
 // is what remains when nothing is registered for the active mode.
 setPromptProvider(() => {
   const command = activeCommand();
-  return command?.prompt ? command.prompt() : 'Command:';
+  if (command?.prompt) return command.prompt();
+  // Shift-click add/remove has no other affordance in the UI, so surface it
+  // right when it's relevant — once there's a selection to add to or trim.
+  if (state.mode === 'SELECT' && state.selected.size) {
+    return `Command: (${state.selected.size} selected — Shift-click to add or remove)`;
+  }
+  return 'Command:';
 });

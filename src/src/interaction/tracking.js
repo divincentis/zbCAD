@@ -51,9 +51,11 @@ export function getCommandBasePoint() {
 
 export function getActivePoint() {
   const command = activeCommand();
-  // A pick that names a place on the screen — which side of a line, which
-  // piece to cut — must not be pulled onto nearby geometry.
-  if (!commandUsesSnap(command)) {
+  // The plain SELECT tool has no command of its own to opt out of snapping —
+  // commandUsesSnap defaults to true for "no active command" so every other
+  // command doesn't have to declare it — but idle SELECT is exactly the case
+  // where a snap marker is a false promise: clicking doesn't place a point.
+  if (state.mode === 'SELECT' || !commandUsesSnap(command)) {
     state.snap = null;
     return { ...state.mouseWorld };
   }

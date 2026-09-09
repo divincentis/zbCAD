@@ -403,8 +403,6 @@ export function drawSelectionBox() {
 }
 
 export function render() {
-  document.getElementById('dimensionNotice').hidden = state.mode !== 'DIM' &&
-    !state.entities.some(entity => entity.type === 'DIM');
   resetFrameLabels();
   state.activePoint = getActivePoint();
   coordXEl.textContent = formatLength(state.activePoint.x);

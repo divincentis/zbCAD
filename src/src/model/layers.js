@@ -37,7 +37,7 @@ export function createLayer(name = '', color = '#56d6ff') {
   });
   state.currentLayerId = id;
   state.nextLayerId = number + 1;
-  renderLayerManager();
+  renderLayerManager(id);
   setFileStatus(`${state.drawingName} · Created ${layerName}`);
   draw();
   return id;

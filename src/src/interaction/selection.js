@@ -1,4 +1,4 @@
-import { activeCommand, commandSelectsObjects } from '../commands/registry.js';
+import { activeCommand } from '../commands/registry.js';
 import { angleFromCenter, angleOnArc, circularPoint, dist, pointOnSegmentClosest } from '../core/math.js';
 import { commitGeometry } from '../model/history.js';
 import { boxContains, entityBBox, entityCrossesBox, pickSegments, textContainsPoint } from '../model/entity.js';
@@ -57,8 +57,9 @@ export function selectAt(world, add = false) {
     else state.selected.add(hit.id);
     activeCommand()?.noteSelection?.({ entityId: hit.id });
   }
-  // Any command gathering a selection may be reporting how many it has.
-  if (commandSelectsObjects()) updatePrompt();
+  // A command gathering a selection may be reporting how many it has, and
+  // idle SELECT surfaces its own Shift-click add/remove hint the same way.
+  updatePrompt();
   draw();
 }
 
@@ -82,7 +83,7 @@ export function finishBoxSelection(add = false) {
   }
   activeCommand()?.noteSelection?.({ box, crossing });
   state.dragSelect = null;
-  if (commandSelectsObjects()) updatePrompt();
+  updatePrompt();
   draw();
 }
 
@@ -98,6 +99,7 @@ export function eraseSelection() {
     return { error: 'That deletion was rejected.', erased: 0 };
   }
   state.selected.clear();
+  updatePrompt();
   draw();
   return { erased: deletable.size };
 }

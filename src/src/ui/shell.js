@@ -136,8 +136,11 @@ document.getElementById('openBtn').addEventListener('click', chooseOpenFile);
 document.getElementById('saveBtn').addEventListener('click', saveDrawing);
 document.getElementById('recoverBackupBtn').addEventListener('click', () => restoreAutosave(false, true));
 addLayerBtn.addEventListener('click', () => {
+  // Unlike every other layer-panel button, this one leaves focus where
+  // renderLayerManager() just put it (the new layer's name field) instead of
+  // returning it to the canvas — renaming a fresh "Layer 3" is the very next
+  // thing a user does.
   createLayer();
-  canvas.focus();
 });
 assignLayerBtn.addEventListener('click', () => {
   assignSelectionToLayer();

@@ -142,8 +142,7 @@ button.active, button.on { background: #565656; border-color: #888; }
 .layer-panel.collapsed #currentLayerSelect,
 .layer-panel.collapsed .assign-layer,
 .layer-panel.collapsed .layer-list,
-.layer-panel.collapsed .layer-hint,
-.layer-panel.collapsed #dimensionNotice {
+.layer-panel.collapsed .layer-hint {
   display: none;
 }
 /* :has() lets the collapse state live purely on the panel's own class, so
@@ -648,7 +647,6 @@ kbd { font-size: 9px; opacity: .65; }
       <button id="assignLayerBtn" class="assign-layer" title="Move selected objects to the current layer">Assign selection to current</button>
       <div id="layerList" class="layer-list"></div>
       <div class="layer-hint">Hidden layers do not snap or edit. Locked layers stay visible and snappable.</div>
-      <div id="dimensionNotice" class="layer-hint" hidden><strong>Associative dimensions:</strong> a dimension follows the geometry it was placed on. A reference that stops resolving (its geometry was deleted or restructured) freezes at its last value.</div>
     </aside>
   </main>
 
@@ -3633,7 +3631,7 @@ kbd { font-size: 9px; opacity: .65; }
   // ui/layerPanel.js
   // ---------------------------------------------------------------------------
 
-  function renderLayerManager() {
+  function renderLayerManager(focusLayerId) {
     if (!currentLayerSelect || !layerList) return;
     currentLayerSelect.innerHTML = state.layers.map(layer => {
       const unavailable = !layer.visible || layer.locked;
@@ -3669,6 +3667,16 @@ kbd { font-size: 9px; opacity: .65; }
         </div>`;
     }).join('');
     if (assignLayerBtn) assignLayerBtn.disabled = !state.selected.size;
+
+    // Naming a new layer is the very next thing someone does after clicking
+    // "add" — a fresh "Layer 3" is a placeholder, not a chosen name.
+    if (focusLayerId) {
+      const nameInput = layerList.querySelector(`.layer-name[data-layer-id="${focusLayerId}"]`);
+      if (nameInput) {
+        nameInput.focus();
+        nameInput.select();
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -4666,6 +4674,7 @@ kbd { font-size: 9px; opacity: .65; }
       hideInquiryReport();
     } else {
       state.selected.clear();
+      updatePrompt();
       draw();
     }
     commandInput.value = '';
@@ -4724,7 +4733,13 @@ kbd { font-size: 9px; opacity: .65; }
   // is what remains when nothing is registered for the active mode.
   setPromptProvider(() => {
     const command = activeCommand();
-    return command?.prompt ? command.prompt() : 'Command:';
+    if (command?.prompt) return command.prompt();
+    // Shift-click add/remove has no other affordance in the UI, so surface it
+    // right when it's relevant — once there's a selection to add to or trim.
+    if (state.mode === 'SELECT' && state.selected.size) {
+      return `Command: (${state.selected.size} selected — Shift-click to add or remove)`;
+    }
+    return 'Command:';
   });
 
   // ---------------------------------------------------------------------------
@@ -6109,9 +6124,11 @@ kbd { font-size: 9px; opacity: .65; }
 
   function getActivePoint() {
     const command = activeCommand();
-    // A pick that names a place on the screen — which side of a line, which
-    // piece to cut — must not be pulled onto nearby geometry.
-    if (!commandUsesSnap(command)) {
+    // The plain SELECT tool has no command of its own to opt out of snapping —
+    // commandUsesSnap defaults to true for "no active command" so every other
+    // command doesn't have to declare it — but idle SELECT is exactly the case
+    // where a snap marker is a false promise: clicking doesn't place a point.
+    if (state.mode === 'SELECT' || !commandUsesSnap(command)) {
       state.snap = null;
       return { ...state.mouseWorld };
     }
@@ -6514,8 +6531,9 @@ kbd { font-size: 9px; opacity: .65; }
       else state.selected.add(hit.id);
       activeCommand()?.noteSelection?.({ entityId: hit.id });
     }
-    // Any command gathering a selection may be reporting how many it has.
-    if (commandSelectsObjects()) updatePrompt();
+    // A command gathering a selection may be reporting how many it has, and
+    // idle SELECT surfaces its own Shift-click add/remove hint the same way.
+    updatePrompt();
     draw();
   }
 
@@ -6539,7 +6557,7 @@ kbd { font-size: 9px; opacity: .65; }
     }
     activeCommand()?.noteSelection?.({ box, crossing });
     state.dragSelect = null;
-    if (commandSelectsObjects()) updatePrompt();
+    updatePrompt();
     draw();
   }
 
@@ -6555,6 +6573,7 @@ kbd { font-size: 9px; opacity: .65; }
       return { error: 'That deletion was rejected.', erased: 0 };
     }
     state.selected.clear();
+    updatePrompt();
     draw();
     return { erased: deletable.size };
   }
@@ -7444,8 +7463,6 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   function render() {
-    document.getElementById('dimensionNotice').hidden = state.mode !== 'DIM' &&
-      !state.entities.some(entity => entity.type === 'DIM');
     resetFrameLabels();
     state.activePoint = getActivePoint();
     coordXEl.textContent = formatLength(state.activePoint.x);
@@ -10760,6 +10777,11 @@ kbd { font-size: 9px; opacity: .65; }
   // commands/modify.js
   // ---------------------------------------------------------------------------
 
+  // OFFSET keeps the last distance between invocations, the way FILLET/CHAMFER
+  // keep cornerSettings — tracing a wall of parallel lines means typing the
+  // same distance over and over otherwise.
+  let lastOffsetDistance = null;
+
   defineCommand('OFFSET', {
     // Exactly one offsettable object already selected answers "which object",
     // so the command skips straight from the distance to the side. Anything
@@ -10783,7 +10805,11 @@ kbd { font-size: 9px; opacity: .65; }
 
     prompt() {
       const stage = state.offset?.stage || 'DISTANCE';
-      if (stage === 'DISTANCE') return 'OFFSET — Specify offset distance:';
+      if (stage === 'DISTANCE') {
+        return lastOffsetDistance != null
+          ? `OFFSET — Specify offset distance <${formatLengthLabel(lastOffsetDistance)}>:`
+          : 'OFFSET — Specify offset distance:';
+      }
       if (stage === 'SOURCE') return 'OFFSET — Select one line, polyline, circle, or arc:';
       return `OFFSET — Specify side (${formatLengthLabel(state.offset.distance)} offset):`;
     },
@@ -10797,7 +10823,9 @@ kbd { font-size: 9px; opacity: .65; }
     commitsOnPick: true,
 
     distance(value) {
-      return setOffsetDistance(value);
+      const accepted = setOffsetDistance(value);
+      if (state.offset?.distance != null) lastOffsetDistance = state.offset.distance;
+      return accepted;
     },
 
     // The side is a direction, not a location: snapping it to nearby geometry
@@ -10827,7 +10855,12 @@ kbd { font-size: 9px; opacity: .65; }
       if (preview) drawEntity(preview, true);
     },
 
+    // Enter with nothing typed at DISTANCE accepts the bracketed default
+    // (the last distance used), matching AutoCAD's <default> convention.
     finish() {
+      if (state.offset?.stage === 'DISTANCE' && state.offset.distance == null && lastOffsetDistance != null) {
+        return setOffsetDistance(lastOffsetDistance);
+      }
       return acceptOffsetSource();
     },
   });
@@ -11571,7 +11604,7 @@ kbd { font-size: 9px; opacity: .65; }
     });
     state.currentLayerId = id;
     state.nextLayerId = number + 1;
-    renderLayerManager();
+    renderLayerManager(id);
     setFileStatus(`${state.drawingName} · Created ${layerName}`);
     draw();
     return id;
@@ -11900,8 +11933,11 @@ kbd { font-size: 9px; opacity: .65; }
   document.getElementById('saveBtn').addEventListener('click', saveDrawing);
   document.getElementById('recoverBackupBtn').addEventListener('click', () => restoreAutosave(false, true));
   addLayerBtn.addEventListener('click', () => {
+    // Unlike every other layer-panel button, this one leaves focus where
+    // renderLayerManager() just put it (the new layer's name field) instead of
+    // returning it to the canvas — renaming a fresh "Layer 3" is the very next
+    // thing a user does.
     createLayer();
-    canvas.focus();
   });
   assignLayerBtn.addEventListener('click', () => {
     assignSelectionToLayer();
