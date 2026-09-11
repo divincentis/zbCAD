@@ -77,3 +77,4 @@ export const underlayPreviewEl = document.getElementById('underlayPreview');
 export const underlayApplyBtn = document.getElementById('underlayApply');
 export const underlayCancelBtn = document.getElementById('underlayCancel');
 export const underlayDeleteBtn = document.getElementById('underlayDelete');
+export const dxfInput = document.getElementById('dxfInput');

@@ -1,11 +1,12 @@
 import { commandCapturesSpace, commandLiveValue, navigateHistory, startCommand } from '../commands/registry.js';
 import { LAYER_BASIC_COLORS } from '../core/constants.js';
 import { LENGTH_FORMATS } from '../core/units.js';
-import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, imageInput, layerColorMenu, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, toolbarAutohideBtn, topbar, underlayApplyBtn, underlayCancelBtn, underlayDeleteBtn, underlayDialog, underlayFadeInput, underlayLockedCheck, underlayPlotCheck, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
+import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, dxfInput, engineStatus, imageInput, layerColorMenu, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, toolbarAutohideBtn, topbar, underlayApplyBtn, underlayCancelBtn, underlayDeleteBtn, underlayDialog, underlayFadeInput, underlayLockedCheck, underlayPlotCheck, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
 import { submitCommandInput } from '../interaction/pointer.js';
 import { writeAutosaveOnUnload } from '../model/dirty.js';
 import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, setLayerLinetype, setLayerLineweight, toggleLayerLock, toggleLayerPrintable, toggleLayerVisibility } from '../model/layers.js';
 import { chooseOpenFile, loadDocumentText, newDrawing, restoreAutosave, saveDrawing } from '../model/persistence.js';
+import { chooseDxfFile, exportDxf, loadDxfText } from './dialogs/dxf.js';
 import { startImagePlacement } from '../commands/underlay.js';
 import { underlayDescriptorFromFile } from '../model/imageImport.js';
 import { applyUnderlayDialog, closeUnderlayDialog, deleteUnderlayFromDialog, openUnderlayDialog, setPendingUnderlay } from './dialogs/underlay.js';
@@ -242,6 +243,20 @@ imageInput.addEventListener('change', async () => {
     setFileStatus(error.message || 'Could not read the selected image', true);
   }
 });
+
+dxfInput.addEventListener('change', async () => {
+  const file = dxfInput.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    if (await loadDxfText(text, file.name)) canvas.focus();
+  } catch {
+    setFileStatus('Could not read the selected DXF file', true);
+  }
+});
+
+document.getElementById('dxfInBtn').addEventListener('click', chooseDxfFile);
+document.getElementById('dxfOutBtn').addEventListener('click', exportDxf);
 
 document.getElementById('imageBtn').addEventListener('click', () => {
   if (!requireIdle('placing an image')) return;

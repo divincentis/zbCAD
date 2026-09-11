@@ -37,6 +37,11 @@ import { setPendingUnderlayImage, startImagePlacement } from './commands/underla
 import { calibrateUnderlay, cloneUnderlays, underlayBBox, underlayContainsPoint, underlayCorners, underlayHeight, underlayIsSelectable, underlaySelectionId, underlayWidth, underlayWorldToLocal } from './model/underlay.js';
 import { imageFitScale, imageTargetSize, underlayNameFromFile } from './model/imageImport.js';
 import { underlayDialog } from './dom.js';
+import { buildDxfPlan } from './output/dxfPlan.js';
+import { buildDxfDocument } from './output/dxf.js';
+import { parseDxfText } from './model/dxfRead.js';
+import { dxfPlanToDocument, importDxfText } from './model/dxfImport.js';
+import { dxfDownloadName, exportDxf, loadDxfText } from './ui/dialogs/dxf.js';
 import { applyUnitsDialog, closeUnitsDialog, coordinateFieldChars, openUnitsDialog, pendingUnits, refreshUnitsDialog } from './ui/dialogs/units.js';
 import { promptText } from './ui/prompt.js';
 import { drawNow } from './view/frame.js';
@@ -281,4 +286,15 @@ window.__cadPrototype = {
   applyUnderlayDialog,
   deleteUnderlayFromDialog,
   setPendingUnderlay,
+
+  // DXF. Import and export share one plan shape, so a round trip can be
+  // asserted as plan -> text -> plan without going near the document model.
+  buildDxfPlan,
+  buildDxfDocument,
+  parseDxfText,
+  dxfPlanToDocument,
+  importDxfText,
+  dxfDownloadName,
+  exportDxf,
+  loadDxfText,
 };

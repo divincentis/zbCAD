@@ -76,4 +76,25 @@ for rel in order:
 print('unused imports:', len(unused))
 for u in unused[:20]:
     print('  ', u)
-sys.exit(1 if cycles or missing or unexported else 0)
+
+# duplicate top-level names: the bundle is ONE flat scope, so two modules
+# declaring the same top-level name silently shadow each other — the later one
+# in `order` wins, and the earlier module's callers quietly get the wrong
+# function. Nothing else notices: the import graph is still valid, every name
+# still resolves, and the syntax check passes. unbundle.py's ownership table
+# assumes uniqueness too, so a clash also breaks the round trip back to modules.
+DECL = re.compile(r'^(?:export )?(?:async )?(?:function|class|const|let|var)\s+([A-Za-z_$][\w$]*)', re.M)
+owners = {}
+duplicates = []
+for rel in order:
+    text = open(os.path.join(SRC, rel)).read()
+    for name in set(DECL.findall(text)):
+        if name in owners:
+            duplicates.append(f'{name}: {owners[name]} and {rel}')
+        else:
+            owners[name] = rel
+print('duplicate top-level names:', duplicates or 'none')
+for d in duplicates:
+    print('  ', d)
+
+sys.exit(1 if cycles or missing or unexported or duplicates else 0)

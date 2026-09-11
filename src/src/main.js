@@ -6,6 +6,7 @@ import { openDimStyleDialog } from './ui/dialogs/dimstyle.js';
 import { refreshTrackingButtons } from './ui/dialogs/drafting.js';
 import { openPlotDialog } from './ui/dialogs/plot.js';
 import { openUnderlayDialog } from './ui/dialogs/underlay.js';
+import { chooseDxfFile, exportDxf } from './ui/dialogs/dxf.js';
 import { openUnitsDialog, renderUnitStatus } from './ui/dialogs/units.js';
 import { renderLayerManager } from './ui/layerPanel.js';
 import { setFrameRenderer } from './view/frame.js';
@@ -35,6 +36,8 @@ registerDirectAction('UNITS', openUnitsDialog);
 registerDirectAction('DIMSTYLE', openDimStyleDialog);
 registerDirectAction('PLOT', openPlotDialog);
 registerDirectAction('UNDERLAY', openUnderlayDialog);
+registerDirectAction('DXFOUT', exportDxf);
+registerDirectAction('DXFIN', chooseDxfFile);
 
 // Chrome that has to be rebuilt whenever the whole document is replaced.
 onDocumentChanged(renderLayerManager);

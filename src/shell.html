@@ -599,6 +599,8 @@ kbd { font-size: 9px; opacity: .65; }
       <button id="saveBtn">Save</button>
       <button id="recoverBackupBtn" title="Recover the previous validated autosave">Recover Backup</button>
       <button id="plotBtn" title="Plot to a scaled PDF">Plot (PLT)</button>
+        <button id="dxfInBtn" title="Import an AutoCAD DXF drawing (DXFIN)">Import DXF</button>
+        <button id="dxfOutBtn" title="Export this drawing as AutoCAD DXF (DXFOUT)">Export DXF</button>
     </div>
     <div class="tool-group">
       <span class="group-label">Edit</span>
@@ -666,6 +668,7 @@ kbd { font-size: 9px; opacity: .65; }
     <a id="docsLink" class="docs-link" href="docs.html" target="_blank" rel="noopener">Docs</a>
     <input id="openInput" type="file" accept=".json,.zbCAD.json,application/json" hidden />
   <input id="imageInput" type="file" accept="image/*" hidden />
+  <input id="dxfInput" type="file" accept=".dxf,application/dxf" hidden />
   </header>
 
   <main class="workspace">

@@ -599,6 +599,8 @@ kbd { font-size: 9px; opacity: .65; }
       <button id="saveBtn">Save</button>
       <button id="recoverBackupBtn" title="Recover the previous validated autosave">Recover Backup</button>
       <button id="plotBtn" title="Plot to a scaled PDF">Plot (PLT)</button>
+        <button id="dxfInBtn" title="Import an AutoCAD DXF drawing (DXFIN)">Import DXF</button>
+        <button id="dxfOutBtn" title="Export this drawing as AutoCAD DXF (DXFOUT)">Export DXF</button>
     </div>
     <div class="tool-group">
       <span class="group-label">Edit</span>
@@ -666,6 +668,7 @@ kbd { font-size: 9px; opacity: .65; }
     <a id="docsLink" class="docs-link" href="docs.html" target="_blank" rel="noopener">Docs</a>
     <input id="openInput" type="file" accept=".json,.zbCAD.json,application/json" hidden />
   <input id="imageInput" type="file" accept="image/*" hidden />
+  <input id="dxfInput" type="file" accept=".dxf,application/dxf" hidden />
   </header>
 
   <main class="workspace">
@@ -1037,6 +1040,7 @@ kbd { font-size: 9px; opacity: .65; }
   const underlayApplyBtn = document.getElementById('underlayApply');
   const underlayCancelBtn = document.getElementById('underlayCancel');
   const underlayDeleteBtn = document.getElementById('underlayDelete');
+  const dxfInput = document.getElementById('dxfInput');
 
   // ---------------------------------------------------------------------------
   // core/constants.js
@@ -4042,6 +4046,865 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   // ---------------------------------------------------------------------------
+  // output/dxf.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // The DXF writer
+  //
+  // Turns a DXF plan (output/dxfPlan.js) into AutoCAD R2000 / AC1015 ASCII. Pure
+  // and deterministic, exactly like output/pdf.js: a plan in, a string out, no
+  // DOM, no clock, no state. That is what lets the test suite assert on the file
+  // itself rather than on a re-parse of it.
+  //
+  // A DXF is a flat stream of (group code, value) pairs, each on its own line.
+  // Structure comes entirely from convention: sections open with 0/SECTION and a
+  // 2/<name>, tables with 0/TABLE, and everything closes with 0/ENDSEC or
+  // 0/ENDTAB. R2000 additionally requires every record to carry a unique
+  // hexadecimal handle (code 5) and to name its owner (code 330), which is what
+  // most of the bookkeeping below is for.
+  // ---------------------------------------------------------------------------
+
+  const DXF_ACAD_VERSION = 'AC1015';
+
+  // Colour. zbCAD stores RGB hex and has no colour index, so export writes both:
+  // code 62 as the nearest indexed colour for readers that only understand the
+  // old palette, and code 420 as the exact 24-bit value for those that do. On the
+  // way back in, 420 wins whenever it is present, so a zbCAD -> DXF -> zbCAD trip
+  // is colour-exact and only a trip through indexed-only software loses anything.
+  const ACI_BASIC = [
+    [0, '#000000'], [1, '#ff0000'], [2, '#ffff00'], [3, '#00ff00'],
+    [4, '#00ffff'], [5, '#0000ff'], [6, '#ff00ff'], [7, '#ffffff'],
+    [8, '#414141'], [9, '#808080'],
+    [250, '#333333'], [251, '#505050'], [252, '#696969'],
+    [253, '#828282'], [254, '#bebebe'], [255, '#ffffff'],
+  ];
+
+  function hexToRgb(hex) {
+    const match = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+    if (!match) return [0, 0, 0];
+    const value = parseInt(match[1], 16);
+    return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+  }
+
+  function rgbToTrueColor(hex) {
+    const [r, g, b] = hexToRgb(hex);
+    return (r << 16) | (g << 8) | b;
+  }
+
+  // Nearest of the indexed colours this writer knows by name. Indices 10-249 are
+  // a generated hue ramp whose exact values vary between implementations, so only
+  // the fixed ends of the palette are matched against — an approximate 62 beside
+  // an exact 420 is honest, and a wrong "precise" index would not be.
+  function nearestAci(hex) {
+    const [r, g, b] = hexToRgb(hex);
+    let best = 7;
+    let bestDistance = Infinity;
+    for (const [index, candidate] of ACI_BASIC) {
+      if (index === 0) continue;
+      const [cr, cg, cb] = hexToRgb(candidate);
+      const distance = (r - cr) ** 2 + (g - cg) ** 2 + (b - cb) ** 2;
+      if (distance < bestDistance) { bestDistance = distance; best = index; }
+    }
+    return best;
+  }
+
+  function aciToHex(index) {
+    const found = ACI_BASIC.find(([value]) => value === Number(index));
+    if (found) return found[1];
+    const numeric = Number(index);
+    if (!Number.isFinite(numeric) || numeric < 10 || numeric > 249) return '#ffffff';
+    // The generated part of the palette: 24 hues, ten steps each, alternating a
+    // saturated and a washed-out variant down five brightness levels. This
+    // reconstruction is close to AutoCAD's table but not bit-exact, which is why
+    // export always writes a true colour alongside the index.
+    const hue = Math.floor((numeric - 10) / 10) * 15;
+    const step = (numeric - 10) % 10;
+    const value = [255, 255, 189, 189, 129, 129, 104, 104, 79, 79][step] / 255;
+    const saturation = step % 2 === 0 ? 1 : 0.5;
+    return hslLikeToHex(hue, saturation, value);
+  }
+
+  function hslLikeToHex(hueDegrees, saturation, value) {
+    const h = ((hueDegrees % 360) + 360) % 360 / 60;
+    const c = value * saturation;
+    const x = c * (1 - Math.abs((h % 2) - 1));
+    const m = value - c;
+    const table = [[c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x]];
+    const [r, g, b] = table[Math.floor(h) % 6];
+    const byte = channel => Math.round((channel + m) * 255).toString(16).padStart(2, '0');
+    return `#${byte(r)}${byte(g)}${byte(b)}`;
+  }
+
+  // DXF numbers. The shortest decimal that reads back as the very same double,
+  // which is what JavaScript's own number-to-string already gives — a fixed
+  // number of decimal places would quietly round every coordinate and, worse,
+  // every polyline bulge, where the lost digits are angular error rather than
+  // sub-micron position. Exponent notation is avoided because some older readers
+  // mishandle it, and values below a nanometre-ish threshold are written as zero
+  // rather than as 1.2e-15.
+  function dxfNumber(value) {
+    if (!Number.isFinite(value)) return '0.0';
+    if (Math.abs(value) < 1e-12) return '0.0';
+    let text = String(value);
+    if (text.includes('e') || text.includes('E')) {
+      text = value.toFixed(12).replace(/0+$/, '').replace(/\.$/, '');
+    }
+    // A DXF real should look like one, so an integer value still gets a point.
+    if (!text.includes('.')) text += '.0';
+    return text === '-0.0' ? '0.0' : text;
+  }
+
+  function degrees(radians) {
+    const value = (radians * 360) / TAU;
+    // Angles are written in [0, 360) so a reader never has to normalise.
+    const wrapped = ((value % 360) + 360) % 360;
+    return dxfNumber(wrapped);
+  }
+
+  // A DXF string cannot carry a raw newline, and ^ is the control-code escape.
+  function dxfEscape(text) {
+    return String(text == null ? '' : text).replace(/\r?\n/g, '\\P');
+  }
+
+  // Handles are hex, start above the reserved low values, and must be unique
+  // across the whole file. A counter is enough because nothing here references a
+  // handle it has not already allocated.
+  function createHandleSource(start = 0x100) {
+    let next = start;
+    return () => (next++).toString(16).toUpperCase();
+  }
+
+  class DxfWriter {
+    constructor() {
+      this.lines = [];
+    }
+
+    pair(code, value) {
+      this.lines.push(String(code));
+      this.lines.push(String(value));
+      return this;
+    }
+
+    point(baseCode, point, z = 0) {
+      this.pair(baseCode, dxfNumber(point.x));
+      this.pair(baseCode + 10, dxfNumber(point.y));
+      this.pair(baseCode + 20, dxfNumber(z));
+      return this;
+    }
+
+    toString() {
+      // DXF is conventionally CRLF, and every reader accepts it.
+      return `${this.lines.join('\r\n')}\r\n`;
+    }
+  }
+
+  function writeHeaderVariable(writer, name, code, value) {
+    writer.pair(9, name).pair(code, value);
+  }
+
+  function writeHeader(writer, plan) {
+    writer.pair(0, 'SECTION').pair(2, 'HEADER');
+    writeHeaderVariable(writer, '$ACADVER', 1, DXF_ACAD_VERSION);
+    writeHeaderVariable(writer, '$HANDSEED', 5, 'FFFF');
+    writeHeaderVariable(writer, '$INSUNITS', 70, plan.header.insunits);
+    writeHeaderVariable(writer, '$LUNITS', 70, plan.header.lunits);
+    writeHeaderVariable(writer, '$LUPREC', 70, plan.header.luprec);
+    writeHeaderVariable(writer, '$AUNITS', 70, 0);
+    writeHeaderVariable(writer, '$AUPREC', 70, plan.header.auprec);
+    writer.pair(9, '$EXTMIN');
+    writer.point(10, plan.header.extMin);
+    writer.pair(9, '$EXTMAX');
+    writer.point(10, plan.header.extMax);
+    writeHeaderVariable(writer, '$MEASUREMENT', 70, plan.header.insunits === 1 || plan.header.insunits === 2 ? 0 : 1);
+    writer.pair(0, 'ENDSEC');
+  }
+
+  function writeTableHead(writer, name, handle, count, ownerHandle) {
+    writer.pair(0, 'TABLE').pair(2, name).pair(5, handle).pair(330, ownerHandle)
+      .pair(100, 'AcDbSymbolTable').pair(70, count);
+    // DIMSTYLE is the one table with a subclass of its own and a second count.
+    if (name === 'DIMSTYLE') writer.pair(100, 'AcDbDimStyleTable').pair(71, count);
+  }
+
+  function writeTables(writer, plan, handles, context) {
+    writer.pair(0, 'SECTION').pair(2, 'TABLES');
+
+    // VPORT — a reader wants at least *Active to know how to show the drawing.
+    writeTableHead(writer, 'VPORT', handles(), 1, '0');
+    writer.pair(0, 'VPORT').pair(5, handles()).pair(330, '0')
+      .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbViewportTableRecord')
+      .pair(2, '*Active').pair(70, 0);
+    writer.pair(12, dxfNumber((plan.header.extMin.x + plan.header.extMax.x) / 2));
+    writer.pair(22, dxfNumber((plan.header.extMin.y + plan.header.extMax.y) / 2));
+    writer.pair(40, dxfNumber(Math.max(1,
+      Math.abs(plan.header.extMax.y - plan.header.extMin.y) || 1)));
+    writer.pair(0, 'ENDTAB');
+
+    // LTYPE
+    writeTableHead(writer, 'LTYPE', handles(), plan.linetypes.length + 2, '0');
+    for (const name of ['ByBlock', 'ByLayer']) {
+      writer.pair(0, 'LTYPE').pair(5, handles()).pair(330, '0')
+        .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbLinetypeTableRecord')
+        .pair(2, name).pair(70, 0).pair(3, '').pair(72, 65).pair(73, 0).pair(40, '0.0');
+    }
+    for (const linetype of plan.linetypes) {
+      const total = linetype.pattern.reduce((sum, value) => sum + Math.abs(value), 0);
+      writer.pair(0, 'LTYPE').pair(5, handles()).pair(330, '0')
+        .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbLinetypeTableRecord')
+        .pair(2, linetype.name).pair(70, 0).pair(3, linetype.description)
+        .pair(72, 65).pair(73, linetype.pattern.length).pair(40, dxfNumber(total));
+      for (const dash of linetype.pattern) {
+        writer.pair(49, dxfNumber(dash)).pair(74, 0);
+      }
+    }
+    writer.pair(0, 'ENDTAB');
+
+    // LAYER
+    writeTableHead(writer, 'LAYER', handles(), plan.layers.length, '0');
+    for (const layer of plan.layers) {
+      const aci = nearestAci(layer.colorHex);
+      writer.pair(0, 'LAYER').pair(5, handles()).pair(330, '0')
+        .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbLayerTableRecord')
+        .pair(2, layer.name)
+        .pair(70, 0)
+        // A negative colour index is how DXF says a layer is switched off.
+        .pair(62, layer.off ? -aci : aci)
+        .pair(420, rgbToTrueColor(layer.colorHex))
+        .pair(6, layer.linetype)
+        .pair(290, layer.plot ? 1 : 0)
+        // Lineweight is hundredths of a millimetre, as an integer.
+        .pair(370, Math.round(layer.lineweightMM * 100))
+        .pair(390, context.plotStyleHandle);
+    }
+    writer.pair(0, 'ENDTAB');
+
+    // STYLE — Courier, because zbCAD measures text as a monospace 0.6 em and a
+    // proportional font would make every string the wrong length on arrival.
+    writeTableHead(writer, 'STYLE', handles(), plan.styles.length, '0');
+    for (const style of plan.styles) {
+      writer.pair(0, 'STYLE').pair(5, handles()).pair(330, '0')
+        .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbTextStyleTableRecord')
+        .pair(2, style.name).pair(70, 0).pair(40, '0.0')
+        .pair(41, dxfNumber(style.widthFactor)).pair(50, '0.0').pair(71, 0)
+        .pair(42, '0.2').pair(3, style.font).pair(4, '');
+    }
+    writer.pair(0, 'ENDTAB');
+
+    writeTableHead(writer, 'VIEW', handles(), 0, '0');
+    writer.pair(0, 'ENDTAB');
+
+    writeTableHead(writer, 'UCS', handles(), 0, '0');
+    writer.pair(0, 'ENDTAB');
+
+    writeTableHead(writer, 'APPID', handles(), 1, '0');
+    writer.pair(0, 'APPID').pair(5, handles()).pair(330, '0')
+      .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbRegAppTableRecord')
+      .pair(2, 'ACAD').pair(70, 0);
+    writer.pair(0, 'ENDTAB');
+
+    // DIMSTYLE
+    writeTableHead(writer, 'DIMSTYLE', handles(), plan.dimStyles.length, '0');
+    for (const style of plan.dimStyles) {
+      writer.pair(0, 'DIMSTYLE').pair(105, handles()).pair(330, '0')
+        .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbDimStyleTableRecord')
+        .pair(2, style.name).pair(70, 0)
+        // DIMSCALE is 1 because the plan has already multiplied every size by it:
+        // the numbers below are drawing sizes, not paper sizes.
+        .pair(40, '1.0')
+        .pair(41, dxfNumber(style.arrowSize))
+        .pair(42, dxfNumber(style.extensionOffset))
+        .pair(44, dxfNumber(style.extensionBeyond))
+        .pair(140, dxfNumber(style.textHeight))
+        .pair(147, dxfNumber(style.textGap))
+        // DIMTSZ non-zero means "draw ticks, not arrowheads", which is the
+        // architectural convention zbCAD's `tick` terminator expresses.
+        .pair(141, dxfNumber(style.arrowSize))
+        .pair(173, style.tick ? 1 : 0)
+        .pair(176, 0).pair(177, 0).pair(178, 0)
+        .pair(271, 4).pair(179, 0)
+        .pair(340, context.textStyleHandle);
+      if (style.tick) writer.pair(142, dxfNumber(style.arrowSize));
+    }
+    writer.pair(0, 'ENDTAB');
+
+    // BLOCK_RECORD — one per block, plus the two mandatory spaces.
+    const blockRecordCount = plan.blocks.length + 2;
+    writeTableHead(writer, 'BLOCK_RECORD', handles(), blockRecordCount, '0');
+    for (const name of ['*Model_Space', '*Paper_Space']) {
+      const handle = name === '*Model_Space' ? context.modelSpaceHandle : context.paperSpaceHandle;
+      writer.pair(0, 'BLOCK_RECORD').pair(5, handle).pair(330, '0')
+        .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbBlockTableRecord')
+        .pair(2, name).pair(70, 0);
+    }
+    for (const block of plan.blocks) {
+      block.recordHandle = handles();
+      writer.pair(0, 'BLOCK_RECORD').pair(5, block.recordHandle).pair(330, '0')
+        .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbBlockTableRecord')
+        .pair(2, block.name).pair(70, 0);
+    }
+    writer.pair(0, 'ENDTAB');
+
+    writer.pair(0, 'ENDSEC');
+  }
+
+  function writeBlockShell(writer, handles, name, ownerHandle, base, isPaperSpace) {
+    writer.pair(0, 'BLOCK').pair(5, handles()).pair(330, ownerHandle)
+      .pair(100, 'AcDbEntity').pair(67, isPaperSpace ? 1 : 0).pair(8, '0')
+      .pair(100, 'AcDbBlockBegin').pair(2, name).pair(70, 0);
+    writer.point(10, base);
+    writer.pair(3, name).pair(1, '');
+  }
+
+  function writeBlockEnd(writer, handles, ownerHandle, isPaperSpace) {
+    writer.pair(0, 'ENDBLK').pair(5, handles()).pair(330, ownerHandle)
+      .pair(100, 'AcDbEntity').pair(67, isPaperSpace ? 1 : 0).pair(8, '0')
+      .pair(100, 'AcDbBlockEnd');
+  }
+
+  function writeBlocks(writer, plan, handles, context) {
+    writer.pair(0, 'SECTION').pair(2, 'BLOCKS');
+
+    writeBlockShell(writer, handles, '*Model_Space', context.modelSpaceHandle, { x: 0, y: 0 }, false);
+    writeBlockEnd(writer, handles, context.modelSpaceHandle, false);
+    writeBlockShell(writer, handles, '*Paper_Space', context.paperSpaceHandle, { x: 0, y: 0 }, true);
+    writeBlockEnd(writer, handles, context.paperSpaceHandle, true);
+
+    for (const block of plan.blocks) {
+      writeBlockShell(writer, handles, block.name, block.recordHandle, block.base, false);
+      for (const entity of block.entities) {
+        writeEntity(writer, entity, handles, block.recordHandle, context);
+      }
+      writeBlockEnd(writer, handles, block.recordHandle, false);
+    }
+
+    writer.pair(0, 'ENDSEC');
+  }
+
+  function entityHead(writer, type, handles, ownerHandle, layer) {
+    writer.pair(0, type).pair(5, handles()).pair(330, ownerHandle)
+      .pair(100, 'AcDbEntity').pair(8, layer || '0');
+  }
+
+  function writeEntity(writer, entity, handles, ownerHandle, context) {
+    if (entity.type === 'LINE') {
+      entityHead(writer, 'LINE', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbLine');
+      writer.point(10, entity.a);
+      writer.point(11, entity.b);
+      return;
+    }
+    if (entity.type === 'LWPOLYLINE') {
+      entityHead(writer, 'LWPOLYLINE', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbPolyline')
+        .pair(90, entity.points.length)
+        .pair(70, entity.closed ? 1 : 0);
+      for (const point of entity.points) {
+        writer.pair(10, dxfNumber(point.x)).pair(20, dxfNumber(point.y));
+        // Code 42 is omitted for a straight segment, which is what every other
+        // writer does and what keeps a straight polyline byte-comparable.
+        if (Math.abs(point.bulge || 0) > 1e-12) writer.pair(42, dxfNumber(point.bulge));
+      }
+      return;
+    }
+    if (entity.type === 'CIRCLE') {
+      entityHead(writer, 'CIRCLE', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbCircle');
+      writer.point(10, entity.center);
+      writer.pair(40, dxfNumber(entity.radius));
+      return;
+    }
+    if (entity.type === 'ARC') {
+      entityHead(writer, 'ARC', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbCircle');
+      writer.point(10, entity.center);
+      writer.pair(40, dxfNumber(entity.radius));
+      writer.pair(100, 'AcDbArc');
+      // DXF arcs run counter-clockwise from start to end, which is zbCAD's own
+      // convention, so no swap is needed.
+      writer.pair(50, degrees(entity.startAngle));
+      writer.pair(51, degrees(entity.endAngle));
+      return;
+    }
+    if (entity.type === 'TEXT') {
+      entityHead(writer, 'TEXT', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbText');
+      writer.point(10, entity.position);
+      writer.pair(40, dxfNumber(entity.height));
+      writer.pair(1, dxfEscape(entity.text));
+      if (entity.rotation) writer.pair(50, degrees(entity.rotation));
+      writer.pair(7, entity.style || 'Standard');
+      if (entity.halign) writer.pair(72, entity.halign);
+      if (entity.halign || entity.valign) {
+        // With any justification but left/baseline, DXF reads the position from
+        // the second alignment point, so it has to be written too.
+        writer.point(11, entity.position);
+      }
+      writer.pair(100, 'AcDbText');
+      if (entity.valign) writer.pair(73, entity.valign);
+      return;
+    }
+    if (entity.type === 'MTEXT') {
+      entityHead(writer, 'MTEXT', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbMText');
+      writer.point(10, entity.position);
+      writer.pair(40, dxfNumber(entity.height));
+      writer.pair(41, dxfNumber(entity.width));
+      writer.pair(71, entity.attachment || 1);
+      writer.pair(72, 5);
+      writer.pair(1, dxfEscape(entity.text));
+      writer.pair(7, entity.style || 'Standard');
+      if (entity.rotation) writer.pair(50, degrees(entity.rotation));
+      writer.pair(73, 2);
+      writer.pair(44, dxfNumber(entity.lineSpacing || 1));
+      return;
+    }
+    if (entity.type === 'SOLID') {
+      entityHead(writer, 'SOLID', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbTrace');
+      writer.point(10, entity.points[0]);
+      writer.point(11, entity.points[1]);
+      writer.point(12, entity.points[2]);
+      writer.point(13, entity.points[3]);
+      return;
+    }
+    if (entity.type === 'DIMENSION') {
+      entityHead(writer, 'DIMENSION', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbDimension');
+      writer.pair(2, entity.block);
+      writer.point(10, entity.defPoint);
+      writer.point(11, entity.textMid);
+      writer.pair(70, entity.flags);
+      writer.pair(71, 5);
+      writer.pair(42, dxfNumber(entity.measurement));
+      writer.pair(1, '');
+      writer.pair(3, entity.styleName);
+      if (entity.dimType === 'RADIUS') {
+        writer.pair(100, 'AcDbRadialDimension');
+        writer.point(15, entity.chordPoint);
+        writer.pair(40, '0.0');
+        return;
+      }
+      if (entity.dimType === 'DIAMETER') {
+        writer.pair(100, 'AcDbDiametricDimension');
+        writer.point(15, entity.chordPoint);
+        writer.pair(40, '0.0');
+        return;
+      }
+      writer.pair(100, 'AcDbAlignedDimension');
+      writer.point(13, entity.ext1);
+      writer.point(14, entity.ext2);
+      if (entity.dimType === 'LINEAR') {
+        writer.pair(50, degrees(entity.rotation || 0));
+        writer.pair(100, 'AcDbRotatedDimension');
+      }
+      return;
+    }
+    if (entity.type === 'POINT') {
+      entityHead(writer, 'POINT', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbPoint');
+      writer.point(10, entity.position);
+    }
+  }
+
+  function writeEntities(writer, plan, handles, context) {
+    writer.pair(0, 'SECTION').pair(2, 'ENTITIES');
+    for (const entity of plan.entities) {
+      writeEntity(writer, entity, handles, context.modelSpaceHandle, context);
+    }
+    writer.pair(0, 'ENDSEC');
+  }
+
+  // R2000 readers expect a named-object dictionary to exist even when it holds
+  // nothing interesting; a file without one is rejected by some of them.
+  function writeObjects(writer, handles, context) {
+    writer.pair(0, 'SECTION').pair(2, 'OBJECTS');
+    writer.pair(0, 'DICTIONARY').pair(5, context.rootDictHandle).pair(330, '0')
+      .pair(100, 'AcDbDictionary').pair(281, 1)
+      .pair(3, 'ACAD_GROUP').pair(350, context.groupDictHandle);
+    writer.pair(0, 'DICTIONARY').pair(5, context.groupDictHandle).pair(330, context.rootDictHandle)
+      .pair(100, 'AcDbDictionary').pair(281, 1);
+    writer.pair(0, 'ACDBPLACEHOLDER').pair(5, context.plotStyleHandle)
+      .pair(330, context.rootDictHandle);
+    writer.pair(0, 'ENDSEC');
+  }
+
+  function buildDxfDocument(plan) {
+    const handles = createHandleSource();
+    const context = {
+      modelSpaceHandle: handles(),
+      paperSpaceHandle: handles(),
+      rootDictHandle: handles(),
+      groupDictHandle: handles(),
+      plotStyleHandle: handles(),
+      textStyleHandle: handles(),
+    };
+    const writer = new DxfWriter();
+    writeHeader(writer, plan);
+    writeTables(writer, plan, handles, context);
+    writeBlocks(writer, plan, handles, context);
+    writeEntities(writer, plan, handles, context);
+    writeObjects(writer, handles, context);
+    writer.pair(0, 'EOF');
+    return writer.toString();
+  }
+
+  // ---------------------------------------------------------------------------
+  // output/dxfPlan.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // The DXF plan
+  //
+  // The same split CLAUDE.md asks for between output/plot.js and output/pdf.js:
+  // this module decides WHAT a DXF should contain, output/dxf.js decides how to
+  // spell it, and model/dxfRead.js parses a file back into this same shape. That
+  // last point is the one worth protecting — because import and export share the
+  // intermediate, a round trip can be asserted as plan → text → plan without
+  // going near the document model, which is where the mistakes actually hide.
+  //
+  // The plan sits at a HIGHER altitude than the plot plan. buildPlotPlan
+  // flattens everything: arcs become beziers, layers become numbers, dimensions
+  // become loose line work. DXF wants the opposite — real ARCs, symbolic layer
+  // names, live DIMENSION entities — so this is a parallel intermediate rather
+  // than a reuse of that one.
+  //
+  // Coordinates here are drawing units, unconverted. A DXF has no paper.
+  // Angles are radians; degrees appear only in the serialiser.
+  // ---------------------------------------------------------------------------
+
+  // DXF $INSUNITS codes. zbCAD's unit enum was modelled on this header in the
+  // first place (see core/units.js), so the mapping is one-to-one.
+  const DXF_INSUNITS = {
+    inches: 1,
+    feet: 2,
+    millimeters: 4,
+    centimeters: 5,
+    meters: 6,
+  };
+
+  // $LUNITS: 1 scientific, 2 decimal, 3 engineering, 4 architectural, 5 fractional.
+  const DXF_LUNITS = {
+    decimal: 2,
+    engineering: 3,
+    architectural: 4,
+    fractional: 5,
+  };
+
+  // zbCAD's MTEXT stacks lines at 1.5x the character height. DXF's MTEXT spaces
+  // them at 1.66x times a line-spacing factor, so the factor that reproduces
+  // zbCAD's spacing is 1.5/1.66. Code 44 accepts 0.25..4.0, so this is in range.
+  const DXF_MTEXT_SPACING_BASE = 1.66;
+
+  // A zbCAD TEXT/MTEXT position is the baseline of the first line; a DXF MTEXT
+  // with attachment 1 is anchored at the TOP-left of its box. The gap between
+  // them is one ascent, and there is no exact answer because zbCAD never measures
+  // a real font — this is the same 0.8 the renderer's own box uses.
+  const DXF_TEXT_ASCENT = 0.8;
+
+  const DXF_STYLE_NAME = 'Standard';
+  const DXF_DEFAULT_LINETYPE = 'CONTINUOUS';
+
+  // zbCAD's dash patterns are screen pixels, turned into paper millimetres by
+  // PLOT_DASH_MM_PER_UNIT when plotting. A DXF pattern is in drawing units, so
+  // the same millimetre length is converted back through the drawing's own unit.
+  function dxfDashPattern(linetype, drawingUnit) {
+    const pattern = LINETYPE_DASH_PATTERNS[linetype];
+    if (!pattern || !pattern.length) return null;
+    const mmPerUnit = DRAWING_UNITS[drawingUnit].mmPerUnit;
+    const lengths = pattern.map((value, index) => {
+      const units = (value * PLOT_DASH_MM_PER_UNIT) / mmPerUnit;
+      // DXF signs a pattern element: positive draws, negative is a gap. The
+      // source pattern alternates dash/gap starting with a dash.
+      return index % 2 === 0 ? units : -units;
+    });
+    return lengths;
+  }
+
+  function dxfLayerName(name) {
+    // DXF forbids these in symbol names. A layer called "A/B" would otherwise
+    // produce a file some readers reject outright.
+    const cleaned = String(name).replace(/[<>/\\":;?*|=`,]/g, '_').trim();
+    return cleaned.slice(0, 255) || 'LAYER';
+  }
+
+  function dxfLinetypeName(linetype) {
+    return String(linetype || 'continuous').toUpperCase();
+  }
+
+  function dxfPlanLayers(drawingUnit) {
+    return state.layers.map(layer => ({
+      name: dxfLayerName(layer.name),
+      colorHex: layer.color,
+      linetype: dxfLinetypeName(layer.linetype),
+      lineweightMM: layer.lineweight,
+      plot: layer.printable !== false,
+      // A DXF layer is switched off by a negative colour index, which is how the
+      // `visible` flag survives the trip.
+      off: !layer.visible,
+      id: layer.id,
+    }));
+  }
+
+  function dxfPlanLinetypes(drawingUnit) {
+    const used = new Set(state.layers.map(layer => dxfLinetypeName(layer.linetype)));
+    used.add(DXF_DEFAULT_LINETYPE);
+    const linetypes = [{ name: DXF_DEFAULT_LINETYPE, description: 'Solid line', pattern: [] }];
+    for (const layer of state.layers) {
+      const name = dxfLinetypeName(layer.linetype);
+      if (name === DXF_DEFAULT_LINETYPE) continue;
+      if (linetypes.some(entry => entry.name === name)) continue;
+      linetypes.push({
+        name,
+        description: name.toLowerCase(),
+        pattern: dxfDashPattern(layer.linetype, drawingUnit) || [],
+      });
+    }
+    return linetypes;
+  }
+
+  function dxfPlanDimStyles() {
+    return state.dimStyles.map(style => ({
+      name: dxfLayerName(style.name || style.id),
+      id: style.id,
+      scale: style.scale,
+      textHeight: dimSize(style, 'textHeight'),
+      arrowSize: dimSize(style, 'arrowSize'),
+      extensionOffset: dimSize(style, 'extensionOffset'),
+      extensionBeyond: dimSize(style, 'extensionBeyond'),
+      textGap: dimSize(style, 'textGap'),
+      // An architectural tick is DIMTSZ; an arrowhead is DIMTSZ 0 plus DIMASZ.
+      tick: style.arrowType === 'tick',
+    }));
+  }
+
+  function layerNameFor(layerId, layers) {
+    const found = layers.find(layer => layer.id === layerId);
+    return found ? found.name : '0';
+  }
+
+  // Identity context: plotDimensionOps is written against a paper transform, and
+  // handing it the identity gives back the very same line work, arrowheads and
+  // text in DRAWING units. That is how a dimension's picture gets into its block
+  // without a second implementation of dimension rendering existing to drift.
+  const DXF_IDENTITY_CONTEXT = {
+    settings: { color: 'mono', lineweights: false },
+    mmPerUnit: 1,
+    toPaper: point => ({ x: point.x, y: point.y }),
+  };
+
+  // The anonymous block holding a dimension's drawn picture. R2000 expects one
+  // per DIMENSION entity; readers that regenerate dimensions ignore it, and
+  // readers that do not still show the right thing.
+  function dxfDimensionBlockEntities(entity, layerName) {
+    const ops = plotDimensionOps(entity, DXF_IDENTITY_CONTEXT, [0, 0, 0]);
+    const entities = [];
+    for (const op of ops) {
+      if (op.kind === 'stroke') {
+        for (const subpath of op.subpaths) {
+          let cursor = subpath.start;
+          for (const segment of subpath.segs) {
+            // Dimension line work is straight; a bezier here would mean the
+            // dimension renderer grew a curve, which is worth not silently
+            // flattening.
+            if (segment.type === 'l') {
+              entities.push({ type: 'LINE', layer: layerName, a: cursor, b: segment.to });
+            }
+            cursor = segment.to;
+          }
+        }
+      } else if (op.kind === 'fill') {
+        // Arrowheads and ticks. A DXF SOLID takes four corners with the third
+        // and fourth swapped relative to a polygon's winding; a triangle repeats
+        // its last point.
+        const points = op.points.slice(0, 4);
+        while (points.length < 4) points.push(points[points.length - 1]);
+        entities.push({
+          type: 'SOLID',
+          layer: layerName,
+          points: [points[0], points[1], points[3], points[2]],
+        });
+      } else if (op.kind === 'text') {
+        entities.push({
+          type: 'TEXT',
+          layer: layerName,
+          style: DXF_STYLE_NAME,
+          position: { x: op.x, y: op.y },
+          height: op.sizeMM,
+          rotation: op.angle,
+          text: op.text,
+          // The plan's dimension text is centred on the dimension line; DXF
+          // expresses that as horizontal justification 1 with a second alignment
+          // point, which the serialiser writes.
+          halign: op.anchor === 'center' ? 1 : 0,
+          valign: op.baseline === 'middle' ? 2 : 0,
+        });
+      }
+    }
+    return entities;
+  }
+
+  const DXF_DIMENSION_TYPES = { LINEAR: 0, ALIGNED: 1, DIAMETER: 3, RADIUS: 4 };
+
+  function dxfDimensionEntity(entity, layerName, styleName, blockName) {
+    const geometry = dimensionGeometry(entity);
+    const base = {
+      type: 'DIMENSION',
+      layer: layerName,
+      block: blockName,
+      styleName,
+      dimType: entity.dimType,
+      // Group 70's low bits are the dimension kind; bit 32 says the picture is
+      // in a block, which it is, and bit 128 says the text position is given.
+      flags: DXF_DIMENSION_TYPES[entity.dimType] + 32 + 128,
+      textMid: geometry.textAnchor,
+      measurement: geometry.measure,
+      text: dimensionText(entity),
+      rotation: entity.rotation || 0,
+    };
+    if (entity.dimType === 'RADIUS') {
+      // 10 is the centre, 15 the point on the curve.
+      return { ...base, defPoint: entity.p1, chordPoint: entity.p2 };
+    }
+    if (entity.dimType === 'DIAMETER') {
+      return { ...base, defPoint: entity.p2, chordPoint: entity.p1 };
+    }
+    // Linear and aligned: 10 is where the dimension line sits, 13 and 14 are the
+    // two extension line origins.
+    return { ...base, defPoint: geometry.q2, ext1: entity.p1, ext2: entity.p2 };
+  }
+
+  function dxfEntityRecords(entity, layers, plan) {
+    const layer = layerNameFor(entity.layerId, layers);
+    if (entity.type === 'LINE') {
+      return [{ type: 'LINE', layer, a: entity.a, b: entity.b }];
+    }
+    if (entity.type === 'PLINE') {
+      const points = entity.points.map((point, index) => ({
+        x: point.x,
+        y: point.y,
+        // zbCAD's bulge convention IS the DXF one — tan(sweep/4), positive
+        // counter-clockwise — so this crosses over untouched.
+        bulge: entity.bulges ? (entity.bulges[index] || 0) : 0,
+      }));
+      return [{ type: 'LWPOLYLINE', layer, points, closed: Boolean(entity.closed) }];
+    }
+    if (entity.type === 'CIRCLE') {
+      return [{ type: 'CIRCLE', layer, center: entity.center, radius: entity.radius }];
+    }
+    if (entity.type === 'ARC') {
+      return [{
+        type: 'ARC', layer,
+        center: entity.center, radius: entity.radius,
+        startAngle: entity.startAngle, endAngle: entity.endAngle,
+      }];
+    }
+    if (entity.type === 'TEXT') {
+      return [{
+        type: 'TEXT', layer, style: DXF_STYLE_NAME,
+        position: entity.position,
+        height: entity.height,
+        rotation: entity.rotation,
+        text: entity.content,
+        halign: 0, valign: 0,
+      }];
+    }
+    if (entity.type === 'MTEXT') {
+      // Shift up by one ascent, along the text's own up direction, to convert
+      // zbCAD's first-line baseline into DXF's top-left attachment point.
+      const lift = entity.height * DXF_TEXT_ASCENT;
+      const cos = Math.cos(entity.rotation);
+      const sin = Math.sin(entity.rotation);
+      return [{
+        type: 'MTEXT', layer, style: DXF_STYLE_NAME,
+        position: {
+          x: entity.position.x - lift * sin,
+          y: entity.position.y + lift * cos,
+        },
+        height: entity.height,
+        width: entity.width,
+        rotation: entity.rotation,
+        text: entity.content,
+        attachment: 1,
+        lineSpacing: mtextLineHeight(entity) / entity.height / DXF_MTEXT_SPACING_BASE,
+      }];
+    }
+    if (entity.type === 'DIM') {
+      const styleName = (plan.dimStyles.find(style => style.id === entity.styleId)
+        || plan.dimStyles[0]).name;
+      const blockName = `*D${plan.blocks.length + 1}`;
+      plan.blocks.push({
+        name: blockName,
+        base: { x: 0, y: 0 },
+        entities: dxfDimensionBlockEntities(entity, layer),
+      });
+      return [dxfDimensionEntity(entity, layer, styleName, blockName)];
+    }
+    return [];
+  }
+
+  function buildDxfPlan(options = {}) {
+    const drawingUnit = state.unitSettings.drawingUnit;
+    const layers = dxfPlanLayers(drawingUnit);
+    const plan = {
+      header: {
+        insunits: DXF_INSUNITS[drawingUnit] ?? 0,
+        lunits: DXF_LUNITS[state.unitSettings.format] ?? 2,
+        luprec: LENGTH_FORMATS[state.unitSettings.format]?.precisions?.includes(state.unitSettings.precision)
+          ? state.unitSettings.precision : 4,
+        auprec: state.unitSettings.anglePrecision ?? 1,
+        drawingUnit,
+        extMin: { x: 0, y: 0 },
+        extMax: { x: 0, y: 0 },
+      },
+      layers,
+      linetypes: dxfPlanLinetypes(drawingUnit),
+      styles: [{ name: DXF_STYLE_NAME, font: 'cour.ttf', widthFactor: 1 }],
+      dimStyles: dxfPlanDimStyles(),
+      blocks: [],
+      entities: [],
+      warnings: [],
+    };
+
+    const skipped = new Map();
+    // Everything is exported, hidden layers included: a DXF is the drawing, not
+    // a plot of it, and the layer's own off flag travels with it.
+    const source = options.entities || state.entities;
+    for (const entity of source) {
+      const records = dxfEntityRecords(entity, layers, plan);
+      if (!records.length) {
+        skipped.set(entity.type, (skipped.get(entity.type) || 0) + 1);
+        continue;
+      }
+      plan.entities.push(...records);
+    }
+
+    const boxes = source.map(entityBBox).filter(Boolean);
+    if (boxes.length) {
+      plan.header.extMin = {
+        x: Math.min(...boxes.map(box => box.minX)),
+        y: Math.min(...boxes.map(box => box.minY)),
+      };
+      plan.header.extMax = {
+        x: Math.max(...boxes.map(box => box.maxX)),
+        y: Math.max(...boxes.map(box => box.maxY)),
+      };
+    }
+
+    for (const [type, count] of skipped) {
+      plan.warnings.push(`${count} ${type} entit${count === 1 ? 'y' : 'ies'} had no DXF equivalent and were left out.`);
+    }
+    // DXF's own IMAGE entity needs an IMAGEDEF object and an external or embedded
+    // raster, which is a whole subsystem for something no consumer of this file
+    // is likely to want. Saying so beats writing a file that quietly lost them.
+    if (state.underlays.length) {
+      plan.warnings.push(`${state.underlays.length} reference image${state.underlays.length === 1 ? '' : 's'} ` +
+        'cannot be written to DXF and are not included.');
+    }
+    return plan;
+  }
+
+  // ---------------------------------------------------------------------------
   // view/underlay.js
   // ---------------------------------------------------------------------------
 
@@ -4601,6 +5464,466 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   // ---------------------------------------------------------------------------
+  // model/dxfRead.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // The DXF reader
+  //
+  // Parses ASCII DXF into the same plan shape output/dxfPlan.js builds, which is
+  // what makes a state -> plan -> text -> plan -> state round trip assertable in
+  // one test. Pure: text in, plan out, no state touched.
+  //
+  // The format is a flat stream of (code, value) line pairs, so the parser is a
+  // cursor over that stream plus a per-entity accumulator. It is deliberately
+  // tolerant — real files come from a dozen different writers across thirty years
+  // of the format, and the ones that matter here differ in what they OMIT rather
+  // than in what they get wrong. Anything unrecognised is counted and reported,
+  // never guessed at.
+  // ---------------------------------------------------------------------------
+
+  const DXF_BINARY_SENTINEL = 'AutoCAD Binary DXF';
+
+  function parseDxfPairs(text) {
+    // Files arrive with CRLF, LF, or (rarely) CR line endings.
+    const lines = String(text).split(/\r\n|\r|\n/);
+    const pairs = [];
+    for (let index = 0; index + 1 < lines.length; index += 2) {
+      const code = Number(lines[index].trim());
+      if (!Number.isFinite(code)) return { error: `Line ${index + 1} is not a DXF group code.` };
+      pairs.push([code, lines[index + 1]]);
+    }
+    return { pairs };
+  }
+
+  // Group codes below 10 and a few others are strings; the numeric ranges are
+  // well defined by the format.
+  function isNumericCode(code) {
+    return (code >= 10 && code <= 59)
+      || (code >= 60 && code <= 79)
+      || (code >= 90 && code <= 99)
+      || (code >= 140 && code <= 179)
+      || (code >= 210 && code <= 239)
+      || (code >= 270 && code <= 299)
+      || (code >= 370 && code <= 389)
+      || (code >= 400 && code <= 409)
+      || code === 420 || code === 1070 || code === 1071;
+  }
+
+  function codeValue(code, raw) {
+    if (!isNumericCode(code)) return raw;
+    const value = Number(String(raw).trim());
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  // One record: the 0/<type> that opened it plus every pair until the next 0.
+  // Repeated codes are kept in order, because a LWPOLYLINE's vertices are
+  // nothing but repeated 10/20/42.
+  function readRecords(pairs, from) {
+    const records = [];
+    let index = from;
+    while (index < pairs.length) {
+      const [code, raw] = pairs[index];
+      if (code === 0 && (raw === 'ENDSEC' || raw === 'EOF')) break;
+      if (code !== 0) { index++; continue; }
+      const record = { type: raw, pairs: [] };
+      index++;
+      while (index < pairs.length && pairs[index][0] !== 0) {
+        const [innerCode, innerRaw] = pairs[index];
+        record.pairs.push([innerCode, codeValue(innerCode, innerRaw)]);
+        index++;
+      }
+      records.push(record);
+    }
+    return { records, index };
+  }
+
+  function first(record, code, fallback = undefined) {
+    const found = record.pairs.find(pair => pair[0] === code);
+    return found ? found[1] : fallback;
+  }
+
+  function all(record, code) {
+    return record.pairs.filter(pair => pair[0] === code).map(pair => pair[1]);
+  }
+
+  function point(record, baseCode) {
+    return {
+      x: Number(first(record, baseCode, 0)) || 0,
+      y: Number(first(record, baseCode + 10, 0)) || 0,
+    };
+  }
+
+  function radians(degrees) {
+    return (Number(degrees) || 0) * TAU / 360;
+  }
+
+  function sectionBounds(pairs, name) {
+    for (let index = 0; index + 1 < pairs.length; index++) {
+      if (pairs[index][0] === 0 && pairs[index][1] === 'SECTION'
+        && pairs[index + 1][0] === 2 && pairs[index + 1][1] === name) {
+        return index + 2;
+      }
+    }
+    return -1;
+  }
+
+  function readDxfHeader(pairs) {
+    const start = sectionBounds(pairs, 'HEADER');
+    const header = { insunits: 0, lunits: 2, luprec: 4, auprec: 1 };
+    if (start < 0) return header;
+    for (let index = start; index < pairs.length; index++) {
+      const [code, raw] = pairs[index];
+      if (code === 0 && (raw === 'ENDSEC' || raw === 'EOF')) break;
+      if (code !== 9) continue;
+      const next = pairs[index + 1];
+      if (!next) break;
+      const value = Number(String(next[1]).trim());
+      if (raw === '$INSUNITS') header.insunits = value;
+      else if (raw === '$LUNITS') header.lunits = value;
+      else if (raw === '$LUPREC') header.luprec = value;
+      else if (raw === '$AUPREC') header.auprec = value;
+    }
+    return header;
+  }
+
+  function readDxfTables(pairs) {
+    const layers = [];
+    const linetypes = [];
+    const styles = [];
+    const dimStyles = [];
+    const start = sectionBounds(pairs, 'TABLES');
+    if (start < 0) return { layers, linetypes, styles, dimStyles };
+
+    let index = start;
+    while (index < pairs.length) {
+      const [code, raw] = pairs[index];
+      if (code === 0 && (raw === 'ENDSEC' || raw === 'EOF')) break;
+      if (code === 0 && raw === 'TABLE') {
+        const tableName = pairs[index + 1] && pairs[index + 1][0] === 2 ? pairs[index + 1][1] : '';
+        const { records, index: next } = readTableRecords(pairs, index + 2, tableName);
+        if (tableName === 'LAYER') layers.push(...records);
+        else if (tableName === 'LTYPE') linetypes.push(...records);
+        else if (tableName === 'STYLE') styles.push(...records);
+        else if (tableName === 'DIMSTYLE') dimStyles.push(...records);
+        index = next;
+        continue;
+      }
+      index++;
+    }
+    return { layers, linetypes, styles, dimStyles };
+  }
+
+  function readTableRecords(pairs, from, tableName) {
+    const records = [];
+    let index = from;
+    while (index < pairs.length) {
+      const [code, raw] = pairs[index];
+      if (code === 0 && (raw === 'ENDTAB' || raw === 'ENDSEC' || raw === 'EOF')) {
+        return { records, index: index + 1 };
+      }
+      if (code === 0 && raw === tableName) {
+        const record = { type: raw, pairs: [] };
+        index++;
+        while (index < pairs.length && pairs[index][0] !== 0) {
+          record.pairs.push([pairs[index][0], codeValue(pairs[index][0], pairs[index][1])]);
+          index++;
+        }
+        records.push(readTableRecord(record, tableName));
+        continue;
+      }
+      index++;
+    }
+    return { records, index };
+  }
+
+  function readTableRecord(record, tableName) {
+    if (tableName === 'LAYER') {
+      const colorIndex = Number(first(record, 62, 7));
+      return {
+        name: String(first(record, 2, '0')),
+        aci: Math.abs(colorIndex),
+        trueColor: record.pairs.some(pair => pair[0] === 420) ? Number(first(record, 420)) : null,
+        // DXF says "layer off" with a negative colour index.
+        off: colorIndex < 0,
+        linetype: String(first(record, 6, DXF_DEFAULT_LINETYPE)),
+        lineweight: Number(first(record, 370, -1)),
+        plot: Number(first(record, 290, 1)) !== 0,
+        locked: (Number(first(record, 70, 0)) & 4) !== 0,
+      };
+    }
+    if (tableName === 'LTYPE') {
+      return {
+        name: String(first(record, 2, DXF_DEFAULT_LINETYPE)),
+        description: String(first(record, 3, '')),
+        pattern: all(record, 49).map(Number),
+      };
+    }
+    if (tableName === 'STYLE') {
+      return {
+        name: String(first(record, 2, DXF_STYLE_NAME)),
+        font: String(first(record, 3, '')),
+        widthFactor: Number(first(record, 41, 1)) || 1,
+      };
+    }
+    return {
+      name: String(first(record, 2, 'Standard')),
+      scale: Number(first(record, 40, 1)) || 1,
+      arrowSize: Number(first(record, 41, 0.18)) || 0.18,
+      extensionOffset: Number(first(record, 42, 0.0625)),
+      extensionBeyond: Number(first(record, 44, 0.18)),
+      textHeight: Number(first(record, 140, 0.18)) || 0.18,
+      textGap: Number(first(record, 147, 0.09)),
+      tick: Number(first(record, 173, 0)) === 1 || Number(first(record, 142, 0)) > 0,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Entities
+  // ---------------------------------------------------------------------------
+
+  function readDxfEntityRecord(record) {
+    const layer = String(first(record, 8, '0'));
+    const type = record.type;
+
+    if (type === 'LINE') {
+      return { type: 'LINE', layer, a: point(record, 10), b: point(record, 11) };
+    }
+    if (type === 'CIRCLE') {
+      return { type: 'CIRCLE', layer, center: point(record, 10), radius: Number(first(record, 40, 0)) };
+    }
+    if (type === 'ARC') {
+      return {
+        type: 'ARC', layer,
+        center: point(record, 10),
+        radius: Number(first(record, 40, 0)),
+        startAngle: radians(first(record, 50, 0)),
+        endAngle: radians(first(record, 51, 0)),
+      };
+    }
+    if (type === 'LWPOLYLINE') {
+      // Vertices are interleaved repeats of 10/20 with an optional 42 between
+      // them, so they have to be walked in order rather than gathered by code.
+      const points = [];
+      let current = null;
+      for (const [code, value] of record.pairs) {
+        if (code === 10) {
+          if (current) points.push(current);
+          current = { x: Number(value) || 0, y: 0, bulge: 0 };
+        } else if (code === 20 && current) {
+          current.y = Number(value) || 0;
+        } else if (code === 42 && current) {
+          current.bulge = Number(value) || 0;
+        }
+      }
+      if (current) points.push(current);
+      return { type: 'LWPOLYLINE', layer, points, closed: (Number(first(record, 70, 0)) & 1) === 1 };
+    }
+    if (type === 'POINT') {
+      return { type: 'POINT', layer, position: point(record, 10) };
+    }
+    if (type === 'TEXT') {
+      const halign = Number(first(record, 72, 0));
+      const valign = Number(first(record, 73, 0));
+      // With any justification but left/baseline the real position is the second
+      // alignment point; a writer that sets one usually sets both to the same
+      // place, but the spec says 11 wins.
+      const anchored = halign !== 0 || valign !== 0;
+      return {
+        type: 'TEXT', layer,
+        style: String(first(record, 7, DXF_STYLE_NAME)),
+        position: anchored ? point(record, 11) : point(record, 10),
+        height: Number(first(record, 40, 1)) || 1,
+        rotation: radians(first(record, 50, 0)),
+        text: String(first(record, 1, '')),
+        halign, valign,
+      };
+    }
+    if (type === 'MTEXT') {
+      // Long MTEXT is split across repeated 3 chunks with the tail in 1.
+      const chunks = all(record, 3).map(String).join('');
+      return {
+        type: 'MTEXT', layer,
+        style: String(first(record, 7, DXF_STYLE_NAME)),
+        position: point(record, 10),
+        height: Number(first(record, 40, 1)) || 1,
+        width: Number(first(record, 41, 0)) || 0,
+        rotation: radians(first(record, 50, 0)),
+        text: `${chunks}${String(first(record, 1, ''))}`,
+        attachment: Number(first(record, 71, 1)),
+        lineSpacing: Number(first(record, 44, 1)) || 1,
+      };
+    }
+    if (type === 'SOLID' || type === 'TRACE') {
+      return {
+        type: 'SOLID', layer,
+        points: [point(record, 10), point(record, 11), point(record, 12), point(record, 13)],
+      };
+    }
+    if (type === 'ELLIPSE') {
+      return {
+        type: 'ELLIPSE', layer,
+        center: point(record, 10),
+        majorAxis: point(record, 11),
+        ratio: Number(first(record, 40, 1)) || 1,
+        startParam: Number(first(record, 41, 0)),
+        endParam: Number(first(record, 42, TAU)),
+      };
+    }
+    if (type === 'SPLINE') {
+      const xs = all(record, 10).map(Number);
+      const ys = all(record, 20).map(Number);
+      const fitX = all(record, 11).map(Number);
+      const fitY = all(record, 21).map(Number);
+      return {
+        type: 'SPLINE', layer,
+        flags: Number(first(record, 70, 0)),
+        degree: Number(first(record, 71, 3)),
+        controlPoints: xs.map((x, index) => ({ x, y: ys[index] ?? 0 })),
+        fitPoints: fitX.map((x, index) => ({ x, y: fitY[index] ?? 0 })),
+        knots: all(record, 40).map(Number),
+      };
+    }
+    if (type === 'INSERT') {
+      return {
+        type: 'INSERT', layer,
+        name: String(first(record, 2, '')),
+        insert: point(record, 10),
+        scaleX: Number(first(record, 41, 1)) || 1,
+        scaleY: Number(first(record, 42, 1)) || 1,
+        rotation: radians(first(record, 50, 0)),
+        columns: Number(first(record, 70, 1)) || 1,
+        rows: Number(first(record, 71, 1)) || 1,
+        columnSpacing: Number(first(record, 44, 0)),
+        rowSpacing: Number(first(record, 45, 0)),
+      };
+    }
+    if (type === 'DIMENSION') {
+      const flags = Number(first(record, 70, 0));
+      return {
+        type: 'DIMENSION', layer,
+        block: String(first(record, 2, '')),
+        styleName: String(first(record, 3, 'Standard')),
+        flags,
+        kind: flags & 7,
+        defPoint: point(record, 10),
+        textMid: point(record, 11),
+        ext1: point(record, 13),
+        ext2: point(record, 14),
+        chordPoint: point(record, 15),
+        rotation: radians(first(record, 50, 0)),
+        measurement: Number(first(record, 42, 0)),
+        textOverride: String(first(record, 1, '')),
+      };
+    }
+    return { type: 'UNSUPPORTED', layer, dxfType: type };
+  }
+
+  // The old pre-LWPOLYLINE form: a POLYLINE record, a run of VERTEX records, then
+  // a SEQEND. R12 files and plenty of modern exporters still use it.
+  function collapseLegacyPolylines(records) {
+    const out = [];
+    for (let index = 0; index < records.length; index++) {
+      const record = records[index];
+      if (record.type !== 'POLYLINE') { out.push(record); continue; }
+      const flags = Number(first(record, 70, 0));
+      const layer = String(first(record, 8, '0'));
+      const points = [];
+      index++;
+      while (index < records.length && records[index].type === 'VERTEX') {
+        const vertex = records[index];
+        points.push({
+          x: Number(first(vertex, 10, 0)) || 0,
+          y: Number(first(vertex, 20, 0)) || 0,
+          bulge: Number(first(vertex, 42, 0)) || 0,
+        });
+        index++;
+      }
+      if (index < records.length && records[index].type === 'SEQEND') {
+        // consumed
+      } else {
+        index--;
+      }
+      out.push({
+        type: '__LWPOLYLINE__',
+        parsed: { type: 'LWPOLYLINE', layer, points, closed: (flags & 1) === 1 },
+      });
+    }
+    return out;
+  }
+
+  function readDxfEntities(pairs, sectionName = 'ENTITIES') {
+    const start = sectionBounds(pairs, sectionName);
+    if (start < 0) return [];
+    const { records } = readRecords(pairs, start);
+    return collapseLegacyPolylines(records)
+      .map(record => (record.type === '__LWPOLYLINE__' ? record.parsed : readDxfEntityRecord(record)));
+  }
+
+  function readDxfBlocks(pairs) {
+    const start = sectionBounds(pairs, 'BLOCKS');
+    const blocks = [];
+    if (start < 0) return blocks;
+    const { records } = readRecords(pairs, start);
+    const collapsed = collapseLegacyPolylines(records);
+
+    let current = null;
+    for (const record of collapsed) {
+      if (record.type === 'BLOCK') {
+        current = {
+          name: String(first(record, 2, '')),
+          base: point(record, 10),
+          entities: [],
+        };
+        continue;
+      }
+      if (record.type === 'ENDBLK') {
+        if (current) blocks.push(current);
+        current = null;
+        continue;
+      }
+      if (!current) continue;
+      current.entities.push(record.type === '__LWPOLYLINE__' ? record.parsed : readDxfEntityRecord(record));
+    }
+    if (current) blocks.push(current);
+    return blocks;
+  }
+
+  function parseDxfText(text) {
+    const source = String(text ?? '');
+    if (!source.trim()) return { error: 'That DXF file is empty.' };
+    if (source.startsWith(DXF_BINARY_SENTINEL)) {
+      return { error: 'That is a binary DXF. Re-save it as ASCII DXF and try again.' };
+    }
+    // A DXF must begin with a group code; anything else is a different format
+    // wearing a .dxf extension, and saying so beats a parse error fifty lines in.
+    if (!/^\s*\d+\s*(\r\n|\r|\n)/.test(source)) {
+      return { error: 'That file is not a DXF drawing.' };
+    }
+
+    const parsed = parseDxfPairs(source);
+    if (parsed.error) return { error: parsed.error };
+    const { pairs } = parsed;
+    if (!pairs.some(pair => pair[0] === 0 && pair[1] === 'SECTION')) {
+      return { error: 'That DXF file has no sections.' };
+    }
+
+    const tables = readDxfTables(pairs);
+    return {
+      plan: {
+        header: readDxfHeader(pairs),
+        layers: tables.layers,
+        linetypes: tables.linetypes,
+        styles: tables.styles,
+        dimStyles: tables.dimStyles,
+        blocks: readDxfBlocks(pairs),
+        entities: readDxfEntities(pairs),
+        warnings: [],
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // model/document.js
   // ---------------------------------------------------------------------------
 
@@ -5077,6 +6400,706 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   // Report shape: [{ title, rows: [[label, value], ...], note }]
+
+  // ---------------------------------------------------------------------------
+  // model/dxfImport.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // DXF import
+  //
+  // Turns a parsed DXF plan into a zbCAD document. The policy, decided up front:
+  // flatten what can be flattened, and report the rest. A real consultant's DXF
+  // is full of things this program has no model for, and the two bad answers are
+  // refusing the file outright and silently dropping half of it. So INSERTs are
+  // exploded at their transform, ellipses and splines are approximated as
+  // polylines, and anything genuinely unrepresentable is counted by type and
+  // named in a report the user sees.
+  //
+  // Import replaces the document, exactly as opening a file does. Inserting a DXF
+  // into the current drawing is a different feature and is not this one.
+  // ---------------------------------------------------------------------------
+
+  // How finely a curve with no exact representation is approximated. A DXF arc
+  // and a zbCAD bulge are the same thing, so only true ellipses and splines land
+  // here; 64 segments over a full turn holds a metre-radius curve to well under a
+  // millimetre, which is finer than anything traced off one will be drawn to.
+  const DXF_CURVE_SEGMENTS = 64;
+
+  const DXF_INSERT_DEPTH_LIMIT = 8;
+
+  const INSUNITS_TO_DRAWING_UNIT = Object.fromEntries(
+    Object.entries(DXF_INSUNITS).map(([unit, code]) => [code, unit]),
+  );
+
+  function drawingUnitFromInsunits(code) {
+    return INSUNITS_TO_DRAWING_UNIT[Number(code)] || null;
+  }
+
+  function trueColorToHex(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return null;
+    return `#${(numeric & 0xffffff).toString(16).padStart(6, '0')}`;
+  }
+
+  function importedLayerColor(layer) {
+    // A true colour is exact; an index is a lookup into a palette whose middle is
+    // only approximately agreed on, so 420 wins wherever a writer supplied it.
+    const exact = layer.trueColor === null || layer.trueColor === undefined
+      ? null : trueColorToHex(layer.trueColor);
+    if (exact) return exact;
+    return aciToHex(layer.aci);
+  }
+
+  function importedLinetype(name) {
+    const lowered = String(name || '').toLowerCase();
+    if (LINETYPES.includes(lowered)) return lowered;
+    // DXF linetype names are conventions, not a fixed set: match the common
+    // spellings by what they describe rather than demanding an exact name.
+    if (/dashdot|dash_dot|center/.test(lowered)) return lowered.includes('center') ? 'center' : 'dashdot';
+    if (/dot|hidden2/.test(lowered)) return 'dotted';
+    if (/dash|hidden/.test(lowered)) return 'dashed';
+    return DEFAULT_LINETYPE;
+  }
+
+  function importedLineweight(value) {
+    const numeric = Number(value);
+    // -1 ByLayer, -2 ByBlock, -3 Default: all mean "no explicit weight".
+    if (!Number.isFinite(numeric) || numeric < 0) return DEFAULT_LINEWEIGHT;
+    const mm = numeric / 100;
+    let best = DEFAULT_LINEWEIGHT;
+    let bestDistance = Infinity;
+    for (const candidate of LINEWEIGHTS) {
+      const distance = Math.abs(candidate - mm);
+      if (distance < bestDistance) { bestDistance = distance; best = candidate; }
+    }
+    return best;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Transforms, for flattening INSERTs
+  // ---------------------------------------------------------------------------
+
+  function composeTransform(outer, inner) {
+    // inner applied first, then outer.
+    return {
+      scaleX: outer.scaleX * inner.scaleX,
+      scaleY: outer.scaleY * inner.scaleY,
+      rotation: outer.rotation + inner.rotation,
+      offset: dxfApplyTransform(outer, inner.offset),
+    };
+  }
+
+  function dxfApplyTransform(transform, point) {
+    const x = point.x * transform.scaleX;
+    const y = point.y * transform.scaleY;
+    const cos = Math.cos(transform.rotation);
+    const sin = Math.sin(transform.rotation);
+    return {
+      x: transform.offset.x + x * cos - y * sin,
+      y: transform.offset.y + x * sin + y * cos,
+    };
+  }
+
+  const DXF_IDENTITY_TRANSFORM = {
+    scaleX: 1, scaleY: 1, rotation: 0, offset: { x: 0, y: 0 },
+  };
+
+  function transformIsUniform(transform) {
+    return Math.abs(Math.abs(transform.scaleX) - Math.abs(transform.scaleY)) < 1e-9;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Curve approximation
+  // ---------------------------------------------------------------------------
+
+  function ellipsePolylinePoints(entity) {
+    const majorLength = Math.hypot(entity.majorAxis.x, entity.majorAxis.y);
+    if (!(majorLength > 1e-12)) return null;
+    const minorLength = majorLength * entity.ratio;
+    const axisAngle = Math.atan2(entity.majorAxis.y, entity.majorAxis.x);
+    let start = entity.startParam;
+    let end = entity.endParam;
+    let sweep = end - start;
+    if (Math.abs(sweep) < 1e-12) sweep = TAU;
+    const closed = Math.abs(Math.abs(sweep) - TAU) < 1e-9;
+    const steps = Math.max(8, Math.ceil(DXF_CURVE_SEGMENTS * Math.abs(sweep) / TAU));
+    const points = [];
+    // A closed ellipse must not repeat its first vertex: zbCAD's closed polyline
+    // holds the closing segment implicitly.
+    const count = closed ? steps : steps + 1;
+    for (let index = 0; index < count; index++) {
+      const parameter = start + (sweep * index) / steps;
+      const u = Math.cos(parameter) * majorLength;
+      const v = Math.sin(parameter) * minorLength;
+      points.push({
+        x: entity.center.x + u * Math.cos(axisAngle) - v * Math.sin(axisAngle),
+        y: entity.center.y + u * Math.sin(axisAngle) + v * Math.cos(axisAngle),
+        bulge: 0,
+      });
+    }
+    return { points, closed };
+  }
+
+  // Splines are approximated through their fit points when the writer supplied
+  // them, and through the control polygon otherwise. Neither is the real curve;
+  // this is the documented lossy case, and it is reported as such.
+  function splinePolylinePoints(entity) {
+    const source = entity.fitPoints.length >= 2 ? entity.fitPoints : entity.controlPoints;
+    if (source.length < 2) return null;
+    return {
+      points: source.map(point => ({ x: point.x, y: point.y, bulge: 0 })),
+      closed: (entity.flags & 1) === 1,
+      approximate: true,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Plan entity -> zbCAD entity
+  // ---------------------------------------------------------------------------
+
+  function transformedArc(entity, transform) {
+    const center = dxfApplyTransform(transform, entity.center);
+    const scale = Math.abs(transform.scaleX);
+    const radius = entity.radius * scale;
+    // A mirrored transform reverses an arc's direction, so start and end swap to
+    // keep zbCAD's "always counter-clockwise from start to end" invariant.
+    const mirrored = (transform.scaleX * transform.scaleY) < 0;
+    let startAngle = entity.startAngle + transform.rotation;
+    let endAngle = entity.endAngle + transform.rotation;
+    if (mirrored) {
+      startAngle = Math.PI - entity.endAngle + transform.rotation;
+      endAngle = Math.PI - entity.startAngle + transform.rotation;
+    }
+    const normalizedStart = normalizeAngle(startAngle);
+    let sweep = endAngle - startAngle;
+    if (sweep <= 0) sweep += TAU;
+    return { center, radius, startAngle: normalizedStart, endAngle: normalizedStart + sweep };
+  }
+
+  function importEntity(record, transform, context) {
+    const layerId = context.layerIdFor(record.layer);
+    const place = point => dxfApplyTransform(transform, point);
+    const scale = Math.abs(transform.scaleX);
+
+    if (record.type === 'LINE') {
+      const a = place(record.a);
+      const b = place(record.b);
+      if (Math.hypot(b.x - a.x, b.y - a.y) <= 1e-9) return context.skip('zero-length LINE');
+      return [{ type: 'LINE', layerId, a, b }];
+    }
+
+    if (record.type === 'LWPOLYLINE') {
+      return importPolyline(record.points, record.closed, layerId, transform, context);
+    }
+
+    if (record.type === 'CIRCLE') {
+      if (!(record.radius * scale > 1e-9)) return context.skip('zero-radius CIRCLE');
+      if (!transformIsUniform(transform)) {
+        // A non-uniformly scaled circle is an ellipse, and saying so beats
+        // quietly writing the wrong radius.
+        return importEllipse({
+          center: record.center,
+          majorAxis: { x: record.radius, y: 0 },
+          ratio: 1,
+          startParam: 0,
+          endParam: TAU,
+        }, layerId, transform, context);
+      }
+      return [{ type: 'CIRCLE', layerId, center: place(record.center), radius: record.radius * scale }];
+    }
+
+    if (record.type === 'ARC') {
+      if (!(record.radius * scale > 1e-9)) return context.skip('zero-radius ARC');
+      const arc = transformedArc(record, transform);
+      const sweep = arc.endAngle - arc.startAngle;
+      if (!(sweep > 1e-8) || sweep >= TAU - 1e-8) {
+        return [{ type: 'CIRCLE', layerId, center: arc.center, radius: arc.radius }];
+      }
+      return [{ type: 'ARC', layerId, ...arc }];
+    }
+
+    if (record.type === 'TEXT') {
+      const content = String(record.text || '').trim();
+      if (!content) return context.skip('empty TEXT');
+      return [{
+        type: 'TEXT', layerId,
+        position: place(record.position),
+        height: Math.max(1e-6, record.height * scale),
+        rotation: normalizeAngle(record.rotation + transform.rotation),
+        content: content.slice(0, 1000),
+      }];
+    }
+
+    if (record.type === 'MTEXT') {
+      const content = decodeMtext(record.text);
+      if (!content.trim()) return context.skip('empty MTEXT');
+      const height = Math.max(1e-6, record.height * scale);
+      const rotation = normalizeAngle(record.rotation + transform.rotation);
+      // Undo the attachment-point shift export applies: a top-left anchor is one
+      // ascent above the first line's baseline.
+      const anchored = place(record.position);
+      const lift = attachmentLift(record.attachment, height);
+      const position = {
+        x: anchored.x + lift * Math.sin(rotation),
+        y: anchored.y - lift * Math.cos(rotation),
+      };
+      const width = record.width * scale;
+      if (!(width > 1e-9)) {
+        // MTEXT with no wrap width is a single run; zbCAD's MTEXT requires one,
+        // so it becomes TEXT unless it actually has line breaks.
+        if (!content.includes('\n')) {
+          return [{ type: 'TEXT', layerId, position, height, rotation, content: content.slice(0, 1000) }];
+        }
+        const longest = Math.max(...content.split('\n').map(line => line.length));
+        return [{
+          type: 'MTEXT', layerId, position, height, rotation,
+          width: Math.max(height, longest * height * 0.6),
+          content: content.slice(0, 4000),
+        }];
+      }
+      return [{ type: 'MTEXT', layerId, position, height, rotation, width, content: content.slice(0, 4000) }];
+    }
+
+    if (record.type === 'SOLID') {
+      // A filled quad has no fill in zbCAD, so its outline is kept: the shape is
+      // still information even without the fill.
+      const points = dedupe(record.points.map(place));
+      if (points.length < 3) return context.skip('degenerate SOLID');
+      return [{ type: 'PLINE', layerId, points, closed: true }];
+    }
+
+    if (record.type === 'ELLIPSE') {
+      return importEllipse(record, layerId, transform, context);
+    }
+
+    if (record.type === 'SPLINE') {
+      const approximated = splinePolylinePoints(record);
+      if (!approximated) return context.skip('SPLINE');
+      context.approximated('SPLINE');
+      return importPolyline(approximated.points, approximated.closed, layerId, transform, context);
+    }
+
+    if (record.type === 'POINT') {
+      // zbCAD has no POINT entity. Reported rather than turned into a tiny circle
+      // that would pollute snap and selection.
+      return context.skip('POINT');
+    }
+
+    if (record.type === 'DIMENSION') {
+      return importDimension(record, layerId, transform, context);
+    }
+
+    return context.skip(record.dxfType || record.type);
+  }
+
+  function attachmentLift(attachment, height) {
+    const code = Number(attachment) || 1;
+    // 1-3 top, 4-6 middle, 7-9 bottom.
+    if (code <= 3) return height * DXF_TEXT_ASCENT;
+    if (code <= 6) return 0;
+    return -height * DXF_TEXT_ASCENT;
+  }
+
+  function dedupe(points) {
+    const out = [];
+    for (const point of points) {
+      const last = out[out.length - 1];
+      if (last && Math.hypot(point.x - last.x, point.y - last.y) <= 1e-9) continue;
+      out.push({ x: point.x, y: point.y });
+    }
+    while (out.length > 1
+      && Math.hypot(out[0].x - out[out.length - 1].x, out[0].y - out[out.length - 1].y) <= 1e-9) {
+      out.pop();
+    }
+    return out;
+  }
+
+  function importEllipse(record, layerId, transform, context) {
+    const approximated = ellipsePolylinePoints(record);
+    if (!approximated) return context.skip('degenerate ELLIPSE');
+    context.approximated('ELLIPSE');
+    return importPolyline(approximated.points, approximated.closed, layerId, transform, context);
+  }
+
+  function importPolyline(sourcePoints, closed, layerId, transform, context) {
+    const mirrored = (transform.scaleX * transform.scaleY) < 0;
+    const points = [];
+    const bulges = [];
+    for (const source of sourcePoints) {
+      const placed = dxfApplyTransform(transform, source);
+      const last = points[points.length - 1];
+      if (last && Math.hypot(placed.x - last.x, placed.y - last.y) <= 1e-9) continue;
+      points.push(placed);
+      // A bulge is a signed sweep; reflecting the geometry reverses its sign.
+      bulges.push(mirrored ? -(source.bulge || 0) : (source.bulge || 0));
+    }
+    if (closed) {
+      while (points.length > 1
+        && Math.hypot(points[0].x - points[points.length - 1].x,
+          points[0].y - points[points.length - 1].y) <= 1e-9) {
+        points.pop();
+        bulges.pop();
+      }
+    }
+    if (points.length < 2) return context.skip('degenerate POLYLINE');
+    if (closed && points.length < 3) return context.skip('degenerate closed POLYLINE');
+    if (!closed) bulges[bulges.length - 1] = 0;
+
+    const entity = { type: 'PLINE', layerId, points, closed: Boolean(closed) };
+    if (bulges.some(value => Math.abs(value) > 1e-12)) entity.bulges = bulges;
+    return [entity];
+  }
+
+  // A DXF MTEXT carries formatting inline. zbCAD's MTEXT is plain, so the codes
+  // are stripped rather than rendered: losing the bold is acceptable, showing
+  // "\f Arial|b1;" to the user is not.
+  function decodeMtext(text) {
+    let out = String(text || '');
+    out = out.replace(/\\P/g, '\n');
+    out = out.replace(/\\~/g, ' ');
+    // Stacked fractions: keep the pieces, drop the stacking.
+    out = out.replace(/\\S([^;]*);/g, (match, body) => body.replace(/[#^]/g, '/'));
+    // Any other \X...; control sequence, and the {} grouping around them.
+    out = out.replace(/\\[A-Za-z][^\\;]*;/g, '');
+    out = out.replace(/\\[A-Za-z]/g, '');
+    out = out.replace(/[{}]/g, '');
+    out = out.replace(/\\\\/g, '\\');
+    return out;
+  }
+
+  const DXF_DIM_KINDS = { 0: 'LINEAR', 1: 'ALIGNED', 3: 'DIAMETER', 4: 'RADIUS' };
+
+  function importDimension(record, layerId, transform, context) {
+    const kind = DXF_DIM_KINDS[record.kind];
+    if (!kind) {
+      // Angular and ordinate dimensions have no zbCAD equivalent. Their picture
+      // lives in the block, so the geometry survives even though the dimension
+      // does not.
+      return explodeDimensionBlock(record, layerId, transform, context, 'angular/ordinate DIMENSION');
+    }
+    const place = point => dxfApplyTransform(transform, point);
+    const scale = Math.abs(transform.scaleX);
+
+    if (kind === 'RADIUS' || kind === 'DIAMETER') {
+      const p1 = kind === 'RADIUS' ? place(record.defPoint) : place(record.chordPoint);
+      const p2 = kind === 'RADIUS' ? place(record.chordPoint) : place(record.defPoint);
+      if (Math.hypot(p2.x - p1.x, p2.y - p1.y) <= 1e-9) {
+        return explodeDimensionBlock(record, layerId, transform, context, 'degenerate radial DIMENSION');
+      }
+      return [{
+        type: 'DIM', layerId, dimType: kind,
+        p1, p2, linePoint: p1, rotation: 0,
+        styleId: context.dimStyleIdFor(record.styleName),
+        textOffset: offsetFromTextMid(record, place, p1, p2, kind),
+        refs: [null, null],
+      }];
+    }
+
+    const p1 = place(record.ext1);
+    const p2 = place(record.ext2);
+    if (Math.hypot(p2.x - p1.x, p2.y - p1.y) <= 1e-9) {
+      return explodeDimensionBlock(record, layerId, transform, context, 'degenerate DIMENSION');
+    }
+    return [{
+      type: 'DIM', layerId, dimType: kind,
+      p1, p2,
+      linePoint: place(record.defPoint),
+      rotation: kind === 'LINEAR' ? normalizeAngle(record.rotation + transform.rotation) : 0,
+      styleId: context.dimStyleIdFor(record.styleName),
+      textOffset: null,
+      refs: [null, null],
+    }];
+  }
+
+  function offsetFromTextMid(record, place, p1, p2) {
+    const textMid = place(record.textMid);
+    if (!Number.isFinite(textMid.x) || !Number.isFinite(textMid.y)) return null;
+    const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    const offset = { x: textMid.x - mid.x, y: textMid.y - mid.y };
+    return Math.hypot(offset.x, offset.y) > 1e-9 ? offset : null;
+  }
+
+  // When a dimension cannot be represented, its drawn picture still can: the
+  // block holds lines, ticks and text that are perfectly ordinary geometry.
+  function explodeDimensionBlock(record, layerId, transform, context, reason) {
+    const block = context.blocks.get(record.block);
+    context.exploded(reason);
+    if (!block) return [];
+    const out = [];
+    for (const child of block.entities) {
+      out.push(...importEntity(child, transform, context));
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // INSERT flattening
+  // ---------------------------------------------------------------------------
+
+  function importInsert(record, transform, context, depth) {
+    if (depth > DXF_INSERT_DEPTH_LIMIT) {
+      context.skip('deeply nested INSERT');
+      return [];
+    }
+    const block = context.blocks.get(record.name);
+    if (!block) {
+      context.skip(`INSERT of missing block ${record.name}`);
+      return [];
+    }
+    const out = [];
+    const columns = Math.max(1, Math.floor(record.columns) || 1);
+    const rows = Math.max(1, Math.floor(record.rows) || 1);
+    for (let column = 0; column < columns; column++) {
+      for (let row = 0; row < rows; row++) {
+        // A DXF array offsets its copies along the INSERT's own rotated axes.
+        const cos = Math.cos(record.rotation);
+        const sin = Math.sin(record.rotation);
+        const dx = column * record.columnSpacing;
+        const dy = row * record.rowSpacing;
+        const local = {
+          scaleX: record.scaleX,
+          scaleY: record.scaleY,
+          rotation: record.rotation,
+          offset: {
+            x: record.insert.x + dx * cos - dy * sin,
+            y: record.insert.y + dx * sin + dy * cos,
+          },
+        };
+        // The block's own base point is subtracted before its contents are
+        // placed, which is what makes the insertion point land where it should.
+        const shifted = {
+          ...local,
+          offset: dxfApplyTransform(local, {
+            x: -block.base.x,
+            y: -block.base.y,
+          }),
+        };
+        const combined = composeTransform(transform, shifted);
+        out.push(...importRecords(block.entities, combined, context, depth + 1));
+      }
+    }
+    return out;
+  }
+
+  function importRecords(records, transform, context, depth) {
+    const out = [];
+    for (const record of records) {
+      if (record.type === 'INSERT') {
+        out.push(...importInsert(record, transform, context, depth));
+        continue;
+      }
+      out.push(...importEntity(record, transform, context));
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // The document
+  // ---------------------------------------------------------------------------
+
+  function dxfPlanToDocument(plan, options = {}) {
+    const skipped = new Map();
+    const approximated = new Map();
+    const exploded = new Map();
+
+    const drawingUnit = drawingUnitFromInsunits(plan.header.insunits);
+    const unitSettings = { ...defaultUnitSettings() };
+    if (drawingUnit) {
+      unitSettings.drawingUnit = drawingUnit;
+      // The architectural and engineering formats are inch-only; a millimetre
+      // drawing has to fall back to decimal or the document fails validation.
+      if (drawingUnit !== 'inches') {
+        unitSettings.format = 'decimal';
+        unitSettings.precision = 2;
+      }
+    }
+
+    // Layers. Layer 0 is mandatory and must survive whatever the file says.
+    const layers = [];
+    const layerIds = new Map();
+    let nextLayerId = 1;
+    const addLayer = source => {
+      const name = String(source.name || '').trim() || 'Layer';
+      const existing = layers.find(layer => layer.name.toLowerCase() === name.toLowerCase());
+      if (existing) { layerIds.set(source.name, existing.id); return existing; }
+      const id = name === '0' ? '0' : `layer-${nextLayerId++}`;
+      const layer = {
+        id,
+        name: name.slice(0, 80),
+        color: importedLayerColor(source),
+        visible: !source.off,
+        locked: Boolean(source.locked),
+        linetype: importedLinetype(source.linetype),
+        lineweight: importedLineweight(source.lineweight),
+        printable: source.plot !== false,
+      };
+      layers.push(layer);
+      layerIds.set(source.name, id);
+      return layer;
+    };
+
+    for (const layer of plan.layers) addLayer(layer);
+    if (!layers.some(layer => layer.id === '0')) {
+      layers.unshift({
+        id: '0', name: '0', color: '#d6d6d6', visible: true, locked: false,
+        linetype: DEFAULT_LINETYPE, lineweight: DEFAULT_LINEWEIGHT, printable: true,
+      });
+      layerIds.set('0', '0');
+    }
+
+    // Dimension styles. zbCAD's sizes are paper sizes multiplied by a scale; the
+    // imported ones are already drawing sizes, so scale is pinned at 1 and the
+    // numbers carry over directly.
+    const dimStyles = [defaultDimStyle(unitSettings.drawingUnit)];
+    const dimStyleIds = new Map();
+    for (const style of plan.dimStyles) {
+      const name = String(style.name || '').trim();
+      if (!name) continue;
+      if (name.toLowerCase() === 'standard') {
+        dimStyles[0] = {
+          ...dimStyles[0],
+          scale: 1,
+          textHeight: style.textHeight,
+          arrowSize: style.arrowSize,
+          extensionOffset: style.extensionOffset,
+          extensionBeyond: style.extensionBeyond,
+          textGap: style.textGap,
+          arrowType: style.tick ? 'tick' : 'arrow',
+        };
+        dimStyleIds.set(name, DEFAULT_DIM_STYLE_ID);
+        continue;
+      }
+      const id = `dim-${dimStyles.length}`;
+      dimStyles.push({
+        id, name: name.slice(0, 80),
+        arrowType: style.tick ? 'tick' : 'arrow',
+        scale: 1,
+        precision: null,
+        textHeight: style.textHeight,
+        arrowSize: style.arrowSize,
+        extensionOffset: style.extensionOffset,
+        extensionBeyond: style.extensionBeyond,
+        textGap: style.textGap,
+      });
+      dimStyleIds.set(name, id);
+    }
+
+    const context = {
+      blocks: new Map(plan.blocks.map(block => [block.name, block])),
+      layerIdFor(name) {
+        if (layerIds.has(name)) return layerIds.get(name);
+        const created = addLayer({ name, aci: 7, trueColor: null, plot: true });
+        return created.id;
+      },
+      dimStyleIdFor(name) {
+        return dimStyleIds.get(name) || DEFAULT_DIM_STYLE_ID;
+      },
+      skip(what) {
+        skipped.set(what, (skipped.get(what) || 0) + 1);
+        return [];
+      },
+      approximated(what) {
+        approximated.set(what, (approximated.get(what) || 0) + 1);
+      },
+      exploded(what) {
+        exploded.set(what, (exploded.get(what) || 0) + 1);
+      },
+    };
+
+    const imported = importRecords(plan.entities, DXF_IDENTITY_TRANSFORM, context, 0);
+
+    let nextId = 1;
+    const entities = imported.map(entity => ({ ...entity, id: nextId++ }));
+
+    const document = {
+      format: DOCUMENT_FORMAT,
+      version: DOCUMENT_VERSION,
+      name: options.name || 'Imported',
+      units: unitSettings,
+      layers,
+      dimStyles,
+      currentLayerId: '0',
+      nextId,
+      nextLayerId,
+      nextUnderlayId: 1,
+      entities,
+      underlays: [],
+    };
+
+    const checked = validateDocumentData(document);
+    if (checked.error) {
+      // A whole file refused over one bad entity would be the worst outcome, so
+      // the offending entity is dropped and the rest is kept — but only once the
+      // per-entity validator has had its say, which is what names the culprit.
+      const salvaged = salvageEntities(document, skipped);
+      if (salvaged.error) return { error: salvaged.error };
+      document.entities = salvaged.entities;
+      document.nextId = salvaged.entities.length + 1;
+      const recheck = validateDocumentData(document);
+      if (recheck.error) return { error: recheck.error };
+      return { document: recheck.document, report: buildReport(recheck.document, skipped, approximated, exploded) };
+    }
+
+    return {
+      document: checked.document,
+      report: buildReport(checked.document, skipped, approximated, exploded),
+    };
+  }
+
+  function salvageEntities(document, skipped) {
+    const kept = [];
+    let nextId = 1;
+    for (const entity of document.entities) {
+      const candidate = { ...document, entities: [{ ...entity, id: 1 }], nextId: 2 };
+      if (validateDocumentData(candidate).error) {
+        skipped.set(`invalid ${entity.type}`, (skipped.get(`invalid ${entity.type}`) || 0) + 1);
+        continue;
+      }
+      kept.push({ ...entity, id: nextId++ });
+    }
+    return { entities: kept };
+  }
+
+  function describe(counts) {
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([what, count]) => `${count} ${what}`)
+      .join(', ');
+  }
+
+  function buildReport(document, skipped, approximated, exploded) {
+    const lines = [];
+    const total = document.entities.length;
+    lines.push(`Imported ${total} object${total === 1 ? '' : 's'} on ${document.layers.length} layer${document.layers.length === 1 ? '' : 's'}.`);
+    if (approximated.size) {
+      lines.push(`Approximated as polylines: ${describe(approximated)}.`);
+    }
+    if (exploded.size) {
+      lines.push(`Exploded into plain geometry: ${describe(exploded)}.`);
+    }
+    if (skipped.size) {
+      lines.push(`Not imported: ${describe(skipped)}.`);
+    }
+    if (!approximated.size && !exploded.size && !skipped.size) {
+      lines.push('Everything in the file was imported.');
+    }
+    return {
+      text: lines.join('\n'),
+      entityCount: total,
+      layerCount: document.layers.length,
+      skipped: Object.fromEntries(skipped),
+      approximated: Object.fromEntries(approximated),
+      exploded: Object.fromEntries(exploded),
+    };
+  }
+
+  function importDxfText(text, sourceName = '') {
+    const parsed = parseDxfText(text);
+    if (parsed.error) return { error: parsed.error };
+    const name = String(sourceName).replace(/\.dxf$/i, '').trim();
+    return dxfPlanToDocument(parsed.plan, { name: name || 'Imported' });
+  }
 
   // ---------------------------------------------------------------------------
   // model/autosaveStore.js
@@ -12939,6 +14962,7 @@ kbd { font-size: 9px; opacity: .65; }
   // ---------------------------------------------------------------------------
 
   const COMMAND_ALIASES = Object.freeze({
+    DXF:'DXFOUT', DXFOUT:'DXFOUT', DXFIN:'DXFIN', DXFEXPORT:'DXFOUT', DXFIMPORT:'DXFIN',
     IM:'IMAGE', IMAGE:'IMAGE', CAL:'CALIBRATE', CALIBRATE:'CALIBRATE',
     UN:'UNDERLAY', UNDERLAY:'UNDERLAY',
     L:'LINE', LINE:'LINE', PL:'PLINE', PLINE:'PLINE', P:'PLINE',
@@ -13324,6 +15348,126 @@ kbd { font-size: 9px; opacity: .65; }
     state.selected = new Set([underlaySelectionId(target.id)]);
     setMode('SELECT');
     updatePrompt(`Image calibrated: scaled ${result.factor.toFixed(4)}x, now ${formatLengthLabel(underlayWidth(result.underlay))} wide.`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // ui/dialogs/dxf.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // DXF in and out
+  //
+  // Neither direction gets a dialog. Export has no decisions left to make — the
+  // version is fixed, the units come from the drawing, and everything plots — and
+  // import replaces the document exactly as Open does. What both DO need is to
+  // say what happened, because both are lossy in ways the user cannot see by
+  // looking at the result: that goes to the inquiry panel, which already exists
+  // for reporting things about a drawing.
+  // ---------------------------------------------------------------------------
+
+  function dxfDownloadName() {
+    return `${safeDrawingFileName()}.dxf`;
+  }
+
+  function exportDxf() {
+    if (!requireIdle('exporting DXF')) return false;
+    if (!state.entities.length) {
+      updatePrompt('There is nothing to export.');
+      return false;
+    }
+    let text;
+    let plan;
+    try {
+      plan = buildDxfPlan();
+      text = buildDxfDocument(plan);
+    } catch (error) {
+      setFileStatus(`Could not write the DXF: ${error.message || 'unknown error'}`, true);
+      return false;
+    }
+    downloadTextFile(text, dxfDownloadName(), 'application/dxf');
+    showInquiryReport('DXF Export', exportReportGroups(plan));
+    setFileStatus(`${state.drawingName} · Exported DXF`);
+    return true;
+  }
+
+  function exportReportGroups(plan) {
+    const groups = [{
+      title: dxfDownloadName(),
+      rows: [
+        ['Format', 'AutoCAD R2000 (AC1015) ASCII'],
+        ['Objects', String(plan.entities.length)],
+        ['Layers', String(plan.layers.length)],
+        ['Dimension styles', String(plan.dimStyles.length)],
+      ],
+    }];
+    if (plan.warnings.length) {
+      groups.push({
+        title: 'Not included',
+        rows: plan.warnings.map((warning, index) => [`${index + 1}`, warning]),
+      });
+    }
+    return groups;
+  }
+
+  function chooseDxfFile() {
+    if (!requireIdle('importing DXF')) return;
+    dxfInput.value = '';
+    dxfInput.click();
+  }
+
+  async function loadDxfText(text, sourceName = '') {
+    const result = importDxfText(text, sourceName);
+    if (result.error) {
+      setFileStatus(result.error, true);
+      return false;
+    }
+    await applyDocument(result.document, true);
+    showInquiryReport('DXF Import', importReportGroups(result.report, sourceName));
+    setFileStatus(`${result.document.name} · Imported from DXF`);
+    return true;
+  }
+
+  function countRows(counts) {
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([what, count]) => [what, String(count)]);
+  }
+
+  function importReportGroups(report, sourceName) {
+    const groups = [{
+      title: sourceName || 'DXF',
+      rows: [
+        ['Objects imported', String(report.entityCount)],
+        ['Layers', String(report.layerCount)],
+      ],
+    }];
+    // Every lossy conversion is named. An import that quietly drops a third of a
+    // consultant's drawing is the failure this panel exists to prevent.
+    if (Object.keys(report.approximated).length) {
+      groups.push({
+        title: 'Approximated as polylines',
+        rows: countRows(report.approximated),
+        note: 'These have no exact equivalent here and were traced to within a fraction of a drawing unit.',
+      });
+    }
+    if (Object.keys(report.exploded).length) {
+      groups.push({
+        title: 'Exploded into plain geometry',
+        rows: countRows(report.exploded),
+        note: 'The drawn result is intact, but these are no longer live dimensions.',
+      });
+    }
+    if (Object.keys(report.skipped).length) {
+      groups.push({
+        title: 'Not imported',
+        rows: countRows(report.skipped),
+        note: 'This program has no equivalent for these.',
+      });
+    }
+    if (groups.length === 1) {
+      groups[0].note = 'Everything in the file was imported.';
+    }
+    return groups;
   }
 
   // ---------------------------------------------------------------------------
@@ -14104,6 +16248,20 @@ kbd { font-size: 9px; opacity: .65; }
     }
   });
 
+  dxfInput.addEventListener('change', async () => {
+    const file = dxfInput.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      if (await loadDxfText(text, file.name)) canvas.focus();
+    } catch {
+      setFileStatus('Could not read the selected DXF file', true);
+    }
+  });
+
+  document.getElementById('dxfInBtn').addEventListener('click', chooseDxfFile);
+  document.getElementById('dxfOutBtn').addEventListener('click', exportDxf);
+
   document.getElementById('imageBtn').addEventListener('click', () => {
     if (!requireIdle('placing an image')) return;
     imageInput.value = '';
@@ -14447,6 +16605,17 @@ kbd { font-size: 9px; opacity: .65; }
     applyUnderlayDialog,
     deleteUnderlayFromDialog,
     setPendingUnderlay,
+
+    // DXF. Import and export share one plan shape, so a round trip can be
+    // asserted as plan -> text -> plan without going near the document model.
+    buildDxfPlan,
+    buildDxfDocument,
+    parseDxfText,
+    dxfPlanToDocument,
+    importDxfText,
+    dxfDownloadName,
+    exportDxf,
+    loadDxfText,
   };
 
   // ---------------------------------------------------------------------------
@@ -14476,6 +16645,8 @@ kbd { font-size: 9px; opacity: .65; }
   registerDirectAction('DIMSTYLE', openDimStyleDialog);
   registerDirectAction('PLOT', openPlotDialog);
   registerDirectAction('UNDERLAY', openUnderlayDialog);
+  registerDirectAction('DXFOUT', exportDxf);
+  registerDirectAction('DXFIN', chooseDxfFile);
 
   // Chrome that has to be rebuilt whenever the whole document is replaced.
   onDocumentChanged(renderLayerManager);
