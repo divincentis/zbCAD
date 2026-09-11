@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>zbCAD v0.25.0</title>
+  <title>zbCAD v0.30.0</title>
   <style>
 :root {
   font-family: Arial, Helvetica, sans-serif;
@@ -590,7 +590,7 @@ kbd { font-size: 9px; opacity: .65; }
 </head>
 <body>
   <header id="topbar" class="topbar">
-    <div class="brand">zbCAD <span class="version">v0.25.0</span></div>
+    <div class="brand">zbCAD <span class="version">v0.30.0</span></div>
     <button id="toolbarAutohideBtn" class="toolbar-autohide-btn toggle" title="Auto-hide the toolbar; mouse over this bar (or Tab into it) to show it again" aria-pressed="false">Auto-hide</button>
     <div class="tool-group">
       <span class="group-label">File</span>
@@ -599,6 +599,8 @@ kbd { font-size: 9px; opacity: .65; }
       <button id="saveBtn">Save</button>
       <button id="recoverBackupBtn" title="Recover the previous validated autosave">Recover Backup</button>
       <button id="plotBtn" title="Plot to a scaled PDF">Plot (PLT)</button>
+        <button id="dxfInBtn" title="Import an AutoCAD DXF drawing (DXFIN)">Import DXF</button>
+        <button id="dxfOutBtn" title="Export this drawing as AutoCAD DXF (DXFOUT)">Export DXF</button>
     </div>
     <div class="tool-group">
       <span class="group-label">Edit</span>
@@ -639,6 +641,12 @@ kbd { font-size: 9px; opacity: .65; }
         <button id="dimStyleBtn">Dim Style (DST)</button>
       </div>
       <div class="tool-group">
+        <span class="group-label">Underlay</span>
+        <button id="imageBtn" title="Place a reference image to trace over (IMAGE)">Image</button>
+        <button data-command="CALIBRATE" title="Scale an image to a known distance (CALIBRATE)">Calibrate</button>
+        <button id="underlayBtn" title="Fade, lock and plot settings for the selected image (UNDERLAY)">Image Props</button>
+      </div>
+      <div class="tool-group">
         <span class="group-label">Modify</span>
         <button data-command="MOVE">Move (M)</button>
         <button data-command="COPY">Copy (CO)</button>
@@ -659,6 +667,8 @@ kbd { font-size: 9px; opacity: .65; }
     </div>
     <a id="docsLink" class="docs-link" href="docs.html" target="_blank" rel="noopener">Docs</a>
     <input id="openInput" type="file" accept=".json,.zbCAD.json,application/json" hidden />
+  <input id="imageInput" type="file" accept="image/*" hidden />
+  <input id="dxfInput" type="file" accept=".dxf,application/dxf" hidden />
   </header>
 
   <main class="workspace">
@@ -826,6 +836,42 @@ kbd { font-size: 9px; opacity: .65; }
     </div>
   </div>
 
+  <div id="underlayDialog" class="dialog" hidden>
+    <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="underlayDialogTitle">
+      <h2 id="underlayDialogTitle">Image Properties</h2>
+      <p class="dialog-note" id="underlayDialogSubject">&mdash;</p>
+
+      <label for="underlayFade">Fade
+        <input id="underlayFade" type="range" min="0" max="90" step="5" />
+      </label>
+      <p class="dialog-note">
+        Fading the image makes the geometry drawn over it readable. It affects
+        the screen and the plot alike.
+      </p>
+
+      <label class="dialog-check" for="underlayLocked">
+        <input type="checkbox" id="underlayLocked" />
+        <span>Lock this image so clicks pass through to the drawing</span>
+      </label>
+      <label class="dialog-check" for="underlayPlot">
+        <input type="checkbox" id="underlayPlot" />
+        <span>Include this image when plotting to PDF</span>
+      </label>
+      <p class="dialog-note">
+        An underlay is off the plot by default: it is usually a tracing aid
+        rather than part of the drawing being issued.
+      </p>
+
+      <div class="dialog-preview">Size: <strong id="underlayPreview">&mdash;</strong></div>
+
+      <div class="dialog-actions">
+        <button id="underlayDelete">Delete Image</button>
+        <button id="underlayCancel">Cancel</button>
+        <button id="underlayApply" class="primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
   <div id="plotDialog" class="dialog" hidden>
     <div class="dialog-card plot-card" role="dialog" aria-modal="true" aria-labelledby="plotDialogTitle">
       <h2 id="plotDialogTitle">Plot to PDF</h2>
@@ -984,6 +1030,18 @@ kbd { font-size: 9px; opacity: .65; }
   const dimPrecisionSelect = document.getElementById('dimPrecision');
   const dimStylePreview = document.getElementById('dimStylePreview');
 
+  const imageInput = document.getElementById('imageInput');
+  const underlayDialog = document.getElementById('underlayDialog');
+  const underlayDialogSubject = document.getElementById('underlayDialogSubject');
+  const underlayFadeInput = document.getElementById('underlayFade');
+  const underlayLockedCheck = document.getElementById('underlayLocked');
+  const underlayPlotCheck = document.getElementById('underlayPlot');
+  const underlayPreviewEl = document.getElementById('underlayPreview');
+  const underlayApplyBtn = document.getElementById('underlayApply');
+  const underlayCancelBtn = document.getElementById('underlayCancel');
+  const underlayDeleteBtn = document.getElementById('underlayDelete');
+  const dxfInput = document.getElementById('dxfInput');
+
   // ---------------------------------------------------------------------------
   // core/constants.js
   // ---------------------------------------------------------------------------
@@ -994,7 +1052,8 @@ kbd { font-size: 9px; opacity: .65; }
   const DOCUMENT_FORMAT = 'browser-2d-draft';
   // Version 4 had no per-layer linetype/lineweight/printability (see
   // core/defaults.js and model/document.js's layer parsing for the migration).
-  const DOCUMENT_VERSION = 6;
+  // Version 6 had no underlays; a file without the key simply loads with none.
+  const DOCUMENT_VERSION = 7;
   const AUTOSAVE_KEY = `${DOCUMENT_FORMAT}.autosave`;
   const AUTOSAVE_BACKUP_KEY = `${AUTOSAVE_KEY}.previous`;
   const LEGACY_AUTOSAVE_KEYS = [`${DOCUMENT_FORMAT}.autosave.v1`];
@@ -1083,6 +1142,22 @@ kbd { font-size: 9px; opacity: .65; }
   const LINEWEIGHT_PX_PER_MM = 1.35 / DEFAULT_LINEWEIGHT;
   const MIN_LINEWEIGHT_PX = 1;
 
+  // Underlays. An imported raster is re-encoded to JPEG and capped on its long
+  // edge, because the image travels inline in the document JSON: every autosave
+  // re-serialises it, and the synchronous unload copy has a localStorage quota to
+  // fit inside. 2400px still resolves far more detail than anyone traces at.
+  const UNDERLAY_MAX_EDGE_PX = 2400;
+  const UNDERLAY_JPEG_QUALITY = 0.86;
+  const UNDERLAY_MIN_UNITS_PER_PIXEL = 1e-9;
+  const UNDERLAY_MAX_UNITS_PER_PIXEL = 1e9;
+  const UNDERLAY_DEFAULT_FADE = 35;
+
+  // A 1x1 transparent GIF, used as the stand-in when an unload-time autosave has
+  // to drop underlay images to fit the localStorage quota. It satisfies the
+  // document validator's "data:image/" rule, so the recovered drawing still
+  // opens, showing an empty frame where the image was.
+  const UNDERLAY_DROPPED_DATA = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
   // ---------------------------------------------------------------------------
   // core/defaults.js
   // ---------------------------------------------------------------------------
@@ -1163,6 +1238,9 @@ kbd { font-size: 9px; opacity: .65; }
 
   const state = {
     entities: [],
+    // Raster reference images, kept out of `entities` so no geometry dispatch
+    // has to grow a branch for them. See model/underlay.js.
+    underlays: [],
     layers: createDefaultLayers(),
     currentLayerId: '0',
     drawingName: 'Untitled',
@@ -1183,6 +1261,7 @@ kbd { font-size: 9px; opacity: .65; }
     grip: null,
     circle: null,
     text: null,
+    underlay: null,
     mouseScreen: { x: 0, y: 0 },
     mouseWorld: { x: 0, y: 0 },
     activePoint: { x: 0, y: 0 },
@@ -1205,6 +1284,7 @@ kbd { font-size: 9px; opacity: .65; }
     future: [],
     nextId: 1,
     nextLayerId: 1,
+    nextUnderlayId: 1,
     dimStyles: [defaultDimStyle()],
   };
 
@@ -1960,6 +2040,246 @@ kbd { font-size: 9px; opacity: .65; }
     if (layer?.visible && !layer.locked) return true;
     updatePrompt('Choose a visible, unlocked current layer before drawing.');
     return false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // model/underlay.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Underlays
+  //
+  // A raster reference image the drawing is traced over. Underlays are kept in
+  // their own array rather than joining state.entities for two reasons: the
+  // roadmap requires them to stay visually distinct from CAD geometry, and every
+  // one of the seven-way type dispatches across this codebase (segments, bbox,
+  // snap, offset, trim, grips, plot) would otherwise need a branch for a thing
+  // that has no geometry to speak of.
+  //
+  // The record is deliberately small:
+  //
+  //   origin          bottom-left corner in world space
+  //   rotation        radians CCW about that corner
+  //   unitsPerPixel   the one number CALIBRATE solves for
+  //   widthPx/heightPx  the raster's own size, fixed at import
+  //   fade            0..100, purely a display property
+  //   locked          this image is not pickable (but still draws)
+  //   plot            include it in PDF output; off by default, since an
+  //                   underlay is a tracing aid far more often than artwork
+  //   layerId         so visibility/lock/printability come from the layer table
+  //                   instead of a second, parallel permission system
+  //   data            a JPEG data URL (model/imageImport.js normalises every
+  //                   source format to JPEG so the PDF writer needs one filter)
+  // ---------------------------------------------------------------------------
+
+  function allocateUnderlayId() {
+    return state.nextUnderlayId++;
+  }
+
+  // Underlays share state.selected with entities. Entity ids are positive
+  // integers, so prefixing makes the two id spaces provably disjoint and every
+  // existing `state.selected.has(entity.id)` filter keeps working untouched.
+  function underlaySelectionId(id) {
+    return `u:${id}`;
+  }
+
+  function isUnderlaySelectionId(value) {
+    return typeof value === 'string' && value.startsWith('u:');
+  }
+
+  function underlayIdFromSelectionId(value) {
+    return isUnderlaySelectionId(value) ? Number(value.slice(2)) : null;
+  }
+
+  function makeUnderlay(descriptor, origin, options = {}) {
+    return {
+      id: options.id ?? allocateUnderlayId(),
+      layerId: options.layerId ?? state.currentLayerId,
+      name: descriptor.name || 'image',
+      origin: { x: origin.x, y: origin.y },
+      rotation: options.rotation ?? 0,
+      unitsPerPixel: options.unitsPerPixel ?? 1,
+      widthPx: descriptor.widthPx,
+      heightPx: descriptor.heightPx,
+      fade: options.fade ?? 0,
+      locked: options.locked ?? false,
+      plot: options.plot ?? false,
+      data: descriptor.data,
+    };
+  }
+
+  // A shallow copy is the point, not an oversight: `data` is a base64 string that
+  // can run to hundreds of kilobytes, and strings are immutable, so sharing the
+  // reference across every history snapshot costs nothing. Deep-cloning underlays
+  // (as JSON.parse(JSON.stringify(...)) would) copies that payload on every undo
+  // push and every commit.
+  function cloneUnderlays(underlays = state.underlays) {
+    return underlays.map(underlay => ({ ...underlay, origin: { ...underlay.origin } }));
+  }
+
+  function underlayWidth(underlay) {
+    return underlay.widthPx * underlay.unitsPerPixel;
+  }
+
+  function underlayHeight(underlay) {
+    return underlay.heightPx * underlay.unitsPerPixel;
+  }
+
+  // Corners counter-clockwise from the origin: bottom-left, bottom-right,
+  // top-right, top-left.
+  function underlayCorners(underlay) {
+    const cos = Math.cos(underlay.rotation);
+    const sin = Math.sin(underlay.rotation);
+    const w = underlayWidth(underlay);
+    const h = underlayHeight(underlay);
+    const at = (u, v) => ({
+      x: underlay.origin.x + u * cos - v * sin,
+      y: underlay.origin.y + u * sin + v * cos,
+    });
+    return [at(0, 0), at(w, 0), at(w, h), at(0, h)];
+  }
+
+  function underlayBBox(underlay) {
+    const corners = underlayCorners(underlay);
+    const xs = corners.map(p => p.x);
+    const ys = corners.map(p => p.y);
+    return {
+      minX: Math.min(...xs), maxX: Math.max(...xs),
+      minY: Math.min(...ys), maxY: Math.max(...ys),
+    };
+  }
+
+  // World point expressed in the image's own unrotated frame, measured in
+  // drawing units from the bottom-left corner.
+  function underlayWorldToLocal(underlay, point) {
+    const cos = Math.cos(underlay.rotation);
+    const sin = Math.sin(underlay.rotation);
+    const dx = point.x - underlay.origin.x;
+    const dy = point.y - underlay.origin.y;
+    return { x: dx * cos + dy * sin, y: -dx * sin + dy * cos };
+  }
+
+  function underlayContainsPoint(underlay, point) {
+    const local = underlayWorldToLocal(underlay, point);
+    return local.x >= 0 && local.y >= 0
+      && local.x <= underlayWidth(underlay) && local.y <= underlayHeight(underlay);
+  }
+
+  // Pickable means the layer allows editing AND the underlay is not locked. The
+  // per-underlay flag exists on top of the layer's because the usual reason to
+  // bring an image in is to trace over it, and an image that keeps catching
+  // clicks meant for the geometry on top of it is worse than no image.
+  function underlayIsSelectable(underlay) {
+    return !underlay.locked && isLayerVisible(underlay.layerId) && !isLayerLocked(underlay.layerId);
+  }
+
+  // Copies share the base64 payload by reference, so duplicating an underlay
+  // costs a small object rather than the image.
+  function duplicateUnderlays(underlays, firstId = null) {
+    let nextUnderlayId = firstId ?? state.nextUnderlayId;
+    const copies = underlays.map(underlay => ({
+      ...underlay,
+      id: nextUnderlayId++,
+      origin: { ...underlay.origin },
+    }));
+    return { underlays: copies, nextUnderlayId };
+  }
+
+  function translateUnderlay(underlay, dx, dy) {
+    return { ...underlay, origin: { x: underlay.origin.x + dx, y: underlay.origin.y + dy } };
+  }
+
+  function rotateUnderlay(underlay, base, angle) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const dx = underlay.origin.x - base.x;
+    const dy = underlay.origin.y - base.y;
+    return {
+      ...underlay,
+      origin: { x: base.x + dx * cos - dy * sin, y: base.y + dx * sin + dy * cos },
+      rotation: normalizeAngle(underlay.rotation + angle),
+    };
+  }
+
+  // Scaling an underlay moves its corner and changes how much ground a pixel
+  // covers, the same way scaling TEXT moves its position and changes its height.
+  function scaleUnderlay(underlay, base, factor) {
+    return {
+      ...underlay,
+      origin: {
+        x: base.x + (underlay.origin.x - base.x) * factor,
+        y: base.y + (underlay.origin.y - base.y) * factor,
+      },
+      unitsPerPixel: underlay.unitsPerPixel * factor,
+    };
+  }
+
+  // A mirrored raster would have to be drawn flipped, and nothing downstream
+  // (canvas, PDF) carries a flip flag, so MIRROR reflects the placement and
+  // leaves the image reading the right way round. The corner that ends up
+  // bottom-left after reflection becomes the new origin.
+  function mirrorUnderlay(underlay, axisA, axisB) {
+    const ax = axisB.x - axisA.x;
+    const ay = axisB.y - axisA.y;
+    const lengthSquared = ax * ax + ay * ay;
+    if (lengthSquared < 1e-18) return { ...underlay, origin: { ...underlay.origin } };
+    const reflect = point => {
+      const dx = point.x - axisA.x;
+      const dy = point.y - axisA.y;
+      const t = (dx * ax + dy * ay) / lengthSquared;
+      const projX = axisA.x + t * ax;
+      const projY = axisA.y + t * ay;
+      return { x: 2 * projX - point.x, y: 2 * projY - point.y };
+    };
+    const axisAngle = Math.atan2(ay, ax);
+    // Reflection reverses handedness; keeping the image unflipped means the
+    // mirrored bottom-left corner is the old bottom-RIGHT corner.
+    const corners = underlayCorners(underlay);
+    const origin = reflect(corners[1]);
+    return {
+      ...underlay,
+      origin,
+      rotation: normalizeAngle(2 * axisAngle - underlay.rotation + Math.PI),
+    };
+  }
+
+  // CALIBRATE: the user names two points on the image and the real distance
+  // between them. The first pick is held fixed so the part of the drawing they
+  // measured from does not walk away underneath them.
+  function calibrateUnderlay(underlay, from, to, knownDistance) {
+    const measured = dist(from, to);
+    if (!(measured > 1e-9)) return { error: 'Those two points are in the same place.' };
+    if (!Number.isFinite(knownDistance) || knownDistance <= 0) {
+      return { error: 'Enter a distance greater than zero.' };
+    }
+    const factor = knownDistance / measured;
+    const scaled = scaleUnderlay(underlay, from, factor);
+    if (!(scaled.unitsPerPixel > UNDERLAY_MIN_UNITS_PER_PIXEL) || !Number.isFinite(scaled.unitsPerPixel)) {
+      return { error: 'That distance would scale the image beyond a usable size.' };
+    }
+    return { underlay: scaled, factor };
+  }
+
+  function underlayFadeAlpha(underlay) {
+    return 1 - Math.min(100, Math.max(0, underlay.fade || 0)) / 100;
+  }
+
+  function underlayScaleLabel(underlay) {
+    const width = underlayWidth(underlay);
+    return { width, height: underlayHeight(underlay), unitsPerPixel: underlay.unitsPerPixel };
+  }
+
+  function selectedUnderlays() {
+    return state.underlays.filter(underlay => state.selected.has(underlaySelectionId(underlay.id)));
+  }
+
+  function underlayById(id) {
+    return state.underlays.find(underlay => underlay.id === id) || null;
+  }
+
+  function normalizeUnderlayRotation(rotation) {
+    const value = normalizeAngle(rotation);
+    return value >= TAU ? value - TAU : value;
   }
 
   // ---------------------------------------------------------------------------
@@ -2814,14 +3134,16 @@ kbd { font-size: 9px; opacity: .65; }
 
   function zoomExtents() {
     const visibleEntities = state.entities.filter(isEntityVisible);
-    if (!visibleEntities.length) {
+    const visibleUnderlays = state.underlays.filter(underlay => isLayerVisible(underlay.layerId));
+    if (!visibleEntities.length && !visibleUnderlays.length) {
       state.view.scale = 1.5;
       state.view.offsetX = canvas.clientWidth / 2;
       state.view.offsetY = canvas.clientHeight / 2;
       draw();
       return;
     }
-    const boxes = visibleEntities.map(entityBBox).filter(Boolean);
+    const boxes = visibleEntities.map(entityBBox).filter(Boolean)
+      .concat(visibleUnderlays.map(underlayBBox));
     const box = {
       minX: Math.min(...boxes.map(b=>b.minX)), maxX: Math.max(...boxes.map(b=>b.maxX)),
       minY: Math.min(...boxes.map(b=>b.minY)), maxY: Math.max(...boxes.map(b=>b.maxY)),
@@ -3024,6 +3346,140 @@ kbd { font-size: 9px; opacity: .65; }
     ];
   }
 
+
+  // ---------------------------------------------------------------------------
+  // Images
+  //
+  // A PDF carrying a raster is normally a binary file, which would mean this
+  // module could no longer return a string: xref offsets are byte offsets, and
+  // the Blob that delivers the file encodes strings as UTF-8, so every byte above
+  // 127 would shift and corrupt. Rather than give that up — the purity here is
+  // what lets the test suite assert on the PDF directly — the image bytes are
+  // ASCII85-encoded and declared as `/Filter [/ASCII85Decode /DCTDecode]`. The
+  // reader undoes both, the file stays 7-bit, and the cost is 25% size on a
+  // payload that is already compressed.
+  //
+  // Underlays are always JPEG by the time they get here (model/imageImport.js
+  // normalises every source format), so DCTDecode is the only image filter this
+  // writer ever needs.
+  // ---------------------------------------------------------------------------
+
+  const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+  // Hand-rolled rather than using atob, which does not exist in the headless test
+  // environment and would make the whole image path untestable.
+  function base64ToBytes(base64) {
+    const clean = String(base64).replace(/[^A-Za-z0-9+/]/g, '');
+    const bytes = [];
+    let buffer = 0;
+    let bits = 0;
+    for (const character of clean) {
+      const value = BASE64_ALPHABET.indexOf(character);
+      if (value < 0) continue;
+      buffer = (buffer << 6) | value;
+      bits += 6;
+      if (bits >= 8) {
+        bits -= 8;
+        bytes.push((buffer >> bits) & 255);
+      }
+    }
+    return bytes;
+  }
+
+  function dataUrlPayload(dataUrl) {
+    const comma = String(dataUrl).indexOf(',');
+    return comma < 0 ? '' : String(dataUrl).slice(comma + 1);
+  }
+
+  // ASCII85 as PDF defines it: four bytes to five printable characters, 'z' for
+  // an all-zero group, '~>' to end. Line length is capped because some readers
+  // baulk at very long lines.
+  function ascii85Encode(bytes) {
+    let out = '';
+    let lineLength = 0;
+    const emit = text => {
+      for (const character of text) {
+        out += character;
+        if (++lineLength >= 75) { out += '\n'; lineLength = 0; }
+      }
+    };
+    for (let index = 0; index < bytes.length; index += 4) {
+      const remaining = Math.min(4, bytes.length - index);
+      let value = 0;
+      for (let offset = 0; offset < 4; offset++) {
+        value = value * 256 + (offset < remaining ? bytes[index + offset] : 0);
+      }
+      if (remaining === 4 && value === 0) { emit('z'); continue; }
+      const group = [];
+      let rest = value;
+      for (let position = 4; position >= 0; position--) {
+        group[position] = String.fromCharCode(33 + (rest % 85));
+        rest = Math.floor(rest / 85);
+      }
+      // A partial final group drops the same number of characters as it was
+      // short of bytes, which is what tells the decoder how much to keep.
+      emit(group.slice(0, remaining + 1).join(''));
+    }
+    return out + '~>';
+  }
+
+  // JPEG is self-describing, and the PDF image dictionary has to agree with it on
+  // size and colour space or the reader rejects the stream. Reading them back out
+  // of the bytes is more trustworthy than carrying the canvas's numbers along,
+  // since a re-encode can legitimately change them.
+  function jpegInfo(bytes) {
+    let index = 2;
+    while (index + 9 < bytes.length) {
+      if (bytes[index] !== 0xff) { index++; continue; }
+      const marker = bytes[index + 1];
+      // SOF0..SOF15, skipping the four that are not frame headers.
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        return {
+          height: (bytes[index + 5] << 8) | bytes[index + 6],
+          width: (bytes[index + 7] << 8) | bytes[index + 8],
+          components: bytes[index + 9],
+        };
+      }
+      const length = (bytes[index + 2] << 8) | bytes[index + 3];
+      if (!(length > 0)) break;
+      index += 2 + length;
+    }
+    return null;
+  }
+
+  function pdfImageObject(op) {
+    const bytes = base64ToBytes(dataUrlPayload(op.data));
+    if (!bytes.length) return null;
+    const info = jpegInfo(bytes);
+    const width = info?.width || op.pixelWidth;
+    const height = info?.height || op.pixelHeight;
+    if (!(width > 0) || !(height > 0)) return null;
+    const colorSpace = info && info.components === 1 ? '/DeviceGray' : '/DeviceRGB';
+    const encoded = ascii85Encode(bytes);
+    return {
+      width, height, colorSpace,
+      body: `<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} ` +
+        `/ColorSpace ${colorSpace} /BitsPerComponent 8 ` +
+        `/Filter [/ASCII85Decode /DCTDecode] /Length ${encoded.length} >>\nstream\n${encoded}\nendstream`,
+    };
+  }
+
+  // The unit square an image XObject draws into is mapped by `cm` onto the
+  // parallelogram the plan supplies, which is what carries rotation without this
+  // writer needing to know an angle.
+  function pdfImageOperators(op, name, graphicsStateName) {
+    const origin = op.origin;
+    return [
+      'q',
+      graphicsStateName ? `/${graphicsStateName} gs` : null,
+      `${pdfPoint(op.edgeX.x)} ${pdfPoint(op.edgeX.y)} ` +
+        `${pdfPoint(op.edgeY.x)} ${pdfPoint(op.edgeY.y)} ` +
+        `${pdfPoint(origin.x)} ${pdfPoint(origin.y)} cm`,
+      `/${name} Do`,
+      'Q',
+    ].filter(Boolean);
+  }
+
   function pdfContentStream(plan) {
     const lines = ['q'];
     // Clipped to the picked area intersected with the printable rectangle, so a
@@ -3033,10 +3489,17 @@ kbd { font-size: 9px; opacity: .65; }
     const clip = plan.clipMM || plan.printable;
     lines.push(`${pdfPoint(clip.xMM)} ${pdfPoint(clip.yMM)} ` +
       `${pdfPoint(clip.widthMM)} ${pdfPoint(clip.heightMM)} re W n`);
+    let imageIndex = 0;
     for (const op of plan.ops) {
       if (op.kind === 'stroke') lines.push(...pdfStrokeOperators(op));
       else if (op.kind === 'fill') lines.push(...pdfFillOperators(op));
       else if (op.kind === 'text') lines.push(...pdfTextOperators(op));
+      else if (op.kind === 'image') {
+        const name = `Im${imageIndex}`;
+        const alphaName = op.alpha < 1 ? `GSa${imageIndex}` : null;
+        lines.push(...pdfImageOperators(op, name, alphaName));
+        imageIndex++;
+      }
     }
     lines.push('Q');
     return lines.join('\n');
@@ -3044,16 +3507,40 @@ kbd { font-size: 9px; opacity: .65; }
 
   function buildPdfDocument(plan, title = 'Drawing') {
     const content = pdfContentStream(plan);
+    // Objects 1-6 are fixed (catalog, pages, page, contents, two fonts); image
+    // XObjects and their transparency states are appended after the Info object,
+    // so their numbers are computed rather than written literally.
+    const imageOps = plan.ops.filter(op => op.kind === 'image');
+    const images = imageOps.map(pdfImageObject);
+    const FIXED_OBJECTS = 7;
+    const xobjectEntries = [];
+    const gsEntries = [];
+    const extraObjects = [];
+    images.forEach((image, index) => {
+      if (!image) return;
+      const objectNumber = FIXED_OBJECTS + extraObjects.length + 1;
+      extraObjects.push(image.body);
+      xobjectEntries.push(`/Im${index} ${objectNumber} 0 R`);
+      if (imageOps[index].alpha < 1) {
+        const gsNumber = FIXED_OBJECTS + extraObjects.length + 1;
+        extraObjects.push(`<< /Type /ExtGState /ca ${pdfNumber(imageOps[index].alpha)} ` +
+          `/CA ${pdfNumber(imageOps[index].alpha)} >>`);
+        gsEntries.push(`/GSa${index} ${gsNumber} 0 R`);
+      }
+    });
+    const xobjectResource = xobjectEntries.length ? ` /XObject << ${xobjectEntries.join(' ')} >>` : '';
+    const gsResource = gsEntries.length ? ` /ExtGState << ${gsEntries.join(' ')} >>` : '';
     const objects = [
       '<< /Type /Catalog /Pages 2 0 R >>',
       '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
       '<< /Type /Page /Parent 2 0 R ' +
         `/MediaBox [0 0 ${pdfPoint(plan.page.widthMM)} ${pdfPoint(plan.page.heightMM)}] ` +
-        '/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>',
+        `/Resources << /Font << /F1 5 0 R /F2 6 0 R >>${xobjectResource}${gsResource} >> /Contents 4 0 R >>`,
       `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
       '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
       '<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>',
       `<< /Title (${pdfEncodeText(title)}) /Producer (zbCAD) /Creator (zbCAD) >>`,
+      ...extraObjects,
     ];
 
     let pdf = '%PDF-1.4\n';
@@ -3067,7 +3554,7 @@ kbd { font-size: 9px; opacity: .65; }
     for (const offset of offsets) {
       pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
     }
-    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info ${objects.length} 0 R >>\n` +
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 7 0 R >>\n` +
       `startxref\n${xrefOffset}\n%%EOF\n`;
     return pdf;
   }
@@ -3137,6 +3624,38 @@ kbd { font-size: 9px; opacity: .65; }
       isLayerVisible(entity.layerId) && isLayerPrintable(entity.layerId));
   }
 
+  // An underlay plots only when it is explicitly marked to, on top of the same
+  // layer rules geometry obeys. The extra flag exists because an underlay is far
+  // more often a tracing aid than part of the sheet being issued, and a reference
+  // aerial silently appearing on an issued drawing is a worse failure than one
+  // silently missing from it.
+  function plottableUnderlays() {
+    return state.underlays.filter(underlay => underlay.plot
+      && isLayerVisible(underlay.layerId) && isLayerPrintable(underlay.layerId));
+  }
+
+  // The image is placed by its four corners rather than by an x/y/width/height
+  // box, because a rotated underlay has no axis-aligned box to give. Both the
+  // PDF writer and the preview turn these into their own transform.
+  function plotImageOp(underlay, context) {
+    const corners = underlayCorners(underlay).map(context.toPaper);
+    return {
+      kind: 'image',
+      id: underlay.id,
+      data: underlay.data,
+      pixelWidth: underlay.widthPx,
+      pixelHeight: underlay.heightPx,
+      // Origin plus the two edge vectors: exactly a PDF `cm` matrix, and exactly
+      // what canvas setTransform wants too.
+      origin: corners[0],
+      edgeX: { x: corners[1].x - corners[0].x, y: corners[1].y - corners[0].y },
+      edgeY: { x: corners[3].x - corners[0].x, y: corners[3].y - corners[0].y },
+      alpha: underlayFadeAlpha(underlay),
+      widthMM: underlayWidth(underlay) * context.mmPerUnit,
+      heightMM: underlayHeight(underlay) * context.mmPerUnit,
+    };
+  }
+
   function plotHexColor(hex) {
     const match = /^#([0-9a-fA-F]{6})$/.exec(String(hex || ''));
     if (!match) return [0, 0, 0];
@@ -3148,7 +3667,7 @@ kbd { font-size: 9px; opacity: .65; }
     return [((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255];
   }
 
-  function plotAreaBox(settings, entities = plottableEntities()) {
+  function plotAreaBox(settings, entities = plottableEntities(), underlays = plottableUnderlays()) {
     if (settings.area === 'window') {
       const picked = settings.window;
       if (!picked) return null;
@@ -3165,7 +3684,11 @@ kbd { font-size: 9px; opacity: .65; }
         minY: Math.min(topLeft.y, bottomRight.y), maxY: Math.max(topLeft.y, bottomRight.y),
       };
     }
-    const boxes = entities.map(entityBBox).filter(Boolean);
+    // Extents means everything that will be on the sheet, so a plotted image
+    // counts toward it — a drawing that is nothing but a marked-up aerial would
+    // otherwise report having nothing to plot.
+    const boxes = entities.map(entityBBox).filter(Boolean)
+      .concat(underlays.map(underlayBBox));
     if (!boxes.length) return null;
     return {
       minX: Math.min(...boxes.map(box => box.minX)), maxX: Math.max(...boxes.map(box => box.maxX)),
@@ -3406,6 +3929,7 @@ kbd { font-size: 9px; opacity: .65; }
 
   function buildPlotPlan(settings) {
     const entities = plottableEntities();
+    const underlays = plottableUnderlays();
     const page = paperSizeMM(settings.paperSizeId, settings.orientation);
     const printable = {
       xMM: PAPER_MARGIN_MM,
@@ -3416,7 +3940,7 @@ kbd { font-size: 9px; opacity: .65; }
     if (printable.widthMM <= 0 || printable.heightMM <= 0) {
       return { error: 'That sheet is smaller than its own margins.' };
     }
-    const area = plotAreaBox(settings, entities);
+    const area = plotAreaBox(settings, entities, underlays);
     if (!area) {
       return {
         error: settings.area === 'window'
@@ -3462,6 +3986,9 @@ kbd { font-size: 9px; opacity: .65; }
 
     const ops = [];
     const unsupported = new Set();
+    // Images first: PDF and canvas both paint in order, so anything emitted
+    // after these draws on top of them, which is what an underlay is for.
+    for (const underlay of underlays) ops.push(plotImageOp(underlay, context));
     for (const entity of entities) {
       for (const op of plotEntityOps(entity, context)) {
         if (op.kind === 'text') pdfUnsupportedCharacters(op.text).forEach(bad => unsupported.add(bad));
@@ -3493,6 +4020,11 @@ kbd { font-size: 9px; opacity: .65; }
         `${plotHeightMM.toFixed(1)} mm and will be clipped to the ${printable.widthMM.toFixed(1)} × ` +
         `${printable.heightMM.toFixed(1)} mm printable area.`);
     }
+    const excludedImages = state.underlays.length - underlays.length;
+    if (excludedImages > 0) {
+      warnings.push(`${excludedImages} image${excludedImages === 1 ? ' is' : 's are'} not included: ` +
+        'tick "Include this image when plotting" in Image Properties to plot one.');
+    }
     const excluded = state.entities.length - entities.length;
     if (excluded > 0) {
       warnings.push(`${excluded} object${excluded === 1 ? '' : 's'} on hidden or non-printable layers ` +
@@ -3509,7 +4041,963 @@ kbd { font-size: 9px; opacity: .65; }
       page, printable, clipMM, area, scale, fitted, mmPerUnit, ops, warnings,
       plotWidthMM, plotHeightMM,
       entityCount: entities.length,
+      underlayCount: underlays.length,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // output/dxf.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // The DXF writer
+  //
+  // Turns a DXF plan (output/dxfPlan.js) into AutoCAD R2000 / AC1015 ASCII. Pure
+  // and deterministic, exactly like output/pdf.js: a plan in, a string out, no
+  // DOM, no clock, no state. That is what lets the test suite assert on the file
+  // itself rather than on a re-parse of it.
+  //
+  // A DXF is a flat stream of (group code, value) pairs, each on its own line.
+  // Structure comes entirely from convention: sections open with 0/SECTION and a
+  // 2/<name>, tables with 0/TABLE, and everything closes with 0/ENDSEC or
+  // 0/ENDTAB. R2000 additionally requires every record to carry a unique
+  // hexadecimal handle (code 5) and to name its owner (code 330), which is what
+  // most of the bookkeeping below is for.
+  // ---------------------------------------------------------------------------
+
+  const DXF_ACAD_VERSION = 'AC1015';
+
+  // Colour. zbCAD stores RGB hex and has no colour index, so export writes both:
+  // code 62 as the nearest indexed colour for readers that only understand the
+  // old palette, and code 420 as the exact 24-bit value for those that do. On the
+  // way back in, 420 wins whenever it is present, so a zbCAD -> DXF -> zbCAD trip
+  // is colour-exact and only a trip through indexed-only software loses anything.
+  const ACI_BASIC = [
+    [0, '#000000'], [1, '#ff0000'], [2, '#ffff00'], [3, '#00ff00'],
+    [4, '#00ffff'], [5, '#0000ff'], [6, '#ff00ff'], [7, '#ffffff'],
+    [8, '#414141'], [9, '#808080'],
+    [250, '#333333'], [251, '#505050'], [252, '#696969'],
+    [253, '#828282'], [254, '#bebebe'], [255, '#ffffff'],
+  ];
+
+  function hexToRgb(hex) {
+    const match = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+    if (!match) return [0, 0, 0];
+    const value = parseInt(match[1], 16);
+    return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+  }
+
+  function rgbToTrueColor(hex) {
+    const [r, g, b] = hexToRgb(hex);
+    return (r << 16) | (g << 8) | b;
+  }
+
+  // Nearest of the indexed colours this writer knows by name. Indices 10-249 are
+  // a generated hue ramp whose exact values vary between implementations, so only
+  // the fixed ends of the palette are matched against — an approximate 62 beside
+  // an exact 420 is honest, and a wrong "precise" index would not be.
+  function nearestAci(hex) {
+    const [r, g, b] = hexToRgb(hex);
+    let best = 7;
+    let bestDistance = Infinity;
+    for (const [index, candidate] of ACI_BASIC) {
+      if (index === 0) continue;
+      const [cr, cg, cb] = hexToRgb(candidate);
+      const distance = (r - cr) ** 2 + (g - cg) ** 2 + (b - cb) ** 2;
+      if (distance < bestDistance) { bestDistance = distance; best = index; }
+    }
+    return best;
+  }
+
+  function aciToHex(index) {
+    const found = ACI_BASIC.find(([value]) => value === Number(index));
+    if (found) return found[1];
+    const numeric = Number(index);
+    if (!Number.isFinite(numeric) || numeric < 10 || numeric > 249) return '#ffffff';
+    // The generated part of the palette: 24 hues, ten steps each, alternating a
+    // saturated and a washed-out variant down five brightness levels. This
+    // reconstruction is close to AutoCAD's table but not bit-exact, which is why
+    // export always writes a true colour alongside the index.
+    const hue = Math.floor((numeric - 10) / 10) * 15;
+    const step = (numeric - 10) % 10;
+    const value = [255, 255, 189, 189, 129, 129, 104, 104, 79, 79][step] / 255;
+    const saturation = step % 2 === 0 ? 1 : 0.5;
+    return hslLikeToHex(hue, saturation, value);
+  }
+
+  function hslLikeToHex(hueDegrees, saturation, value) {
+    const h = ((hueDegrees % 360) + 360) % 360 / 60;
+    const c = value * saturation;
+    const x = c * (1 - Math.abs((h % 2) - 1));
+    const m = value - c;
+    const table = [[c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x]];
+    const [r, g, b] = table[Math.floor(h) % 6];
+    const byte = channel => Math.round((channel + m) * 255).toString(16).padStart(2, '0');
+    return `#${byte(r)}${byte(g)}${byte(b)}`;
+  }
+
+  // DXF numbers. The shortest decimal that reads back as the very same double,
+  // which is what JavaScript's own number-to-string already gives — a fixed
+  // number of decimal places would quietly round every coordinate and, worse,
+  // every polyline bulge, where the lost digits are angular error rather than
+  // sub-micron position. Exponent notation is avoided because some older readers
+  // mishandle it, and values below a nanometre-ish threshold are written as zero
+  // rather than as 1.2e-15.
+  function dxfNumber(value) {
+    if (!Number.isFinite(value)) return '0.0';
+    if (Math.abs(value) < 1e-12) return '0.0';
+    let text = String(value);
+    if (text.includes('e') || text.includes('E')) {
+      text = value.toFixed(12).replace(/0+$/, '').replace(/\.$/, '');
+    }
+    // A DXF real should look like one, so an integer value still gets a point.
+    if (!text.includes('.')) text += '.0';
+    return text === '-0.0' ? '0.0' : text;
+  }
+
+  function degrees(radians) {
+    const value = (radians * 360) / TAU;
+    // Angles are written in [0, 360) so a reader never has to normalise.
+    const wrapped = ((value % 360) + 360) % 360;
+    return dxfNumber(wrapped);
+  }
+
+  // A DXF string cannot carry a raw newline, and ^ is the control-code escape.
+  function dxfEscape(text) {
+    return String(text == null ? '' : text).replace(/\r?\n/g, '\\P');
+  }
+
+  // Handles are hex, start above the reserved low values, and must be unique
+  // across the whole file. A counter is enough because nothing here references a
+  // handle it has not already allocated.
+  function createHandleSource(start = 0x100) {
+    let next = start;
+    return () => (next++).toString(16).toUpperCase();
+  }
+
+  class DxfWriter {
+    constructor() {
+      this.lines = [];
+    }
+
+    pair(code, value) {
+      this.lines.push(String(code));
+      this.lines.push(String(value));
+      return this;
+    }
+
+    point(baseCode, point, z = 0) {
+      this.pair(baseCode, dxfNumber(point.x));
+      this.pair(baseCode + 10, dxfNumber(point.y));
+      this.pair(baseCode + 20, dxfNumber(z));
+      return this;
+    }
+
+    toString() {
+      // DXF is conventionally CRLF, and every reader accepts it.
+      return `${this.lines.join('\r\n')}\r\n`;
+    }
+  }
+
+  function writeHeaderVariable(writer, name, code, value) {
+    writer.pair(9, name).pair(code, value);
+  }
+
+  function writeHeader(writer, plan) {
+    writer.pair(0, 'SECTION').pair(2, 'HEADER');
+    writeHeaderVariable(writer, '$ACADVER', 1, DXF_ACAD_VERSION);
+    writeHeaderVariable(writer, '$HANDSEED', 5, 'FFFF');
+    writeHeaderVariable(writer, '$INSUNITS', 70, plan.header.insunits);
+    writeHeaderVariable(writer, '$LUNITS', 70, plan.header.lunits);
+    writeHeaderVariable(writer, '$LUPREC', 70, plan.header.luprec);
+    writeHeaderVariable(writer, '$AUNITS', 70, 0);
+    writeHeaderVariable(writer, '$AUPREC', 70, plan.header.auprec);
+    writer.pair(9, '$EXTMIN');
+    writer.point(10, plan.header.extMin);
+    writer.pair(9, '$EXTMAX');
+    writer.point(10, plan.header.extMax);
+    writeHeaderVariable(writer, '$MEASUREMENT', 70, plan.header.insunits === 1 || plan.header.insunits === 2 ? 0 : 1);
+    writer.pair(0, 'ENDSEC');
+  }
+
+  function writeTableHead(writer, name, handle, count, ownerHandle) {
+    writer.pair(0, 'TABLE').pair(2, name).pair(5, handle).pair(330, ownerHandle)
+      .pair(100, 'AcDbSymbolTable').pair(70, count);
+    // DIMSTYLE is the one table with a subclass of its own and a second count.
+    if (name === 'DIMSTYLE') writer.pair(100, 'AcDbDimStyleTable').pair(71, count);
+  }
+
+  function writeTables(writer, plan, handles, context) {
+    writer.pair(0, 'SECTION').pair(2, 'TABLES');
+
+    // VPORT — a reader wants at least *Active to know how to show the drawing.
+    writeTableHead(writer, 'VPORT', handles(), 1, '0');
+    writer.pair(0, 'VPORT').pair(5, handles()).pair(330, '0')
+      .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbViewportTableRecord')
+      .pair(2, '*Active').pair(70, 0);
+    writer.pair(12, dxfNumber((plan.header.extMin.x + plan.header.extMax.x) / 2));
+    writer.pair(22, dxfNumber((plan.header.extMin.y + plan.header.extMax.y) / 2));
+    writer.pair(40, dxfNumber(Math.max(1,
+      Math.abs(plan.header.extMax.y - plan.header.extMin.y) || 1)));
+    writer.pair(0, 'ENDTAB');
+
+    // LTYPE
+    writeTableHead(writer, 'LTYPE', handles(), plan.linetypes.length + 2, '0');
+    for (const name of ['ByBlock', 'ByLayer']) {
+      writer.pair(0, 'LTYPE').pair(5, handles()).pair(330, '0')
+        .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbLinetypeTableRecord')
+        .pair(2, name).pair(70, 0).pair(3, '').pair(72, 65).pair(73, 0).pair(40, '0.0');
+    }
+    for (const linetype of plan.linetypes) {
+      const total = linetype.pattern.reduce((sum, value) => sum + Math.abs(value), 0);
+      writer.pair(0, 'LTYPE').pair(5, handles()).pair(330, '0')
+        .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbLinetypeTableRecord')
+        .pair(2, linetype.name).pair(70, 0).pair(3, linetype.description)
+        .pair(72, 65).pair(73, linetype.pattern.length).pair(40, dxfNumber(total));
+      for (const dash of linetype.pattern) {
+        writer.pair(49, dxfNumber(dash)).pair(74, 0);
+      }
+    }
+    writer.pair(0, 'ENDTAB');
+
+    // LAYER
+    writeTableHead(writer, 'LAYER', handles(), plan.layers.length, '0');
+    for (const layer of plan.layers) {
+      const aci = nearestAci(layer.colorHex);
+      writer.pair(0, 'LAYER').pair(5, handles()).pair(330, '0')
+        .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbLayerTableRecord')
+        .pair(2, layer.name)
+        .pair(70, 0)
+        // A negative colour index is how DXF says a layer is switched off.
+        .pair(62, layer.off ? -aci : aci)
+        .pair(420, rgbToTrueColor(layer.colorHex))
+        .pair(6, layer.linetype)
+        .pair(290, layer.plot ? 1 : 0)
+        // Lineweight is hundredths of a millimetre, as an integer.
+        .pair(370, Math.round(layer.lineweightMM * 100))
+        .pair(390, context.plotStyleHandle);
+    }
+    writer.pair(0, 'ENDTAB');
+
+    // STYLE — Courier, because zbCAD measures text as a monospace 0.6 em and a
+    // proportional font would make every string the wrong length on arrival.
+    writeTableHead(writer, 'STYLE', handles(), plan.styles.length, '0');
+    for (const style of plan.styles) {
+      writer.pair(0, 'STYLE').pair(5, handles()).pair(330, '0')
+        .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbTextStyleTableRecord')
+        .pair(2, style.name).pair(70, 0).pair(40, '0.0')
+        .pair(41, dxfNumber(style.widthFactor)).pair(50, '0.0').pair(71, 0)
+        .pair(42, '0.2').pair(3, style.font).pair(4, '');
+    }
+    writer.pair(0, 'ENDTAB');
+
+    writeTableHead(writer, 'VIEW', handles(), 0, '0');
+    writer.pair(0, 'ENDTAB');
+
+    writeTableHead(writer, 'UCS', handles(), 0, '0');
+    writer.pair(0, 'ENDTAB');
+
+    writeTableHead(writer, 'APPID', handles(), 1, '0');
+    writer.pair(0, 'APPID').pair(5, handles()).pair(330, '0')
+      .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbRegAppTableRecord')
+      .pair(2, 'ACAD').pair(70, 0);
+    writer.pair(0, 'ENDTAB');
+
+    // DIMSTYLE
+    writeTableHead(writer, 'DIMSTYLE', handles(), plan.dimStyles.length, '0');
+    for (const style of plan.dimStyles) {
+      writer.pair(0, 'DIMSTYLE').pair(105, handles()).pair(330, '0')
+        .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbDimStyleTableRecord')
+        .pair(2, style.name).pair(70, 0)
+        // DIMSCALE is 1 because the plan has already multiplied every size by it:
+        // the numbers below are drawing sizes, not paper sizes.
+        .pair(40, '1.0')
+        .pair(41, dxfNumber(style.arrowSize))
+        .pair(42, dxfNumber(style.extensionOffset))
+        .pair(44, dxfNumber(style.extensionBeyond))
+        .pair(140, dxfNumber(style.textHeight))
+        .pair(147, dxfNumber(style.textGap))
+        // DIMTSZ non-zero means "draw ticks, not arrowheads", which is the
+        // architectural convention zbCAD's `tick` terminator expresses.
+        .pair(141, dxfNumber(style.arrowSize))
+        .pair(173, style.tick ? 1 : 0)
+        .pair(176, 0).pair(177, 0).pair(178, 0)
+        .pair(271, 4).pair(179, 0)
+        .pair(340, context.textStyleHandle);
+      if (style.tick) writer.pair(142, dxfNumber(style.arrowSize));
+    }
+    writer.pair(0, 'ENDTAB');
+
+    // BLOCK_RECORD — one per block, plus the two mandatory spaces.
+    const blockRecordCount = plan.blocks.length + 2;
+    writeTableHead(writer, 'BLOCK_RECORD', handles(), blockRecordCount, '0');
+    for (const name of ['*Model_Space', '*Paper_Space']) {
+      const handle = name === '*Model_Space' ? context.modelSpaceHandle : context.paperSpaceHandle;
+      writer.pair(0, 'BLOCK_RECORD').pair(5, handle).pair(330, '0')
+        .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbBlockTableRecord')
+        .pair(2, name).pair(70, 0);
+    }
+    for (const block of plan.blocks) {
+      block.recordHandle = handles();
+      writer.pair(0, 'BLOCK_RECORD').pair(5, block.recordHandle).pair(330, '0')
+        .pair(100, 'AcDbSymbolTableRecord').pair(100, 'AcDbBlockTableRecord')
+        .pair(2, block.name).pair(70, 0);
+    }
+    writer.pair(0, 'ENDTAB');
+
+    writer.pair(0, 'ENDSEC');
+  }
+
+  function writeBlockShell(writer, handles, name, ownerHandle, base, isPaperSpace) {
+    writer.pair(0, 'BLOCK').pair(5, handles()).pair(330, ownerHandle)
+      .pair(100, 'AcDbEntity').pair(67, isPaperSpace ? 1 : 0).pair(8, '0')
+      .pair(100, 'AcDbBlockBegin').pair(2, name).pair(70, 0);
+    writer.point(10, base);
+    writer.pair(3, name).pair(1, '');
+  }
+
+  function writeBlockEnd(writer, handles, ownerHandle, isPaperSpace) {
+    writer.pair(0, 'ENDBLK').pair(5, handles()).pair(330, ownerHandle)
+      .pair(100, 'AcDbEntity').pair(67, isPaperSpace ? 1 : 0).pair(8, '0')
+      .pair(100, 'AcDbBlockEnd');
+  }
+
+  function writeBlocks(writer, plan, handles, context) {
+    writer.pair(0, 'SECTION').pair(2, 'BLOCKS');
+
+    writeBlockShell(writer, handles, '*Model_Space', context.modelSpaceHandle, { x: 0, y: 0 }, false);
+    writeBlockEnd(writer, handles, context.modelSpaceHandle, false);
+    writeBlockShell(writer, handles, '*Paper_Space', context.paperSpaceHandle, { x: 0, y: 0 }, true);
+    writeBlockEnd(writer, handles, context.paperSpaceHandle, true);
+
+    for (const block of plan.blocks) {
+      writeBlockShell(writer, handles, block.name, block.recordHandle, block.base, false);
+      for (const entity of block.entities) {
+        writeEntity(writer, entity, handles, block.recordHandle, context);
+      }
+      writeBlockEnd(writer, handles, block.recordHandle, false);
+    }
+
+    writer.pair(0, 'ENDSEC');
+  }
+
+  function entityHead(writer, type, handles, ownerHandle, layer) {
+    writer.pair(0, type).pair(5, handles()).pair(330, ownerHandle)
+      .pair(100, 'AcDbEntity').pair(8, layer || '0');
+  }
+
+  function writeEntity(writer, entity, handles, ownerHandle, context) {
+    if (entity.type === 'LINE') {
+      entityHead(writer, 'LINE', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbLine');
+      writer.point(10, entity.a);
+      writer.point(11, entity.b);
+      return;
+    }
+    if (entity.type === 'LWPOLYLINE') {
+      entityHead(writer, 'LWPOLYLINE', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbPolyline')
+        .pair(90, entity.points.length)
+        .pair(70, entity.closed ? 1 : 0);
+      for (const point of entity.points) {
+        writer.pair(10, dxfNumber(point.x)).pair(20, dxfNumber(point.y));
+        // Code 42 is omitted for a straight segment, which is what every other
+        // writer does and what keeps a straight polyline byte-comparable.
+        if (Math.abs(point.bulge || 0) > 1e-12) writer.pair(42, dxfNumber(point.bulge));
+      }
+      return;
+    }
+    if (entity.type === 'CIRCLE') {
+      entityHead(writer, 'CIRCLE', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbCircle');
+      writer.point(10, entity.center);
+      writer.pair(40, dxfNumber(entity.radius));
+      return;
+    }
+    if (entity.type === 'ARC') {
+      entityHead(writer, 'ARC', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbCircle');
+      writer.point(10, entity.center);
+      writer.pair(40, dxfNumber(entity.radius));
+      writer.pair(100, 'AcDbArc');
+      // DXF arcs run counter-clockwise from start to end, which is zbCAD's own
+      // convention, so no swap is needed.
+      writer.pair(50, degrees(entity.startAngle));
+      writer.pair(51, degrees(entity.endAngle));
+      return;
+    }
+    if (entity.type === 'TEXT') {
+      entityHead(writer, 'TEXT', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbText');
+      writer.point(10, entity.position);
+      writer.pair(40, dxfNumber(entity.height));
+      writer.pair(1, dxfEscape(entity.text));
+      if (entity.rotation) writer.pair(50, degrees(entity.rotation));
+      writer.pair(7, entity.style || 'Standard');
+      if (entity.halign) writer.pair(72, entity.halign);
+      if (entity.halign || entity.valign) {
+        // With any justification but left/baseline, DXF reads the position from
+        // the second alignment point, so it has to be written too.
+        writer.point(11, entity.position);
+      }
+      writer.pair(100, 'AcDbText');
+      if (entity.valign) writer.pair(73, entity.valign);
+      return;
+    }
+    if (entity.type === 'MTEXT') {
+      entityHead(writer, 'MTEXT', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbMText');
+      writer.point(10, entity.position);
+      writer.pair(40, dxfNumber(entity.height));
+      writer.pair(41, dxfNumber(entity.width));
+      writer.pair(71, entity.attachment || 1);
+      writer.pair(72, 5);
+      writer.pair(1, dxfEscape(entity.text));
+      writer.pair(7, entity.style || 'Standard');
+      if (entity.rotation) writer.pair(50, degrees(entity.rotation));
+      writer.pair(73, 2);
+      writer.pair(44, dxfNumber(entity.lineSpacing || 1));
+      return;
+    }
+    if (entity.type === 'SOLID') {
+      entityHead(writer, 'SOLID', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbTrace');
+      writer.point(10, entity.points[0]);
+      writer.point(11, entity.points[1]);
+      writer.point(12, entity.points[2]);
+      writer.point(13, entity.points[3]);
+      return;
+    }
+    if (entity.type === 'DIMENSION') {
+      entityHead(writer, 'DIMENSION', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbDimension');
+      writer.pair(2, entity.block);
+      writer.point(10, entity.defPoint);
+      writer.point(11, entity.textMid);
+      writer.pair(70, entity.flags);
+      writer.pair(71, 5);
+      writer.pair(42, dxfNumber(entity.measurement));
+      writer.pair(1, '');
+      writer.pair(3, entity.styleName);
+      if (entity.dimType === 'RADIUS') {
+        writer.pair(100, 'AcDbRadialDimension');
+        writer.point(15, entity.chordPoint);
+        writer.pair(40, '0.0');
+        return;
+      }
+      if (entity.dimType === 'DIAMETER') {
+        writer.pair(100, 'AcDbDiametricDimension');
+        writer.point(15, entity.chordPoint);
+        writer.pair(40, '0.0');
+        return;
+      }
+      writer.pair(100, 'AcDbAlignedDimension');
+      writer.point(13, entity.ext1);
+      writer.point(14, entity.ext2);
+      if (entity.dimType === 'LINEAR') {
+        writer.pair(50, degrees(entity.rotation || 0));
+        writer.pair(100, 'AcDbRotatedDimension');
+      }
+      return;
+    }
+    if (entity.type === 'POINT') {
+      entityHead(writer, 'POINT', handles, ownerHandle, entity.layer);
+      writer.pair(100, 'AcDbPoint');
+      writer.point(10, entity.position);
+    }
+  }
+
+  function writeEntities(writer, plan, handles, context) {
+    writer.pair(0, 'SECTION').pair(2, 'ENTITIES');
+    for (const entity of plan.entities) {
+      writeEntity(writer, entity, handles, context.modelSpaceHandle, context);
+    }
+    writer.pair(0, 'ENDSEC');
+  }
+
+  // R2000 readers expect a named-object dictionary to exist even when it holds
+  // nothing interesting; a file without one is rejected by some of them.
+  function writeObjects(writer, handles, context) {
+    writer.pair(0, 'SECTION').pair(2, 'OBJECTS');
+    writer.pair(0, 'DICTIONARY').pair(5, context.rootDictHandle).pair(330, '0')
+      .pair(100, 'AcDbDictionary').pair(281, 1)
+      .pair(3, 'ACAD_GROUP').pair(350, context.groupDictHandle);
+    writer.pair(0, 'DICTIONARY').pair(5, context.groupDictHandle).pair(330, context.rootDictHandle)
+      .pair(100, 'AcDbDictionary').pair(281, 1);
+    writer.pair(0, 'ACDBPLACEHOLDER').pair(5, context.plotStyleHandle)
+      .pair(330, context.rootDictHandle);
+    writer.pair(0, 'ENDSEC');
+  }
+
+  function buildDxfDocument(plan) {
+    const handles = createHandleSource();
+    const context = {
+      modelSpaceHandle: handles(),
+      paperSpaceHandle: handles(),
+      rootDictHandle: handles(),
+      groupDictHandle: handles(),
+      plotStyleHandle: handles(),
+      textStyleHandle: handles(),
+    };
+    const writer = new DxfWriter();
+    writeHeader(writer, plan);
+    writeTables(writer, plan, handles, context);
+    writeBlocks(writer, plan, handles, context);
+    writeEntities(writer, plan, handles, context);
+    writeObjects(writer, handles, context);
+    writer.pair(0, 'EOF');
+    return writer.toString();
+  }
+
+  // ---------------------------------------------------------------------------
+  // output/dxfPlan.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // The DXF plan
+  //
+  // The same split CLAUDE.md asks for between output/plot.js and output/pdf.js:
+  // this module decides WHAT a DXF should contain, output/dxf.js decides how to
+  // spell it, and model/dxfRead.js parses a file back into this same shape. That
+  // last point is the one worth protecting — because import and export share the
+  // intermediate, a round trip can be asserted as plan → text → plan without
+  // going near the document model, which is where the mistakes actually hide.
+  //
+  // The plan sits at a HIGHER altitude than the plot plan. buildPlotPlan
+  // flattens everything: arcs become beziers, layers become numbers, dimensions
+  // become loose line work. DXF wants the opposite — real ARCs, symbolic layer
+  // names, live DIMENSION entities — so this is a parallel intermediate rather
+  // than a reuse of that one.
+  //
+  // Coordinates here are drawing units, unconverted. A DXF has no paper.
+  // Angles are radians; degrees appear only in the serialiser.
+  // ---------------------------------------------------------------------------
+
+  // DXF $INSUNITS codes. zbCAD's unit enum was modelled on this header in the
+  // first place (see core/units.js), so the mapping is one-to-one.
+  const DXF_INSUNITS = {
+    inches: 1,
+    feet: 2,
+    millimeters: 4,
+    centimeters: 5,
+    meters: 6,
+  };
+
+  // $LUNITS: 1 scientific, 2 decimal, 3 engineering, 4 architectural, 5 fractional.
+  const DXF_LUNITS = {
+    decimal: 2,
+    engineering: 3,
+    architectural: 4,
+    fractional: 5,
+  };
+
+  // zbCAD's MTEXT stacks lines at 1.5x the character height. DXF's MTEXT spaces
+  // them at 1.66x times a line-spacing factor, so the factor that reproduces
+  // zbCAD's spacing is 1.5/1.66. Code 44 accepts 0.25..4.0, so this is in range.
+  const DXF_MTEXT_SPACING_BASE = 1.66;
+
+  // A zbCAD TEXT/MTEXT position is the baseline of the first line; a DXF MTEXT
+  // with attachment 1 is anchored at the TOP-left of its box. The gap between
+  // them is one ascent, and there is no exact answer because zbCAD never measures
+  // a real font — this is the same 0.8 the renderer's own box uses.
+  const DXF_TEXT_ASCENT = 0.8;
+
+  const DXF_STYLE_NAME = 'Standard';
+  const DXF_DEFAULT_LINETYPE = 'CONTINUOUS';
+
+  // zbCAD's dash patterns are screen pixels, turned into paper millimetres by
+  // PLOT_DASH_MM_PER_UNIT when plotting. A DXF pattern is in drawing units, so
+  // the same millimetre length is converted back through the drawing's own unit.
+  function dxfDashPattern(linetype, drawingUnit) {
+    const pattern = LINETYPE_DASH_PATTERNS[linetype];
+    if (!pattern || !pattern.length) return null;
+    const mmPerUnit = DRAWING_UNITS[drawingUnit].mmPerUnit;
+    const lengths = pattern.map((value, index) => {
+      const units = (value * PLOT_DASH_MM_PER_UNIT) / mmPerUnit;
+      // DXF signs a pattern element: positive draws, negative is a gap. The
+      // source pattern alternates dash/gap starting with a dash.
+      return index % 2 === 0 ? units : -units;
+    });
+    return lengths;
+  }
+
+  function dxfLayerName(name) {
+    // DXF forbids these in symbol names. A layer called "A/B" would otherwise
+    // produce a file some readers reject outright.
+    const cleaned = String(name).replace(/[<>/\\":;?*|=`,]/g, '_').trim();
+    return cleaned.slice(0, 255) || 'LAYER';
+  }
+
+  function dxfLinetypeName(linetype) {
+    return String(linetype || 'continuous').toUpperCase();
+  }
+
+  function dxfPlanLayers(drawingUnit) {
+    return state.layers.map(layer => ({
+      name: dxfLayerName(layer.name),
+      colorHex: layer.color,
+      linetype: dxfLinetypeName(layer.linetype),
+      lineweightMM: layer.lineweight,
+      plot: layer.printable !== false,
+      // A DXF layer is switched off by a negative colour index, which is how the
+      // `visible` flag survives the trip.
+      off: !layer.visible,
+      id: layer.id,
+    }));
+  }
+
+  function dxfPlanLinetypes(drawingUnit) {
+    const used = new Set(state.layers.map(layer => dxfLinetypeName(layer.linetype)));
+    used.add(DXF_DEFAULT_LINETYPE);
+    const linetypes = [{ name: DXF_DEFAULT_LINETYPE, description: 'Solid line', pattern: [] }];
+    for (const layer of state.layers) {
+      const name = dxfLinetypeName(layer.linetype);
+      if (name === DXF_DEFAULT_LINETYPE) continue;
+      if (linetypes.some(entry => entry.name === name)) continue;
+      linetypes.push({
+        name,
+        description: name.toLowerCase(),
+        pattern: dxfDashPattern(layer.linetype, drawingUnit) || [],
+      });
+    }
+    return linetypes;
+  }
+
+  function dxfPlanDimStyles() {
+    return state.dimStyles.map(style => ({
+      name: dxfLayerName(style.name || style.id),
+      id: style.id,
+      scale: style.scale,
+      textHeight: dimSize(style, 'textHeight'),
+      arrowSize: dimSize(style, 'arrowSize'),
+      extensionOffset: dimSize(style, 'extensionOffset'),
+      extensionBeyond: dimSize(style, 'extensionBeyond'),
+      textGap: dimSize(style, 'textGap'),
+      // An architectural tick is DIMTSZ; an arrowhead is DIMTSZ 0 plus DIMASZ.
+      tick: style.arrowType === 'tick',
+    }));
+  }
+
+  function layerNameFor(layerId, layers) {
+    const found = layers.find(layer => layer.id === layerId);
+    return found ? found.name : '0';
+  }
+
+  // Identity context: plotDimensionOps is written against a paper transform, and
+  // handing it the identity gives back the very same line work, arrowheads and
+  // text in DRAWING units. That is how a dimension's picture gets into its block
+  // without a second implementation of dimension rendering existing to drift.
+  const DXF_IDENTITY_CONTEXT = {
+    settings: { color: 'mono', lineweights: false },
+    mmPerUnit: 1,
+    toPaper: point => ({ x: point.x, y: point.y }),
+  };
+
+  // The anonymous block holding a dimension's drawn picture. R2000 expects one
+  // per DIMENSION entity; readers that regenerate dimensions ignore it, and
+  // readers that do not still show the right thing.
+  function dxfDimensionBlockEntities(entity, layerName) {
+    const ops = plotDimensionOps(entity, DXF_IDENTITY_CONTEXT, [0, 0, 0]);
+    const entities = [];
+    for (const op of ops) {
+      if (op.kind === 'stroke') {
+        for (const subpath of op.subpaths) {
+          let cursor = subpath.start;
+          for (const segment of subpath.segs) {
+            // Dimension line work is straight; a bezier here would mean the
+            // dimension renderer grew a curve, which is worth not silently
+            // flattening.
+            if (segment.type === 'l') {
+              entities.push({ type: 'LINE', layer: layerName, a: cursor, b: segment.to });
+            }
+            cursor = segment.to;
+          }
+        }
+      } else if (op.kind === 'fill') {
+        // Arrowheads and ticks. A DXF SOLID takes four corners with the third
+        // and fourth swapped relative to a polygon's winding; a triangle repeats
+        // its last point.
+        const points = op.points.slice(0, 4);
+        while (points.length < 4) points.push(points[points.length - 1]);
+        entities.push({
+          type: 'SOLID',
+          layer: layerName,
+          points: [points[0], points[1], points[3], points[2]],
+        });
+      } else if (op.kind === 'text') {
+        entities.push({
+          type: 'TEXT',
+          layer: layerName,
+          style: DXF_STYLE_NAME,
+          position: { x: op.x, y: op.y },
+          height: op.sizeMM,
+          rotation: op.angle,
+          text: op.text,
+          // The plan's dimension text is centred on the dimension line; DXF
+          // expresses that as horizontal justification 1 with a second alignment
+          // point, which the serialiser writes.
+          halign: op.anchor === 'center' ? 1 : 0,
+          valign: op.baseline === 'middle' ? 2 : 0,
+        });
+      }
+    }
+    return entities;
+  }
+
+  const DXF_DIMENSION_TYPES = { LINEAR: 0, ALIGNED: 1, DIAMETER: 3, RADIUS: 4 };
+
+  function dxfDimensionEntity(entity, layerName, styleName, blockName) {
+    const geometry = dimensionGeometry(entity);
+    const base = {
+      type: 'DIMENSION',
+      layer: layerName,
+      block: blockName,
+      styleName,
+      dimType: entity.dimType,
+      // Group 70's low bits are the dimension kind; bit 32 says the picture is
+      // in a block, which it is, and bit 128 says the text position is given.
+      flags: DXF_DIMENSION_TYPES[entity.dimType] + 32 + 128,
+      textMid: geometry.textAnchor,
+      measurement: geometry.measure,
+      text: dimensionText(entity),
+      rotation: entity.rotation || 0,
+    };
+    if (entity.dimType === 'RADIUS') {
+      // 10 is the centre, 15 the point on the curve.
+      return { ...base, defPoint: entity.p1, chordPoint: entity.p2 };
+    }
+    if (entity.dimType === 'DIAMETER') {
+      return { ...base, defPoint: entity.p2, chordPoint: entity.p1 };
+    }
+    // Linear and aligned: 10 is where the dimension line sits, 13 and 14 are the
+    // two extension line origins.
+    return { ...base, defPoint: geometry.q2, ext1: entity.p1, ext2: entity.p2 };
+  }
+
+  function dxfEntityRecords(entity, layers, plan) {
+    const layer = layerNameFor(entity.layerId, layers);
+    if (entity.type === 'LINE') {
+      return [{ type: 'LINE', layer, a: entity.a, b: entity.b }];
+    }
+    if (entity.type === 'PLINE') {
+      const points = entity.points.map((point, index) => ({
+        x: point.x,
+        y: point.y,
+        // zbCAD's bulge convention IS the DXF one — tan(sweep/4), positive
+        // counter-clockwise — so this crosses over untouched.
+        bulge: entity.bulges ? (entity.bulges[index] || 0) : 0,
+      }));
+      return [{ type: 'LWPOLYLINE', layer, points, closed: Boolean(entity.closed) }];
+    }
+    if (entity.type === 'CIRCLE') {
+      return [{ type: 'CIRCLE', layer, center: entity.center, radius: entity.radius }];
+    }
+    if (entity.type === 'ARC') {
+      return [{
+        type: 'ARC', layer,
+        center: entity.center, radius: entity.radius,
+        startAngle: entity.startAngle, endAngle: entity.endAngle,
+      }];
+    }
+    if (entity.type === 'TEXT') {
+      return [{
+        type: 'TEXT', layer, style: DXF_STYLE_NAME,
+        position: entity.position,
+        height: entity.height,
+        rotation: entity.rotation,
+        text: entity.content,
+        halign: 0, valign: 0,
+      }];
+    }
+    if (entity.type === 'MTEXT') {
+      // Shift up by one ascent, along the text's own up direction, to convert
+      // zbCAD's first-line baseline into DXF's top-left attachment point.
+      const lift = entity.height * DXF_TEXT_ASCENT;
+      const cos = Math.cos(entity.rotation);
+      const sin = Math.sin(entity.rotation);
+      return [{
+        type: 'MTEXT', layer, style: DXF_STYLE_NAME,
+        position: {
+          x: entity.position.x - lift * sin,
+          y: entity.position.y + lift * cos,
+        },
+        height: entity.height,
+        width: entity.width,
+        rotation: entity.rotation,
+        text: entity.content,
+        attachment: 1,
+        lineSpacing: mtextLineHeight(entity) / entity.height / DXF_MTEXT_SPACING_BASE,
+      }];
+    }
+    if (entity.type === 'DIM') {
+      const styleName = (plan.dimStyles.find(style => style.id === entity.styleId)
+        || plan.dimStyles[0]).name;
+      const blockName = `*D${plan.blocks.length + 1}`;
+      plan.blocks.push({
+        name: blockName,
+        base: { x: 0, y: 0 },
+        entities: dxfDimensionBlockEntities(entity, layer),
+      });
+      return [dxfDimensionEntity(entity, layer, styleName, blockName)];
+    }
+    return [];
+  }
+
+  function buildDxfPlan(options = {}) {
+    const drawingUnit = state.unitSettings.drawingUnit;
+    const layers = dxfPlanLayers(drawingUnit);
+    const plan = {
+      header: {
+        insunits: DXF_INSUNITS[drawingUnit] ?? 0,
+        lunits: DXF_LUNITS[state.unitSettings.format] ?? 2,
+        luprec: LENGTH_FORMATS[state.unitSettings.format]?.precisions?.includes(state.unitSettings.precision)
+          ? state.unitSettings.precision : 4,
+        auprec: state.unitSettings.anglePrecision ?? 1,
+        drawingUnit,
+        extMin: { x: 0, y: 0 },
+        extMax: { x: 0, y: 0 },
+      },
+      layers,
+      linetypes: dxfPlanLinetypes(drawingUnit),
+      styles: [{ name: DXF_STYLE_NAME, font: 'cour.ttf', widthFactor: 1 }],
+      dimStyles: dxfPlanDimStyles(),
+      blocks: [],
+      entities: [],
+      warnings: [],
+    };
+
+    const skipped = new Map();
+    // Everything is exported, hidden layers included: a DXF is the drawing, not
+    // a plot of it, and the layer's own off flag travels with it.
+    const source = options.entities || state.entities;
+    for (const entity of source) {
+      const records = dxfEntityRecords(entity, layers, plan);
+      if (!records.length) {
+        skipped.set(entity.type, (skipped.get(entity.type) || 0) + 1);
+        continue;
+      }
+      plan.entities.push(...records);
+    }
+
+    const boxes = source.map(entityBBox).filter(Boolean);
+    if (boxes.length) {
+      plan.header.extMin = {
+        x: Math.min(...boxes.map(box => box.minX)),
+        y: Math.min(...boxes.map(box => box.minY)),
+      };
+      plan.header.extMax = {
+        x: Math.max(...boxes.map(box => box.maxX)),
+        y: Math.max(...boxes.map(box => box.maxY)),
+      };
+    }
+
+    for (const [type, count] of skipped) {
+      plan.warnings.push(`${count} ${type} entit${count === 1 ? 'y' : 'ies'} had no DXF equivalent and were left out.`);
+    }
+    // DXF's own IMAGE entity needs an IMAGEDEF object and an external or embedded
+    // raster, which is a whole subsystem for something no consumer of this file
+    // is likely to want. Saying so beats writing a file that quietly lost them.
+    if (state.underlays.length) {
+      plan.warnings.push(`${state.underlays.length} reference image${state.underlays.length === 1 ? '' : 's'} ` +
+        'cannot be written to DXF and are not included.');
+    }
+    return plan;
+  }
+
+  // ---------------------------------------------------------------------------
+  // view/underlay.js
+  // ---------------------------------------------------------------------------
+
+  // Decoded images keyed by the underlay's data URL rather than by its id, so a
+  // MOVE — which replaces the record — reuses the decode instead of throwing it
+  // away and flashing an empty frame.
+  const IMAGE_CACHE = new Map();
+
+  // Decoding is asynchronous and rendering is not, so this never waits: a frame
+  // drawn before the image is ready simply skips it and the load handler asks for
+  // another frame. That also keeps the headless harness, whose Image never
+  // loads, from deadlocking on a paint.
+  function underlayImage(underlay) {
+    const cached = IMAGE_CACHE.get(underlay.data);
+    if (cached) return cached.ready ? cached.image : null;
+    const image = new Image();
+    const record = { image, ready: false };
+    IMAGE_CACHE.set(underlay.data, record);
+    image.onload = () => {
+      record.ready = true;
+      draw();
+    };
+    // A payload the browser cannot decode stays un-ready forever, which renders
+    // as an empty frame rather than as a broken drawing.
+    image.onerror = () => { record.failed = true; };
+    image.src = underlay.data;
+    return null;
+  }
+
+  function forgetUnderlayImages() {
+    IMAGE_CACHE.clear();
+  }
+
+  function drawUnderlays() {
+    for (const underlay of state.underlays) {
+      if (!isLayerVisible(underlay.layerId)) continue;
+      drawUnderlay(underlay);
+    }
+  }
+
+  function drawUnderlay(underlay) {
+    const image = underlayImage(underlay);
+    const origin = worldToScreen(underlay.origin);
+    const scale = underlay.unitsPerPixel * state.view.scale;
+    if (image) {
+      ctx.save();
+      ctx.globalAlpha = underlayFadeAlpha(underlay);
+      ctx.translate(origin.x, origin.y);
+      // World Y and screen Y point opposite ways. Text solves this by rotating
+      // backwards (see drawText); a raster cannot, because its own rows are laid
+      // out top-down, so the whole frame is flipped instead and the image is
+      // drawn from 0,0 downward in that flipped space.
+      ctx.rotate(-underlay.rotation);
+      ctx.scale(scale, scale);
+      ctx.drawImage(image, 0, -underlay.heightPx, underlay.widthPx, underlay.heightPx);
+      ctx.restore();
+    }
+    if (state.selected.has(underlaySelectionId(underlay.id))) drawUnderlayOutline(underlay, true);
+    else if (!image) drawUnderlayOutline(underlay, false);
+  }
+
+  // The outline doubles as the placeholder for an image that has not decoded yet
+  // and as the selection indicator, since an underlay has no line work of its own
+  // that a selection halo could sit behind.
+  function drawUnderlayOutline(underlay, selected) {
+    const corners = underlayCorners(underlay).map(worldToScreen);
+    ctx.save();
+    ctx.setLineDash(selected ? [] : [6, 4]);
+    ctx.lineWidth = selected ? 2 : 1;
+    ctx.strokeStyle = selected ? 'rgba(86, 214, 255, 0.95)' : 'rgba(120, 120, 120, 0.7)';
+    ctx.beginPath();
+    ctx.moveTo(corners[0].x, corners[0].y);
+    for (let index = 1; index < corners.length; index++) ctx.lineTo(corners[index].x, corners[index].y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // The rubber band IMAGE draws while the insertion point is being picked. The
+  // raster itself is not drawn during placement: at an uncalibrated default scale
+  // it is routinely the size of a city block, and painting that on every mouse
+  // move to throw it away is a poor trade for an outline that says the same
+  // thing.
+  function drawUnderlayPreview(descriptor, origin, unitsPerPixel) {
+    const preview = {
+      origin,
+      rotation: 0,
+      unitsPerPixel,
+      widthPx: descriptor.widthPx,
+      heightPx: descriptor.heightPx,
+    };
+    drawUnderlayOutline(preview, true);
+    return { width: underlayWidth(preview), height: underlayHeight(preview) };
   }
 
   // ---------------------------------------------------------------------------
@@ -3645,11 +5133,38 @@ kbd { font-size: 9px; opacity: .65; }
     context.restore();
   }
 
+  // The plan hands over an origin and two edge vectors — a parallelogram — which
+  // is what carries a rotated underlay without the preview needing to know an
+  // angle. Mapping the unit square onto it is exactly a canvas transform, and the
+  // Y edge is negated because paper Y points up and canvas Y points down.
+  function drawPlotPreviewImage(context, view, op, clipped) {
+    const image = underlayImage({ data: op.data });
+    const origin = view.toPx(op.origin);
+    const edgeX = { x: op.edgeX.x * view.scale, y: -op.edgeX.y * view.scale };
+    const edgeY = { x: op.edgeY.x * view.scale, y: -op.edgeY.y * view.scale };
+    context.save();
+    if (clipped) context.globalAlpha *= 0.25;
+    else context.globalAlpha *= op.alpha;
+    context.transform(edgeX.x, edgeX.y, edgeY.x, edgeY.y, origin.x, origin.y);
+    if (image) {
+      // The unit square maps onto the image's own frame, bottom-left at 0,0.
+      context.drawImage(image, 0, -1, 1, 1);
+    } else {
+      // Not decoded yet: show the frame so the preview still says where the
+      // image will land rather than silently omitting it.
+      context.strokeStyle = PLOT_PREVIEW_CLIPPED_COLOR;
+      context.lineWidth = 1 / Math.max(1e-6, Math.hypot(edgeX.x, edgeX.y));
+      context.strokeRect(0, -1, 1, 1);
+    }
+    context.restore();
+  }
+
   function drawPlotPreviewOps(context, view, ops, clipped) {
     for (const op of ops) {
       if (op.kind === 'stroke') drawPlotPreviewStroke(context, view, op, clipped);
       else if (op.kind === 'fill') drawPlotPreviewFill(context, view, op, clipped);
       else if (op.kind === 'text') drawPlotPreviewText(context, view, op, clipped);
+      else if (op.kind === 'image') drawPlotPreviewImage(context, view, op, clipped);
     }
   }
 
@@ -3851,23 +5366,585 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   // ---------------------------------------------------------------------------
+  // model/imageImport.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Turning a picked file into an underlay descriptor.
+  //
+  // This is the one part of the underlay feature that touches the DOM, and it is
+  // isolated here for two reasons. The obvious one is testability: everything
+  // downstream takes a plain { name, widthPx, heightPx, data } record and can be
+  // driven headlessly. The less obvious one is that this is also where the
+  // feature's two size decisions are enforced, and they are decisions rather than
+  // details:
+  //
+  //   1. Every source format is re-encoded to JPEG. The drawing travels as JSON
+  //      with the image inline, and the PDF writer embeds the bytes verbatim, so
+  //      normalising the format here means output/pdf.js needs exactly one image
+  //      filter (DCTDecode) instead of a PNG decoder and a deflate compressor.
+  //      Transparency is composited onto white on the way through, since an
+  //      underlay sits behind the drawing and has nothing to show through to.
+  //
+  //   2. The raster is capped on its long edge. Every autosave re-serialises this
+  //      payload, so an uncapped 40-megapixel phone photo would make each save
+  //      cost tens of megabytes of string building. 2400px still resolves far
+  //      more than anyone traces at.
+  // ---------------------------------------------------------------------------
+
+  // Returns the scale to draw the source at, never above 1: an image smaller than
+  // the cap is left exactly as it came in rather than being enlarged.
+  function imageFitScale(widthPx, heightPx, maxEdge = UNDERLAY_MAX_EDGE_PX) {
+    const longest = Math.max(widthPx, heightPx);
+    if (!(longest > 0)) return 1;
+    return Math.min(1, maxEdge / longest);
+  }
+
+  function imageTargetSize(widthPx, heightPx, maxEdge = UNDERLAY_MAX_EDGE_PX) {
+    const scale = imageFitScale(widthPx, heightPx, maxEdge);
+    return {
+      widthPx: Math.max(1, Math.round(widthPx * scale)),
+      heightPx: Math.max(1, Math.round(heightPx * scale)),
+      scale,
+    };
+  }
+
+  function decodeImageFile(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(image);
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('That file could not be read as an image.'));
+      };
+      image.src = url;
+    });
+  }
+
+  function encodeUnderlayImage(image, name) {
+    const sourceWidth = image.naturalWidth || image.width;
+    const sourceHeight = image.naturalHeight || image.height;
+    if (!(sourceWidth > 0) || !(sourceHeight > 0)) {
+      throw new Error('That image has no usable size.');
+    }
+    const target = imageTargetSize(sourceWidth, sourceHeight);
+    const canvas = document.createElement('canvas');
+    canvas.width = target.widthPx;
+    canvas.height = target.heightPx;
+    const context = canvas.getContext('2d');
+    // JPEG has no alpha, and an undrawn canvas is transparent black, which would
+    // turn every transparent pixel into solid black rather than into paper.
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, target.widthPx, target.heightPx);
+    context.drawImage(image, 0, 0, target.widthPx, target.heightPx);
+    const data = canvas.toDataURL('image/jpeg', UNDERLAY_JPEG_QUALITY);
+    if (!data.startsWith('data:image/jpeg')) {
+      throw new Error('This browser could not encode the image.');
+    }
+    return {
+      name: underlayNameFromFile(name),
+      widthPx: target.widthPx,
+      heightPx: target.heightPx,
+      data,
+    };
+  }
+
+  function underlayNameFromFile(name) {
+    const base = String(name || 'image').replace(/\.[^.]+$/, '').trim();
+    return base.slice(0, 60) || 'image';
+  }
+
+  async function underlayDescriptorFromFile(file) {
+    const image = await decodeImageFile(file);
+    return encodeUnderlayImage(image, file.name);
+  }
+
+  // ---------------------------------------------------------------------------
+  // model/dxfRead.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // The DXF reader
+  //
+  // Parses ASCII DXF into the same plan shape output/dxfPlan.js builds, which is
+  // what makes a state -> plan -> text -> plan -> state round trip assertable in
+  // one test. Pure: text in, plan out, no state touched.
+  //
+  // The format is a flat stream of (code, value) line pairs, so the parser is a
+  // cursor over that stream plus a per-entity accumulator. It is deliberately
+  // tolerant — real files come from a dozen different writers across thirty years
+  // of the format, and the ones that matter here differ in what they OMIT rather
+  // than in what they get wrong. Anything unrecognised is counted and reported,
+  // never guessed at.
+  // ---------------------------------------------------------------------------
+
+  const DXF_BINARY_SENTINEL = 'AutoCAD Binary DXF';
+
+  function parseDxfPairs(text) {
+    // Files arrive with CRLF, LF, or (rarely) CR line endings.
+    const lines = String(text).split(/\r\n|\r|\n/);
+    const pairs = [];
+    for (let index = 0; index + 1 < lines.length; index += 2) {
+      const code = Number(lines[index].trim());
+      if (!Number.isFinite(code)) return { error: `Line ${index + 1} is not a DXF group code.` };
+      pairs.push([code, lines[index + 1]]);
+    }
+    return { pairs };
+  }
+
+  // Group codes below 10 and a few others are strings; the numeric ranges are
+  // well defined by the format.
+  function isNumericCode(code) {
+    return (code >= 10 && code <= 59)
+      || (code >= 60 && code <= 79)
+      || (code >= 90 && code <= 99)
+      || (code >= 140 && code <= 179)
+      || (code >= 210 && code <= 239)
+      || (code >= 270 && code <= 299)
+      || (code >= 370 && code <= 389)
+      || (code >= 400 && code <= 409)
+      || code === 420 || code === 1070 || code === 1071;
+  }
+
+  function codeValue(code, raw) {
+    if (!isNumericCode(code)) return raw;
+    const value = Number(String(raw).trim());
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  // One record: the 0/<type> that opened it plus every pair until the next 0.
+  // Repeated codes are kept in order, because a LWPOLYLINE's vertices are
+  // nothing but repeated 10/20/42.
+  function readRecords(pairs, from) {
+    const records = [];
+    let index = from;
+    while (index < pairs.length) {
+      const [code, raw] = pairs[index];
+      if (code === 0 && (raw === 'ENDSEC' || raw === 'EOF')) break;
+      if (code !== 0) { index++; continue; }
+      const record = { type: raw, pairs: [] };
+      index++;
+      while (index < pairs.length && pairs[index][0] !== 0) {
+        const [innerCode, innerRaw] = pairs[index];
+        record.pairs.push([innerCode, codeValue(innerCode, innerRaw)]);
+        index++;
+      }
+      records.push(record);
+    }
+    return { records, index };
+  }
+
+  function first(record, code, fallback = undefined) {
+    const found = record.pairs.find(pair => pair[0] === code);
+    return found ? found[1] : fallback;
+  }
+
+  function all(record, code) {
+    return record.pairs.filter(pair => pair[0] === code).map(pair => pair[1]);
+  }
+
+  function point(record, baseCode) {
+    return {
+      x: Number(first(record, baseCode, 0)) || 0,
+      y: Number(first(record, baseCode + 10, 0)) || 0,
+    };
+  }
+
+  function radians(degrees) {
+    return (Number(degrees) || 0) * TAU / 360;
+  }
+
+  function sectionBounds(pairs, name) {
+    for (let index = 0; index + 1 < pairs.length; index++) {
+      if (pairs[index][0] === 0 && pairs[index][1] === 'SECTION'
+        && pairs[index + 1][0] === 2 && pairs[index + 1][1] === name) {
+        return index + 2;
+      }
+    }
+    return -1;
+  }
+
+  function readDxfHeader(pairs) {
+    const start = sectionBounds(pairs, 'HEADER');
+    const header = { insunits: 0, lunits: 2, luprec: 4, auprec: 1 };
+    if (start < 0) return header;
+    for (let index = start; index < pairs.length; index++) {
+      const [code, raw] = pairs[index];
+      if (code === 0 && (raw === 'ENDSEC' || raw === 'EOF')) break;
+      if (code !== 9) continue;
+      const next = pairs[index + 1];
+      if (!next) break;
+      const value = Number(String(next[1]).trim());
+      if (raw === '$INSUNITS') header.insunits = value;
+      else if (raw === '$LUNITS') header.lunits = value;
+      else if (raw === '$LUPREC') header.luprec = value;
+      else if (raw === '$AUPREC') header.auprec = value;
+    }
+    return header;
+  }
+
+  function readDxfTables(pairs) {
+    const layers = [];
+    const linetypes = [];
+    const styles = [];
+    const dimStyles = [];
+    const start = sectionBounds(pairs, 'TABLES');
+    if (start < 0) return { layers, linetypes, styles, dimStyles };
+
+    let index = start;
+    while (index < pairs.length) {
+      const [code, raw] = pairs[index];
+      if (code === 0 && (raw === 'ENDSEC' || raw === 'EOF')) break;
+      if (code === 0 && raw === 'TABLE') {
+        const tableName = pairs[index + 1] && pairs[index + 1][0] === 2 ? pairs[index + 1][1] : '';
+        const { records, index: next } = readTableRecords(pairs, index + 2, tableName);
+        if (tableName === 'LAYER') layers.push(...records);
+        else if (tableName === 'LTYPE') linetypes.push(...records);
+        else if (tableName === 'STYLE') styles.push(...records);
+        else if (tableName === 'DIMSTYLE') dimStyles.push(...records);
+        index = next;
+        continue;
+      }
+      index++;
+    }
+    return { layers, linetypes, styles, dimStyles };
+  }
+
+  function readTableRecords(pairs, from, tableName) {
+    const records = [];
+    let index = from;
+    while (index < pairs.length) {
+      const [code, raw] = pairs[index];
+      if (code === 0 && (raw === 'ENDTAB' || raw === 'ENDSEC' || raw === 'EOF')) {
+        return { records, index: index + 1 };
+      }
+      if (code === 0 && raw === tableName) {
+        const record = { type: raw, pairs: [] };
+        index++;
+        while (index < pairs.length && pairs[index][0] !== 0) {
+          record.pairs.push([pairs[index][0], codeValue(pairs[index][0], pairs[index][1])]);
+          index++;
+        }
+        records.push(readTableRecord(record, tableName));
+        continue;
+      }
+      index++;
+    }
+    return { records, index };
+  }
+
+  function readTableRecord(record, tableName) {
+    if (tableName === 'LAYER') {
+      const colorIndex = Number(first(record, 62, 7));
+      return {
+        name: String(first(record, 2, '0')),
+        aci: Math.abs(colorIndex),
+        trueColor: record.pairs.some(pair => pair[0] === 420) ? Number(first(record, 420)) : null,
+        // DXF says "layer off" with a negative colour index.
+        off: colorIndex < 0,
+        linetype: String(first(record, 6, DXF_DEFAULT_LINETYPE)),
+        lineweight: Number(first(record, 370, -1)),
+        plot: Number(first(record, 290, 1)) !== 0,
+        locked: (Number(first(record, 70, 0)) & 4) !== 0,
+      };
+    }
+    if (tableName === 'LTYPE') {
+      return {
+        name: String(first(record, 2, DXF_DEFAULT_LINETYPE)),
+        description: String(first(record, 3, '')),
+        pattern: all(record, 49).map(Number),
+      };
+    }
+    if (tableName === 'STYLE') {
+      return {
+        name: String(first(record, 2, DXF_STYLE_NAME)),
+        font: String(first(record, 3, '')),
+        widthFactor: Number(first(record, 41, 1)) || 1,
+      };
+    }
+    return {
+      name: String(first(record, 2, 'Standard')),
+      scale: Number(first(record, 40, 1)) || 1,
+      arrowSize: Number(first(record, 41, 0.18)) || 0.18,
+      extensionOffset: Number(first(record, 42, 0.0625)),
+      extensionBeyond: Number(first(record, 44, 0.18)),
+      textHeight: Number(first(record, 140, 0.18)) || 0.18,
+      textGap: Number(first(record, 147, 0.09)),
+      tick: Number(first(record, 173, 0)) === 1 || Number(first(record, 142, 0)) > 0,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Entities
+  // ---------------------------------------------------------------------------
+
+  function readDxfEntityRecord(record) {
+    const layer = String(first(record, 8, '0'));
+    const type = record.type;
+
+    if (type === 'LINE') {
+      return { type: 'LINE', layer, a: point(record, 10), b: point(record, 11) };
+    }
+    if (type === 'CIRCLE') {
+      return { type: 'CIRCLE', layer, center: point(record, 10), radius: Number(first(record, 40, 0)) };
+    }
+    if (type === 'ARC') {
+      return {
+        type: 'ARC', layer,
+        center: point(record, 10),
+        radius: Number(first(record, 40, 0)),
+        startAngle: radians(first(record, 50, 0)),
+        endAngle: radians(first(record, 51, 0)),
+      };
+    }
+    if (type === 'LWPOLYLINE') {
+      // Vertices are interleaved repeats of 10/20 with an optional 42 between
+      // them, so they have to be walked in order rather than gathered by code.
+      const points = [];
+      let current = null;
+      for (const [code, value] of record.pairs) {
+        if (code === 10) {
+          if (current) points.push(current);
+          current = { x: Number(value) || 0, y: 0, bulge: 0 };
+        } else if (code === 20 && current) {
+          current.y = Number(value) || 0;
+        } else if (code === 42 && current) {
+          current.bulge = Number(value) || 0;
+        }
+      }
+      if (current) points.push(current);
+      return { type: 'LWPOLYLINE', layer, points, closed: (Number(first(record, 70, 0)) & 1) === 1 };
+    }
+    if (type === 'POINT') {
+      return { type: 'POINT', layer, position: point(record, 10) };
+    }
+    if (type === 'TEXT') {
+      const halign = Number(first(record, 72, 0));
+      const valign = Number(first(record, 73, 0));
+      // With any justification but left/baseline the real position is the second
+      // alignment point; a writer that sets one usually sets both to the same
+      // place, but the spec says 11 wins.
+      const anchored = halign !== 0 || valign !== 0;
+      return {
+        type: 'TEXT', layer,
+        style: String(first(record, 7, DXF_STYLE_NAME)),
+        position: anchored ? point(record, 11) : point(record, 10),
+        height: Number(first(record, 40, 1)) || 1,
+        rotation: radians(first(record, 50, 0)),
+        text: String(first(record, 1, '')),
+        halign, valign,
+      };
+    }
+    if (type === 'MTEXT') {
+      // Long MTEXT is split across repeated 3 chunks with the tail in 1.
+      const chunks = all(record, 3).map(String).join('');
+      return {
+        type: 'MTEXT', layer,
+        style: String(first(record, 7, DXF_STYLE_NAME)),
+        position: point(record, 10),
+        height: Number(first(record, 40, 1)) || 1,
+        width: Number(first(record, 41, 0)) || 0,
+        rotation: radians(first(record, 50, 0)),
+        text: `${chunks}${String(first(record, 1, ''))}`,
+        attachment: Number(first(record, 71, 1)),
+        lineSpacing: Number(first(record, 44, 1)) || 1,
+      };
+    }
+    if (type === 'SOLID' || type === 'TRACE') {
+      return {
+        type: 'SOLID', layer,
+        points: [point(record, 10), point(record, 11), point(record, 12), point(record, 13)],
+      };
+    }
+    if (type === 'ELLIPSE') {
+      return {
+        type: 'ELLIPSE', layer,
+        center: point(record, 10),
+        majorAxis: point(record, 11),
+        ratio: Number(first(record, 40, 1)) || 1,
+        startParam: Number(first(record, 41, 0)),
+        endParam: Number(first(record, 42, TAU)),
+      };
+    }
+    if (type === 'SPLINE') {
+      const xs = all(record, 10).map(Number);
+      const ys = all(record, 20).map(Number);
+      const fitX = all(record, 11).map(Number);
+      const fitY = all(record, 21).map(Number);
+      return {
+        type: 'SPLINE', layer,
+        flags: Number(first(record, 70, 0)),
+        degree: Number(first(record, 71, 3)),
+        controlPoints: xs.map((x, index) => ({ x, y: ys[index] ?? 0 })),
+        fitPoints: fitX.map((x, index) => ({ x, y: fitY[index] ?? 0 })),
+        knots: all(record, 40).map(Number),
+      };
+    }
+    if (type === 'INSERT') {
+      return {
+        type: 'INSERT', layer,
+        name: String(first(record, 2, '')),
+        insert: point(record, 10),
+        scaleX: Number(first(record, 41, 1)) || 1,
+        scaleY: Number(first(record, 42, 1)) || 1,
+        rotation: radians(first(record, 50, 0)),
+        columns: Number(first(record, 70, 1)) || 1,
+        rows: Number(first(record, 71, 1)) || 1,
+        columnSpacing: Number(first(record, 44, 0)),
+        rowSpacing: Number(first(record, 45, 0)),
+      };
+    }
+    if (type === 'DIMENSION') {
+      const flags = Number(first(record, 70, 0));
+      return {
+        type: 'DIMENSION', layer,
+        block: String(first(record, 2, '')),
+        styleName: String(first(record, 3, 'Standard')),
+        flags,
+        kind: flags & 7,
+        defPoint: point(record, 10),
+        textMid: point(record, 11),
+        ext1: point(record, 13),
+        ext2: point(record, 14),
+        chordPoint: point(record, 15),
+        rotation: radians(first(record, 50, 0)),
+        measurement: Number(first(record, 42, 0)),
+        textOverride: String(first(record, 1, '')),
+      };
+    }
+    return { type: 'UNSUPPORTED', layer, dxfType: type };
+  }
+
+  // The old pre-LWPOLYLINE form: a POLYLINE record, a run of VERTEX records, then
+  // a SEQEND. R12 files and plenty of modern exporters still use it.
+  function collapseLegacyPolylines(records) {
+    const out = [];
+    for (let index = 0; index < records.length; index++) {
+      const record = records[index];
+      if (record.type !== 'POLYLINE') { out.push(record); continue; }
+      const flags = Number(first(record, 70, 0));
+      const layer = String(first(record, 8, '0'));
+      const points = [];
+      index++;
+      while (index < records.length && records[index].type === 'VERTEX') {
+        const vertex = records[index];
+        points.push({
+          x: Number(first(vertex, 10, 0)) || 0,
+          y: Number(first(vertex, 20, 0)) || 0,
+          bulge: Number(first(vertex, 42, 0)) || 0,
+        });
+        index++;
+      }
+      if (index < records.length && records[index].type === 'SEQEND') {
+        // consumed
+      } else {
+        index--;
+      }
+      out.push({
+        type: '__LWPOLYLINE__',
+        parsed: { type: 'LWPOLYLINE', layer, points, closed: (flags & 1) === 1 },
+      });
+    }
+    return out;
+  }
+
+  function readDxfEntities(pairs, sectionName = 'ENTITIES') {
+    const start = sectionBounds(pairs, sectionName);
+    if (start < 0) return [];
+    const { records } = readRecords(pairs, start);
+    return collapseLegacyPolylines(records)
+      .map(record => (record.type === '__LWPOLYLINE__' ? record.parsed : readDxfEntityRecord(record)));
+  }
+
+  function readDxfBlocks(pairs) {
+    const start = sectionBounds(pairs, 'BLOCKS');
+    const blocks = [];
+    if (start < 0) return blocks;
+    const { records } = readRecords(pairs, start);
+    const collapsed = collapseLegacyPolylines(records);
+
+    let current = null;
+    for (const record of collapsed) {
+      if (record.type === 'BLOCK') {
+        current = {
+          name: String(first(record, 2, '')),
+          base: point(record, 10),
+          entities: [],
+        };
+        continue;
+      }
+      if (record.type === 'ENDBLK') {
+        if (current) blocks.push(current);
+        current = null;
+        continue;
+      }
+      if (!current) continue;
+      current.entities.push(record.type === '__LWPOLYLINE__' ? record.parsed : readDxfEntityRecord(record));
+    }
+    if (current) blocks.push(current);
+    return blocks;
+  }
+
+  function parseDxfText(text) {
+    const source = String(text ?? '');
+    if (!source.trim()) return { error: 'That DXF file is empty.' };
+    if (source.startsWith(DXF_BINARY_SENTINEL)) {
+      return { error: 'That is a binary DXF. Re-save it as ASCII DXF and try again.' };
+    }
+    // A DXF must begin with a group code; anything else is a different format
+    // wearing a .dxf extension, and saying so beats a parse error fifty lines in.
+    if (!/^\s*\d+\s*(\r\n|\r|\n)/.test(source)) {
+      return { error: 'That file is not a DXF drawing.' };
+    }
+
+    const parsed = parseDxfPairs(source);
+    if (parsed.error) return { error: parsed.error };
+    const { pairs } = parsed;
+    if (!pairs.some(pair => pair[0] === 0 && pair[1] === 'SECTION')) {
+      return { error: 'That DXF file has no sections.' };
+    }
+
+    const tables = readDxfTables(pairs);
+    return {
+      plan: {
+        header: readDxfHeader(pairs),
+        layers: tables.layers,
+        linetypes: tables.linetypes,
+        styles: tables.styles,
+        dimStyles: tables.dimStyles,
+        blocks: readDxfBlocks(pairs),
+        entities: readDxfEntities(pairs),
+        warnings: [],
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // model/document.js
   // ---------------------------------------------------------------------------
 
   function editSnapshot() {
     return {
       entities: cloneEntities(),
+      underlays: cloneUnderlays(),
       layers: cloneLayers(),
       dimStyles: cloneDimStyles(),
       unitSettings: { ...state.unitSettings },
       currentLayerId: state.currentLayerId,
       nextId: state.nextId,
       nextLayerId: state.nextLayerId,
+      nextUnderlayId: state.nextUnderlayId,
     };
   }
 
   function restoreEditSnapshot(snapshot) {
     state.entities = snapshot.entities;
+    state.underlays = snapshot.underlays || [];
+    state.nextUnderlayId = snapshot.nextUnderlayId || derivedNextUnderlayId(state.underlays);
     state.layers = snapshot.layers;
     if (snapshot.dimStyles) state.dimStyles = snapshot.dimStyles.map(style => ({ ...style }));
     if (snapshot.unitSettings) state.unitSettings = { ...snapshot.unitSettings };
@@ -3887,7 +5964,9 @@ kbd { font-size: 9px; opacity: .65; }
       currentLayerId: state.currentLayerId,
       nextId: state.nextId,
       nextLayerId: state.nextLayerId,
+      nextUnderlayId: state.nextUnderlayId,
       entities: state.entities,
+      underlays: state.underlays,
     };
   }
 
@@ -4104,6 +6183,54 @@ kbd { font-size: 9px; opacity: .65; }
     return { error: `uses unsupported entity type ${type || '(missing)'}` };
   }
 
+  // Underlays carry an image payload, so validation checks the shape and the
+  // numbers but deliberately does not inspect the raster: a data URL that the
+  // browser later fails to decode draws as nothing, which is a far better outcome
+  // than refusing to open the whole drawing.
+  function cleanUnderlay(value, layerIds) {
+    if (!value || typeof value !== 'object') return { error: 'is not an object' };
+    if (!Number.isSafeInteger(value.id) || value.id <= 0) return { error: 'has an invalid ID' };
+    const layerId = typeof value.layerId === 'string' && value.layerId ? value.layerId : '0';
+    if (!layerIds.has(layerId)) return { error: `references unknown layer ${layerId}` };
+    const origin = cleanPoint(value.origin);
+    if (!origin) return { error: 'has an invalid origin' };
+    if (!Number.isFinite(value.rotation)) return { error: 'has an invalid rotation' };
+    if (!Number.isFinite(value.unitsPerPixel)
+      || value.unitsPerPixel <= UNDERLAY_MIN_UNITS_PER_PIXEL
+      || value.unitsPerPixel > UNDERLAY_MAX_UNITS_PER_PIXEL) {
+      return { error: 'has an invalid scale' };
+    }
+    if (!Number.isSafeInteger(value.widthPx) || value.widthPx <= 0) return { error: 'has an invalid pixel width' };
+    if (!Number.isSafeInteger(value.heightPx) || value.heightPx <= 0) return { error: 'has an invalid pixel height' };
+    if (typeof value.data !== 'string' || !value.data.startsWith('data:image/')) {
+      return { error: 'has no image data' };
+    }
+    const fade = Number.isFinite(value.fade) ? Math.min(100, Math.max(0, value.fade)) : 0;
+    const name = typeof value.name === 'string' && value.name.trim()
+      ? value.name.trim().slice(0, 120)
+      : 'image';
+    return {
+      underlay: {
+        id: value.id,
+        layerId,
+        name,
+        origin,
+        rotation: normalizeAngle(value.rotation),
+        unitsPerPixel: value.unitsPerPixel,
+        widthPx: value.widthPx,
+        heightPx: value.heightPx,
+        fade,
+        locked: value.locked === true,
+        plot: value.plot === true,
+        data: value.data,
+      },
+    };
+  }
+
+  function derivedNextUnderlayId(underlays) {
+    return underlays.reduce((maximum, underlay) => Math.max(maximum, (underlay?.id || 0) + 1), 1);
+  }
+
   function parseDocumentText(text) {
     let value;
     try {
@@ -4205,6 +6332,27 @@ kbd { font-size: 9px; opacity: .65; }
       entities.push(cleaned.entity);
     }
 
+    // Version 6 and earlier had no underlays. An absent key is not a migration,
+    // just a drawing with none.
+    if (value.underlays !== undefined && !Array.isArray(value.underlays)) {
+      return { error: 'The drawing has an invalid underlay table.' };
+    }
+    const underlays = [];
+    const underlayIds = new Set();
+    for (let index = 0; index < (value.underlays || []).length; index++) {
+      const cleaned = cleanUnderlay(value.underlays[index], layerIds);
+      if (cleaned.error) return { error: `Underlay ${index + 1} ${cleaned.error}.` };
+      if (underlayIds.has(cleaned.underlay.id)) {
+        return { error: `Underlay ID ${cleaned.underlay.id} is duplicated.` };
+      }
+      underlayIds.add(cleaned.underlay.id);
+      underlays.push(cleaned.underlay);
+    }
+    const minimumNextUnderlayId = underlays.reduce((maximum, underlay) => Math.max(maximum, underlay.id + 1), 1);
+    const suppliedNextUnderlayId = Number.isSafeInteger(value.nextUnderlayId) && value.nextUnderlayId > 0
+      ? value.nextUnderlayId
+      : 1;
+
     const minimumNextId = entities.reduce((maximum, entity) => Math.max(maximum, entity.id + 1), 1);
     const suppliedNextId = Number.isSafeInteger(value.nextId) && value.nextId > 0 ? value.nextId : 1;
     const derivedLayerId = derivedNextLayerId(layers);
@@ -4222,7 +6370,9 @@ kbd { font-size: 9px; opacity: .65; }
         currentLayerId,
         nextId: Math.max(minimumNextId, suppliedNextId),
         nextLayerId: Math.max(derivedLayerId, suppliedNextLayerId),
+        nextUnderlayId: Math.max(minimumNextUnderlayId, suppliedNextUnderlayId),
         entities,
+        underlays,
       },
     };
   }
@@ -4250,6 +6400,706 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   // Report shape: [{ title, rows: [[label, value], ...], note }]
+
+  // ---------------------------------------------------------------------------
+  // model/dxfImport.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // DXF import
+  //
+  // Turns a parsed DXF plan into a zbCAD document. The policy, decided up front:
+  // flatten what can be flattened, and report the rest. A real consultant's DXF
+  // is full of things this program has no model for, and the two bad answers are
+  // refusing the file outright and silently dropping half of it. So INSERTs are
+  // exploded at their transform, ellipses and splines are approximated as
+  // polylines, and anything genuinely unrepresentable is counted by type and
+  // named in a report the user sees.
+  //
+  // Import replaces the document, exactly as opening a file does. Inserting a DXF
+  // into the current drawing is a different feature and is not this one.
+  // ---------------------------------------------------------------------------
+
+  // How finely a curve with no exact representation is approximated. A DXF arc
+  // and a zbCAD bulge are the same thing, so only true ellipses and splines land
+  // here; 64 segments over a full turn holds a metre-radius curve to well under a
+  // millimetre, which is finer than anything traced off one will be drawn to.
+  const DXF_CURVE_SEGMENTS = 64;
+
+  const DXF_INSERT_DEPTH_LIMIT = 8;
+
+  const INSUNITS_TO_DRAWING_UNIT = Object.fromEntries(
+    Object.entries(DXF_INSUNITS).map(([unit, code]) => [code, unit]),
+  );
+
+  function drawingUnitFromInsunits(code) {
+    return INSUNITS_TO_DRAWING_UNIT[Number(code)] || null;
+  }
+
+  function trueColorToHex(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return null;
+    return `#${(numeric & 0xffffff).toString(16).padStart(6, '0')}`;
+  }
+
+  function importedLayerColor(layer) {
+    // A true colour is exact; an index is a lookup into a palette whose middle is
+    // only approximately agreed on, so 420 wins wherever a writer supplied it.
+    const exact = layer.trueColor === null || layer.trueColor === undefined
+      ? null : trueColorToHex(layer.trueColor);
+    if (exact) return exact;
+    return aciToHex(layer.aci);
+  }
+
+  function importedLinetype(name) {
+    const lowered = String(name || '').toLowerCase();
+    if (LINETYPES.includes(lowered)) return lowered;
+    // DXF linetype names are conventions, not a fixed set: match the common
+    // spellings by what they describe rather than demanding an exact name.
+    if (/dashdot|dash_dot|center/.test(lowered)) return lowered.includes('center') ? 'center' : 'dashdot';
+    if (/dot|hidden2/.test(lowered)) return 'dotted';
+    if (/dash|hidden/.test(lowered)) return 'dashed';
+    return DEFAULT_LINETYPE;
+  }
+
+  function importedLineweight(value) {
+    const numeric = Number(value);
+    // -1 ByLayer, -2 ByBlock, -3 Default: all mean "no explicit weight".
+    if (!Number.isFinite(numeric) || numeric < 0) return DEFAULT_LINEWEIGHT;
+    const mm = numeric / 100;
+    let best = DEFAULT_LINEWEIGHT;
+    let bestDistance = Infinity;
+    for (const candidate of LINEWEIGHTS) {
+      const distance = Math.abs(candidate - mm);
+      if (distance < bestDistance) { bestDistance = distance; best = candidate; }
+    }
+    return best;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Transforms, for flattening INSERTs
+  // ---------------------------------------------------------------------------
+
+  function composeTransform(outer, inner) {
+    // inner applied first, then outer.
+    return {
+      scaleX: outer.scaleX * inner.scaleX,
+      scaleY: outer.scaleY * inner.scaleY,
+      rotation: outer.rotation + inner.rotation,
+      offset: dxfApplyTransform(outer, inner.offset),
+    };
+  }
+
+  function dxfApplyTransform(transform, point) {
+    const x = point.x * transform.scaleX;
+    const y = point.y * transform.scaleY;
+    const cos = Math.cos(transform.rotation);
+    const sin = Math.sin(transform.rotation);
+    return {
+      x: transform.offset.x + x * cos - y * sin,
+      y: transform.offset.y + x * sin + y * cos,
+    };
+  }
+
+  const DXF_IDENTITY_TRANSFORM = {
+    scaleX: 1, scaleY: 1, rotation: 0, offset: { x: 0, y: 0 },
+  };
+
+  function transformIsUniform(transform) {
+    return Math.abs(Math.abs(transform.scaleX) - Math.abs(transform.scaleY)) < 1e-9;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Curve approximation
+  // ---------------------------------------------------------------------------
+
+  function ellipsePolylinePoints(entity) {
+    const majorLength = Math.hypot(entity.majorAxis.x, entity.majorAxis.y);
+    if (!(majorLength > 1e-12)) return null;
+    const minorLength = majorLength * entity.ratio;
+    const axisAngle = Math.atan2(entity.majorAxis.y, entity.majorAxis.x);
+    let start = entity.startParam;
+    let end = entity.endParam;
+    let sweep = end - start;
+    if (Math.abs(sweep) < 1e-12) sweep = TAU;
+    const closed = Math.abs(Math.abs(sweep) - TAU) < 1e-9;
+    const steps = Math.max(8, Math.ceil(DXF_CURVE_SEGMENTS * Math.abs(sweep) / TAU));
+    const points = [];
+    // A closed ellipse must not repeat its first vertex: zbCAD's closed polyline
+    // holds the closing segment implicitly.
+    const count = closed ? steps : steps + 1;
+    for (let index = 0; index < count; index++) {
+      const parameter = start + (sweep * index) / steps;
+      const u = Math.cos(parameter) * majorLength;
+      const v = Math.sin(parameter) * minorLength;
+      points.push({
+        x: entity.center.x + u * Math.cos(axisAngle) - v * Math.sin(axisAngle),
+        y: entity.center.y + u * Math.sin(axisAngle) + v * Math.cos(axisAngle),
+        bulge: 0,
+      });
+    }
+    return { points, closed };
+  }
+
+  // Splines are approximated through their fit points when the writer supplied
+  // them, and through the control polygon otherwise. Neither is the real curve;
+  // this is the documented lossy case, and it is reported as such.
+  function splinePolylinePoints(entity) {
+    const source = entity.fitPoints.length >= 2 ? entity.fitPoints : entity.controlPoints;
+    if (source.length < 2) return null;
+    return {
+      points: source.map(point => ({ x: point.x, y: point.y, bulge: 0 })),
+      closed: (entity.flags & 1) === 1,
+      approximate: true,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Plan entity -> zbCAD entity
+  // ---------------------------------------------------------------------------
+
+  function transformedArc(entity, transform) {
+    const center = dxfApplyTransform(transform, entity.center);
+    const scale = Math.abs(transform.scaleX);
+    const radius = entity.radius * scale;
+    // A mirrored transform reverses an arc's direction, so start and end swap to
+    // keep zbCAD's "always counter-clockwise from start to end" invariant.
+    const mirrored = (transform.scaleX * transform.scaleY) < 0;
+    let startAngle = entity.startAngle + transform.rotation;
+    let endAngle = entity.endAngle + transform.rotation;
+    if (mirrored) {
+      startAngle = Math.PI - entity.endAngle + transform.rotation;
+      endAngle = Math.PI - entity.startAngle + transform.rotation;
+    }
+    const normalizedStart = normalizeAngle(startAngle);
+    let sweep = endAngle - startAngle;
+    if (sweep <= 0) sweep += TAU;
+    return { center, radius, startAngle: normalizedStart, endAngle: normalizedStart + sweep };
+  }
+
+  function importEntity(record, transform, context) {
+    const layerId = context.layerIdFor(record.layer);
+    const place = point => dxfApplyTransform(transform, point);
+    const scale = Math.abs(transform.scaleX);
+
+    if (record.type === 'LINE') {
+      const a = place(record.a);
+      const b = place(record.b);
+      if (Math.hypot(b.x - a.x, b.y - a.y) <= 1e-9) return context.skip('zero-length LINE');
+      return [{ type: 'LINE', layerId, a, b }];
+    }
+
+    if (record.type === 'LWPOLYLINE') {
+      return importPolyline(record.points, record.closed, layerId, transform, context);
+    }
+
+    if (record.type === 'CIRCLE') {
+      if (!(record.radius * scale > 1e-9)) return context.skip('zero-radius CIRCLE');
+      if (!transformIsUniform(transform)) {
+        // A non-uniformly scaled circle is an ellipse, and saying so beats
+        // quietly writing the wrong radius.
+        return importEllipse({
+          center: record.center,
+          majorAxis: { x: record.radius, y: 0 },
+          ratio: 1,
+          startParam: 0,
+          endParam: TAU,
+        }, layerId, transform, context);
+      }
+      return [{ type: 'CIRCLE', layerId, center: place(record.center), radius: record.radius * scale }];
+    }
+
+    if (record.type === 'ARC') {
+      if (!(record.radius * scale > 1e-9)) return context.skip('zero-radius ARC');
+      const arc = transformedArc(record, transform);
+      const sweep = arc.endAngle - arc.startAngle;
+      if (!(sweep > 1e-8) || sweep >= TAU - 1e-8) {
+        return [{ type: 'CIRCLE', layerId, center: arc.center, radius: arc.radius }];
+      }
+      return [{ type: 'ARC', layerId, ...arc }];
+    }
+
+    if (record.type === 'TEXT') {
+      const content = String(record.text || '').trim();
+      if (!content) return context.skip('empty TEXT');
+      return [{
+        type: 'TEXT', layerId,
+        position: place(record.position),
+        height: Math.max(1e-6, record.height * scale),
+        rotation: normalizeAngle(record.rotation + transform.rotation),
+        content: content.slice(0, 1000),
+      }];
+    }
+
+    if (record.type === 'MTEXT') {
+      const content = decodeMtext(record.text);
+      if (!content.trim()) return context.skip('empty MTEXT');
+      const height = Math.max(1e-6, record.height * scale);
+      const rotation = normalizeAngle(record.rotation + transform.rotation);
+      // Undo the attachment-point shift export applies: a top-left anchor is one
+      // ascent above the first line's baseline.
+      const anchored = place(record.position);
+      const lift = attachmentLift(record.attachment, height);
+      const position = {
+        x: anchored.x + lift * Math.sin(rotation),
+        y: anchored.y - lift * Math.cos(rotation),
+      };
+      const width = record.width * scale;
+      if (!(width > 1e-9)) {
+        // MTEXT with no wrap width is a single run; zbCAD's MTEXT requires one,
+        // so it becomes TEXT unless it actually has line breaks.
+        if (!content.includes('\n')) {
+          return [{ type: 'TEXT', layerId, position, height, rotation, content: content.slice(0, 1000) }];
+        }
+        const longest = Math.max(...content.split('\n').map(line => line.length));
+        return [{
+          type: 'MTEXT', layerId, position, height, rotation,
+          width: Math.max(height, longest * height * 0.6),
+          content: content.slice(0, 4000),
+        }];
+      }
+      return [{ type: 'MTEXT', layerId, position, height, rotation, width, content: content.slice(0, 4000) }];
+    }
+
+    if (record.type === 'SOLID') {
+      // A filled quad has no fill in zbCAD, so its outline is kept: the shape is
+      // still information even without the fill.
+      const points = dedupe(record.points.map(place));
+      if (points.length < 3) return context.skip('degenerate SOLID');
+      return [{ type: 'PLINE', layerId, points, closed: true }];
+    }
+
+    if (record.type === 'ELLIPSE') {
+      return importEllipse(record, layerId, transform, context);
+    }
+
+    if (record.type === 'SPLINE') {
+      const approximated = splinePolylinePoints(record);
+      if (!approximated) return context.skip('SPLINE');
+      context.approximated('SPLINE');
+      return importPolyline(approximated.points, approximated.closed, layerId, transform, context);
+    }
+
+    if (record.type === 'POINT') {
+      // zbCAD has no POINT entity. Reported rather than turned into a tiny circle
+      // that would pollute snap and selection.
+      return context.skip('POINT');
+    }
+
+    if (record.type === 'DIMENSION') {
+      return importDimension(record, layerId, transform, context);
+    }
+
+    return context.skip(record.dxfType || record.type);
+  }
+
+  function attachmentLift(attachment, height) {
+    const code = Number(attachment) || 1;
+    // 1-3 top, 4-6 middle, 7-9 bottom.
+    if (code <= 3) return height * DXF_TEXT_ASCENT;
+    if (code <= 6) return 0;
+    return -height * DXF_TEXT_ASCENT;
+  }
+
+  function dedupe(points) {
+    const out = [];
+    for (const point of points) {
+      const last = out[out.length - 1];
+      if (last && Math.hypot(point.x - last.x, point.y - last.y) <= 1e-9) continue;
+      out.push({ x: point.x, y: point.y });
+    }
+    while (out.length > 1
+      && Math.hypot(out[0].x - out[out.length - 1].x, out[0].y - out[out.length - 1].y) <= 1e-9) {
+      out.pop();
+    }
+    return out;
+  }
+
+  function importEllipse(record, layerId, transform, context) {
+    const approximated = ellipsePolylinePoints(record);
+    if (!approximated) return context.skip('degenerate ELLIPSE');
+    context.approximated('ELLIPSE');
+    return importPolyline(approximated.points, approximated.closed, layerId, transform, context);
+  }
+
+  function importPolyline(sourcePoints, closed, layerId, transform, context) {
+    const mirrored = (transform.scaleX * transform.scaleY) < 0;
+    const points = [];
+    const bulges = [];
+    for (const source of sourcePoints) {
+      const placed = dxfApplyTransform(transform, source);
+      const last = points[points.length - 1];
+      if (last && Math.hypot(placed.x - last.x, placed.y - last.y) <= 1e-9) continue;
+      points.push(placed);
+      // A bulge is a signed sweep; reflecting the geometry reverses its sign.
+      bulges.push(mirrored ? -(source.bulge || 0) : (source.bulge || 0));
+    }
+    if (closed) {
+      while (points.length > 1
+        && Math.hypot(points[0].x - points[points.length - 1].x,
+          points[0].y - points[points.length - 1].y) <= 1e-9) {
+        points.pop();
+        bulges.pop();
+      }
+    }
+    if (points.length < 2) return context.skip('degenerate POLYLINE');
+    if (closed && points.length < 3) return context.skip('degenerate closed POLYLINE');
+    if (!closed) bulges[bulges.length - 1] = 0;
+
+    const entity = { type: 'PLINE', layerId, points, closed: Boolean(closed) };
+    if (bulges.some(value => Math.abs(value) > 1e-12)) entity.bulges = bulges;
+    return [entity];
+  }
+
+  // A DXF MTEXT carries formatting inline. zbCAD's MTEXT is plain, so the codes
+  // are stripped rather than rendered: losing the bold is acceptable, showing
+  // "\f Arial|b1;" to the user is not.
+  function decodeMtext(text) {
+    let out = String(text || '');
+    out = out.replace(/\\P/g, '\n');
+    out = out.replace(/\\~/g, ' ');
+    // Stacked fractions: keep the pieces, drop the stacking.
+    out = out.replace(/\\S([^;]*);/g, (match, body) => body.replace(/[#^]/g, '/'));
+    // Any other \X...; control sequence, and the {} grouping around them.
+    out = out.replace(/\\[A-Za-z][^\\;]*;/g, '');
+    out = out.replace(/\\[A-Za-z]/g, '');
+    out = out.replace(/[{}]/g, '');
+    out = out.replace(/\\\\/g, '\\');
+    return out;
+  }
+
+  const DXF_DIM_KINDS = { 0: 'LINEAR', 1: 'ALIGNED', 3: 'DIAMETER', 4: 'RADIUS' };
+
+  function importDimension(record, layerId, transform, context) {
+    const kind = DXF_DIM_KINDS[record.kind];
+    if (!kind) {
+      // Angular and ordinate dimensions have no zbCAD equivalent. Their picture
+      // lives in the block, so the geometry survives even though the dimension
+      // does not.
+      return explodeDimensionBlock(record, layerId, transform, context, 'angular/ordinate DIMENSION');
+    }
+    const place = point => dxfApplyTransform(transform, point);
+    const scale = Math.abs(transform.scaleX);
+
+    if (kind === 'RADIUS' || kind === 'DIAMETER') {
+      const p1 = kind === 'RADIUS' ? place(record.defPoint) : place(record.chordPoint);
+      const p2 = kind === 'RADIUS' ? place(record.chordPoint) : place(record.defPoint);
+      if (Math.hypot(p2.x - p1.x, p2.y - p1.y) <= 1e-9) {
+        return explodeDimensionBlock(record, layerId, transform, context, 'degenerate radial DIMENSION');
+      }
+      return [{
+        type: 'DIM', layerId, dimType: kind,
+        p1, p2, linePoint: p1, rotation: 0,
+        styleId: context.dimStyleIdFor(record.styleName),
+        textOffset: offsetFromTextMid(record, place, p1, p2, kind),
+        refs: [null, null],
+      }];
+    }
+
+    const p1 = place(record.ext1);
+    const p2 = place(record.ext2);
+    if (Math.hypot(p2.x - p1.x, p2.y - p1.y) <= 1e-9) {
+      return explodeDimensionBlock(record, layerId, transform, context, 'degenerate DIMENSION');
+    }
+    return [{
+      type: 'DIM', layerId, dimType: kind,
+      p1, p2,
+      linePoint: place(record.defPoint),
+      rotation: kind === 'LINEAR' ? normalizeAngle(record.rotation + transform.rotation) : 0,
+      styleId: context.dimStyleIdFor(record.styleName),
+      textOffset: null,
+      refs: [null, null],
+    }];
+  }
+
+  function offsetFromTextMid(record, place, p1, p2) {
+    const textMid = place(record.textMid);
+    if (!Number.isFinite(textMid.x) || !Number.isFinite(textMid.y)) return null;
+    const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    const offset = { x: textMid.x - mid.x, y: textMid.y - mid.y };
+    return Math.hypot(offset.x, offset.y) > 1e-9 ? offset : null;
+  }
+
+  // When a dimension cannot be represented, its drawn picture still can: the
+  // block holds lines, ticks and text that are perfectly ordinary geometry.
+  function explodeDimensionBlock(record, layerId, transform, context, reason) {
+    const block = context.blocks.get(record.block);
+    context.exploded(reason);
+    if (!block) return [];
+    const out = [];
+    for (const child of block.entities) {
+      out.push(...importEntity(child, transform, context));
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // INSERT flattening
+  // ---------------------------------------------------------------------------
+
+  function importInsert(record, transform, context, depth) {
+    if (depth > DXF_INSERT_DEPTH_LIMIT) {
+      context.skip('deeply nested INSERT');
+      return [];
+    }
+    const block = context.blocks.get(record.name);
+    if (!block) {
+      context.skip(`INSERT of missing block ${record.name}`);
+      return [];
+    }
+    const out = [];
+    const columns = Math.max(1, Math.floor(record.columns) || 1);
+    const rows = Math.max(1, Math.floor(record.rows) || 1);
+    for (let column = 0; column < columns; column++) {
+      for (let row = 0; row < rows; row++) {
+        // A DXF array offsets its copies along the INSERT's own rotated axes.
+        const cos = Math.cos(record.rotation);
+        const sin = Math.sin(record.rotation);
+        const dx = column * record.columnSpacing;
+        const dy = row * record.rowSpacing;
+        const local = {
+          scaleX: record.scaleX,
+          scaleY: record.scaleY,
+          rotation: record.rotation,
+          offset: {
+            x: record.insert.x + dx * cos - dy * sin,
+            y: record.insert.y + dx * sin + dy * cos,
+          },
+        };
+        // The block's own base point is subtracted before its contents are
+        // placed, which is what makes the insertion point land where it should.
+        const shifted = {
+          ...local,
+          offset: dxfApplyTransform(local, {
+            x: -block.base.x,
+            y: -block.base.y,
+          }),
+        };
+        const combined = composeTransform(transform, shifted);
+        out.push(...importRecords(block.entities, combined, context, depth + 1));
+      }
+    }
+    return out;
+  }
+
+  function importRecords(records, transform, context, depth) {
+    const out = [];
+    for (const record of records) {
+      if (record.type === 'INSERT') {
+        out.push(...importInsert(record, transform, context, depth));
+        continue;
+      }
+      out.push(...importEntity(record, transform, context));
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // The document
+  // ---------------------------------------------------------------------------
+
+  function dxfPlanToDocument(plan, options = {}) {
+    const skipped = new Map();
+    const approximated = new Map();
+    const exploded = new Map();
+
+    const drawingUnit = drawingUnitFromInsunits(plan.header.insunits);
+    const unitSettings = { ...defaultUnitSettings() };
+    if (drawingUnit) {
+      unitSettings.drawingUnit = drawingUnit;
+      // The architectural and engineering formats are inch-only; a millimetre
+      // drawing has to fall back to decimal or the document fails validation.
+      if (drawingUnit !== 'inches') {
+        unitSettings.format = 'decimal';
+        unitSettings.precision = 2;
+      }
+    }
+
+    // Layers. Layer 0 is mandatory and must survive whatever the file says.
+    const layers = [];
+    const layerIds = new Map();
+    let nextLayerId = 1;
+    const addLayer = source => {
+      const name = String(source.name || '').trim() || 'Layer';
+      const existing = layers.find(layer => layer.name.toLowerCase() === name.toLowerCase());
+      if (existing) { layerIds.set(source.name, existing.id); return existing; }
+      const id = name === '0' ? '0' : `layer-${nextLayerId++}`;
+      const layer = {
+        id,
+        name: name.slice(0, 80),
+        color: importedLayerColor(source),
+        visible: !source.off,
+        locked: Boolean(source.locked),
+        linetype: importedLinetype(source.linetype),
+        lineweight: importedLineweight(source.lineweight),
+        printable: source.plot !== false,
+      };
+      layers.push(layer);
+      layerIds.set(source.name, id);
+      return layer;
+    };
+
+    for (const layer of plan.layers) addLayer(layer);
+    if (!layers.some(layer => layer.id === '0')) {
+      layers.unshift({
+        id: '0', name: '0', color: '#d6d6d6', visible: true, locked: false,
+        linetype: DEFAULT_LINETYPE, lineweight: DEFAULT_LINEWEIGHT, printable: true,
+      });
+      layerIds.set('0', '0');
+    }
+
+    // Dimension styles. zbCAD's sizes are paper sizes multiplied by a scale; the
+    // imported ones are already drawing sizes, so scale is pinned at 1 and the
+    // numbers carry over directly.
+    const dimStyles = [defaultDimStyle(unitSettings.drawingUnit)];
+    const dimStyleIds = new Map();
+    for (const style of plan.dimStyles) {
+      const name = String(style.name || '').trim();
+      if (!name) continue;
+      if (name.toLowerCase() === 'standard') {
+        dimStyles[0] = {
+          ...dimStyles[0],
+          scale: 1,
+          textHeight: style.textHeight,
+          arrowSize: style.arrowSize,
+          extensionOffset: style.extensionOffset,
+          extensionBeyond: style.extensionBeyond,
+          textGap: style.textGap,
+          arrowType: style.tick ? 'tick' : 'arrow',
+        };
+        dimStyleIds.set(name, DEFAULT_DIM_STYLE_ID);
+        continue;
+      }
+      const id = `dim-${dimStyles.length}`;
+      dimStyles.push({
+        id, name: name.slice(0, 80),
+        arrowType: style.tick ? 'tick' : 'arrow',
+        scale: 1,
+        precision: null,
+        textHeight: style.textHeight,
+        arrowSize: style.arrowSize,
+        extensionOffset: style.extensionOffset,
+        extensionBeyond: style.extensionBeyond,
+        textGap: style.textGap,
+      });
+      dimStyleIds.set(name, id);
+    }
+
+    const context = {
+      blocks: new Map(plan.blocks.map(block => [block.name, block])),
+      layerIdFor(name) {
+        if (layerIds.has(name)) return layerIds.get(name);
+        const created = addLayer({ name, aci: 7, trueColor: null, plot: true });
+        return created.id;
+      },
+      dimStyleIdFor(name) {
+        return dimStyleIds.get(name) || DEFAULT_DIM_STYLE_ID;
+      },
+      skip(what) {
+        skipped.set(what, (skipped.get(what) || 0) + 1);
+        return [];
+      },
+      approximated(what) {
+        approximated.set(what, (approximated.get(what) || 0) + 1);
+      },
+      exploded(what) {
+        exploded.set(what, (exploded.get(what) || 0) + 1);
+      },
+    };
+
+    const imported = importRecords(plan.entities, DXF_IDENTITY_TRANSFORM, context, 0);
+
+    let nextId = 1;
+    const entities = imported.map(entity => ({ ...entity, id: nextId++ }));
+
+    const document = {
+      format: DOCUMENT_FORMAT,
+      version: DOCUMENT_VERSION,
+      name: options.name || 'Imported',
+      units: unitSettings,
+      layers,
+      dimStyles,
+      currentLayerId: '0',
+      nextId,
+      nextLayerId,
+      nextUnderlayId: 1,
+      entities,
+      underlays: [],
+    };
+
+    const checked = validateDocumentData(document);
+    if (checked.error) {
+      // A whole file refused over one bad entity would be the worst outcome, so
+      // the offending entity is dropped and the rest is kept — but only once the
+      // per-entity validator has had its say, which is what names the culprit.
+      const salvaged = salvageEntities(document, skipped);
+      if (salvaged.error) return { error: salvaged.error };
+      document.entities = salvaged.entities;
+      document.nextId = salvaged.entities.length + 1;
+      const recheck = validateDocumentData(document);
+      if (recheck.error) return { error: recheck.error };
+      return { document: recheck.document, report: buildReport(recheck.document, skipped, approximated, exploded) };
+    }
+
+    return {
+      document: checked.document,
+      report: buildReport(checked.document, skipped, approximated, exploded),
+    };
+  }
+
+  function salvageEntities(document, skipped) {
+    const kept = [];
+    let nextId = 1;
+    for (const entity of document.entities) {
+      const candidate = { ...document, entities: [{ ...entity, id: 1 }], nextId: 2 };
+      if (validateDocumentData(candidate).error) {
+        skipped.set(`invalid ${entity.type}`, (skipped.get(`invalid ${entity.type}`) || 0) + 1);
+        continue;
+      }
+      kept.push({ ...entity, id: nextId++ });
+    }
+    return { entities: kept };
+  }
+
+  function describe(counts) {
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([what, count]) => `${count} ${what}`)
+      .join(', ');
+  }
+
+  function buildReport(document, skipped, approximated, exploded) {
+    const lines = [];
+    const total = document.entities.length;
+    lines.push(`Imported ${total} object${total === 1 ? '' : 's'} on ${document.layers.length} layer${document.layers.length === 1 ? '' : 's'}.`);
+    if (approximated.size) {
+      lines.push(`Approximated as polylines: ${describe(approximated)}.`);
+    }
+    if (exploded.size) {
+      lines.push(`Exploded into plain geometry: ${describe(exploded)}.`);
+    }
+    if (skipped.size) {
+      lines.push(`Not imported: ${describe(skipped)}.`);
+    }
+    if (!approximated.size && !exploded.size && !skipped.size) {
+      lines.push('Everything in the file was imported.');
+    }
+    return {
+      text: lines.join('\n'),
+      entityCount: total,
+      layerCount: document.layers.length,
+      skipped: Object.fromEntries(skipped),
+      approximated: Object.fromEntries(approximated),
+      exploded: Object.fromEntries(exploded),
+    };
+  }
+
+  function importDxfText(text, sourceName = '') {
+    const parsed = parseDxfText(text);
+    if (parsed.error) return { error: parsed.error };
+    const name = String(sourceName).replace(/\.dxf$/i, '').trim();
+    return dxfPlanToDocument(parsed.plan, { name: name || 'Imported' });
+  }
 
   // ---------------------------------------------------------------------------
   // model/autosaveStore.js
@@ -4441,9 +7291,32 @@ kbd { font-size: 9px; opacity: .65; }
   // likely be aborted before it commits, so this one write stays synchronous.
   // It only ever covers the edits made since the last autosave settled — at most
   // the debounce window — and the next successful autosave clears it again.
+  //
+  // Underlay images are the one payload that can push this past the localStorage
+  // quota. Losing the whole unload copy over them would be the wrong trade: the
+  // geometry is the irreplaceable part, IndexedDB already holds the full drawing
+  // including the images, and a restored copy whose images need re-importing
+  // beats no restored copy at all. So a quota failure retries without them.
   function writeAutosaveOnUnload() {
-    writeAutosaveRecordSync(AUTOSAVE_KEY, exportDocumentText(false));
+    const text = exportDocumentText(false);
+    try {
+      writeAutosaveRecordSync(AUTOSAVE_KEY, text);
+      return true;
+    } catch (error) {
+      if (!state.underlays.length) throw error;
+    }
+    writeAutosaveRecordSync(AUTOSAVE_KEY, documentTextWithoutImages(text));
     return true;
+  }
+
+  // Strips only the base64 payloads, leaving each underlay's placement, scale and
+  // name intact so a recovered drawing says what is missing and where it sat.
+  function documentTextWithoutImages(text) {
+    const parsed = JSON.parse(text);
+    for (const underlay of parsed.underlays || []) {
+      underlay.data = UNDERLAY_DROPPED_DATA;
+    }
+    return JSON.stringify(parsed);
   }
 
   function scheduleAutosave() {
@@ -4513,12 +7386,18 @@ kbd { font-size: 9px; opacity: .65; }
 
   // Build a complete candidate without mutating entities, IDs, history, or the
   // command stage. Only a validated candidate may enter the undoable document.
+  //
+  // Underlays ride in the same candidate rather than getting a commit path of
+  // their own, so a MOVE over a selection holding both geometry and an image is
+  // one undo step instead of two half-steps that can be separated.
   function commitGeometry(entities, options = {}) {
     const candidate = {
       ...documentSnapshot(), entities: updateAssociativeDimensions(entities),
       nextId: options.nextId ?? state.nextId,
       units: options.unitSettings ?? state.unitSettings,
       dimStyles: options.dimStyles ?? state.dimStyles,
+      underlays: options.underlays ?? state.underlays,
+      nextUnderlayId: options.nextUnderlayId ?? state.nextUnderlayId,
     };
     if (!Number.isSafeInteger(candidate.nextId) || candidate.nextId <= 0) {
       updatePrompt('Edit rejected: no valid entity IDs remain.');
@@ -4534,6 +7413,8 @@ kbd { font-size: 9px; opacity: .65; }
     state.nextId = checked.document.nextId;
     state.unitSettings = checked.document.unitSettings;
     state.dimStyles = checked.document.dimStyles;
+    state.underlays = checked.document.underlays;
+    state.nextUnderlayId = checked.document.nextUnderlayId;
     return true;
   }
 
@@ -5701,12 +8582,17 @@ kbd { font-size: 9px; opacity: .65; }
     if (unchanged) { closeUnitsDialog(); return; }
 
     let entities = state.entities;
+    let underlays = state.underlays;
     if (rescale) {
       // Convert geometry about the origin so a 120" line stays 10 feet long when
-      // the drawing unit becomes millimetres.
+      // the drawing unit becomes millimetres. Underlays are converted with it —
+      // a calibrated image left at its old scale would silently stop lining up
+      // with the geometry traced from it, which is the one thing calibration
+      // exists to guarantee.
       const factor = unitConversion(previousUnit, next.drawingUnit);
       const origin = { x: 0, y: 0 };
       entities = entities.map(entity => scaleEntity(entity, origin, factor));
+      underlays = underlays.map(underlay => scaleUnderlay(underlay, origin, factor));
     }
     let dimStyles = state.dimStyles;
     if (next.drawingUnit !== previousUnit) {
@@ -5717,7 +8603,7 @@ kbd { font-size: 9px; opacity: .65; }
     dimStyles = dimStyles.map(style => style.precision !== null &&
       !LENGTH_FORMATS[next.format].precisions.includes(style.precision)
       ? { ...style, precision: null } : style);
-    if (!commitGeometry(entities, { unitSettings: next, dimStyles })) return;
+    if (!commitGeometry(entities, { unitSettings: next, dimStyles, underlays })) return;
     renderUnitStatus();
     updatePrompt();
     setFileStatus(`${state.drawingName} · Units set to ${unitSummary()}`);
@@ -6690,6 +9576,17 @@ kbd { font-size: 9px; opacity: .65; }
     return best;
   }
 
+  // Geometry always wins a contested pick: an underlay is a background, so it is
+  // only offered when nothing drawn on top of it is within reach.
+  function underlayAt(world) {
+    for (let index = state.underlays.length - 1; index >= 0; index--) {
+      const underlay = state.underlays[index];
+      if (!underlayIsSelectable(underlay)) continue;
+      if (underlayContainsPoint(underlay, world)) return underlay;
+    }
+    return null;
+  }
+
   function selectAt(world, add = false) {
     let hit = null;
     let best = 8;
@@ -6698,8 +9595,14 @@ kbd { font-size: 9px; opacity: .65; }
       const d = distanceToEntityPx(world, e);
       if (d < best) { best = d; hit = e; }
     }
+    const underlay = hit ? null : underlayAt(world);
     if (!add) state.selected.clear();
-    if (hit) {
+    if (underlay) {
+      const key = underlaySelectionId(underlay.id);
+      if (add && state.selected.has(key)) state.selected.delete(key);
+      else state.selected.add(key);
+      activeCommand()?.noteSelection?.({ underlayId: underlay.id });
+    } else if (hit) {
       if (add && state.selected.has(hit.id)) state.selected.delete(hit.id);
       else state.selected.add(hit.id);
       activeCommand()?.noteSelection?.({ entityId: hit.id });
@@ -6728,10 +9631,44 @@ kbd { font-size: 9px; opacity: .65; }
       const hit = crossing ? entityCrossesBox(e, box) : boxContains(box, bb);
       if (hit) state.selected.add(e.id);
     }
+    for (const underlay of state.underlays) {
+      if (!underlayIsSelectable(underlay)) continue;
+      // A crossing window catches an image whose frame overlaps it at all; a
+      // window selection needs the whole frame inside, matching the entity rule
+      // above. Both test the four corners, which for a rectangle is exact.
+      const hit = crossing
+        ? underlayCrossesBox(underlay, box)
+        : boxContains(box, underlayBBox(underlay));
+      if (hit) state.selected.add(underlaySelectionId(underlay.id));
+    }
     activeCommand()?.noteSelection?.({ box, crossing });
     state.dragSelect = null;
     updatePrompt();
     draw();
+  }
+
+  function underlayCrossesBox(underlay, box) {
+    const corners = underlayCorners(underlay);
+    if (corners.some(p => p.x >= box.minX && p.x <= box.maxX && p.y >= box.minY && p.y <= box.maxY)) return true;
+    const bb = underlayBBox(underlay);
+    if (boxContains(bb, box)) return true;
+    for (let index = 0; index < corners.length; index++) {
+      const a = corners[index];
+      const b = corners[(index + 1) % corners.length];
+      if (segmentCrossesBox(a, b, box)) return true;
+    }
+    return false;
+  }
+
+  function segmentCrossesBox(a, b, box) {
+    const corners = [
+      { x: box.minX, y: box.minY }, { x: box.maxX, y: box.minY },
+      { x: box.maxX, y: box.maxY }, { x: box.minX, y: box.maxY },
+    ];
+    for (let index = 0; index < 4; index++) {
+      if (segmentIntersection(a, b, corners[index], corners[(index + 1) % 4])) return true;
+    }
+    return false;
   }
 
   // The one implementation of "remove what is selected", shared by the Delete
@@ -6741,14 +9678,18 @@ kbd { font-size: 9px; opacity: .65; }
     const deletable = new Set(state.entities
       .filter(entity => state.selected.has(entity.id) && isEntityEditable(entity))
       .map(entity => entity.id));
-    if (!deletable.size) return { error: 'No objects selected.', erased: 0 };
-    if (!commitGeometry(state.entities.filter(e => !deletable.has(e.id)))) {
+    const removableUnderlays = new Set(state.underlays
+      .filter(underlay => state.selected.has(underlaySelectionId(underlay.id)) && underlayIsSelectable(underlay))
+      .map(underlay => underlay.id));
+    if (!deletable.size && !removableUnderlays.size) return { error: 'No objects selected.', erased: 0 };
+    const keptUnderlays = state.underlays.filter(underlay => !removableUnderlays.has(underlay.id));
+    if (!commitGeometry(state.entities.filter(e => !deletable.has(e.id)), { underlays: keptUnderlays })) {
       return { error: 'That deletion was rejected.', erased: 0 };
     }
     state.selected.clear();
     updatePrompt();
     draw();
-    return { erased: deletable.size };
+    return { erased: deletable.size + removableUnderlays.size };
   }
 
   // A dimension whose geometry is erased freezes at its last measured value
@@ -7697,6 +10638,9 @@ kbd { font-size: 9px; opacity: .65; }
     ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);
     ctx.fillStyle = '#111';
     ctx.fillRect(0,0,canvas.clientWidth,canvas.clientHeight);
+    // Underlays sit under the grid, not just under the geometry: the grid is a
+    // drafting aid and has to stay readable over a dark scan or aerial.
+    drawUnderlays();
     drawGrid();
     for (const e of state.entities) {
       // The entity currently being retyped (EDITTEXT/DDEDIT-style) is represented
@@ -9371,12 +12315,14 @@ kbd { font-size: 9px; opacity: .65; }
 
       begin() {
         const ids = editableSelectionIds();
+        const underlayIds = editableUnderlayIds();
         state.transform = {
           type,
           // A preselection is taken as the answer to "select objects", so the
           // command opens at the base point instead of asking again.
-          stage: ids.length ? 'BASE' : 'SELECT',
+          stage: (ids.length || underlayIds.length) ? 'BASE' : 'SELECT',
           ids,
+          underlayIds,
           base: null,
           ...initial,
         };
@@ -9460,6 +12406,7 @@ kbd { font-size: 9px; opacity: .65; }
             drawEntity(translateEntity(entity, dx, dy), true);
           }
         }
+        previewUnderlays(state.transform, underlay => translateUnderlay(underlay, dx, dy));
         drawTransformGuide(
           state.transform.base,
           p,
@@ -9613,6 +12560,7 @@ kbd { font-size: 9px; opacity: .65; }
         const referenceEnd = circularPoint(operation.base, guideRadius, operation.referenceAngle);
         drawTransformGuide(operation.base, referenceEnd, 'Reference', true);
       }
+      previewUnderlays(operation, underlay => rotateUnderlay(underlay, operation.base, rotation));
       const label = stage === 'ROTATE_TARGET'
         ? `Target ${formatAngle(targetAngle)} · Δ ${formatAngle(rotation)}`
         : `Δ ${formatAngle(rotation)}`;
@@ -9757,6 +12705,7 @@ kbd { font-size: 9px; opacity: .65; }
           }
         }
       }
+      previewUnderlays(operation, underlay => scaleUnderlay(underlay, operation.base, factor));
       const label = stage === 'SCALE_REF_NEW'
         ? `${formatLength(candidateLength)} / ${formatLength(operation.referenceLength)} = ${factor.toFixed(3)}x`
         : `${factor.toFixed(3)}x`;
@@ -9849,6 +12798,7 @@ kbd { font-size: 9px; opacity: .65; }
           drawEntity(mirrorEntity(entity, operation.base, axisEnd), true);
         }
       }
+      previewUnderlays(operation, underlay => mirrorUnderlay(underlay, operation.base, axisEnd));
       drawTransformGuide(
         operation.base,
         axisEnd,
@@ -9874,14 +12824,50 @@ kbd { font-size: 9px; opacity: .65; }
       .map(entity => entity.id);
   }
 
+  function editableUnderlayIds() {
+    return state.underlays
+      .filter(underlay => state.selected.has(underlaySelectionId(underlay.id)) && underlayIsSelectable(underlay))
+      .map(underlay => underlay.id);
+  }
+
+  // Re-derived at apply time rather than trusted from begin(), for the same
+  // reason the entity id sets are: a layer can be locked while the command runs.
+  function operationUnderlaySet(operation) {
+    return new Set(state.underlays
+      .filter(underlay => (operation.underlayIds || []).includes(underlay.id) && underlayIsSelectable(underlay))
+      .map(underlay => underlay.id));
+  }
+
+  function mapSelectedUnderlays(set, transformFn) {
+    return state.underlays.map(underlay => (set.has(underlay.id) ? transformFn(underlay) : underlay));
+  }
+
+  // Selection after a transform names both halves of what was transformed.
+  function selectionOf(idSet, underlaySet) {
+    return new Set([...idSet, ...[...underlaySet].map(underlaySelectionId)]);
+  }
+
+  // Underlays preview as an outline, not as a redrawn raster: at typical aerial
+  // resolutions, re-blitting the image on every mouse move to throw it away is a
+  // poor trade for a frame that says the same thing.
+  function previewUnderlays(operation, transformFn) {
+    for (const underlay of state.underlays) {
+      if (!(operation.underlayIds || []).includes(underlay.id)) continue;
+      if (!underlayIsSelectable(underlay)) continue;
+      drawUnderlayOutline(transformFn(underlay), true);
+    }
+  }
+
   function acceptTransformSelection() {
     if (!state.transform || state.transform.stage !== 'SELECT') return false;
     const ids = editableSelectionIds();
-    if (!ids.length) {
+    const underlayIds = editableUnderlayIds();
+    if (!ids.length && !underlayIds.length) {
       updatePrompt('No objects selected.');
       return true;
     }
     state.transform.ids = ids;
+    state.transform.underlayIds = underlayIds;
     state.transform.stage = 'BASE';
     updatePrompt();
     draw();
@@ -9901,7 +12887,8 @@ kbd { font-size: 9px; opacity: .65; }
     const idSet = new Set(state.entities
       .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
       .map(entity => entity.id));
-    if (!idSet.size) {
+    const underlaySet = operationUnderlaySet(operation);
+    if (!idSet.size && !underlaySet.size) {
       updatePrompt('The selected objects are no longer editable.');
       return;
     }
@@ -9909,15 +12896,27 @@ kbd { font-size: 9px; opacity: .65; }
       const entities = state.entities.map(entity =>
         idSet.has(entity.id) ? translateEntity(entity, dx, dy) : entity,
       );
-      if (!commitGeometry(entities)) return;
-      state.selected = new Set(idSet);
+      const underlays = mapSelectedUnderlays(underlaySet, underlay => translateUnderlay(underlay, dx, dy));
+      if (!commitGeometry(entities, { underlays })) return;
+      state.selected = selectionOf(idSet, underlaySet);
     } else {
       const moved = state.entities
         .filter(entity => idSet.has(entity.id))
         .map(entity => translateEntity(entity, dx, dy));
       const { entities: copies, nextId } = duplicateEntities(moved, state.nextId);
-      if (!commitGeometry([...state.entities, ...copies], { nextId })) return;
-      state.selected = new Set(copies.map(entity => entity.id));
+      const movedUnderlays = state.underlays
+        .filter(underlay => underlaySet.has(underlay.id))
+        .map(underlay => translateUnderlay(underlay, dx, dy));
+      const { underlays: underlayCopies, nextUnderlayId } = duplicateUnderlays(movedUnderlays, state.nextUnderlayId);
+      if (!commitGeometry([...state.entities, ...copies], {
+        nextId,
+        underlays: [...state.underlays, ...underlayCopies],
+        nextUnderlayId,
+      })) return;
+      state.selected = selectionOf(
+        new Set(copies.map(entity => entity.id)),
+        new Set(underlayCopies.map(underlay => underlay.id)),
+      );
     }
     setMode('SELECT');
   }
@@ -9938,7 +12937,8 @@ kbd { font-size: 9px; opacity: .65; }
     const idSet = new Set(state.entities
       .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
       .map(entity => entity.id));
-    if (!idSet.size) {
+    const underlaySet = operationUnderlaySet(operation);
+    if (!idSet.size && !underlaySet.size) {
       updatePrompt('The selected objects are no longer editable.');
       return;
     }
@@ -9946,8 +12946,10 @@ kbd { font-size: 9px; opacity: .65; }
       idSet.has(entity.id) ? rotateEntity(entity, operation.base, reducedAngle) : entity,
     );
     entities = realignDimensionReferences(entities, idSet, 'rotate', { angle: reducedAngle });
-    if (!commitGeometry(entities)) return;
-    state.selected = new Set(idSet);
+    const underlays = mapSelectedUnderlays(underlaySet, underlay =>
+      rotateUnderlay(underlay, operation.base, reducedAngle));
+    if (!commitGeometry(entities, { underlays })) return;
+    state.selected = selectionOf(idSet, underlaySet);
     setMode('SELECT');
   }
 
@@ -9966,7 +12968,8 @@ kbd { font-size: 9px; opacity: .65; }
     const idSet = new Set(state.entities
       .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
       .map(entity => entity.id));
-    if (!idSet.size) {
+    const underlaySet = operationUnderlaySet(operation);
+    if (!idSet.size && !underlaySet.size) {
       updatePrompt('The selected objects are no longer editable.');
       return;
     }
@@ -9983,8 +12986,10 @@ kbd { font-size: 9px; opacity: .65; }
       scaled.set(entity.id, result);
     }
 
-    if (!commitGeometry(state.entities.map(entity => scaled.get(entity.id) || entity))) return;
-    state.selected = new Set(idSet);
+    const underlays = mapSelectedUnderlays(underlaySet, underlay =>
+      scaleUnderlay(underlay, operation.base, factor));
+    if (!commitGeometry(state.entities.map(entity => scaled.get(entity.id) || entity), { underlays })) return;
+    state.selected = selectionOf(idSet, underlaySet);
     setMode('SELECT');
   }
 
@@ -9999,7 +13004,8 @@ kbd { font-size: 9px; opacity: .65; }
     const idSet = new Set(state.entities
       .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
       .map(entity => entity.id));
-    if (!idSet.size) {
+    const underlaySet = operationUnderlaySet(operation);
+    if (!idSet.size && !underlaySet.size) {
       updatePrompt('The selected objects are no longer editable.');
       return;
     }
@@ -10011,8 +13017,9 @@ kbd { font-size: 9px; opacity: .65; }
         idSet.has(entity.id) ? mirrorEntity(entity, axisA, axisB) : entity,
       );
       entities = realignDimensionReferences(entities, idSet, 'mirror', { axisA, axisB });
-      if (!commitGeometry(entities)) return;
-      state.selected = new Set(idSet);
+      const underlays = mapSelectedUnderlays(underlaySet, underlay => mirrorUnderlay(underlay, axisA, axisB));
+      if (!commitGeometry(entities, { underlays })) return;
+      state.selected = selectionOf(idSet, underlaySet);
     } else {
       // The reflected entities keep their original ids on the way into
       // duplicateEntities, which is what lets a mirrored dimension be remapped
@@ -10023,8 +13030,19 @@ kbd { font-size: 9px; opacity: .65; }
         .map(entity => mirrorEntity(entity, axisA, axisB));
       reflected = realignDimensionReferences(reflected, idSet, 'mirror', { axisA, axisB });
       const { entities: copies, nextId } = duplicateEntities(reflected, state.nextId);
-      if (!commitGeometry([...state.entities, ...copies], { nextId })) return;
-      state.selected = new Set(copies.map(entity => entity.id));
+      const reflectedUnderlays = state.underlays
+        .filter(underlay => underlaySet.has(underlay.id))
+        .map(underlay => mirrorUnderlay(underlay, axisA, axisB));
+      const { underlays: underlayCopies, nextUnderlayId } = duplicateUnderlays(reflectedUnderlays, state.nextUnderlayId);
+      if (!commitGeometry([...state.entities, ...copies], {
+        nextId,
+        underlays: [...state.underlays, ...underlayCopies],
+        nextUnderlayId,
+      })) return;
+      state.selected = selectionOf(
+        new Set(copies.map(entity => entity.id)),
+        new Set(underlayCopies.map(underlay => underlay.id)),
+      );
     }
     setMode('SELECT');
   }
@@ -10354,6 +13372,9 @@ kbd { font-size: 9px; opacity: .65; }
   async function applyDocument(documentData, dirty = true) {
     releaseBackupPin();
     state.entities = JSON.parse(JSON.stringify(documentData.entities));
+    // Shallow, unlike the entities above: see cloneUnderlays on why the image
+    // payload must never be deep-copied.
+    state.underlays = cloneUnderlays(documentData.underlays || []);
     state.layers = JSON.parse(JSON.stringify(documentData.layers));
     state.currentLayerId = documentData.currentLayerId;
     state.drawingName = documentData.name;
@@ -10361,6 +13382,7 @@ kbd { font-size: 9px; opacity: .65; }
     state.dimStyles = documentData.dimStyles.map(style => ({ ...style }));
     state.nextId = documentData.nextId;
     state.nextLayerId = documentData.nextLayerId || derivedNextLayerId(state.layers);
+    state.nextUnderlayId = documentData.nextUnderlayId || derivedNextUnderlayId(state.underlays);
     state.selected.clear();
     state.history = [];
     state.future = [];
@@ -10434,13 +13456,14 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   async function newDrawing(skipConfirmation = false) {
-    if (!skipConfirmation && state.entities.length &&
+    if (!skipConfirmation && (state.entities.length || state.underlays.length) &&
         !window.confirm('Start a new drawing? Use Save first if you need a separate copy of the current drawing.')) {
       return false;
     }
     await flushOutgoingDocument();
     releaseBackupPin();
     state.entities = [];
+    state.underlays = [];
     state.layers = createDefaultLayers();
     state.currentLayerId = '0';
     state.drawingName = 'Untitled';
@@ -10448,6 +13471,7 @@ kbd { font-size: 9px; opacity: .65; }
     state.dimStyles = [defaultDimStyle()];
     state.nextId = 1;
     state.nextLayerId = 1;
+    state.nextUnderlayId = 1;
     state.selected.clear();
     state.history = [];
     state.future = [];
@@ -11938,6 +14962,9 @@ kbd { font-size: 9px; opacity: .65; }
   // ---------------------------------------------------------------------------
 
   const COMMAND_ALIASES = Object.freeze({
+    DXF:'DXFOUT', DXFOUT:'DXFOUT', DXFIN:'DXFIN', DXFEXPORT:'DXFOUT', DXFIMPORT:'DXFIN',
+    IM:'IMAGE', IMAGE:'IMAGE', CAL:'CALIBRATE', CALIBRATE:'CALIBRATE',
+    UN:'UNDERLAY', UNDERLAY:'UNDERLAY',
     L:'LINE', LINE:'LINE', PL:'PLINE', PLINE:'PLINE', P:'PLINE',
     REC:'RECTANGLE', RECTANG:'RECTANGLE', RECTANGLE:'RECTANGLE', C:'CIRCLE', CIRCLE:'CIRCLE',
     A:'ARC', ARC:'ARC',
@@ -11967,6 +14994,480 @@ kbd { font-size: 9px; opacity: .65; }
 
   function resolveCommandName(value) {
     return COMMAND_ALIASES[String(value).trim().toUpperCase()] || null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // ui/dialogs/underlay.js
+  // ---------------------------------------------------------------------------
+
+  // The draft the dialog edits, kept separate from the underlay itself so Cancel
+  // is free and Apply is a single undoable commit — the same shape the units and
+  // dimension-style dialogs use.
+  let pendingUnderlay = null;
+
+  function setPendingUnderlay(patch) {
+    if (!pendingUnderlay) return;
+    Object.assign(pendingUnderlay, patch);
+    refreshUnderlayDialog();
+  }
+
+  function dialogTarget() {
+    const selected = state.underlays.filter(underlay =>
+      state.selected.has(underlaySelectionId(underlay.id)));
+    if (selected.length === 1) return selected[0];
+    // A single unlocked image in the drawing is unambiguous even unselected;
+    // asking the user to select it first would be ceremony, not clarity.
+    const selectable = state.underlays.filter(underlayIsSelectable);
+    return selectable.length === 1 ? selectable[0] : null;
+  }
+
+  function openUnderlayDialog() {
+    if (!requireIdle('changing image properties')) return;
+    const target = dialogTarget();
+    if (!target) {
+      updatePrompt(state.underlays.length
+        ? 'Select one image first.'
+        : 'There is no image in the drawing. Use the Image button to place one.');
+      return;
+    }
+    pendingUnderlay = {
+      id: target.id,
+      fade: target.fade,
+      locked: target.locked,
+      plot: target.plot,
+    };
+    underlayDialog.hidden = false;
+    refreshUnderlayDialog();
+    underlayFadeInput.focus();
+  }
+
+  function closeUnderlayDialog() {
+    pendingUnderlay = null;
+    underlayDialog.hidden = true;
+    canvas.focus();
+  }
+
+  function refreshUnderlayDialog() {
+    if (!pendingUnderlay) return;
+    const target = state.underlays.find(underlay => underlay.id === pendingUnderlay.id);
+    if (!target) { closeUnderlayDialog(); return; }
+    underlayFadeInput.value = String(pendingUnderlay.fade);
+    underlayLockedCheck.checked = pendingUnderlay.locked;
+    underlayPlotCheck.checked = pendingUnderlay.plot;
+    underlayDialogSubject.textContent =
+      `${target.name} · ${target.widthPx} × ${target.heightPx} pixels`;
+    underlayPreviewEl.textContent =
+      `${formatLengthLabel(underlayWidth(target))} × ${formatLengthLabel(underlayHeight(target))} · fade ${pendingUnderlay.fade}%`;
+  }
+
+  function applyUnderlayDialog() {
+    if (!pendingUnderlay) return;
+    const target = state.underlays.find(underlay => underlay.id === pendingUnderlay.id);
+    if (!target) { closeUnderlayDialog(); return; }
+    const unchanged = target.fade === pendingUnderlay.fade
+      && target.locked === pendingUnderlay.locked
+      && target.plot === pendingUnderlay.plot;
+    if (unchanged) { closeUnderlayDialog(); return; }
+    const underlays = state.underlays.map(underlay => underlay.id === target.id
+      ? { ...underlay, fade: pendingUnderlay.fade, locked: pendingUnderlay.locked, plot: pendingUnderlay.plot }
+      : underlay);
+    if (!commitGeometry(state.entities, { underlays })) return;
+    setFileStatus(`${state.drawingName} · Image ${pendingUnderlay.plot ? 'will plot' : 'is reference only'}`);
+    closeUnderlayDialog();
+    draw();
+  }
+
+  function deleteUnderlayFromDialog() {
+    if (!pendingUnderlay) return;
+    const target = state.underlays.find(underlay => underlay.id === pendingUnderlay.id);
+    if (!target) { closeUnderlayDialog(); return; }
+    const underlays = state.underlays.filter(underlay => underlay.id !== target.id);
+    if (!commitGeometry(state.entities, { underlays })) return;
+    state.selected.delete(underlaySelectionId(target.id));
+    closeUnderlayDialog();
+    updatePrompt(`Removed image ${target.name}.`);
+    draw();
+  }
+
+  // ---------------------------------------------------------------------------
+  // commands/underlay.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Underlay commands
+  //
+  // IMAGE places a raster; CALIBRATE tells the drawing how big it really is.
+  // They are separate commands rather than one wizard because calibration is not
+  // a one-time step: a traced image gets re-calibrated whenever a better known
+  // dimension turns up, and having to re-import to do that would be absurd.
+  // ---------------------------------------------------------------------------
+
+  // The descriptor waiting to be placed. It is handed in from the file picker
+  // (ui/shell.js) or, in tests, injected directly — the command itself never
+  // touches a File, which is what keeps it drivable headlessly.
+  let pendingUnderlayImage = null;
+
+  function setPendingUnderlayImage(descriptor) {
+    pendingUnderlayImage = descriptor;
+  }
+
+  // Routed through startCommand rather than setMode so the placement obeys the
+  // same rules every other command does: it refuses while another command is
+  // mid-stage, and `creates` clears the selection and checks the current layer.
+  function startImagePlacement(descriptor) {
+    if (!descriptor) return false;
+    pendingUnderlayImage = descriptor;
+    startCommand('IMAGE');
+    return true;
+  }
+
+  defineCommand('IMAGE', {
+    creates: true,
+
+    canBegin() {
+      if (!pendingUnderlayImage) {
+        updatePrompt('IMAGE — choose a file with the Image button first.');
+        return false;
+      }
+      return true;
+    },
+
+    begin() {
+      state.underlay = {
+        stage: 'PLACE',
+        descriptor: pendingUnderlayImage,
+        // One drawing unit per pixel is an arbitrary but honest default: the
+        // image carries no real-world scale, and pretending otherwise would be
+        // a guess the user then has to detect and undo. CALIBRATE is the answer,
+        // and the prompt says so.
+        unitsPerPixel: 1,
+      };
+    },
+
+    takesDistance: true,
+
+    prompt() {
+      const operation = state.underlay;
+      if (!operation) return 'IMAGE:';
+      const width = operation.descriptor.widthPx * operation.unitsPerPixel;
+      return `IMAGE — Specify bottom-left corner, or type a width (${formatLengthLabel(width)} at present):`;
+    },
+
+    // A typed number at the placement stage means "make the image this wide",
+    // which is the fastest possible calibration when the width is already known.
+    distance(value) {
+      const operation = state.underlay;
+      if (!operation || !(value > 0)) {
+        updatePrompt('Enter a width greater than zero.');
+        return;
+      }
+      operation.unitsPerPixel = value / operation.descriptor.widthPx;
+      updatePrompt();
+      draw();
+    },
+
+    previewReady() {
+      return Boolean(state.underlay);
+    },
+
+    preview(p) {
+      const operation = state.underlay;
+      if (!operation) return;
+      drawUnderlayPreview(operation.descriptor, p, operation.unitsPerPixel);
+    },
+
+    point(p) {
+      const operation = state.underlay;
+      if (!operation) return;
+      if (!currentLayerIsEditable()) {
+        updatePrompt('The current layer is locked or hidden.');
+        return;
+      }
+      const underlay = makeUnderlay(operation.descriptor, p, {
+        unitsPerPixel: operation.unitsPerPixel,
+        fade: UNDERLAY_DEFAULT_FADE,
+      });
+      const nextUnderlayId = underlay.id + 1;
+      if (!commitGeometry(state.entities, {
+        underlays: [...state.underlays, underlay],
+        nextUnderlayId,
+      })) return;
+      pendingUnderlayImage = null;
+      state.selected = new Set([underlaySelectionId(underlay.id)]);
+      setMode('SELECT');
+      updatePrompt(`Image placed ${formatLengthLabel(underlayWidth(underlay))} wide. Use CALIBRATE to set its true scale.`);
+    },
+
+    finish() {
+      pendingUnderlayImage = null;
+      setMode('SELECT');
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // CALIBRATE
+  //
+  // Pick two points whose real separation is known, type the distance, and the
+  // image is scaled about the first pick. Holding the first pick fixed matters:
+  // the user has just told you where a known point on the image is, and moving it
+  // out from under them would undo the very thing they were establishing.
+  // ---------------------------------------------------------------------------
+
+  defineCommand('CALIBRATE', {
+    stateMode: 'CALIBRATE',
+
+    canBegin() {
+      if (!state.underlays.some(underlayIsSelectable)) {
+        updatePrompt('CALIBRATE — there is no unlocked image to calibrate.');
+        return false;
+      }
+      return true;
+    },
+
+    begin() {
+      const preselected = state.underlays.filter(underlay =>
+        state.selected.has(underlaySelectionId(underlay.id)) && underlayIsSelectable(underlay));
+      const selectable = state.underlays.filter(underlayIsSelectable);
+      // One image, or exactly one selected, is not a choice worth asking about.
+      const target = preselected.length === 1 ? preselected[0]
+        : (selectable.length === 1 ? selectable[0] : null);
+      state.underlay = {
+        stage: target ? 'FIRST' : 'PICK',
+        targetId: target ? target.id : null,
+        first: null,
+        second: null,
+      };
+    },
+
+    // Calibration points are read off a raster, so OSNAP has nothing useful to
+    // contribute and a stray endpoint snap would silently calibrate against the
+    // wrong place.
+    usesSnap: false,
+
+    takesDistance() {
+      return state.underlay?.stage === 'DISTANCE';
+    },
+
+    acceptsPoint() {
+      return state.underlay?.stage !== 'DISTANCE';
+    },
+
+    prompt() {
+      const operation = state.underlay;
+      if (!operation) return 'CALIBRATE:';
+      if (operation.stage === 'PICK') return 'CALIBRATE — Select the image to calibrate:';
+      if (operation.stage === 'FIRST') return 'CALIBRATE — Specify first point of a known distance:';
+      if (operation.stage === 'SECOND') return 'CALIBRATE — Specify second point of the known distance:';
+      const measured = dist(operation.first, operation.second);
+      return `CALIBRATE — Enter the true distance between those points (${formatLength(measured)} at present):`;
+    },
+
+    point(p) {
+      const operation = state.underlay;
+      if (!operation) return;
+      if (operation.stage === 'PICK') {
+        const target = [...state.underlays].reverse()
+          .find(underlay => underlayIsSelectable(underlay) && underlayContainsPoint(underlay, p));
+        if (!target) {
+          updatePrompt('CALIBRATE — that is not on an unlocked image. Pick again:');
+          return;
+        }
+        operation.targetId = target.id;
+        operation.stage = 'FIRST';
+        updatePrompt();
+        return;
+      }
+      if (operation.stage === 'FIRST') {
+        operation.first = { ...p };
+        operation.stage = 'SECOND';
+        updatePrompt();
+        return;
+      }
+      if (operation.stage === 'SECOND') {
+        if (dist(operation.first, p) < 1e-9) {
+          updatePrompt('CALIBRATE — those points are in the same place. Pick the second point again:');
+          return;
+        }
+        operation.second = { ...p };
+        operation.stage = 'DISTANCE';
+        updatePrompt();
+        draw();
+      }
+    },
+
+    distance(value) {
+      applyCalibration(value);
+    },
+
+    // The typed value can carry a unit suffix (12', 150mm), which parseDistance
+    // already understands, so it is routed here as well as through distance().
+    value(text) {
+      if (state.underlay?.stage !== 'DISTANCE') return false;
+      const parsed = parseDistance(text);
+      if (parsed === null) {
+        updatePrompt('Enter a distance, for example 24 or 2\' or 600mm.');
+        return true;
+      }
+      applyCalibration(parsed);
+      return true;
+    },
+
+    previewReady() {
+      return Boolean(state.underlay?.first) && state.underlay.stage === 'SECOND';
+    },
+
+    // The measuring line is the whole feedback for this stage: it is what tells
+    // the user which two features of the image they are about to declare a
+    // distance between.
+    preview(p) {
+      drawEntity({ type: 'LINE', a: state.underlay.first, b: p }, true);
+    },
+
+    finish() {
+      setMode('SELECT');
+    },
+  });
+
+  function applyCalibration(knownDistance) {
+    const operation = state.underlay;
+    if (!operation || operation.stage !== 'DISTANCE') return;
+    const target = state.underlays.find(underlay => underlay.id === operation.targetId);
+    if (!target) {
+      updatePrompt('That image is no longer in the drawing.');
+      setMode('SELECT');
+      return;
+    }
+    const result = calibrateUnderlay(target, operation.first, operation.second, knownDistance);
+    if (result.error) {
+      updatePrompt(`CALIBRATE — ${result.error}`);
+      return;
+    }
+    const underlays = state.underlays.map(underlay =>
+      underlay.id === target.id ? result.underlay : underlay);
+    if (!commitGeometry(state.entities, { underlays })) return;
+    state.selected = new Set([underlaySelectionId(target.id)]);
+    setMode('SELECT');
+    updatePrompt(`Image calibrated: scaled ${result.factor.toFixed(4)}x, now ${formatLengthLabel(underlayWidth(result.underlay))} wide.`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // ui/dialogs/dxf.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // DXF in and out
+  //
+  // Neither direction gets a dialog. Export has no decisions left to make — the
+  // version is fixed, the units come from the drawing, and everything plots — and
+  // import replaces the document exactly as Open does. What both DO need is to
+  // say what happened, because both are lossy in ways the user cannot see by
+  // looking at the result: that goes to the inquiry panel, which already exists
+  // for reporting things about a drawing.
+  // ---------------------------------------------------------------------------
+
+  function dxfDownloadName() {
+    return `${safeDrawingFileName()}.dxf`;
+  }
+
+  function exportDxf() {
+    if (!requireIdle('exporting DXF')) return false;
+    if (!state.entities.length) {
+      updatePrompt('There is nothing to export.');
+      return false;
+    }
+    let text;
+    let plan;
+    try {
+      plan = buildDxfPlan();
+      text = buildDxfDocument(plan);
+    } catch (error) {
+      setFileStatus(`Could not write the DXF: ${error.message || 'unknown error'}`, true);
+      return false;
+    }
+    downloadTextFile(text, dxfDownloadName(), 'application/dxf');
+    showInquiryReport('DXF Export', exportReportGroups(plan));
+    setFileStatus(`${state.drawingName} · Exported DXF`);
+    return true;
+  }
+
+  function exportReportGroups(plan) {
+    const groups = [{
+      title: dxfDownloadName(),
+      rows: [
+        ['Format', 'AutoCAD R2000 (AC1015) ASCII'],
+        ['Objects', String(plan.entities.length)],
+        ['Layers', String(plan.layers.length)],
+        ['Dimension styles', String(plan.dimStyles.length)],
+      ],
+    }];
+    if (plan.warnings.length) {
+      groups.push({
+        title: 'Not included',
+        rows: plan.warnings.map((warning, index) => [`${index + 1}`, warning]),
+      });
+    }
+    return groups;
+  }
+
+  function chooseDxfFile() {
+    if (!requireIdle('importing DXF')) return;
+    dxfInput.value = '';
+    dxfInput.click();
+  }
+
+  async function loadDxfText(text, sourceName = '') {
+    const result = importDxfText(text, sourceName);
+    if (result.error) {
+      setFileStatus(result.error, true);
+      return false;
+    }
+    await applyDocument(result.document, true);
+    showInquiryReport('DXF Import', importReportGroups(result.report, sourceName));
+    setFileStatus(`${result.document.name} · Imported from DXF`);
+    return true;
+  }
+
+  function countRows(counts) {
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([what, count]) => [what, String(count)]);
+  }
+
+  function importReportGroups(report, sourceName) {
+    const groups = [{
+      title: sourceName || 'DXF',
+      rows: [
+        ['Objects imported', String(report.entityCount)],
+        ['Layers', String(report.layerCount)],
+      ],
+    }];
+    // Every lossy conversion is named. An import that quietly drops a third of a
+    // consultant's drawing is the failure this panel exists to prevent.
+    if (Object.keys(report.approximated).length) {
+      groups.push({
+        title: 'Approximated as polylines',
+        rows: countRows(report.approximated),
+        note: 'These have no exact equivalent here and were traced to within a fraction of a drawing unit.',
+      });
+    }
+    if (Object.keys(report.exploded).length) {
+      groups.push({
+        title: 'Exploded into plain geometry',
+        rows: countRows(report.exploded),
+        note: 'The drawn result is intact, but these are no longer live dimensions.',
+      });
+    }
+    if (Object.keys(report.skipped).length) {
+      groups.push({
+        title: 'Not imported',
+        rows: countRows(report.skipped),
+        note: 'This program has no equivalent for these.',
+      });
+    }
+    if (groups.length === 1) {
+      groups[0].note = 'Everything in the file was imported.';
+    }
+    return groups;
   }
 
   // ---------------------------------------------------------------------------
@@ -12127,6 +15628,11 @@ kbd { font-size: 9px; opacity: .65; }
   document.addEventListener('keydown', ev => {
     // The dialog owns the keyboard while it is open, otherwise the catch-all
     // below would type into the command line behind it.
+    if (!underlayDialog.hidden) {
+      if (ev.key === 'Escape') { ev.preventDefault(); closeUnderlayDialog(); }
+      else if (ev.key === 'Enter') { ev.preventDefault(); applyUnderlayDialog(); }
+      return;
+    }
     if (!unitsDialog.hidden) {
       if (ev.key === 'Escape') { ev.preventDefault(); closeUnitsDialog(); }
       else if (ev.key === 'Enter') { ev.preventDefault(); applyUnitsDialog(); }
@@ -12401,6 +15907,15 @@ kbd { font-size: 9px; opacity: .65; }
     return true;
   }
 
+  // A layer that has just been hidden or locked must not leave its underlays in
+  // the selection, for the same reason its entities are dropped: the next command
+  // would otherwise act on something the user can no longer see or pick.
+  function dropUnderlaySelection(layerId) {
+    for (const underlay of state.underlays) {
+      if (underlay.layerId === layerId) state.selected.delete(underlaySelectionId(underlay.id));
+    }
+  }
+
   function toggleLayerVisibility(id) {
     if (!requireIdle('changing layer visibility')) return false;
     const layer = getLayer(id);
@@ -12415,6 +15930,7 @@ kbd { font-size: 9px; opacity: .65; }
       for (const entity of state.entities) {
         if (entity.layerId === layer.id) state.selected.delete(entity.id);
       }
+      dropUnderlaySelection(layer.id);
     }
     renderLayerManager();
     draw();
@@ -12435,6 +15951,7 @@ kbd { font-size: 9px; opacity: .65; }
       for (const entity of state.entities) {
         if (entity.layerId === layer.id) state.selected.delete(entity.id);
       }
+      dropUnderlaySelection(layer.id);
     }
     renderLayerManager();
     draw();
@@ -12715,6 +16232,53 @@ kbd { font-size: 9px; opacity: .65; }
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && !layerColorMenu.hidden) closeColorMenu();
   });
+  // Choosing an image decodes and re-encodes it (see model/imageImport.js) and
+  // then hands the descriptor to the IMAGE command, which does the placing. The
+  // decode lives here rather than in the command so the command stays drivable
+  // without a File.
+  imageInput.addEventListener('change', async () => {
+    const file = imageInput.files?.[0];
+    if (!file) return;
+    try {
+      const descriptor = await underlayDescriptorFromFile(file);
+      startImagePlacement(descriptor);
+      canvas.focus();
+    } catch (error) {
+      setFileStatus(error.message || 'Could not read the selected image', true);
+    }
+  });
+
+  dxfInput.addEventListener('change', async () => {
+    const file = dxfInput.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      if (await loadDxfText(text, file.name)) canvas.focus();
+    } catch {
+      setFileStatus('Could not read the selected DXF file', true);
+    }
+  });
+
+  document.getElementById('dxfInBtn').addEventListener('click', chooseDxfFile);
+  document.getElementById('dxfOutBtn').addEventListener('click', exportDxf);
+
+  document.getElementById('imageBtn').addEventListener('click', () => {
+    if (!requireIdle('placing an image')) return;
+    imageInput.value = '';
+    imageInput.click();
+  });
+  document.getElementById('underlayBtn').addEventListener('click', openUnderlayDialog);
+
+  underlayCancelBtn.addEventListener('click', closeUnderlayDialog);
+  underlayApplyBtn.addEventListener('click', applyUnderlayDialog);
+  underlayDeleteBtn.addEventListener('click', deleteUnderlayFromDialog);
+  underlayDialog.addEventListener('click', ev => {
+    if (ev.target === underlayDialog) closeUnderlayDialog();
+  });
+  underlayFadeInput.addEventListener('input', () => setPendingUnderlay({ fade: Number(underlayFadeInput.value) }));
+  underlayLockedCheck.addEventListener('change', () => setPendingUnderlay({ locked: underlayLockedCheck.checked }));
+  underlayPlotCheck.addEventListener('change', () => setPendingUnderlay({ plot: underlayPlotCheck.checked }));
+
   openInput.addEventListener('change', async () => {
     const file = openInput.files?.[0];
     if (!file) return;
@@ -13013,6 +16577,49 @@ kbd { font-size: 9px; opacity: .65; }
     toggleLayerPrintable,
     deleteLayer,
     assignSelectionToLayer,
+
+    // Underlays. The raster itself never reaches these: a test hands in a
+    // descriptor the way the file picker would, so placement, calibration and
+    // transform behaviour are all exercised without an image ever decoding.
+    get underlays() { return cloneUnderlays(); },
+    get underlayCount() { return state.underlays.length; },
+    get pendingUnderlay() { return pendingUnderlay ? { ...pendingUnderlay } : null; },
+    get underlayDialogVisible() { return !underlayDialog.hidden; },
+    get underlayStage() { return state.underlay?.stage || null; },
+    setPendingUnderlayImage,
+    startImagePlacement,
+    underlaySelectionId,
+    underlayCorners,
+    underlayBBox,
+    underlayWidth,
+    underlayHeight,
+    underlayContainsPoint,
+    underlayWorldToLocal,
+    underlayIsSelectable,
+    calibrateUnderlay,
+    imageFitScale,
+    imageTargetSize,
+    underlayNameFromFile,
+    // The real decode-and-re-encode path. Unreachable from the Node harness,
+    // whose Image and canvas are stubs, so it is exposed for the browser pass.
+    underlayDescriptorFromFile,
+    encodeUnderlayImage,
+    openUnderlayDialog,
+    closeUnderlayDialog,
+    applyUnderlayDialog,
+    deleteUnderlayFromDialog,
+    setPendingUnderlay,
+
+    // DXF. Import and export share one plan shape, so a round trip can be
+    // asserted as plan -> text -> plan without going near the document model.
+    buildDxfPlan,
+    buildDxfDocument,
+    parseDxfText,
+    dxfPlanToDocument,
+    importDxfText,
+    dxfDownloadName,
+    exportDxf,
+    loadDxfText,
   };
 
   // ---------------------------------------------------------------------------
@@ -13041,6 +16648,9 @@ kbd { font-size: 9px; opacity: .65; }
   registerDirectAction('UNITS', openUnitsDialog);
   registerDirectAction('DIMSTYLE', openDimStyleDialog);
   registerDirectAction('PLOT', openPlotDialog);
+  registerDirectAction('UNDERLAY', openUnderlayDialog);
+  registerDirectAction('DXFOUT', exportDxf);
+  registerDirectAction('DXFIN', chooseDxfFile);
 
   // Chrome that has to be rebuilt whenever the whole document is replaced.
   onDocumentChanged(renderLayerManager);
