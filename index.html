@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>zbCAD v0.24.3</title>
+  <title>zbCAD v0.25.0</title>
   <style>
 :root {
   font-family: Arial, Helvetica, sans-serif;
@@ -590,7 +590,7 @@ kbd { font-size: 9px; opacity: .65; }
 </head>
 <body>
   <header id="topbar" class="topbar">
-    <div class="brand">zbCAD <span class="version">v0.24.3</span></div>
+    <div class="brand">zbCAD <span class="version">v0.25.0</span></div>
     <button id="toolbarAutohideBtn" class="toolbar-autohide-btn toggle" title="Auto-hide the toolbar; mouse over this bar (or Tab into it) to show it again" aria-pressed="false">Auto-hide</button>
     <div class="tool-group">
       <span class="group-label">File</span>
@@ -630,12 +630,22 @@ kbd { font-size: 9px; opacity: .65; }
         <button data-command="ARC">Arc (A)</button>
       </div>
       <div class="tool-group">
+        <span class="group-label">Annotate</span>
+        <button data-command="DIMLINEAR">Dim Linear (DLI)</button>
+        <button data-command="DIMALIGNED">Dim Aligned (DAL)</button>
+        <button data-command="DIMRADIUS">Dim Radius (DRA)</button>
+        <button data-command="DIMDIAMETER">Dim Diameter (DDI)</button>
+        <button data-command="TEXT">Text (T)</button>
+        <button id="dimStyleBtn">Dim Style (DST)</button>
+      </div>
+      <div class="tool-group">
         <span class="group-label">Modify</span>
         <button data-command="MOVE">Move (M)</button>
         <button data-command="COPY">Copy (CO)</button>
         <button data-command="ROTATE">Rotate (RO)</button>
         <button data-command="SCALE">Scale (SC)</button>
         <button data-command="MIRROR">Mirror (MI)</button>
+        <button data-command="ARRAY">Array (AR)</button>
         <button data-command="OFFSET">Offset (O)</button>
         <button data-command="FILLET">Fillet (F)</button>
         <button data-command="CHAMFER">Chamfer (CHA)</button>
@@ -645,15 +655,6 @@ kbd { font-size: 9px; opacity: .65; }
         <button data-command="JOIN">Join (J)</button>
         <button data-command="EXPLODE">Explode (X)</button>
         <button data-command="ERASE">Erase (E)</button>
-      </div>
-      <div class="tool-group">
-        <span class="group-label">Annotate</span>
-        <button data-command="DIMLINEAR">Dim Linear (DLI)</button>
-        <button data-command="DIMALIGNED">Dim Aligned (DAL)</button>
-        <button data-command="DIMRADIUS">Dim Radius (DRA)</button>
-        <button data-command="DIMDIAMETER">Dim Diameter (DDI)</button>
-        <button data-command="TEXT">Text (T)</button>
-        <button id="dimStyleBtn">Dim Style (DST)</button>
       </div>
     </div>
     <a id="docsLink" class="docs-link" href="docs.html" target="_blank" rel="noopener">Docs</a>
@@ -2135,8 +2136,8 @@ kbd { font-size: 9px; opacity: .65; }
     return [];
   }
 
-  function resolveEntityReference(point) {
-    for (const entity of state.entities) {
+  function resolveEntityReference(point, entities = state.entities) {
+    for (const entity of entities) {
       if (entity.type === 'DIM' || !isEntityVisible(entity)) continue;
       for (const candidate of entityReferenceCandidates(entity)) {
         if (dist(point, candidate.point) > REFERENCE_TOLERANCE) continue;
@@ -2254,6 +2255,31 @@ kbd { font-size: 9px; opacity: .65; }
       return null;
     }
     return null;
+  }
+
+  // JOIN and EXPLODE replace a source entity with different-shaped geometry
+  // (a polyline, or its individual segments) under new ids, but every point the
+  // source entity had is still there somewhere in the replacement — so rather
+  // than tracking segment-by-segment provenance through the merge/split, a
+  // dimension's old world point is recovered from the doomed source (via
+  // pointForReference) and re-resolved against the replacement geometry only
+  // (via resolveEntityReference, scoped so an unrelated coincident entity can't
+  // steal it the way CAD-002 could). `candidatesForId` maps each stale entity id
+  // to the replacement entities its own points should be looked for in. A point
+  // that doesn't resolve there (an ARC's CENTER has no equivalent on a
+  // bulge-based polyline segment, for instance) becomes an explicit null
+  // reference — disassociated — rather than a dangling pointer to a deleted id.
+  function remapDimensionRefs(entity, staleById, candidatesForId) {
+    if (entity.type !== 'DIM' || !entity.refs || (!entity.refs[0] && !entity.refs[1])) return entity;
+    let changed = false;
+    const refs = entity.refs.map(ref => {
+      if (!ref || !staleById.has(ref.entityId)) return ref;
+      changed = true;
+      const oldPoint = pointForReference(staleById.get(ref.entityId), ref);
+      const candidates = candidatesForId.get(ref.entityId) || [];
+      return (oldPoint && resolveEntityReference(oldPoint, candidates)) || null;
+    });
+    return changed ? { ...entity, refs } : entity;
   }
 
   // Runs once per commit (see commitGeometry) over the full candidate entity
@@ -3000,10 +3026,11 @@ kbd { font-size: 9px; opacity: .65; }
 
   function pdfContentStream(plan) {
     const lines = ['q'];
-    // Everything is clipped to the printable area, so a plot at an exact scale
-    // that is larger than the sheet stops at the border instead of bleeding
-    // into it — the same thing a plotter does.
-    const clip = plan.printable;
+    // Clipped to the picked area intersected with the printable rectangle, so a
+    // plot at an exact scale larger than the sheet stops at the border the same
+    // way a plotter would, and geometry outside a picked Window/Display never
+    // bleeds into the unused margin around it.
+    const clip = plan.clipMM || plan.printable;
     lines.push(`${pdfPoint(clip.xMM)} ${pdfPoint(clip.yMM)} ` +
       `${pdfPoint(clip.widthMM)} ${pdfPoint(clip.heightMM)} re W n`);
     for (const op of plan.ops) {
@@ -3442,6 +3469,24 @@ kbd { font-size: 9px; opacity: .65; }
       }
     }
 
+    // The picked area (Window/Display/Extents) mapped onto paper, intersected
+    // with the printable rectangle. This — not the printable rectangle alone —
+    // is what both the PDF and the preview clip against, so geometry outside
+    // the picked area is cut off wherever it falls, not just past the sheet's
+    // own margin. Native clipping (the PDF viewer's, the canvas's) handles
+    // strokes, beziers, fills and text alike, so nothing here has to walk
+    // individual primitives to crop them.
+    const areaCornerA = context.toPaper({ x: area.minX, y: area.minY });
+    const areaCornerB = context.toPaper({ x: area.maxX, y: area.maxY });
+    const clipMM = {
+      xMM: Math.max(printable.xMM, Math.min(areaCornerA.x, areaCornerB.x)),
+      yMM: Math.max(printable.yMM, Math.min(areaCornerA.y, areaCornerB.y)),
+    };
+    clipMM.widthMM = Math.max(0,
+      Math.min(printable.xMM + printable.widthMM, Math.max(areaCornerA.x, areaCornerB.x)) - clipMM.xMM);
+    clipMM.heightMM = Math.max(0,
+      Math.min(printable.yMM + printable.heightMM, Math.max(areaCornerA.y, areaCornerB.y)) - clipMM.yMM);
+
     const warnings = [];
     if (plotWidthMM > printable.widthMM + 1e-6 || plotHeightMM > printable.heightMM + 1e-6) {
       warnings.push(`At ${scalePresetLabel(scale)} the plot is ${plotWidthMM.toFixed(1)} × ` +
@@ -3461,7 +3506,7 @@ kbd { font-size: 9px; opacity: .65; }
     }
 
     return {
-      page, printable, area, scale, fitted, mmPerUnit, ops, warnings,
+      page, printable, clipMM, area, scale, fitted, mmPerUnit, ops, warnings,
       plotWidthMM, plotHeightMM,
       entityCount: entities.length,
     };
@@ -3478,8 +3523,8 @@ kbd { font-size: 9px; opacity: .65; }
   // area can be judged before a file is written. It reads the same plan that
   // output/pdf.js serialises and nothing else: there is no second path from the
   // drawing to paper that could drift out of step, so what this shows is what the
-  // PDF contains — including the clip at the printable border, which is the part
-  // of a plot that is otherwise impossible to guess.
+  // PDF contains — including the clip at the picked area's border, which is the
+  // part of a plot that is otherwise impossible to guess.
   // ---------------------------------------------------------------------------
 
   // Room around the sheet for whatever falls off it. Without this a plot that
@@ -3633,15 +3678,20 @@ kbd { font-size: 9px; opacity: .65; }
     context.fillRect(sheet.x, sheet.y, page.widthMM * view.scale, page.heightMM * view.scale);
 
     // Two passes over the same ops through complementary clips: the amber one
-    // outside the printable border, the real one inside it. Splitting them by
-    // clip rather than by op means a single line that crosses the border is
-    // shown half plotted and half lost, which is what actually happens.
+    // outside the clip rectangle, the real one inside it. Splitting them by
+    // clip rather than by op means a single line that crosses the boundary is
+    // shown half plotted and half lost, which is what actually happens. The
+    // clip is the picked area (Window/Display/Extents) intersected with the
+    // printable rectangle — the same one output/pdf.js clips to — not the
+    // printable rectangle alone, so this also shows geometry outside a picked
+    // Window being cut off, not just geometry past the sheet's margin.
     const ops = plan.ops || [];
-    if (plan.printable) {
+    const clipMM = plan.clipMM || plan.printable;
+    if (clipMM) {
       context.save();
       context.beginPath();
       context.rect(0, 0, widthPx, heightPx);
-      plotPreviewRect(context, view, plan.printable);
+      plotPreviewRect(context, view, clipMM);
       context.clip('evenodd');
       context.globalAlpha = PLOT_PREVIEW_CLIPPED_ALPHA;
       drawPlotPreviewOps(context, view, ops, true);
@@ -3649,7 +3699,7 @@ kbd { font-size: 9px; opacity: .65; }
 
       context.save();
       context.beginPath();
-      plotPreviewRect(context, view, plan.printable);
+      plotPreviewRect(context, view, clipMM);
       context.clip();
       drawPlotPreviewOps(context, view, ops, false);
       context.restore();
@@ -5506,6 +5556,45 @@ kbd { font-size: 9px; opacity: .65; }
       return { ...entity, id, position: mirrorPoint(entity.position, axisA, axisB) };
     }
     return JSON.parse(JSON.stringify(entity));
+  }
+
+  // rotateEntity/mirrorEntity already carry a DIM's own p1/p2/linePoint through
+  // correctly, but they clone `refs` untouched — fine for CENTER/MID/VERTEX/
+  // SEGMENT (nothing angular to update) but wrong for QUAD/POINT, which name a
+  // spot by an absolute angle, and for an ARC's START/END, whose meaning swaps
+  // under mirror (see mirrorEntity's ARC branch above). Both only need fixing
+  // when the dimension and the thing it measures are transformed in the very
+  // same operation: updateAssociativeDimensions (model/dimension.js) re-derives
+  // p1/p2 from these refs on every commit, so a stale ref would otherwise
+  // silently overwrite the entity's own already-correct rotated/mirrored point.
+  // A target left OUT of the operation is deliberately left alone — its
+  // dimension keeps measuring whatever that entity currently is, which is the
+  // whole point of an associative reference.
+  function realignDimensionReferences(entities, idSet, kind, params) {
+    const byId = new Map(entities.map(entity => [entity.id, entity]));
+    return entities.map(entity => {
+      if (entity.type !== 'DIM' || !idSet.has(entity.id) || !entity.refs) return entity;
+      let changed = false;
+      const refs = entity.refs.map(ref => {
+        if (!ref || !idSet.has(ref.entityId)) return ref;
+        if (ref.part === 'QUAD' || ref.part === 'POINT') {
+          changed = true;
+          const angle = kind === 'rotate'
+            ? normalizeAngle(ref.angle + params.angle)
+            : mirrorAngle(ref.angle, params.axisA, params.axisB);
+          return { ...ref, angle };
+        }
+        // Only mirroring swaps an ARC's start/end sense (rotateEntity's ARC
+        // branch turns both angles by the same amount and keeps their order).
+        if (kind === 'mirror' && (ref.part === 'START' || ref.part === 'END') &&
+            byId.get(ref.entityId)?.type === 'ARC') {
+          changed = true;
+          return { ...ref, part: ref.part === 'START' ? 'END' : 'START' };
+        }
+        return ref;
+      });
+      return changed ? { ...entity, refs } : entity;
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -8635,7 +8724,16 @@ kbd { font-size: 9px; opacity: .65; }
     const p1 = dimType === 'RADIUS'
       ? { ...target.center }
       : circularPoint(target.center, target.radius, angle + Math.PI);
-    const refs = [resolveEntityReference(p1), resolveEntityReference(edge)];
+    // Built straight from the target the user picked rather than resolved by
+    // searching the whole drawing for a coincident feature: a line or another
+    // circle that merely happens to share the same centre or edge point must
+    // never be able to steal this association (see resolveEntityReference).
+    const refs = [
+      dimType === 'RADIUS'
+        ? { entityId: target.id, part: 'CENTER' }
+        : { entityId: target.id, part: 'POINT', angle: normalizeAngle(angle + Math.PI) },
+      { entityId: target.id, part: 'POINT', angle },
+    ];
 
     // linePoint sits on the measured line itself, so the shared geometry
     // projects p1/p2 onto themselves and draws the dimension line straight
@@ -9844,9 +9942,10 @@ kbd { font-size: 9px; opacity: .65; }
       updatePrompt('The selected objects are no longer editable.');
       return;
     }
-    const entities = state.entities.map(entity =>
+    let entities = state.entities.map(entity =>
       idSet.has(entity.id) ? rotateEntity(entity, operation.base, reducedAngle) : entity,
     );
+    entities = realignDimensionReferences(entities, idSet, 'rotate', { angle: reducedAngle });
     if (!commitGeometry(entities)) return;
     state.selected = new Set(idSet);
     setMode('SELECT');
@@ -9905,10 +10004,13 @@ kbd { font-size: 9px; opacity: .65; }
       return;
     }
 
+    const axisA = operation.base;
+    const axisB = operation.second;
     if (eraseSource) {
-      const entities = state.entities.map(entity =>
-        idSet.has(entity.id) ? mirrorEntity(entity, operation.base, operation.second) : entity,
+      let entities = state.entities.map(entity =>
+        idSet.has(entity.id) ? mirrorEntity(entity, axisA, axisB) : entity,
       );
+      entities = realignDimensionReferences(entities, idSet, 'mirror', { axisA, axisB });
       if (!commitGeometry(entities)) return;
       state.selected = new Set(idSet);
     } else {
@@ -9916,9 +10018,10 @@ kbd { font-size: 9px; opacity: .65; }
       // duplicateEntities, which is what lets a mirrored dimension be remapped
       // onto the mirrored copy of the geometry it measures rather than left
       // pointing at the original.
-      const reflected = state.entities
+      let reflected = state.entities
         .filter(entity => idSet.has(entity.id))
-        .map(entity => mirrorEntity(entity, operation.base, operation.second));
+        .map(entity => mirrorEntity(entity, axisA, axisB));
+      reflected = realignDimensionReferences(reflected, idSet, 'mirror', { axisA, axisB });
       const { entities: copies, nextId } = duplicateEntities(reflected, state.nextId);
       if (!commitGeometry([...state.entities, ...copies], { nextId })) return;
       state.selected = new Set(copies.map(entity => entity.id));
@@ -9926,11 +10029,329 @@ kbd { font-size: 9px; opacity: .65; }
     setMode('SELECT');
   }
 
+  // ARRAY keeps its settings between invocations, the way OFFSET/FILLET do —
+  // tracing a grid of columns or a bolt circle almost always means the same
+  // counts and spacing as the last one.
+  const lastArraySettings = {
+    type: 'RECT',
+    rows: 3, cols: 3, rowSpacing: 1, colSpacing: 1,
+    items: 6, angleFill: 360, rotateItems: true,
+  };
+
+  const ARRAY_TYPE_KEYWORDS = { R: 'RECT', RECT: 'RECT', RECTANGULAR: 'RECT', P: 'POLAR', POLAR: 'POLAR' };
+
+  // The counts (rows/columns/items) share one whole-number rule; the two
+  // spacings and the angle-to-fill share a different one, so distance() below
+  // switches on stage rather than repeating either check per field.
+  function arrayCountStage(operation, field, nextStage, value) {
+    if (!Number.isInteger(value) || value < 1) {
+      updatePrompt('Enter a whole number, 1 or more.');
+      return true;
+    }
+    operation[field] = value;
+    lastArraySettings[field] = value;
+    operation.stage = nextStage;
+    updatePrompt();
+    draw();
+    return true;
+  }
+
+  defineCommand('ARRAY', {
+    additiveSelection: true,
+
+    begin() {
+      const ids = editableSelectionIds();
+      state.transform = {
+        type: 'ARRAY',
+        stage: ids.length ? 'TYPE' : 'SELECT',
+        ids,
+        arrayType: null,
+        rows: null, cols: null, rowSpacing: null, colSpacing: null,
+        center: null, items: null, angleFill: null, rotateItems: null,
+      };
+    },
+
+    selectsObjects() {
+      return state.transform?.type === 'ARRAY' && state.transform.stage === 'SELECT';
+    },
+
+    acceptsPoint() {
+      return state.transform?.type === 'ARRAY' && state.transform.stage === 'CENTER';
+    },
+
+    prompt() {
+      const operation = state.transform;
+      const stage = operation?.stage || 'SELECT';
+      if (stage === 'SELECT') return transformSelectionPrompt('ARRAY');
+      if (stage === 'TYPE') {
+        return `ARRAY — Enter array type [Rectangular/Polar] <${lastArraySettings.type === 'POLAR' ? 'Polar' : 'Rectangular'}>:`;
+      }
+      if (stage === 'ROWS') return `ARRAY — Enter number of rows <${lastArraySettings.rows}>:`;
+      if (stage === 'COLS') return `ARRAY — Enter number of columns <${lastArraySettings.cols}>:`;
+      if (stage === 'ROWSPACE') {
+        return `ARRAY — Specify distance between rows <${formatLengthLabel(lastArraySettings.rowSpacing)}>:`;
+      }
+      if (stage === 'COLSPACE') {
+        return `ARRAY — Specify distance between columns <${formatLengthLabel(lastArraySettings.colSpacing)}>:`;
+      }
+      if (stage === 'CENTER') return 'ARRAY — Specify center point of array:';
+      if (stage === 'ITEMS') return `ARRAY — Enter number of items in array <${lastArraySettings.items}>:`;
+      if (stage === 'ANGLEFILL') {
+        return `ARRAY — Specify angle to fill, +=ccw/-=cw <${lastArraySettings.angleFill}°>:`;
+      }
+      if (stage === 'ROTATEITEMS') {
+        return `ARRAY — Rotate arrayed objects? [Yes/No] <${lastArraySettings.rotateItems ? 'Yes' : 'No'}>:`;
+      }
+      // CONFIRM
+      return operation.arrayType === 'POLAR'
+        ? `ARRAY — ${operation.items} items over ${operation.angleFill}°, rotate ${operation.rotateItems ? 'Yes' : 'No'}; Enter to accept:`
+        : `ARRAY — ${operation.rows}×${operation.cols} grid, ${formatLengthLabel(operation.rowSpacing)} rows × ${formatLengthLabel(operation.colSpacing)} columns; Enter to accept:`;
+    },
+
+    keyword(text) {
+      const operation = state.transform;
+      if (!operation || operation.type !== 'ARRAY') return false;
+      const answer = text.trim().toUpperCase();
+      if (operation.stage === 'TYPE') {
+        const arrayType = ARRAY_TYPE_KEYWORDS[answer];
+        if (!arrayType) return false;
+        operation.arrayType = arrayType;
+        lastArraySettings.type = arrayType;
+        operation.stage = arrayType === 'RECT' ? 'ROWS' : 'CENTER';
+        updatePrompt();
+        draw();
+        return true;
+      }
+      if (operation.stage === 'ROTATEITEMS') {
+        if (!YES_KEYWORDS.includes(answer) && !NO_KEYWORDS.includes(answer)) return false;
+        operation.rotateItems = YES_KEYWORDS.includes(answer);
+        lastArraySettings.rotateItems = operation.rotateItems;
+        operation.stage = 'CONFIRM';
+        updatePrompt();
+        draw();
+        return true;
+      }
+      return false;
+    },
+
+    point(p) {
+      const operation = state.transform;
+      if (!operation || operation.type !== 'ARRAY' || operation.stage !== 'CENTER') return;
+      operation.center = { ...p };
+      operation.stage = 'ITEMS';
+      updatePrompt();
+      draw();
+    },
+
+    distance(value) {
+      const operation = state.transform;
+      if (!operation || operation.type !== 'ARRAY') return false;
+      const stage = operation.stage;
+      if (stage === 'ROWS') return arrayCountStage(operation, 'rows', 'COLS', value);
+      if (stage === 'COLS') return arrayCountStage(operation, 'cols', 'ROWSPACE', value);
+      if (stage === 'ITEMS') return arrayCountStage(operation, 'items', 'ANGLEFILL', value);
+      if (stage === 'ROWSPACE' || stage === 'COLSPACE') {
+        if (value === 0) {
+          updatePrompt('Spacing must not be zero.');
+          return true;
+        }
+        if (stage === 'ROWSPACE') {
+          operation.rowSpacing = value;
+          lastArraySettings.rowSpacing = value;
+          operation.stage = 'COLSPACE';
+        } else {
+          operation.colSpacing = value;
+          lastArraySettings.colSpacing = value;
+          operation.stage = 'CONFIRM';
+        }
+        updatePrompt();
+        draw();
+        return true;
+      }
+      if (stage === 'ANGLEFILL') {
+        if (value === 0 || Math.abs(value) > 360) {
+          updatePrompt('Angle to fill must be nonzero and no more than 360°.');
+          return true;
+        }
+        operation.angleFill = value;
+        lastArraySettings.angleFill = value;
+        operation.stage = 'ROTATEITEMS';
+        updatePrompt();
+        draw();
+        return true;
+      }
+      return false;
+    },
+
+    previewReady() {
+      return state.transform?.type === 'ARRAY' && state.transform.stage === 'CONFIRM';
+    },
+
+    preview() {
+      const operation = state.transform;
+      const idSet = new Set(operation.ids);
+      const source = state.entities.filter(entity => idSet.has(entity.id) && isEntityEditable(entity));
+      if (!source.length) return;
+      const batches = operation.arrayType === 'POLAR'
+        ? polarArrayBatches(source, idSet, operation)
+        : rectangularArrayBatches(source, operation);
+      for (const batch of batches) {
+        for (const entity of batch) drawEntity(entity, true);
+      }
+    },
+
+    // One rule for Enter at every stage: answer whichever question is open,
+    // accepting the bracketed default when nothing was typed — the same
+    // contract OFFSET's DISTANCE stage uses.
+    finish() {
+      const operation = state.transform;
+      if (!operation || operation.type !== 'ARRAY') return false;
+      const stage = operation.stage;
+      if (stage === 'SELECT') return acceptArraySelection();
+      if (stage === 'TYPE') return Boolean(this.keyword(lastArraySettings.type === 'POLAR' ? 'P' : 'R'));
+      if (stage === 'ROWS') return Boolean(this.distance(lastArraySettings.rows));
+      if (stage === 'COLS') return Boolean(this.distance(lastArraySettings.cols));
+      if (stage === 'ROWSPACE') return Boolean(this.distance(lastArraySettings.rowSpacing));
+      if (stage === 'COLSPACE') return Boolean(this.distance(lastArraySettings.colSpacing));
+      if (stage === 'ITEMS') return Boolean(this.distance(lastArraySettings.items));
+      if (stage === 'ANGLEFILL') return Boolean(this.distance(lastArraySettings.angleFill));
+      if (stage === 'ROTATEITEMS') return Boolean(this.keyword(lastArraySettings.rotateItems ? 'Y' : 'N'));
+      if (stage === 'CONFIRM') {
+        applyArray();
+        return true;
+      }
+      return false;
+    },
+  });
+
+  function acceptArraySelection() {
+    const operation = state.transform;
+    if (!operation || operation.type !== 'ARRAY' || operation.stage !== 'SELECT') return false;
+    const ids = editableSelectionIds();
+    if (!ids.length) {
+      updatePrompt('No objects selected.');
+      return true;
+    }
+    operation.ids = ids;
+    operation.stage = 'TYPE';
+    updatePrompt();
+    draw();
+    return true;
+  }
+
+  // One instance's worth of source entities, still carrying their original ids
+  // so duplicateEntities can remap any reference (e.g. a dimension measuring a
+  // line in the same selection) onto that instance's own copies rather than
+  // another instance's.
+  function rectangularArrayBatches(source, operation) {
+    const { rows, cols, rowSpacing, colSpacing } = operation;
+    const batches = [];
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        if (row === 0 && col === 0) continue; // the original occupies this cell
+        batches.push(source.map(entity => translateEntity(entity, col * colSpacing, row * rowSpacing)));
+      }
+    }
+    return batches;
+  }
+
+  // A full-circle fill spaces n items n ways (the last gap wraps back to the
+  // first item, which is why it must not be placed again); a partial fill
+  // spaces them across n-1 gaps, since both ends are real, distinct items.
+  function polarArrayBatches(source, idSet, operation) {
+    const { center, items, angleFill, rotateItems } = operation;
+    const isFullCircle = Math.abs(Math.abs(angleFill) - 360) < 1e-9;
+    const stepDegrees = isFullCircle ? angleFill / items : angleFill / (items - 1);
+
+    // "Don't rotate items" still moves the whole selection as one rigid group,
+    // carried by the group's own bounding-box centre rather than each entity's
+    // own — an OFFSET-drawn bolt pattern of identical bolts should stay
+    // upright as one shape, not fan out per entity.
+    let groupCenter = null;
+    if (!rotateItems) {
+      const boxes = source.map(entityBBox).filter(Boolean);
+      const box = {
+        minX: Math.min(...boxes.map(b => b.minX)), maxX: Math.max(...boxes.map(b => b.maxX)),
+        minY: Math.min(...boxes.map(b => b.minY)), maxY: Math.max(...boxes.map(b => b.maxY)),
+      };
+      groupCenter = { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
+    }
+
+    const batches = [];
+    for (let i = 1; i < items; i++) {
+      const angle = stepDegrees * i * Math.PI / 180;
+      if (rotateItems) {
+        let rotated = source.map(entity => rotateEntity(entity, center, angle));
+        rotated = realignDimensionReferences(rotated, idSet, 'rotate', { angle });
+        batches.push(rotated);
+      } else {
+        const rotatedCenter = rotatePoint(groupCenter, center, angle);
+        const dx = rotatedCenter.x - groupCenter.x;
+        const dy = rotatedCenter.y - groupCenter.y;
+        batches.push(source.map(entity => translateEntity(entity, dx, dy)));
+      }
+    }
+    return batches;
+  }
+
+  function applyArray() {
+    const operation = state.transform;
+    if (!operation || operation.type !== 'ARRAY' || operation.stage !== 'CONFIRM') return;
+
+    const idSet = new Set(state.entities
+      .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
+      .map(entity => entity.id));
+    if (!idSet.size) {
+      updatePrompt('The selected objects are no longer editable.');
+      return;
+    }
+    const source = state.entities.filter(entity => idSet.has(entity.id));
+    const batches = operation.arrayType === 'POLAR'
+      ? polarArrayBatches(source, idSet, operation)
+      : rectangularArrayBatches(source, operation);
+
+    let nextId = state.nextId;
+    const allCopies = [];
+    for (const batch of batches) {
+      const { entities: copies, nextId: after } = duplicateEntities(batch, nextId);
+      allCopies.push(...copies);
+      nextId = after;
+    }
+    if (!commitGeometry([...state.entities, ...allCopies], { nextId })) return;
+    state.selected = new Set([...idSet, ...allCopies.map(entity => entity.id)]);
+    setMode('SELECT');
+  }
+
   // ---------------------------------------------------------------------------
   // model/persistence.js
   // ---------------------------------------------------------------------------
 
-  function applyDocument(documentData, dirty = true) {
+  // New and Open replace the live document outright. If there is an edit newer
+  // than what's actually persisted — still sitting in the debounced autosave
+  // timer — flushing it here, before state is wiped, is what lets the next
+  // autosave's backup rotation actually preserve it, instead of the pending
+  // write simply being cancelled by scheduleAutosave() (see dirty.js) with
+  // nothing ever written anywhere to show for it.
+  //
+  // Recovery deliberately does not go through this: it already reads a specific
+  // autosave record and decides whether to promote it into the primary slot
+  // based on that read, and flushing the live document in the middle of that
+  // (applyDocument is what recovery uses to land the recovered copy) would
+  // overwrite the very record recovery just decided about. The live document at
+  // that point is also what recovery's own confirmation prompt already asked
+  // about discarding, so there is nothing new happening on the way out that the
+  // user has not already been told about.
+  async function flushOutgoingDocument() {
+    if (!state.documentDirty) return;
+    if (autosaveTimer !== null) { clearTimeout(autosaveTimer); autosaveTimer = null; }
+    try {
+      await writeAutosave();
+    } catch (error) {
+      setFileStatus(`Could not save the current drawing before replacing it: ${error.message || 'unknown error'}`, true);
+    }
+  }
+
+  async function applyDocument(documentData, dirty = true) {
     releaseBackupPin();
     state.entities = JSON.parse(JSON.stringify(documentData.entities));
     state.layers = JSON.parse(JSON.stringify(documentData.layers));
@@ -9951,7 +10372,7 @@ kbd { font-size: 9px; opacity: .65; }
     zoomExtents();
   }
 
-  function loadDocumentText(text, sourceName = '') {
+  async function loadDocumentText(text, sourceName = '') {
     const parsed = parseDocumentText(text);
     if (parsed.error) {
       setFileStatus(parsed.error, true);
@@ -9960,7 +10381,8 @@ kbd { font-size: 9px; opacity: .65; }
     if (parsed.document.name === 'Untitled' && sourceName) {
       parsed.document.name = sourceName.replace(/(?:\.zbCAD)?\.json$/i, '').trim() || 'Untitled';
     }
-    applyDocument(parsed.document, true);
+    await flushOutgoingDocument();
+    await applyDocument(parsed.document, true);
     setFileStatus(`${state.drawingName} · Opened`);
     return true;
   }
@@ -9990,8 +10412,7 @@ kbd { font-size: 9px; opacity: .65; }
           (backupOnly ? 'This replaces the current drawing. Use Save first if you need a separate copy. Cancel keeps the current drawing.' :
             'Choose Cancel to start a blank drawing. Recovery copies remain available until later changes are autosaved.'),
         )) return false;
-        if (autosaveTimer !== null) { clearTimeout(autosaveTimer); autosaveTimer = null; }
-        applyDocument(parsed.document, false);
+        await applyDocument(parsed.document, false);
         // Anything but the live primary — a backup, a legacy key, or the copy the
         // unload path left in localStorage — is promoted to the primary at once,
         // so the next autosave cannot overwrite the drawing that was recovered.
@@ -10012,11 +10433,12 @@ kbd { font-size: 9px; opacity: .65; }
     }
   }
 
-  function newDrawing(skipConfirmation = false) {
+  async function newDrawing(skipConfirmation = false) {
     if (!skipConfirmation && state.entities.length &&
         !window.confirm('Start a new drawing? Use Save first if you need a separate copy of the current drawing.')) {
       return false;
     }
+    await flushOutgoingDocument();
     releaseBackupPin();
     state.entities = [];
     state.layers = createDefaultLayers();
@@ -10816,7 +11238,17 @@ kbd { font-size: 9px; opacity: .65; }
       points,
       closed,
     }, bulges);
-    const entities = [...state.entities.filter(entity => !sourceIds.has(entity.id)), joined];
+    // Every source point survives somewhere in the joined path, so a dimension
+    // that measured one is re-resolved against the joined result rather than
+    // left pointing at a deleted id (see remapDimensionRefs).
+    const sourceById = new Map(selected.map(entity => [entity.id, entity]));
+    const candidatesForId = new Map(selected.map(entity => [entity.id, [joined]]));
+    const entities = [
+      ...state.entities
+        .filter(entity => !sourceIds.has(entity.id))
+        .map(entity => remapDimensionRefs(entity, sourceById, candidatesForId)),
+      joined,
+    ];
     if (!commitGeometry(entities, { nextId: state.nextId + 1 })) return { error: 'Joining would create invalid geometry.' };
     state.selected = new Set([joined.id]);
     return { joined: selected.length };
@@ -10848,25 +11280,31 @@ kbd { font-size: 9px; opacity: .65; }
     const selected = visibleSelectedEntities().filter(isEntityEditable);
     if (!selected.length) return { error: 'No objects selected.' };
 
+    // Ids are assigned up front, before any dimension refs are remapped, so
+    // remapping has real target ids to point the reference at rather than
+    // having to patch them in afterward.
+    let nextId = state.nextId;
     const pieces = new Map();
+    const created = [];
     for (const entity of selected) {
       const exploded = explodedPieces(entity);
-      if (exploded) pieces.set(entity.id, exploded);
+      if (!exploded) continue;
+      const finalized = exploded.map(piece => ({ id: nextId++, ...piece }));
+      finalized.forEach(piece => created.push(piece.id));
+      pieces.set(entity.id, finalized);
     }
     if (!pieces.size) return { error: 'Select a polyline or rectangle to explode.' };
 
-    let nextId = state.nextId;
-    const created = [];
+    // Every source vertex/segment survives as a piece of its own, so a
+    // dimension that measured one is re-resolved against that source's own
+    // pieces rather than left pointing at a deleted id (see remapDimensionRefs).
+    const staleById = new Map(selected.filter(entity => pieces.has(entity.id)).map(entity => [entity.id, entity]));
     // Replacing in place rather than appending keeps the new segments in the
     // draw order the polyline occupied.
     const entities = state.entities.flatMap(entity => {
       const exploded = pieces.get(entity.id);
-      if (!exploded) return [entity];
-      return exploded.map(piece => {
-        const line = { id: nextId++, ...piece };
-        created.push(line.id);
-        return line;
-      });
+      if (exploded) return exploded;
+      return [remapDimensionRefs(entity, staleById, pieces)];
     });
     if (!commitGeometry(entities, { nextId })) return { error: 'Exploding would create invalid geometry.' };
     state.selected = new Set(created);
@@ -11505,6 +11943,7 @@ kbd { font-size: 9px; opacity: .65; }
     A:'ARC', ARC:'ARC',
     M:'MOVE', MOVE:'MOVE', CO:'COPY', COPY:'COPY', CP:'COPY', RO:'ROTATE', ROTATE:'ROTATE',
     SC:'SCALE', SCALE:'SCALE', MI:'MIRROR', MIRROR:'MIRROR',
+    AR:'ARRAY', ARRAY:'ARRAY',
     E:'ERASE', ERASE:'ERASE', DEL:'ERASE', DELETE:'ERASE',
     O:'OFFSET', OFFSET:'OFFSET',
     F:'FILLET', FILLET:'FILLET', CHA:'CHAMFER', CHAMFER:'CHAMFER',
@@ -11543,7 +11982,18 @@ kbd { font-size: 9px; opacity: .65; }
     return commandSelectsObjects() || state.mode === 'SELECT';
   }
 
-  canvas.addEventListener('mousemove', ev => {
+  // The flags a drag can leave set: panning, an in-progress box select, and a
+  // grip press. Cleared here without touching anything else — no commit, no
+  // selection change — so a cancelled or interrupted drag just stops rather
+  // than pretending to have finished normally.
+  function resetInteractionState() {
+    state.panning = false;
+    state.panStart = null;
+    state.dragSelect = null;
+    state.gripPress = false;
+  }
+
+  canvas.addEventListener('pointermove', ev => {
     state.mouseScreen = canvasPoint(ev);
     state.mouseWorld = screenToWorld(state.mouseScreen);
 
@@ -11558,10 +12008,14 @@ kbd { font-size: 9px; opacity: .65; }
     draw();
   });
 
-  canvas.addEventListener('mousedown', ev => {
+  canvas.addEventListener('pointerdown', ev => {
     state.mouseScreen = canvasPoint(ev);
     state.mouseWorld = screenToWorld(state.mouseScreen);
     state.mouseDownScreen = { ...state.mouseScreen };
+    // Once captured, this pointer's move/up events keep going to canvas even if
+    // it leaves the element's bounds (or the window) before releasing — the fix
+    // for a pan/drag/grip that used to stick when the button came up outside.
+    canvas.setPointerCapture?.(ev.pointerId);
 
     if (ev.button === 1) {
       state.panning = true;
@@ -11584,7 +12038,7 @@ kbd { font-size: 9px; opacity: .65; }
     }
   });
 
-  canvas.addEventListener('mouseup', ev => {
+  canvas.addEventListener('pointerup', ev => {
     state.mouseScreen = canvasPoint(ev);
     state.mouseWorld = screenToWorld(state.mouseScreen);
 
@@ -11628,6 +12082,17 @@ kbd { font-size: 9px; opacity: .65; }
       }
     }
   });
+
+  // Abrupt ends to a drag that pointerup never sees: the browser cancels the
+  // pointer outright (pointercancel — a touch turning into a scroll, for
+  // instance), capture is taken away some other way (lostpointercapture), or
+  // the window loses focus entirely, as alt-tabbing away mid-drag does, which
+  // leaves no pointerup to ever arrive. All three just drop the interaction —
+  // no commit, no selection change — rather than leave it stuck until the next
+  // unrelated click happens to clear it.
+  canvas.addEventListener('pointercancel', resetInteractionState);
+  canvas.addEventListener('lostpointercapture', resetInteractionState);
+  window.addEventListener('blur', resetInteractionState);
 
   // AutoCAD's DDEDIT is a typed command; a double-click is the mouse-driven
   // shortcut most drawing programs offer for the same thing, so it lives here
@@ -12255,7 +12720,7 @@ kbd { font-size: 9px; opacity: .65; }
     if (!file) return;
     try {
       const text = await file.text();
-      if (loadDocumentText(text, file.name)) canvas.focus();
+      if (await loadDocumentText(text, file.name)) canvas.focus();
     } catch {
       setFileStatus('Could not read the selected drawing file', true);
     }
