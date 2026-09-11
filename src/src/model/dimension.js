@@ -176,8 +176,8 @@ export function entityReferenceCandidates(entity) {
   return [];
 }
 
-export function resolveEntityReference(point) {
-  for (const entity of state.entities) {
+export function resolveEntityReference(point, entities = state.entities) {
+  for (const entity of entities) {
     if (entity.type === 'DIM' || !isEntityVisible(entity)) continue;
     for (const candidate of entityReferenceCandidates(entity)) {
       if (dist(point, candidate.point) > REFERENCE_TOLERANCE) continue;
@@ -295,6 +295,31 @@ export function pointForReference(entity, ref) {
     return null;
   }
   return null;
+}
+
+// JOIN and EXPLODE replace a source entity with different-shaped geometry
+// (a polyline, or its individual segments) under new ids, but every point the
+// source entity had is still there somewhere in the replacement — so rather
+// than tracking segment-by-segment provenance through the merge/split, a
+// dimension's old world point is recovered from the doomed source (via
+// pointForReference) and re-resolved against the replacement geometry only
+// (via resolveEntityReference, scoped so an unrelated coincident entity can't
+// steal it the way CAD-002 could). `candidatesForId` maps each stale entity id
+// to the replacement entities its own points should be looked for in. A point
+// that doesn't resolve there (an ARC's CENTER has no equivalent on a
+// bulge-based polyline segment, for instance) becomes an explicit null
+// reference — disassociated — rather than a dangling pointer to a deleted id.
+export function remapDimensionRefs(entity, staleById, candidatesForId) {
+  if (entity.type !== 'DIM' || !entity.refs || (!entity.refs[0] && !entity.refs[1])) return entity;
+  let changed = false;
+  const refs = entity.refs.map(ref => {
+    if (!ref || !staleById.has(ref.entityId)) return ref;
+    changed = true;
+    const oldPoint = pointForReference(staleById.get(ref.entityId), ref);
+    const candidates = candidatesForId.get(ref.entityId) || [];
+    return (oldPoint && resolveEntityReference(oldPoint, candidates)) || null;
+  });
+  return changed ? { ...entity, refs } : entity;
 }
 
 // Runs once per commit (see commitGeometry) over the full candidate entity

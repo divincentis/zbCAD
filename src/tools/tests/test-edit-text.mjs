@@ -14,8 +14,8 @@ function pointNear(p, x, y, tol = 1e-6) { return p && near(p.x, x, tol) && near(
 const { api } = boot(BUNDLE);
 const P = (x, y) => ({ x, y });
 
-function reset() {
-  api.newDrawing();
+async function reset() {
+  await api.newDrawing();
   api.setOrtho(false);
   api.setAllSnapTypes(false);
 }
@@ -45,7 +45,7 @@ function entityById(id) { return api.entities.find(e => e.id === id); }
 // ---------------------------------------------------------------------------
 // TEXT: retype content in place
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const text = placeText(P(10, 20), 2, 15, 'ORIGINAL');
   const ok = api.startTextEdit(entityById(text.id));
@@ -71,7 +71,7 @@ reset();
 // ---------------------------------------------------------------------------
 // MTEXT: retype content in place, width/wrap preserved
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const mtext = placeMText(P(0, 0), 40, 3, 0, ['LINE ONE', 'LINE TWO']);
   api.startTextEdit(entityById(mtext.id));
@@ -95,7 +95,7 @@ reset();
 // ---------------------------------------------------------------------------
 // Canceling an edit leaves the original content untouched
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const text = placeText(P(0, 0), 2, 0, 'KEEP ME');
   api.startTextEdit(entityById(text.id));
@@ -108,7 +108,7 @@ reset();
 // startTextEdit refused because another command is already running must not
 // leave anything behind that hijacks the next real command.
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const text = placeText(P(0, 0), 2, 0, 'FIRST');
   api.startTextEdit(entityById(text.id)); // now mid-edit, mode TEXT
@@ -125,7 +125,7 @@ reset();
 // ---------------------------------------------------------------------------
 // A locked or hidden layer refuses the edit
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   // Layer 0 is current here, and the current layer can't be locked or
   // hidden — a second layer is needed to exercise that gate at all.
@@ -158,7 +158,7 @@ reset();
 // ---------------------------------------------------------------------------
 // startTextEdit refuses non-text entities
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   api.startCommand('LINE');
   api.commitPoint(P(0, 0));
@@ -171,7 +171,7 @@ reset();
 // ---------------------------------------------------------------------------
 // Undo restores the pre-edit content
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const text = placeText(P(0, 0), 2, 0, 'BEFORE');
   api.startTextEdit(entityById(text.id));
@@ -184,7 +184,7 @@ reset();
 // ---------------------------------------------------------------------------
 // updateTextContent directly
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const text = placeText(P(0, 0), 2, 0, 'DIRECT');
   const ok = api.updateTextContent(text.id, 'VIA HELPER');

@@ -14,8 +14,8 @@ function pointNear(p, x, y, tol = 1e-6) { return p && near(p.x, x, tol) && near(
 const { api } = boot(BUNDLE);
 const P = (x, y) => ({ x, y });
 
-function reset() {
-  api.newDrawing();
+async function reset() {
+  await api.newDrawing();
   api.setOrtho(false);
   api.setAllSnapTypes(false);
 }
@@ -32,6 +32,13 @@ function drawArc(a, b, c) {
   api.commitPoint(c);
   return api.entities[api.entityCount - 1];
 }
+function drawLine(a, b) {
+  api.startCommand('LINE');
+  api.commitPoint(a);
+  api.commitPoint(b);
+  api.finishCurrent();
+  return api.entities[api.entityCount - 1];
+}
 function entityById(id) { return api.entities.find(e => e.id === id); }
 function lastDim() { return [...api.entities].reverse().find(e => e.type === 'DIM'); }
 function measureOf(dim) { return api.dimensionGeometry(dim).measure; }
@@ -39,7 +46,7 @@ function measureOf(dim) { return api.dimensionGeometry(dim).measure; }
 // ---------------------------------------------------------------------------
 // DIMRADIUS
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const circle = drawCircle(P(0, 0), 5);
   api.startCommand('DIMRADIUS');
@@ -69,7 +76,7 @@ reset();
 
 // The leader angle comes from the cursor, so a dimension pulled up-left has to
 // land on that side of the circle.
-reset();
+await reset();
 {
   drawCircle(P(0, 0), 4);
   api.startCommand('DIMRADIUS');
@@ -85,7 +92,7 @@ reset();
 // ---------------------------------------------------------------------------
 // DIMDIAMETER
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const circle = drawCircle(P(2, 3), 6);
   api.startCommand('DIMDIAMETER');
@@ -114,7 +121,7 @@ reset();
 // The everyday case is a leader pulled to an arbitrary angle, not to one of
 // the four quadrants — that is the case an earlier round of this work got
 // wrong for linear dimensions, so it is asserted directly here.
-reset();
+await reset();
 {
   const circle = drawCircle(P(0, 0), 5);
   api.startCommand('DIMDIAMETER');
@@ -137,7 +144,7 @@ reset();
     near(measureOf(entityById(dim.id)), 20), String(measureOf(entityById(dim.id))));
 }
 
-reset();
+await reset();
 {
   const circle = drawCircle(P(0, 0), 5);
   api.startCommand('DIMRADIUS');
@@ -159,7 +166,7 @@ reset();
 // ---------------------------------------------------------------------------
 // Associativity — the whole point of routing through the existing refs
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const circle = drawCircle(P(0, 0), 5);
   api.startCommand('DIMRADIUS');
@@ -191,7 +198,7 @@ reset();
     String(measureOf(moved)));
 }
 
-reset();
+await reset();
 {
   const circle = drawCircle(P(0, 0), 5);
   api.startCommand('DIMDIAMETER');
@@ -207,9 +214,37 @@ reset();
     near(measureOf(entityById(dimId)), 30), String(measureOf(entityById(dimId))));
 }
 
+// CAD-002 — a coincident unrelated object must not steal the association.
+// A line's START sits exactly on the circle's centre, and the line is created
+// first, so a drawing-wide coincidence search would find it before the circle
+// itself and silently bind the centre-side reference to the wrong object. The
+// leader is pulled to the top of the circle — off the line entirely — so the
+// initial pick unambiguously targets the circle rather than the line.
+await reset();
+{
+  const line = drawLine(P(0, 0), P(10, 0));
+  const circle = drawCircle(P(0, 0), 5);
+  api.startCommand('DIMRADIUS');
+  api.commitPoint(P(0, 5));
+  api.commitPoint(P(0, 8));
+  const dim = lastDim();
+  check('the radius dimension references the circle, not the coincident line',
+    dim.refs.every(ref => ref && ref.entityId === circle.id), JSON.stringify(dim.refs));
+
+  api.state.selected.clear();
+  api.state.selected.add(line.id);
+  api.startCommand('SCALE');
+  api.commitPoint(P(0, 0));
+  api.commitScaleInput('2');
+  check('scaling the unrelated coincident line does not change the radius reading',
+    near(measureOf(entityById(dim.id)), 5), String(measureOf(entityById(dim.id))));
+  check('scaling the unrelated line left the circle itself alone',
+    near(entityById(circle.id).radius, 5), String(entityById(circle.id).radius));
+}
+
 // A dimension whose circle is deleted freezes rather than erroring, which is
 // the established behaviour for every other reference.
-reset();
+await reset();
 {
   const circle = drawCircle(P(0, 0), 5);
   api.startCommand('DIMRADIUS');
@@ -228,7 +263,7 @@ reset();
 // ---------------------------------------------------------------------------
 // Arcs and refusals
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   // A quarter arc from 0° to 90° at radius 4.
   const arc = drawArc(P(4, 0), P(4 * Math.cos(Math.PI / 4), 4 * Math.sin(Math.PI / 4)), P(0, 4));
@@ -241,7 +276,7 @@ reset();
   check('DIMRADIUS measures the arc radius', near(measureOf(dim), 4), String(measureOf(dim)));
 }
 
-reset();
+await reset();
 {
   const arc = drawArc(P(4, 0), P(4 * Math.cos(Math.PI / 4), 4 * Math.sin(Math.PI / 4)), P(0, 4));
   api.startCommand('DIMRADIUS');
@@ -257,7 +292,7 @@ reset();
     near(Math.hypot(dim.p2.x - arc.center.x, dim.p2.y - arc.center.y), arc.radius));
 }
 
-reset();
+await reset();
 {
   drawArc(P(4, 0), P(4 * Math.cos(Math.PI / 4), 4 * Math.sin(Math.PI / 4)), P(0, 4));
   api.startCommand('DIMDIAMETER');
@@ -267,7 +302,7 @@ reset();
   check('the refusal creates no dimension', !lastDim());
 }
 
-reset();
+await reset();
 {
   api.startCommand('LINE');
   api.commitPoint(P(0, 0));
@@ -280,7 +315,7 @@ reset();
   check('picking a line creates no dimension', !lastDim());
 }
 
-reset();
+await reset();
 {
   drawCircle(P(0, 0), 5);
   api.startCommand('DIMRADIUS');
@@ -291,7 +326,7 @@ reset();
 // ---------------------------------------------------------------------------
 // Persistence, undo, and the command surface
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   drawCircle(P(0, 0), 5);
   api.startCommand('DIMRADIUS');
@@ -304,8 +339,8 @@ reset();
 
   const before = api.entities;
   const text = api.exportDocumentText();
-  api.newDrawing();
-  api.importDocumentText(text);
+  await api.newDrawing();
+  await api.importDocumentText(text);
   check('radial dimensions round-trip through the native format',
     JSON.stringify(api.entities) === JSON.stringify(before),
     `${api.entityCount} entities`);
@@ -316,7 +351,7 @@ reset();
     near(measureOf(reopened.find(d => d.dimType === 'DIAMETER')), 10));
 }
 
-reset();
+await reset();
 {
   drawCircle(P(0, 0), 5);
   const before = JSON.stringify(api.entities);
@@ -327,7 +362,7 @@ reset();
   check('undo removes a radial dimension in one step', JSON.stringify(api.entities) === before);
 }
 
-reset();
+await reset();
 {
   drawCircle(P(0, 0), 5);
   api.startCommand('DIMRADIUS');

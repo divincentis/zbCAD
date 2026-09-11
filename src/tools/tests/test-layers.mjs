@@ -11,12 +11,12 @@ function check(name, condition, detail = '') {
 
 const { api } = boot(BUNDLE);
 
-function reset() {
-  api.newDrawing();
+async function reset() {
+  await api.newDrawing();
 }
 
 // New layers get sensible defaults for the three new record fields.
-reset();
+await reset();
 {
   const layer0 = api.layers.find(l => l.id === '0');
   check('layer 0 defaults to continuous', layer0.linetype === 'continuous');
@@ -31,7 +31,7 @@ reset();
 }
 
 // Setters accept valid values and reject invalid ones.
-reset();
+await reset();
 {
   const id = api.createLayer('Hidden Lines');
   check('setLayerLinetype accepts a listed linetype', api.setLayerLinetype(id, 'dashed') === true);
@@ -55,7 +55,7 @@ reset();
 }
 
 // The new fields round-trip through save/load.
-reset();
+await reset();
 {
   const id = api.createLayer('Center Lines');
   api.setLayerLinetype(id, 'center');
@@ -69,8 +69,8 @@ reset();
   check('lineweight is present in the saved JSON', savedLayer.lineweight === 1.00);
   check('printable is present in the saved JSON', savedLayer.printable === false);
 
-  reset();
-  check('reopening the saved document succeeds', api.importDocumentText(text) === true);
+  await reset();
+  check('reopening the saved document succeeds', await api.importDocumentText(text) === true);
   const reloaded = api.layers.find(l => l.id === id);
   check('linetype survived a save/reload round trip', reloaded?.linetype === 'center');
   check('lineweight survived a save/reload round trip', reloaded?.lineweight === 1.00);
@@ -80,7 +80,7 @@ reset();
 // A pre-existing v4 file (no linetype/lineweight/printable on its layers,
 // and no version bump) must still open, with the three fields defaulted
 // exactly as a v4 drawing would have looked if it could have held them.
-reset();
+await reset();
 {
   const text = api.exportDocumentText();
   const v4 = JSON.parse(text);
@@ -92,7 +92,7 @@ reset();
   }
   const layerId = v4.layers[0].id;
 
-  check('a v4 document with no layer record fields still opens', api.importDocumentText(JSON.stringify(v4)) === true);
+  check('a v4 document with no layer record fields still opens', await api.importDocumentText(JSON.stringify(v4)) === true);
   const migrated = api.layers.find(l => l.id === layerId);
   check('migrated layer defaults to continuous', migrated.linetype === 'continuous');
   check('migrated layer defaults to 0.25mm lineweight', migrated.lineweight === 0.25);
@@ -101,7 +101,7 @@ reset();
 
 // A file carrying garbage in the new fields is cleaned up rather than
 // rejected outright or trusted verbatim.
-reset();
+await reset();
 {
   const text = api.exportDocumentText();
   const doc = JSON.parse(text);
@@ -110,7 +110,7 @@ reset();
   doc.layers[0].printable = 'yes';
   const layerId = doc.layers[0].id;
 
-  check('a document with invalid layer record values still opens', api.importDocumentText(JSON.stringify(doc)) === true);
+  check('a document with invalid layer record values still opens', await api.importDocumentText(JSON.stringify(doc)) === true);
   const cleaned = api.layers.find(l => l.id === layerId);
   check('invalid linetype falls back to continuous', cleaned.linetype === 'continuous');
   check('out-of-table lineweight falls back to the default', cleaned.lineweight === 0.25);

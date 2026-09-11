@@ -180,10 +180,11 @@ export function pdfTextOperators(op) {
 
 export function pdfContentStream(plan) {
   const lines = ['q'];
-  // Everything is clipped to the printable area, so a plot at an exact scale
-  // that is larger than the sheet stops at the border instead of bleeding
-  // into it — the same thing a plotter does.
-  const clip = plan.printable;
+  // Clipped to the picked area intersected with the printable rectangle, so a
+  // plot at an exact scale larger than the sheet stops at the border the same
+  // way a plotter would, and geometry outside a picked Window/Display never
+  // bleeds into the unused margin around it.
+  const clip = plan.clipMM || plan.printable;
   lines.push(`${pdfPoint(clip.xMM)} ${pdfPoint(clip.yMM)} ` +
     `${pdfPoint(clip.widthMM)} ${pdfPoint(clip.heightMM)} re W n`);
   for (const op of plan.ops) {

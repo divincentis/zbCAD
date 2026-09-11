@@ -13,8 +13,8 @@ const { api } = boot(BUNDLE);
 
 const MM_PER_INCH = 25.4;
 
-function reset() {
-  api.newDrawing();
+async function reset() {
+  await api.newDrawing();
 }
 
 // Draw with real commands rather than seeding state, so what is plotted is
@@ -69,7 +69,7 @@ function near(a, b, tolerance) {
 // model-space line exported at 1" = 20' must measure 5.00 inches in the PDF
 // coordinate system, within 0.01 inch.
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   // 100 feet in an inch drawing, drawn at an arbitrary place in model space so
   // the answer cannot come from the coordinates happening to start at zero.
@@ -93,7 +93,7 @@ reset();
 
 // The same physical scale expressed in a different drawing unit has to produce
 // the same paper length, because a plot scale is a ratio of two real lengths.
-reset();
+await reset();
 {
   api.openUnitsDialog();
   api.setPendingUnits({ drawingUnit: 'millimeters', format: 'decimal', precision: 2 });
@@ -112,7 +112,7 @@ reset();
 // ---------------------------------------------------------------------------
 // Sheets, fitting, and placement
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const landscape = api.paperSizeMM('arch-d', 'landscape');
   const portrait = api.paperSizeMM('arch-d', 'portrait');
@@ -124,7 +124,7 @@ reset();
     api.PAPER_SIZES.every(size => size.widthMM > 0 && size.heightMM > 0));
 }
 
-reset();
+await reset();
 {
   // A square 100 x 100 unit drawing on a landscape sheet: fitting is limited by
   // the shorter (vertical) side, and the result must land inside the margins.
@@ -159,7 +159,7 @@ reset();
 
 // An exact scale too large for the sheet still plots — and says so, rather
 // than silently producing a page with the middle of the drawing missing.
-reset();
+await reset();
 {
   drawLine({ x: 0, y: 0 }, { x: 10000, y: 0 });
   const plan = api.buildPlotPlan(settings({ scaleMode: 'exact', scale: 1, paperSizeId: 'ansi-a' }));
@@ -173,7 +173,7 @@ reset();
 // ---------------------------------------------------------------------------
 // What goes on the sheet
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const hidden = api.createLayer('Hidden');
   const noPrint = api.createLayer('Notes');
@@ -199,7 +199,7 @@ reset();
   check('the plot area ignores excluded objects', near(plan.area.maxY, 0, 1e-9), `maxY ${plan.area.maxY}`);
 }
 
-reset();
+await reset();
 {
   // Printing a layer that is switched off entirely is not an error to guess at.
   const only = api.createLayer('Only');
@@ -213,7 +213,7 @@ reset();
 
 // Layer lineweight and linetype reach the paper, in millimetres rather than
 // the screen's pixels.
-reset();
+await reset();
 {
   const heavy = api.createLayer('Heavy');
   api.setLayerLineweight(heavy, 0.70);
@@ -239,7 +239,7 @@ reset();
     hairline.ops.find(op => op.kind === 'stroke').widthMM > 0);
 }
 
-reset();
+await reset();
 {
   api.setLayerColor('0', '#ff8800');
   drawLine({ x: 0, y: 0 }, { x: 10, y: 0 });
@@ -255,7 +255,7 @@ reset();
     colored.warnings.some(warning => /faint/.test(warning)));
 }
 
-reset();
+await reset();
 {
   // White is the traditional "screen white, paper black" CAD color — plotted
   // literally it would be invisible ink on white paper.
@@ -276,7 +276,7 @@ reset();
 // ---------------------------------------------------------------------------
 // Curved and annotated geometry
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   api.startCommand('CIRCLE');
   api.commitPoint({ x: 50, y: 50 });
@@ -317,7 +317,7 @@ reset();
     Math.max(...errors) < radius * 0.0005, `worst error ${Math.max(...errors).toExponential(2)} mm`);
 }
 
-reset();
+await reset();
 {
   api.startCommand('ARC');
   api.commitPoint({ x: 0, y: 0 });
@@ -330,7 +330,7 @@ reset();
     stroke.subpaths[0].segs.length >= 1 && stroke.subpaths[0].segs.length <= 4);
 }
 
-reset();
+await reset();
 {
   drawLine({ x: 0, y: 0 }, { x: 120, y: 0 });
   api.startCommand('DIMLINEAR');
@@ -362,7 +362,7 @@ reset();
     dimStroke && dimStroke.dash.length === 0);
 }
 
-reset();
+await reset();
 {
   api.startCommand('TEXT');
   api.commitPoint({ x: 10, y: 20 });
@@ -390,7 +390,7 @@ reset();
 // ---------------------------------------------------------------------------
 // Plot area modes
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   drawLine({ x: 0, y: 0 }, { x: 100, y: 50 });
   const extents = api.plotAreaBox(settings({ area: 'extents' }));
@@ -411,8 +411,50 @@ reset();
     display && display.maxX > display.minX && display.maxY > display.minY);
 }
 
+// ---------------------------------------------------------------------------
+// CAD-003 — clipping to the picked area, not just the printable rectangle
+//
+// A square Window on a landscape sheet leaves margin on either side once Fit
+// centers it, and that margin is exactly the "unused space" geometry outside
+// the window used to be able to bleed into: it falls inside the printable
+// rectangle even though it is nowhere near the picked area.
+// ---------------------------------------------------------------------------
+function inRect(p, rect) {
+  return p.x >= rect.xMM - 1e-9 && p.x <= rect.xMM + rect.widthMM + 1e-9 &&
+    p.y >= rect.yMM - 1e-9 && p.y <= rect.yMM + rect.heightMM + 1e-9;
+}
+
+await reset();
+{
+  drawLine({ x: 0, y: 0 }, { x: 100, y: 100 }); // inside the picked window
+  drawLine({ x: -10, y: 25 }, { x: -10, y: 75 }); // entirely outside it
+
+  const plan = api.buildPlotPlan(settings({
+    area: 'window',
+    window: { minX: 0, minY: 0, maxX: 100, maxY: 100 },
+    scaleMode: 'fit',
+    center: true,
+    orientation: 'landscape',
+  }));
+  check('a windowed plan carries a clip rectangle', Boolean(plan.clipMM));
+  check('the clip rectangle is narrower than the printable rectangle on a landscape sheet',
+    plan.clipMM.widthMM < plan.printable.widthMM - 1e-6,
+    `${plan.clipMM.widthMM} vs ${plan.printable.widthMM}`);
+
+  const [insideLine, outsideLine] = plan.ops.filter(op => op.kind === 'stroke');
+  const insidePoints = [insideLine.subpaths[0].start, insideLine.subpaths[0].segs[0].to];
+  const outsidePoints = [outsideLine.subpaths[0].start, outsideLine.subpaths[0].segs[0].to];
+
+  check('geometry inside the picked window falls inside the clip rectangle',
+    insidePoints.every(p => inRect(p, plan.clipMM)));
+  check('geometry outside the picked window falls outside the clip rectangle',
+    outsidePoints.every(p => !inRect(p, plan.clipMM)));
+  check('geometry outside the picked window would still print if only the printable border clipped it — the bug',
+    outsidePoints.every(p => inRect(p, plan.printable)));
+}
+
 // Picking a window really does come back through the dialog.
-reset();
+await reset();
 {
   drawLine({ x: 0, y: 0 }, { x: 100, y: 50 });
   api.openPlotDialog();
@@ -435,7 +477,7 @@ reset();
 // ---------------------------------------------------------------------------
 // The PDF file itself
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   drawLine({ x: 0, y: 0 }, { x: 1200, y: 0 });
   const plan = api.buildPlotPlan(settings({ scaleMode: 'exact', scale: 240 }));
@@ -491,7 +533,7 @@ reset();
 
 // Characters the base-14 encoding cannot represent are reported, not silently
 // swallowed — and the diameter sign the app displays does have a plotted form.
-reset();
+await reset();
 {
   api.startCommand('CIRCLE');
   api.commitPoint({ x: 0, y: 0 });
@@ -511,7 +553,7 @@ reset();
     pdf.includes('\\330'), 'expected an octal escape for 0xD8');
 }
 
-reset();
+await reset();
 {
   api.startCommand('TEXT');
   api.commitPoint({ x: 0, y: 0 });
@@ -527,7 +569,7 @@ reset();
 }
 
 // Text with characters that are structural in a PDF string must be escaped.
-reset();
+await reset();
 {
   api.startCommand('TEXT');
   api.commitPoint({ x: 0, y: 0 });
@@ -541,14 +583,14 @@ reset();
 }
 
 // The plot file is named after the drawing.
-reset();
+await reset();
 {
   check('the plot is named after the drawing', api.plotDownloadName() === 'Untitled.pdf',
     api.plotDownloadName());
 }
 
 // A drawing with nothing in it at all cannot be plotted, and says so.
-reset();
+await reset();
 {
   const plan = api.buildPlotPlan(settings());
   check('an empty drawing refuses to plot', Boolean(plan.error), JSON.stringify(plan.error));
@@ -623,7 +665,7 @@ function previewCanvas(width = 300, height = 230) {
 
 // Everything plotted lands on the sheet in the preview, at an arbitrary
 // scale rather than one that divides the page evenly.
-reset();
+await reset();
 {
   drawLine({ x: 3.7, y: -2.4 }, { x: 214.9, y: 88.3 });
   drawLine({ x: 214.9, y: 88.3 }, { x: 40.1, y: 132.6 });
@@ -658,7 +700,7 @@ reset();
 // A plot too big for the sheet is the case the preview exists for: the part
 // that will be clipped has to be drawn, in the clipped colour, outside the
 // printable border.
-reset();
+await reset();
 {
   drawLine({ x: 0, y: 0 }, { x: 5000, y: 3000 });
   const plan = api.buildPlotPlan(settings({ scaleMode: 'exact', scale: 1 }));
@@ -675,7 +717,7 @@ reset();
 
 // Nothing to plot still previews the chosen sheet, so the dialog is never
 // blank while the question of which paper to use is being answered.
-reset();
+await reset();
 {
   const context = recordingContext();
   const view = api.renderPlotPreview(previewCanvas(), context,

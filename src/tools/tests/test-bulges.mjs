@@ -19,8 +19,8 @@ const { api, sandbox } = boot(BUNDLE);
 const P = (x, y) => ({ x, y });
 const QUARTER = Math.tan(Math.PI / 8); // bulge of a 90 degree arc
 
-function reset() {
-  api.newDrawing();
+async function reset() {
+  await api.newDrawing();
   api.setOrtho(false);
   api.setAllSnapTypes(false);
 }
@@ -44,7 +44,7 @@ function drawBowedSquare() {
 // The stored form
 // ---------------------------------------------------------------------------
 
-reset();
+await reset();
 {
   const shape = drawBowedSquare();
   check('a bulged polyline stores its bulges', Array.isArray(shape.bulges), JSON.stringify(shape.bulges));
@@ -58,7 +58,7 @@ reset();
 
 // An all-zero bulge list is not stored at all, so a straight polyline is
 // byte-identical to one drawn before curved segments existed.
-reset();
+await reset();
 {
   api.addPolyline([P(0, 0), P(5, 0), P(5, 5)], false, [0, 0, 0]);
   const straight = lastEntity();
@@ -70,7 +70,7 @@ reset();
 // Segments, length, area, bounds
 // ---------------------------------------------------------------------------
 
-reset();
+await reset();
 {
   const shape = drawBowedSquare();
   const segments = api.entitySegments(shape);
@@ -100,7 +100,7 @@ reset();
 
 // A bulge that bows inward subtracts area instead of adding it, and the same
 // arc travelled the other way is the same curve.
-reset();
+await reset();
 {
   api.addPolyline([P(0, 0), P(10, 0), P(10, 10), P(0, 10)], true, [0, -1, 0, 0]);
   const shape = lastEntity();
@@ -120,7 +120,7 @@ reset();
 // the smallest closed polyline this format allows (a closed shape needs three
 // vertices, so the two-arc DXF circle is not representable; a circle here is a
 // CIRCLE).
-reset();
+await reset();
 {
   const r = 5;
   const third = Math.tan(Math.PI / 6); // bulge of a 120 degree arc
@@ -141,13 +141,13 @@ reset();
 // Save and reload
 // ---------------------------------------------------------------------------
 
-reset();
+await reset();
 {
   const shape = drawBowedSquare();
   const text = api.exportDocumentText();
   check('the saved file carries the bulges', /"bulges"/.test(text));
-  reset();
-  api.importDocumentText(text);
+  await reset();
+  await api.importDocumentText(text);
   const reloaded = api.entities.find(e => e.type === 'PLINE');
   check('a reloaded polyline keeps its bulges',
     JSON.stringify(reloaded?.bulges) === JSON.stringify(shape.bulges),
@@ -197,7 +197,7 @@ reset();
 
 // MOVE, ROTATE and SCALE leave a bulge alone — the whole reason a curve is
 // stored as one — while MIRROR reverses it.
-reset();
+await reset();
 {
   const shape = drawBowedSquare();
   selectOnly(shape.id);
@@ -212,7 +212,7 @@ reset();
     JSON.stringify(api.entitySegments(moved)[1][2].center));
 }
 
-reset();
+await reset();
 {
   const shape = drawBowedSquare();
   selectOnly(shape.id);
@@ -225,7 +225,7 @@ reset();
     String(api.entitySegments(scaled)[1][2].radius));
 }
 
-reset();
+await reset();
 {
   const shape = drawBowedSquare();
   selectOnly(shape.id);
@@ -253,7 +253,7 @@ reset();
 // Everything below picks and snaps in screen pixels, so the view is zoomed to
 // the drawing first — at the default 1.5px per unit a five-unit gap is inside
 // the pick aperture and no probe could tell the arc from its chord.
-reset();
+await reset();
 {
   const shape = drawBowedSquare();
   api.zoomExtents();
@@ -262,7 +262,7 @@ reset();
   check('clicking the arc crown selects the polyline',
     api.selectedIds.length === 1 && api.selectedIds[0] === shape.id, JSON.stringify(api.selectedIds));
 }
-reset();
+await reset();
 {
   drawBowedSquare();
   api.zoomExtents();
@@ -274,7 +274,7 @@ reset();
     JSON.stringify(api.selectedIds));
 }
 
-reset();
+await reset();
 {
   const shape = drawBowedSquare();
   api.zoomExtents();
@@ -304,7 +304,7 @@ reset();
 
 // A crossing window over empty space inside the bulge must not select it, and
 // one that crosses the arc must.
-reset();
+await reset();
 {
   const shape = drawBowedSquare();
   api.zoomExtents();
@@ -320,7 +320,7 @@ reset();
 
 // EXPLODE is what the commands that refuse a curved polyline point users at,
 // so a curve has to leave as a real ARC rather than as its chord.
-reset();
+await reset();
 {
   const shape = drawBowedSquare();
   selectOnly(shape.id);
@@ -336,7 +336,7 @@ reset();
 }
 
 // JOIN is the inverse, and an arc can now be part of the chain.
-reset();
+await reset();
 {
   api.startCommand('LINE');
   api.commitPoint(P(0, 0));
@@ -362,7 +362,7 @@ reset();
 }
 
 // A chain that has to be walked backwards reverses the arc with it.
-reset();
+await reset();
 {
   api.startCommand('ARC');
   api.commitPoint(P(10, 0));
@@ -387,7 +387,7 @@ reset();
 // Commands that cannot handle a curve say so
 // ---------------------------------------------------------------------------
 
-reset();
+await reset();
 {
   const shape = drawBowedSquare();
   const before = JSON.stringify(api.entities);
@@ -401,7 +401,7 @@ reset();
   void shape;
 }
 
-reset();
+await reset();
 {
   const shape = drawBowedSquare();
   selectOnly(shape.id);
@@ -417,7 +417,7 @@ reset();
   api.cancelCurrent();
 }
 
-reset();
+await reset();
 {
   api.addPolyline([P(0, 0), P(10, 0), P(20, 0)], false, [QUARTER, 0, 0]);
   const shape = lastEntity();
@@ -448,7 +448,7 @@ reset();
 
 // A dimension picked at an arbitrary point on a curved segment tracks that
 // point along the arc rather than along the chord it used to be.
-reset();
+await reset();
 {
   const shape = drawBowedSquare();
   // The segment runs from (10,0) counter-clockwise round to (10,10), so it
@@ -467,7 +467,7 @@ reset();
 
 // What the renderer asks the canvas for, since a curve drawn as its chord
 // would pass every geometric check above and still look wrong on screen.
-reset();
+await reset();
 {
   drawBowedSquare();
   api.zoomExtents();
@@ -514,7 +514,7 @@ reset();
 // Plotting
 // ---------------------------------------------------------------------------
 
-reset();
+await reset();
 {
   drawBowedSquare();
   const plan = api.buildPlotPlan({ ...api.defaultPlotSettings(), area: 'extents' });
@@ -531,7 +531,7 @@ reset();
 
 // A straight polyline plots exactly as it did before curved segments existed:
 // three vertices, two line segments, no close operator.
-reset();
+await reset();
 {
   api.addPolyline([P(0, 0), P(10, 0), P(10, 10)], false);
   const plan = api.buildPlotPlan({ ...api.defaultPlotSettings(), area: 'extents' });

@@ -404,6 +404,24 @@ export function buildPlotPlan(settings) {
     }
   }
 
+  // The picked area (Window/Display/Extents) mapped onto paper, intersected
+  // with the printable rectangle. This — not the printable rectangle alone —
+  // is what both the PDF and the preview clip against, so geometry outside
+  // the picked area is cut off wherever it falls, not just past the sheet's
+  // own margin. Native clipping (the PDF viewer's, the canvas's) handles
+  // strokes, beziers, fills and text alike, so nothing here has to walk
+  // individual primitives to crop them.
+  const areaCornerA = context.toPaper({ x: area.minX, y: area.minY });
+  const areaCornerB = context.toPaper({ x: area.maxX, y: area.maxY });
+  const clipMM = {
+    xMM: Math.max(printable.xMM, Math.min(areaCornerA.x, areaCornerB.x)),
+    yMM: Math.max(printable.yMM, Math.min(areaCornerA.y, areaCornerB.y)),
+  };
+  clipMM.widthMM = Math.max(0,
+    Math.min(printable.xMM + printable.widthMM, Math.max(areaCornerA.x, areaCornerB.x)) - clipMM.xMM);
+  clipMM.heightMM = Math.max(0,
+    Math.min(printable.yMM + printable.heightMM, Math.max(areaCornerA.y, areaCornerB.y)) - clipMM.yMM);
+
   const warnings = [];
   if (plotWidthMM > printable.widthMM + 1e-6 || plotHeightMM > printable.heightMM + 1e-6) {
     warnings.push(`At ${scalePresetLabel(scale)} the plot is ${plotWidthMM.toFixed(1)} × ` +
@@ -423,7 +441,7 @@ export function buildPlotPlan(settings) {
   }
 
   return {
-    page, printable, area, scale, fitted, mmPerUnit, ops, warnings,
+    page, printable, clipMM, area, scale, fitted, mmPerUnit, ops, warnings,
     plotWidthMM, plotHeightMM,
     entityCount: entities.length,
   };

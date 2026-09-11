@@ -229,7 +229,7 @@ openInput.addEventListener('change', async () => {
   if (!file) return;
   try {
     const text = await file.text();
-    if (loadDocumentText(text, file.name)) canvas.focus();
+    if (await loadDocumentText(text, file.name)) canvas.focus();
   } catch {
     setFileStatus('Could not read the selected drawing file', true);
   }

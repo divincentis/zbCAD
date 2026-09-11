@@ -1,5 +1,6 @@
 import { visibleSelectedEntities } from '../commands/inquiry.js';
 import { arcSweep, bulgeFromSweep, circularPoint, dist } from '../core/math.js';
+import { remapDimensionRefs } from '../model/dimension.js';
 import { commitGeometry } from '../model/history.js';
 import { entitySegments, polylineBulge, withPolylineBulges } from '../model/entity.js';
 import { isEntityEditable } from '../model/layerQuery.js';
@@ -126,7 +127,17 @@ export function joinSelection() {
     points,
     closed,
   }, bulges);
-  const entities = [...state.entities.filter(entity => !sourceIds.has(entity.id)), joined];
+  // Every source point survives somewhere in the joined path, so a dimension
+  // that measured one is re-resolved against the joined result rather than
+  // left pointing at a deleted id (see remapDimensionRefs).
+  const sourceById = new Map(selected.map(entity => [entity.id, entity]));
+  const candidatesForId = new Map(selected.map(entity => [entity.id, [joined]]));
+  const entities = [
+    ...state.entities
+      .filter(entity => !sourceIds.has(entity.id))
+      .map(entity => remapDimensionRefs(entity, sourceById, candidatesForId)),
+    joined,
+  ];
   if (!commitGeometry(entities, { nextId: state.nextId + 1 })) return { error: 'Joining would create invalid geometry.' };
   state.selected = new Set([joined.id]);
   return { joined: selected.length };
@@ -158,25 +169,31 @@ export function explodeSelection() {
   const selected = visibleSelectedEntities().filter(isEntityEditable);
   if (!selected.length) return { error: 'No objects selected.' };
 
+  // Ids are assigned up front, before any dimension refs are remapped, so
+  // remapping has real target ids to point the reference at rather than
+  // having to patch them in afterward.
+  let nextId = state.nextId;
   const pieces = new Map();
+  const created = [];
   for (const entity of selected) {
     const exploded = explodedPieces(entity);
-    if (exploded) pieces.set(entity.id, exploded);
+    if (!exploded) continue;
+    const finalized = exploded.map(piece => ({ id: nextId++, ...piece }));
+    finalized.forEach(piece => created.push(piece.id));
+    pieces.set(entity.id, finalized);
   }
   if (!pieces.size) return { error: 'Select a polyline or rectangle to explode.' };
 
-  let nextId = state.nextId;
-  const created = [];
+  // Every source vertex/segment survives as a piece of its own, so a
+  // dimension that measured one is re-resolved against that source's own
+  // pieces rather than left pointing at a deleted id (see remapDimensionRefs).
+  const staleById = new Map(selected.filter(entity => pieces.has(entity.id)).map(entity => [entity.id, entity]));
   // Replacing in place rather than appending keeps the new segments in the
   // draw order the polyline occupied.
   const entities = state.entities.flatMap(entity => {
     const exploded = pieces.get(entity.id);
-    if (!exploded) return [entity];
-    return exploded.map(piece => {
-      const line = { id: nextId++, ...piece };
-      created.push(line.id);
-      return line;
-    });
+    if (exploded) return exploded;
+    return [remapDimensionRefs(entity, staleById, pieces)];
   });
   if (!commitGeometry(entities, { nextId })) return { error: 'Exploding would create invalid geometry.' };
   state.selected = new Set(created);

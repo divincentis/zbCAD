@@ -1,7 +1,7 @@
 import { defineCommand, setMode } from './registry.js';
 import { circularPoint, dist } from '../core/math.js';
 import { formatAngle, formatLength, formatLengthLabel } from '../core/units.js';
-import { mirrorEntity, rotateEntity, scaleEntity, translateEntity } from '../geometry/transform.js';
+import { mirrorEntity, realignDimensionReferences, rotateEntity, scaleEntity, translateEntity } from '../geometry/transform.js';
 import { parseDistance } from '../interaction/input.js';
 import { commitGeometry } from '../model/history.js';
 import { duplicateEntities, entityBBox } from '../model/entity.js';
@@ -591,9 +591,10 @@ export function applyRotation(angle) {
     updatePrompt('The selected objects are no longer editable.');
     return;
   }
-  const entities = state.entities.map(entity =>
+  let entities = state.entities.map(entity =>
     idSet.has(entity.id) ? rotateEntity(entity, operation.base, reducedAngle) : entity,
   );
+  entities = realignDimensionReferences(entities, idSet, 'rotate', { angle: reducedAngle });
   if (!commitGeometry(entities)) return;
   state.selected = new Set(idSet);
   setMode('SELECT');
@@ -652,10 +653,13 @@ export function applyMirror(eraseSource) {
     return;
   }
 
+  const axisA = operation.base;
+  const axisB = operation.second;
   if (eraseSource) {
-    const entities = state.entities.map(entity =>
-      idSet.has(entity.id) ? mirrorEntity(entity, operation.base, operation.second) : entity,
+    let entities = state.entities.map(entity =>
+      idSet.has(entity.id) ? mirrorEntity(entity, axisA, axisB) : entity,
     );
+    entities = realignDimensionReferences(entities, idSet, 'mirror', { axisA, axisB });
     if (!commitGeometry(entities)) return;
     state.selected = new Set(idSet);
   } else {
@@ -663,9 +667,10 @@ export function applyMirror(eraseSource) {
     // duplicateEntities, which is what lets a mirrored dimension be remapped
     // onto the mirrored copy of the geometry it measures rather than left
     // pointing at the original.
-    const reflected = state.entities
+    let reflected = state.entities
       .filter(entity => idSet.has(entity.id))
-      .map(entity => mirrorEntity(entity, operation.base, operation.second));
+      .map(entity => mirrorEntity(entity, axisA, axisB));
+    reflected = realignDimensionReferences(reflected, idSet, 'mirror', { axisA, axisB });
     const { entities: copies, nextId } = duplicateEntities(reflected, state.nextId);
     if (!commitGeometry([...state.entities, ...copies], { nextId })) return;
     state.selected = new Set(copies.map(entity => entity.id));

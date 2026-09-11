@@ -266,3 +266,42 @@ export function mirrorEntity(entity, axisA, axisB, id = entity.id) {
   }
   return JSON.parse(JSON.stringify(entity));
 }
+
+// rotateEntity/mirrorEntity already carry a DIM's own p1/p2/linePoint through
+// correctly, but they clone `refs` untouched — fine for CENTER/MID/VERTEX/
+// SEGMENT (nothing angular to update) but wrong for QUAD/POINT, which name a
+// spot by an absolute angle, and for an ARC's START/END, whose meaning swaps
+// under mirror (see mirrorEntity's ARC branch above). Both only need fixing
+// when the dimension and the thing it measures are transformed in the very
+// same operation: updateAssociativeDimensions (model/dimension.js) re-derives
+// p1/p2 from these refs on every commit, so a stale ref would otherwise
+// silently overwrite the entity's own already-correct rotated/mirrored point.
+// A target left OUT of the operation is deliberately left alone — its
+// dimension keeps measuring whatever that entity currently is, which is the
+// whole point of an associative reference.
+export function realignDimensionReferences(entities, idSet, kind, params) {
+  const byId = new Map(entities.map(entity => [entity.id, entity]));
+  return entities.map(entity => {
+    if (entity.type !== 'DIM' || !idSet.has(entity.id) || !entity.refs) return entity;
+    let changed = false;
+    const refs = entity.refs.map(ref => {
+      if (!ref || !idSet.has(ref.entityId)) return ref;
+      if (ref.part === 'QUAD' || ref.part === 'POINT') {
+        changed = true;
+        const angle = kind === 'rotate'
+          ? normalizeAngle(ref.angle + params.angle)
+          : mirrorAngle(ref.angle, params.axisA, params.axisB);
+        return { ...ref, angle };
+      }
+      // Only mirroring swaps an ARC's start/end sense (rotateEntity's ARC
+      // branch turns both angles by the same amount and keeps their order).
+      if (kind === 'mirror' && (ref.part === 'START' || ref.part === 'END') &&
+          byId.get(ref.entityId)?.type === 'ARC') {
+        changed = true;
+        return { ...ref, part: ref.part === 'START' ? 'END' : 'START' };
+      }
+      return ref;
+    });
+    return changed ? { ...entity, refs } : entity;
+  });
+}

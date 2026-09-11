@@ -23,8 +23,8 @@ function distanceToLine(p, a, b) {
 const { api } = boot(BUNDLE);
 const P = (x, y) => ({ x, y });
 
-function reset() {
-  api.newDrawing();
+async function reset() {
+  await api.newDrawing();
   api.setOrtho(false);
   api.setAllSnapTypes(false);
   // Picking objects is done in screen pixels; at the default 1.5px per unit a
@@ -75,7 +75,7 @@ function ttr(first, second, radius, typed = true) {
 // The command's own stages
 // ---------------------------------------------------------------------------
 
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 0), P(0, 10));
@@ -99,7 +99,7 @@ reset();
 
 // Ttr can only be chosen before a centre has been given, and a number before
 // the radius stage is not silently taken as one.
-reset();
+await reset();
 {
   api.startCommand('CIRCLE');
   api.commitPoint(P(0, 0));
@@ -107,7 +107,7 @@ reset();
   check('Ttr is refused once a centre exists', /before specifying the center point/.test(api.promptText),
     api.promptText);
 }
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   api.startCommand('CIRCLE');
@@ -117,7 +117,7 @@ reset();
     /Pick an object to be tangent to/.test(api.promptText), api.promptText);
   check('and draws nothing', circles().length === 0);
 }
-reset();
+await reset();
 {
   api.startCommand('CIRCLE');
   api.submitCommandText('TTR');
@@ -125,7 +125,7 @@ reset();
   api.commitPoint(P(50, 50));
   check('clicking empty space says so', /No object there/.test(api.promptText), api.promptText);
 }
-reset();
+await reset();
 {
   const line = drawLine(P(0, 0), P(10, 0));
   api.startCommand('CIRCLE');
@@ -144,7 +144,7 @@ reset();
 // ---------------------------------------------------------------------------
 
 // The everyday case: the circle that fits into the corner two lines make.
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 0), P(0, 10));
@@ -155,7 +155,7 @@ reset();
 
 // Which side of each line was clicked decides which of the four corners the
 // circle goes in — the same rule a person uses to answer the question.
-reset();
+await reset();
 {
   drawLine(P(-10, 0), P(10, 0));
   drawLine(P(0, -10), P(0, 10));
@@ -167,7 +167,7 @@ reset();
 // The lines need not actually reach the corner: a circle tangent to where two
 // walls would have met is a real construction, so the extension is used when
 // nothing on the drawn segments fits.
-reset();
+await reset();
 {
   const first = drawLine(P(6, 0), P(20, 0));
   const second = drawLine(P(0, 6), P(0, 20));
@@ -181,7 +181,7 @@ reset();
 
 // Parallel lines have no corner, so there is nothing of the given radius to
 // find and the command says so rather than drawing something plausible.
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 5), P(10, 5));
@@ -198,7 +198,7 @@ reset();
 }
 
 // A radius of zero has no circle to be tangent with.
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 0), P(0, 10));
@@ -217,7 +217,7 @@ reset();
 // A line and a circle
 // ---------------------------------------------------------------------------
 
-reset();
+await reset();
 {
   const line = drawLine(P(-20, 0), P(20, 0));
   const target = drawCircle(P(0, 10), 4);
@@ -234,7 +234,7 @@ reset();
 
 // Picking the far side of the same circle asks for the other answer: one that
 // swallows nothing but sits beyond it.
-reset();
+await reset();
 {
   const line = drawLine(P(-20, 0), P(20, 0));
   const target = drawCircle(P(0, 10), 4);
@@ -248,7 +248,7 @@ reset();
 }
 
 // A radius too small to bridge the gap has no solution at all.
-reset();
+await reset();
 {
   drawLine(P(-20, 0), P(20, 0));
   drawCircle(P(0, 20), 2);
@@ -268,7 +268,7 @@ reset();
 // Two circles
 // ---------------------------------------------------------------------------
 
-reset();
+await reset();
 {
   const left = drawCircle(P(0, 0), 3);
   const right = drawCircle(P(20, 0), 3);
@@ -283,7 +283,7 @@ reset();
 
 // A circle large enough to wrap around both is the internally tangent answer,
 // and picking the far sides is how it is asked for.
-reset();
+await reset();
 {
   const left = drawCircle(P(0, 0), 3);
   const right = drawCircle(P(20, 0), 3);
@@ -298,7 +298,7 @@ reset();
 // An arc, and a polyline segment
 // ---------------------------------------------------------------------------
 
-reset();
+await reset();
 {
   const line = drawLine(P(-20, 0), P(20, 0));
   api.startCommand('ARC');
@@ -317,7 +317,7 @@ reset();
     circle && JSON.stringify(circle.center));
 }
 
-reset();
+await reset();
 {
   api.addPolyline([P(0, 10), P(0, 0), P(10, 0)], false);
   api.startCommand('CIRCLE');
@@ -334,7 +334,7 @@ reset();
 
 // A curved polyline segment has a centre and radius edgeRef does not carry, so
 // it is refused by name rather than measured off its chord.
-reset();
+await reset();
 {
   api.addPolyline([P(0, 0), P(10, 0), P(10, 10)], false, [Math.tan(Math.PI / 8), 0, 0]);
   api.startCommand('CIRCLE');
@@ -355,7 +355,7 @@ reset();
 // Picking the radius instead of typing it
 // ---------------------------------------------------------------------------
 
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 0), P(0, 10));
@@ -368,22 +368,22 @@ reset();
 // The result is an ordinary circle
 // ---------------------------------------------------------------------------
 
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 0), P(0, 10));
   const circle = ttr(P(4, 0), P(0, 4), 2);
   check('the tangent circle is on the current layer', circle?.layerId === api.currentLayerId);
-  check('the tangent circle survives a save and reload', (() => {
+  check('the tangent circle survives a save and reload', await (async () => {
     const text = api.exportDocumentText();
-    api.newDrawing();
-    api.importDocumentText(text);
+    await api.newDrawing();
+    await api.importDocumentText(text);
     const reloaded = circles()[0];
     return reloaded && pointNear(reloaded.center, 2, 2) && near(reloaded.radius, 2);
   })());
 }
 
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 0), P(0, 10));

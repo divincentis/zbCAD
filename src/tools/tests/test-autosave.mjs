@@ -18,9 +18,9 @@ const settle = () => wait(400);
 
 // A whole app instance per scenario: recovery is about what one session left
 // behind for the next, so each scenario needs its own empty pair of stores.
-function freshApp(options) {
+async function freshApp(options) {
   const booted = boot(BUNDLE, options);
-  booted.api.newDrawing();
+  await booted.api.newDrawing();
   booted.api.setAllSnapTypes(false);
   return booted;
 }
@@ -41,7 +41,7 @@ function entityCountOf(text) {
 // The autosave itself lands in IndexedDB, and stays off the synchronous path.
 // ---------------------------------------------------------------------------
 {
-  const { api, localStorage } = freshApp();
+  const { api, localStorage } = await freshApp();
   drawLine(api, P(0, 0), P(10, 0));
   check('an edit marks the document dirty', api.state.documentDirty === true);
   await settle();
@@ -60,7 +60,7 @@ function entityCountOf(text) {
 // The unload path: synchronous, localStorage, and newer than the database copy.
 // ---------------------------------------------------------------------------
 {
-  const { api, localStorage } = freshApp();
+  const { api, localStorage } = await freshApp();
   drawLine(api, P(0, 0), P(10, 0));
   await settle();
 
@@ -80,7 +80,7 @@ function entityCountOf(text) {
     record && record.source === 'local' && entityCountOf(record.text) === 2,
     record && `${record.source}/${entityCountOf(record.text)}`);
 
-  api.newDrawing();
+  await api.newDrawing();
   check('recovery restored the unload copy', await api.restoreAutosave() && api.entityCount === 2,
     `count ${api.entityCount}`);
   check('the recovered drawing is no longer dirty', api.state.documentDirty === false);
@@ -96,7 +96,7 @@ function entityCountOf(text) {
 // written by an older version of this app carries no timestamp at all.
 // ---------------------------------------------------------------------------
 {
-  const { api, localStorage } = freshApp();
+  const { api, localStorage } = await freshApp();
   drawLine(api, P(0, 0), P(10, 0));
   drawLine(api, P(0, 5), P(10, 5));
   await settle();
@@ -112,7 +112,7 @@ function entityCountOf(text) {
     record && record.source === 'db' && entityCountOf(record.text) === 2,
     record && `${record.source}/${entityCountOf(record.text)}`);
 
-  api.newDrawing();
+  await api.newDrawing();
   await api.restoreAutosave();
   check('recovery took the database copy', api.entityCount === 2, `count ${api.entityCount}`);
 }
@@ -122,11 +122,11 @@ function entityCountOf(text) {
 // still recovered — and is moved into the database once it is.
 // ---------------------------------------------------------------------------
 {
-  const { api, localStorage } = freshApp();
+  const { api, localStorage } = await freshApp();
   drawLine(api, P(0, 0), P(10, 0));
   drawLine(api, P(0, 5), P(10, 5));
   const legacy = api.exportDocumentText(false);
-  api.newDrawing();
+  await api.newDrawing();
   await settle();
   // What an older version of this app left behind: the drawing under the
   // autosave key and nothing in IndexedDB. Blanking the database record is how
@@ -136,7 +136,7 @@ function entityCountOf(text) {
 
   const record = await api.readAutosaveRecord(api.autosaveKey);
   check('a legacy localStorage autosave is found', record && record.source === 'local');
-  api.newDrawing();
+  await api.newDrawing();
   check('a legacy autosave is recovered', await api.restoreAutosave() && api.entityCount === 2,
     `count ${api.entityCount}`);
   const promoted = await api.readAutosaveRecord(api.autosaveKey);
@@ -148,10 +148,10 @@ function entityCountOf(text) {
 // The backup slot still holds the drawing the current one replaced.
 // ---------------------------------------------------------------------------
 {
-  const { api } = freshApp();
+  const { api } = await freshApp();
   drawLine(api, P(0, 0), P(10, 0));
   await settle();
-  api.newDrawing();
+  await api.newDrawing();
   drawLine(api, P(0, 5), P(10, 5));
   drawLine(api, P(0, 6), P(10, 6));
   await settle();
@@ -175,21 +175,45 @@ function entityCountOf(text) {
 }
 
 // ---------------------------------------------------------------------------
+// CAD-005 — New Drawing must not discard an edit still sitting in the
+// debounced autosave timer. Drawing a second line and immediately starting a
+// new drawing, before that edit's own 250ms autosave ever fires, used to
+// cancel the pending timer outright with nothing ever written for it — so the
+// two-line drawing was gone from both the primary and the backup slot.
+// ---------------------------------------------------------------------------
+{
+  const { api } = await freshApp();
+  drawLine(api, P(0, 0), P(10, 0));
+  await settle();
+  drawLine(api, P(0, 5), P(10, 5));
+  // No settle() here — the second line's own autosave has not fired yet.
+  await api.newDrawing();
+  await settle();
+
+  const primary = await api.readAutosaveRecord(api.autosaveKey);
+  const backup = await api.readAutosaveRecord(api.autosaveBackupKey);
+  check('the primary slot holds the new, blank drawing',
+    primary && entityCountOf(primary.text) === 0, primary && String(entityCountOf(primary.text)));
+  check('the backup slot preserved the outgoing two-line drawing, not just the first line',
+    backup && entityCountOf(backup.text) === 2, backup && String(entityCountOf(backup.text)));
+}
+
+// ---------------------------------------------------------------------------
 // Boot-time recovery must not take work away from a user who was faster than
 // the store.
 // ---------------------------------------------------------------------------
 {
-  const { api } = freshApp();
+  const { api } = await freshApp();
   drawLine(api, P(0, 0), P(10, 0));
   await settle();
 
-  api.newDrawing();
+  await api.newDrawing();
   drawLine(api, P(0, 5), P(10, 5));
   const declined = await api.restoreAutosaveIfUntouched();
   check('recovery stands down once the user has drawn something', declined === false);
   check('the drawing in progress survived', api.entityCount === 1, `count ${api.entityCount}`);
 
-  api.newDrawing();
+  await api.newDrawing();
   api.state.documentDirty = false;
   check('recovery still runs into an untouched session',
     await api.restoreAutosaveIfUntouched() === true);
@@ -199,7 +223,7 @@ function entityCountOf(text) {
 // A browser that refuses to open a database (a private window) still autosaves.
 // ---------------------------------------------------------------------------
 {
-  const { api, localStorage } = freshApp({ indexedDB: false });
+  const { api, localStorage } = await freshApp({ indexedDB: false });
   drawLine(api, P(0, 0), P(10, 0));
   await settle();
 
@@ -210,7 +234,7 @@ function entityCountOf(text) {
   check('the fallback copy reads back as a local record', record && record.source === 'local');
   check('the fallback autosave cleared the dirty flag', api.state.documentDirty === false);
 
-  api.newDrawing();
+  await api.newDrawing();
   check('recovery works without IndexedDB', await api.restoreAutosave() && api.entityCount === 1,
     `count ${api.entityCount}`);
 }
@@ -220,7 +244,7 @@ function entityCountOf(text) {
 // a private window that only fails on use — must still not cost an autosave.
 // ---------------------------------------------------------------------------
 {
-  const { api, localStorage } = freshApp({ indexedDB: 'broken' });
+  const { api, localStorage } = await freshApp({ indexedDB: 'broken' });
   drawLine(api, P(0, 0), P(10, 0));
   await settle();
 
@@ -229,7 +253,7 @@ function entityCountOf(text) {
   check('the degraded copy holds the drawing', saved && entityCountOf(saved) === 1);
   check('a degraded autosave still clears the dirty flag', api.state.documentDirty === false);
 
-  api.newDrawing();
+  await api.newDrawing();
   check('recovery works through a failing database',
     await api.restoreAutosave() && api.entityCount === 1, `count ${api.entityCount}`);
 }

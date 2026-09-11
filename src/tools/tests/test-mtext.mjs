@@ -14,8 +14,8 @@ function pointNear(p, x, y, tol = 1e-6) { return p && near(p.x, x, tol) && near(
 const { api } = boot(BUNDLE);
 const P = (x, y) => ({ x, y });
 
-function reset() {
-  api.newDrawing();
+async function reset() {
+  await api.newDrawing();
   api.setOrtho(false);
   api.setAllSnapTypes(false);
 }
@@ -40,7 +40,7 @@ function selectOnly(...ids) { api.state.selected.clear(); ids.forEach(id => api.
 // ---------------------------------------------------------------------------
 // Placement and staging
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const mtext = placeMText(P(0, 0), 40, 2, 0, ['FIRST LINE', 'SECOND LINE']);
   check('MTEXT setup placed an mtext entity', mtext?.type === 'MTEXT', mtext?.type);
@@ -54,7 +54,7 @@ reset();
 
 // Typed distances (rather than a second click) for width and height, and MT
 // resolves as the short alias.
-reset();
+await reset();
 {
   check('MT resolves to MTEXT', api.resolveCommandName('MT') === 'MTEXT');
   api.startCommand('MTEXT');
@@ -73,7 +73,7 @@ reset();
 // Enter-for-default at every staged prompt, mirroring TEXT's <default>
 // convention, and an empty CONTENT submission with no lines yet refuses
 // rather than placing an empty entity.
-reset();
+await reset();
 {
   api.startCommand('MTEXT');
   api.commitPoint(P(0, 0));
@@ -94,7 +94,7 @@ reset();
 // ---------------------------------------------------------------------------
 // Word wrap
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   // height 1, TEXT_WIDTH_FACTOR 0.6 -> char width 0.6, so a width of 3.6
   // fits exactly 6 characters per line.
@@ -123,7 +123,7 @@ reset();
 // hit-testing lands inside the box, matching how TEXT's footprint already
 // behaves (see entityBBox/pickSegments in model/entity.js).
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const one = placeMText(P(0, 0), 40, 2, 0, ['ONE LINE']);
   const three = placeMText(P(0, -20), 40, 2, 0, ['LINE ONE', 'LINE TWO', 'LINE THREE']);
@@ -144,7 +144,7 @@ reset();
 // ---------------------------------------------------------------------------
 // Transforms
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const mtext = placeMText(P(2, 3), 20, 1, 0, ['MOVE ME']);
   selectOnly(mtext.id);
@@ -156,7 +156,7 @@ reset();
   check('MOVE leaves width and content alone', near(moved.width, 20) && moved.content === 'MOVE ME');
 }
 
-reset();
+await reset();
 {
   const mtext = placeMText(P(0, 0), 20, 1, 0, ['SPIN']);
   selectOnly(mtext.id);
@@ -168,7 +168,7 @@ reset();
   check('ROTATE keeps the insertion point fixed at the base point', pointNear(rotated.position, 0, 0));
 }
 
-reset();
+await reset();
 {
   const mtext = placeMText(P(0, 0), 20, 1, 0, ['GROW']);
   selectOnly(mtext.id);
@@ -180,7 +180,7 @@ reset();
   check('SCALE doubles the MTEXT width, keeping wrap proportions', near(scaled.width, 40));
 }
 
-reset();
+await reset();
 {
   const mtext = placeMText(P(4, 1), 20, 1, 0, ['NORTH']);
   selectOnly(mtext.id);
@@ -204,7 +204,7 @@ reset();
 // ---------------------------------------------------------------------------
 // Grips
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const mtext = placeMText(P(0, 0), 10, 1, 90, ['G']);
   const grips = api.gripsFor(mtext);
@@ -219,18 +219,18 @@ reset();
 // ---------------------------------------------------------------------------
 // Document round-trip and validation
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   placeMText(P(1, 2), 15, 0.5, 0, ['ROUND', 'TRIP']);
   const text = api.exportDocumentText();
-  api.newDrawing();
-  api.importDocumentText(text);
+  await api.newDrawing();
+  await api.importDocumentText(text);
   const restored = api.entities.find(e => e.type === 'MTEXT');
   check('MTEXT survives a save/reload round trip',
     restored && restored.content === 'ROUND\nTRIP' && near(restored.width, 15));
 }
 
-reset();
+await reset();
 {
   const base = { id: 1, type: 'MTEXT', layerId: '0', position: { x: 0, y: 0 }, width: 10, height: 1, rotation: 0, content: 'OK' };
   const bad = (patch, label) => {
@@ -258,7 +258,7 @@ reset();
 // ---------------------------------------------------------------------------
 // ID/LIST inquiry report
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const mtext = placeMText(P(0, 0), 40, 2, 0, ['ONE', 'TWO', 'THREE']);
   selectOnly(mtext.id);
@@ -270,7 +270,7 @@ reset();
 // ---------------------------------------------------------------------------
 // Plot output: one text op per wrapped line, correctly positioned.
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   placeMText(P(0, 0), 100, 1, 0, ['FIRST', 'SECOND']);
   const plan = api.buildPlotPlan({ ...api.defaultPlotSettings(), scaleMode: 'exact', scale: 1 });
@@ -286,7 +286,7 @@ reset();
 // Live on-canvas preview while typing content — the fix this suite exists to
 // cover, for both MTEXT and (as a regression guard) TEXT.
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   api.startCommand('TEXT');
   api.commitPoint(P(0, 0));
@@ -306,7 +306,7 @@ reset();
   check('TEXT still commits normally once Enter is pressed', text?.content === 'HELLO');
 }
 
-reset();
+await reset();
 {
   api.startCommand('MTEXT');
   api.commitPoint(P(0, 0));

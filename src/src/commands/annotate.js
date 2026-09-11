@@ -152,7 +152,16 @@ export function radialDimensionEntity(dimType, targetId, cursor) {
   const p1 = dimType === 'RADIUS'
     ? { ...target.center }
     : circularPoint(target.center, target.radius, angle + Math.PI);
-  const refs = [resolveEntityReference(p1), resolveEntityReference(edge)];
+  // Built straight from the target the user picked rather than resolved by
+  // searching the whole drawing for a coincident feature: a line or another
+  // circle that merely happens to share the same centre or edge point must
+  // never be able to steal this association (see resolveEntityReference).
+  const refs = [
+    dimType === 'RADIUS'
+      ? { entityId: target.id, part: 'CENTER' }
+      : { entityId: target.id, part: 'POINT', angle: normalizeAngle(angle + Math.PI) },
+    { entityId: target.id, part: 'POINT', angle },
+  ];
 
   // linePoint sits on the measured line itself, so the shared geometry
   // projects p1/p2 onto themselves and draws the dimension line straight

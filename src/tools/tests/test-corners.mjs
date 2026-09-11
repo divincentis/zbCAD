@@ -14,8 +14,8 @@ function pointNear(p, x, y, tol = 1e-6) { return p && near(p.x, x, tol) && near(
 const { api } = boot(BUNDLE);
 const P = (x, y) => ({ x, y });
 
-function reset() {
-  api.newDrawing();
+async function reset() {
+  await api.newDrawing();
   api.setOrtho(false);
   api.setAllSnapTypes(false);
 }
@@ -73,7 +73,7 @@ function startChamfer(first, second) {
 
 // Radius 0 is the everyday corner cleanup: two edges that stop short are
 // extended until they meet, and no arc is created.
-reset();
+await reset();
 {
   const h = drawLine(P(2, 0), P(10, 0));
   const v = drawLine(P(0, 2), P(0, 10));
@@ -95,7 +95,7 @@ reset();
 
 // A right-angle corner at a known radius, checked against the tangency the
 // fillet is supposed to produce rather than against precomputed numbers alone.
-reset();
+await reset();
 {
   const h = drawLine(P(0, 0), P(10, 0));
   const v = drawLine(P(0, 0), P(0, 10));
@@ -132,7 +132,7 @@ reset();
 }
 
 // The pick points choose which side of each crossing survives.
-reset();
+await reset();
 {
   const h = drawLine(P(-10, 0), P(10, 0));
   const v = drawLine(P(0, -10), P(0, 10));
@@ -145,7 +145,7 @@ reset();
     lineHasEnds(v.id, P(0, -10), P(0, 0)), JSON.stringify(lineById(v.id)));
 }
 
-reset();
+await reset();
 {
   const h = drawLine(P(-10, 0), P(10, 0));
   const v = drawLine(P(0, -10), P(0, 10));
@@ -160,7 +160,7 @@ reset();
 
 // A corner that is not a right angle: the tangent setback is r/tan(θ/2), so a
 // formula that only ever gets tested at 90° would slip through.
-reset();
+await reset();
 {
   const a = drawLine(P(0, 0), P(10, 0));
   // 60° from the first edge.
@@ -186,7 +186,7 @@ reset();
 }
 
 // Refusals must leave the drawing exactly as it was.
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 0), P(0, 10));
@@ -199,7 +199,7 @@ reset();
   check('a refused fillet returns to the first line', api.operationStage === 'FIRST', api.operationStage);
 }
 
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 5), P(10, 5));
@@ -213,7 +213,7 @@ reset();
 
 // CHAMFER still refuses arcs/circles by name (only FILLET was extended to
 // them — see the FILLET/circle section below).
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   api.startCommand('CIRCLE');
@@ -228,7 +228,7 @@ reset();
   check('an unsupported pick changes nothing', JSON.stringify(api.entities) === before);
 }
 
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   startFillet(1);
@@ -238,7 +238,7 @@ reset();
   check('FILLET still wants a second line', api.operationStage === 'SECOND', api.operationStage);
 }
 
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 0), P(0, 10));
@@ -248,7 +248,7 @@ reset();
 }
 
 // Undo has to take the whole fillet back in one step, arc included.
-reset();
+await reset();
 {
   const h = drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 0), P(0, 10));
@@ -265,7 +265,7 @@ reset();
 }
 
 // The radius is remembered between invocations, the way CAD settings are.
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 0), P(0, 10));
@@ -279,7 +279,7 @@ reset();
 }
 
 // Enter ends the command.
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   api.startCommand('FILLET');
@@ -288,7 +288,7 @@ reset();
 }
 
 // Esc must never commit.
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 0), P(0, 10));
@@ -301,7 +301,7 @@ reset();
 }
 
 // A fillet arc has to survive save and reopen.
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 0), P(0, 10));
@@ -311,8 +311,8 @@ reset();
   api.finishCurrent();
   const before = api.entities;
   const text = api.exportDocumentText();
-  api.newDrawing();
-  api.importDocumentText(text);
+  await api.newDrawing();
+  await api.importDocumentText(text);
   check('a filleted corner round-trips through the native format',
     JSON.stringify(api.entities) === JSON.stringify(before));
 }
@@ -320,7 +320,7 @@ reset();
 // ---------------------------------------------------------------------------
 // CHAMFER
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const h = drawLine(P(0, 0), P(10, 0));
   const v = drawLine(P(0, 0), P(0, 10));
@@ -342,7 +342,7 @@ reset();
 }
 
 // Unequal distances, so a chamfer that quietly uses one distance twice fails.
-reset();
+await reset();
 {
   const h = drawLine(P(0, 0), P(10, 0));
   const v = drawLine(P(0, 0), P(0, 10));
@@ -357,7 +357,7 @@ reset();
 
 // The second distance follows the first until it is given, so an equal-sided
 // chamfer is a single answer.
-reset();
+await reset();
 {
   const h = drawLine(P(0, 0), P(10, 0));
   const v = drawLine(P(0, 0), P(0, 10));
@@ -374,7 +374,7 @@ reset();
 }
 
 // Zero distances are a corner close with nothing to draw between them.
-reset();
+await reset();
 {
   const h = drawLine(P(2, 0), P(10, 0));
   const v = drawLine(P(0, 2), P(0, 10));
@@ -387,7 +387,7 @@ reset();
     `${JSON.stringify(lineById(h.id))} ${JSON.stringify(lineById(v.id))}`);
 }
 
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 0), P(0, 10));
@@ -400,7 +400,7 @@ reset();
 }
 
 // A negative setting is the one value neither command accepts.
-reset();
+await reset();
 {
   api.startCommand('FILLET');
   api.submitCommandText('R');
@@ -430,7 +430,7 @@ function plines() { return api.entities.filter(e => e.type === 'PLINE'); }
 // polyline) that is already a single closed entity. Chamfering it should stay
 // one PLINE, its shared vertex split into the two cut points, with no extra
 // LINE bridging them — that straight run is now just the polyline's own edge.
-reset();
+await reset();
 {
   const rect = drawRectangle(P(0, 0), P(10, 10));
   startChamfer(2, 3);
@@ -448,7 +448,7 @@ reset();
 
 // Rounding a rectangle's own corner: the arc becomes a bulge on the polyline's
 // new segment, so the result is still one closed PLINE with no ARC beside it.
-reset();
+await reset();
 {
   const rect = drawRectangle(P(0, 0), P(10, 10));
   startFillet(2);
@@ -488,7 +488,7 @@ reset();
 
 // The same corner, filleted from the other pair of picks, must round the same
 // way: which segment is named first does not change the geometry.
-reset();
+await reset();
 {
   const rect = drawRectangle(P(0, 0), P(10, 10));
   startFillet(2);
@@ -503,7 +503,7 @@ reset();
 
 // Rounding every corner of a rectangle leaves one polyline with four arcs —
 // the case the whole feature exists for.
-reset();
+await reset();
 {
   const rect = drawRectangle(P(0, 0), P(20, 10));
   const corners = [
@@ -535,7 +535,7 @@ reset();
 
 // A corner that is already rounded has no straight direction to fillet from,
 // so re-filleting it is refused by name rather than measured off the chord.
-reset();
+await reset();
 {
   const rect = drawRectangle(P(0, 0), P(10, 10));
   startFillet(2);
@@ -553,7 +553,7 @@ reset();
 
 // FILLET 0 on a polyline corner is the ordinary "close this corner exactly"
 // case, and this corner is already sharp, so it succeeds and changes nothing.
-reset();
+await reset();
 {
   const rect = drawRectangle(P(0, 0), P(10, 10));
   const before = JSON.stringify(api.entities);
@@ -567,7 +567,7 @@ reset();
 // A stand-alone line chamfered against one segment of a polyline: two
 // different entities, so each is trimmed independently and a bridging cut
 // line is still added, same as two plain lines.
-reset();
+await reset();
 {
   const line = drawLine(P(0, 0), P(10, 0));
   const poly = drawOpenPolyline([P(0, 5), P(0, 15)]);
@@ -587,7 +587,7 @@ reset();
 // Two non-adjacent segments of the same open polyline share no vertex, so
 // each is trimmed independently, but both edits land on the same entity and
 // must merge into one points update rather than clobbering each other.
-reset();
+await reset();
 {
   const poly = drawOpenPolyline([P(0, 0), P(10, 0), P(10, 5), P(0, 5), P(0, 10)]);
   startFillet(1);
@@ -608,7 +608,7 @@ reset();
 
 // Picking the same polyline segment for both ends is the same refusal as
 // picking the same line twice, now keyed on segment as well as entity.
-reset();
+await reset();
 {
   drawOpenPolyline([P(0, 0), P(10, 0)]);
   startFillet(1);
@@ -637,7 +637,7 @@ function drawArc(a, b, c) {
 
 // A line filleted against a full circle: the circle has no endpoint, so it
 // must come back completely unchanged, and only the line trims.
-reset();
+await reset();
 {
   const line = drawLine(P(-20, 0), P(20, 0));
   const circle = drawCircle(P(0, 10), 5);
@@ -663,7 +663,7 @@ reset();
 
 // A line filleted against an arc: unlike a circle, an arc DOES trim, at
 // whichever of its two endpoints is nearer the tangent point.
-reset();
+await reset();
 {
   const line = drawLine(P(-20, 0), P(20, 0));
   // The bottom half of the same circle as above, from (-5,10) through the
@@ -695,7 +695,7 @@ reset();
 // back unchanged and only the bridging arc is new. Checked by tangency
 // (distance-to-centre), not by precomputed centre coordinates, per the
 // project's rule to test with properties rather than only canonical numbers.
-reset();
+await reset();
 {
   const a = drawCircle(P(0, 0), 3);
   const b = drawCircle(P(10, 0), 4);
@@ -724,7 +724,7 @@ reset();
 }
 
 // A zero radius has no meaning for a curve with no corner to close exactly.
-reset();
+await reset();
 {
   drawLine(P(-20, 0), P(20, 0));
   drawCircle(P(0, 10), 5);
@@ -740,7 +740,7 @@ reset();
 // Two circles too far apart for this radius to bridge at all: every one of
 // the (up to eight) candidate tangent circles requires centres closer
 // together than these actually are, so none exists — refused, not guessed.
-reset();
+await reset();
 {
   const a = drawCircle(P(0, 0), 3);
   const b = drawCircle(P(20, 0), 4);

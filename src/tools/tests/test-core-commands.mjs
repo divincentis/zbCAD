@@ -14,8 +14,8 @@ function pointNear(p, x, y, tol = 1e-6) { return p && near(p.x, x, tol) && near(
 const { api } = boot(BUNDLE);
 const P = (x, y) => ({ x, y });
 
-function reset() {
-  api.newDrawing();
+async function reset() {
+  await api.newDrawing();
   api.setOrtho(false);
   api.setAllSnapTypes(false);
 }
@@ -51,7 +51,7 @@ function arcPointAt(arc, t) {
 // ---------------------------------------------------------------------------
 // ERASE
 // ---------------------------------------------------------------------------
-reset();
+await reset();
 {
   const a = drawLine(P(0, 0), P(10, 0));
   const b = drawLine(P(0, 5), P(10, 5));
@@ -69,7 +69,7 @@ reset();
   check('undo restores an erased object', api.entityCount === 2, `count ${api.entityCount}`);
 }
 
-reset();
+await reset();
 {
   const a = drawLine(P(0, 0), P(10, 0));
   drawLine(P(0, 5), P(10, 5));
@@ -84,7 +84,7 @@ reset();
   check('ERASE reports what it removed', /Erased 1 object\./.test(api.promptText), api.promptText);
 }
 
-reset();
+await reset();
 {
   drawLine(P(0, 0), P(10, 0));
   api.state.selected.clear();
@@ -98,7 +98,7 @@ reset();
 // entities from the selection, so the selection is forced back afterwards:
 // the point is that the command refuses on its own, not merely that the UI
 // never offers it.
-reset();
+await reset();
 {
   const wallsId = api.createLayer('WALLS');
   api.setCurrentLayer(wallsId);
@@ -113,7 +113,7 @@ reset();
 }
 
 // The same guard for MIRROR: a locked object must not be reflected in place.
-reset();
+await reset();
 {
   const wallsId = api.createLayer('WALLS');
   api.setCurrentLayer(wallsId);
@@ -137,7 +137,7 @@ reset();
 // ---------------------------------------------------------------------------
 
 // Mirroring a line across the Y axis, keeping the source (the <No> default).
-reset();
+await reset();
 {
   const a = drawLine(P(2, 1), P(6, 3));
   selectOnly(a.id);
@@ -164,7 +164,7 @@ reset();
 }
 
 // Mirroring in place, erasing the source.
-reset();
+await reset();
 {
   const a = drawLine(P(2, 1), P(6, 3));
   selectOnly(a.id);
@@ -186,7 +186,7 @@ reset();
 
 // An oblique axis, the case where a wrong reflection formula still looks
 // plausible on horizontal/vertical tests.
-reset();
+await reset();
 {
   const a = drawLine(P(4, 0), P(4, 2));
   selectOnly(a.id);
@@ -202,7 +202,7 @@ reset();
 }
 
 // A mirror line that is not through the origin.
-reset();
+await reset();
 {
   const a = drawLine(P(0, 0), P(2, 0));
   selectOnly(a.id);
@@ -217,7 +217,7 @@ reset();
 }
 
 // A circle: only the centre moves, the radius is untouched.
-reset();
+await reset();
 {
   const c = drawCircle(P(3, 4), 2);
   selectOnly(c.id);
@@ -233,7 +233,7 @@ reset();
 
 // The arc case: reflection reverses the sense of rotation, so the mirrored arc
 // must still cover the reflected span rather than its complement.
-reset();
+await reset();
 {
   api.startCommand('ARC');
   api.commitPoint(P(7, 0));   // start
@@ -277,7 +277,7 @@ reset();
 }
 
 // Text mirrors its insertion point but stays readable (AutoCAD MIRRTEXT=0).
-reset();
+await reset();
 {
   api.startCommand('TEXT');
   api.commitPoint(P(4, 1));
@@ -303,7 +303,7 @@ reset();
 
 // A mirrored copy of geometry plus its dimension must measure the copy, not
 // the original — this is what remapEntityReferences is for.
-reset();
+await reset();
 {
   const line = drawLine(P(2, 0), P(8, 0));
   api.startCommand('DIMLINEAR');
@@ -338,7 +338,7 @@ reset();
 }
 
 // A degenerate mirror line names no direction and must be refused.
-reset();
+await reset();
 {
   const a = drawLine(P(2, 1), P(6, 3));
   selectOnly(a.id);
@@ -351,7 +351,7 @@ reset();
 }
 
 // Esc must abandon, never commit.
-reset();
+await reset();
 {
   const a = drawLine(P(2, 1), P(6, 3));
   selectOnly(a.id);
@@ -366,7 +366,7 @@ reset();
 }
 
 // Mirrored geometry has to survive a save/reopen unchanged.
-reset();
+await reset();
 {
   const a = drawLine(P(2, 1), P(6, 3));
   selectOnly(a.id);
@@ -376,8 +376,8 @@ reset();
   api.acceptDefaultAction();
   const before = api.entities;
   const text = api.exportDocumentText();
-  api.newDrawing();
-  api.importDocumentText(text);
+  await api.newDrawing();
+  await api.importDocumentText(text);
   const after = api.entities;
   check('mirrored geometry round-trips through the native format',
     JSON.stringify(after) === JSON.stringify(before),
@@ -385,7 +385,7 @@ reset();
 }
 
 // MIRROR is a transform, so a repeat should reopen it like MOVE or ROTATE.
-reset();
+await reset();
 {
   const a = drawLine(P(2, 1), P(6, 3));
   selectOnly(a.id);

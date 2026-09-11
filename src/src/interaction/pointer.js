@@ -26,7 +26,18 @@ export function isSelectionStage() {
   return commandSelectsObjects() || state.mode === 'SELECT';
 }
 
-canvas.addEventListener('mousemove', ev => {
+// The flags a drag can leave set: panning, an in-progress box select, and a
+// grip press. Cleared here without touching anything else — no commit, no
+// selection change — so a cancelled or interrupted drag just stops rather
+// than pretending to have finished normally.
+export function resetInteractionState() {
+  state.panning = false;
+  state.panStart = null;
+  state.dragSelect = null;
+  state.gripPress = false;
+}
+
+canvas.addEventListener('pointermove', ev => {
   state.mouseScreen = canvasPoint(ev);
   state.mouseWorld = screenToWorld(state.mouseScreen);
 
@@ -41,10 +52,14 @@ canvas.addEventListener('mousemove', ev => {
   draw();
 });
 
-canvas.addEventListener('mousedown', ev => {
+canvas.addEventListener('pointerdown', ev => {
   state.mouseScreen = canvasPoint(ev);
   state.mouseWorld = screenToWorld(state.mouseScreen);
   state.mouseDownScreen = { ...state.mouseScreen };
+  // Once captured, this pointer's move/up events keep going to canvas even if
+  // it leaves the element's bounds (or the window) before releasing — the fix
+  // for a pan/drag/grip that used to stick when the button came up outside.
+  canvas.setPointerCapture?.(ev.pointerId);
 
   if (ev.button === 1) {
     state.panning = true;
@@ -67,7 +82,7 @@ canvas.addEventListener('mousedown', ev => {
   }
 });
 
-canvas.addEventListener('mouseup', ev => {
+canvas.addEventListener('pointerup', ev => {
   state.mouseScreen = canvasPoint(ev);
   state.mouseWorld = screenToWorld(state.mouseScreen);
 
@@ -111,6 +126,17 @@ canvas.addEventListener('mouseup', ev => {
     }
   }
 });
+
+// Abrupt ends to a drag that pointerup never sees: the browser cancels the
+// pointer outright (pointercancel — a touch turning into a scroll, for
+// instance), capture is taken away some other way (lostpointercapture), or
+// the window loses focus entirely, as alt-tabbing away mid-drag does, which
+// leaves no pointerup to ever arrive. All three just drop the interaction —
+// no commit, no selection change — rather than leave it stuck until the next
+// unrelated click happens to clear it.
+canvas.addEventListener('pointercancel', resetInteractionState);
+canvas.addEventListener('lostpointercapture', resetInteractionState);
+window.addEventListener('blur', resetInteractionState);
 
 // AutoCAD's DDEDIT is a typed command; a double-click is the mouse-driven
 // shortcut most drawing programs offer for the same thing, so it lives here

@@ -7,8 +7,8 @@ import { pdfTextWidthMM } from '../output/pdf.js';
 // area can be judged before a file is written. It reads the same plan that
 // output/pdf.js serialises and nothing else: there is no second path from the
 // drawing to paper that could drift out of step, so what this shows is what the
-// PDF contains — including the clip at the printable border, which is the part
-// of a plot that is otherwise impossible to guess.
+// PDF contains — including the clip at the picked area's border, which is the
+// part of a plot that is otherwise impossible to guess.
 // ---------------------------------------------------------------------------
 
 // Room around the sheet for whatever falls off it. Without this a plot that
@@ -162,15 +162,20 @@ export function renderPlotPreview(target, context, plan) {
   context.fillRect(sheet.x, sheet.y, page.widthMM * view.scale, page.heightMM * view.scale);
 
   // Two passes over the same ops through complementary clips: the amber one
-  // outside the printable border, the real one inside it. Splitting them by
-  // clip rather than by op means a single line that crosses the border is
-  // shown half plotted and half lost, which is what actually happens.
+  // outside the clip rectangle, the real one inside it. Splitting them by
+  // clip rather than by op means a single line that crosses the boundary is
+  // shown half plotted and half lost, which is what actually happens. The
+  // clip is the picked area (Window/Display/Extents) intersected with the
+  // printable rectangle — the same one output/pdf.js clips to — not the
+  // printable rectangle alone, so this also shows geometry outside a picked
+  // Window being cut off, not just geometry past the sheet's margin.
   const ops = plan.ops || [];
-  if (plan.printable) {
+  const clipMM = plan.clipMM || plan.printable;
+  if (clipMM) {
     context.save();
     context.beginPath();
     context.rect(0, 0, widthPx, heightPx);
-    plotPreviewRect(context, view, plan.printable);
+    plotPreviewRect(context, view, clipMM);
     context.clip('evenodd');
     context.globalAlpha = PLOT_PREVIEW_CLIPPED_ALPHA;
     drawPlotPreviewOps(context, view, ops, true);
@@ -178,7 +183,7 @@ export function renderPlotPreview(target, context, plan) {
 
     context.save();
     context.beginPath();
-    plotPreviewRect(context, view, plan.printable);
+    plotPreviewRect(context, view, clipMM);
     context.clip();
     drawPlotPreviewOps(context, view, ops, false);
     context.restore();

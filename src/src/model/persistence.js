@@ -10,7 +10,32 @@ import { state } from '../state.js';
 import { setAutosaveStatus, setFileStatus } from '../ui/status.js';
 import { zoomExtents } from '../view/viewport.js';
 
-export function applyDocument(documentData, dirty = true) {
+// New and Open replace the live document outright. If there is an edit newer
+// than what's actually persisted — still sitting in the debounced autosave
+// timer — flushing it here, before state is wiped, is what lets the next
+// autosave's backup rotation actually preserve it, instead of the pending
+// write simply being cancelled by scheduleAutosave() (see dirty.js) with
+// nothing ever written anywhere to show for it.
+//
+// Recovery deliberately does not go through this: it already reads a specific
+// autosave record and decides whether to promote it into the primary slot
+// based on that read, and flushing the live document in the middle of that
+// (applyDocument is what recovery uses to land the recovered copy) would
+// overwrite the very record recovery just decided about. The live document at
+// that point is also what recovery's own confirmation prompt already asked
+// about discarding, so there is nothing new happening on the way out that the
+// user has not already been told about.
+async function flushOutgoingDocument() {
+  if (!state.documentDirty) return;
+  if (autosaveTimer !== null) { clearTimeout(autosaveTimer); autosaveTimer = null; }
+  try {
+    await writeAutosave();
+  } catch (error) {
+    setFileStatus(`Could not save the current drawing before replacing it: ${error.message || 'unknown error'}`, true);
+  }
+}
+
+export async function applyDocument(documentData, dirty = true) {
   releaseBackupPin();
   state.entities = JSON.parse(JSON.stringify(documentData.entities));
   state.layers = JSON.parse(JSON.stringify(documentData.layers));
@@ -31,7 +56,7 @@ export function applyDocument(documentData, dirty = true) {
   zoomExtents();
 }
 
-export function loadDocumentText(text, sourceName = '') {
+export async function loadDocumentText(text, sourceName = '') {
   const parsed = parseDocumentText(text);
   if (parsed.error) {
     setFileStatus(parsed.error, true);
@@ -40,7 +65,8 @@ export function loadDocumentText(text, sourceName = '') {
   if (parsed.document.name === 'Untitled' && sourceName) {
     parsed.document.name = sourceName.replace(/(?:\.zbCAD)?\.json$/i, '').trim() || 'Untitled';
   }
-  applyDocument(parsed.document, true);
+  await flushOutgoingDocument();
+  await applyDocument(parsed.document, true);
   setFileStatus(`${state.drawingName} · Opened`);
   return true;
 }
@@ -70,8 +96,7 @@ export async function restoreAutosave(skipConfirmation = false, backupOnly = fal
         (backupOnly ? 'This replaces the current drawing. Use Save first if you need a separate copy. Cancel keeps the current drawing.' :
           'Choose Cancel to start a blank drawing. Recovery copies remain available until later changes are autosaved.'),
       )) return false;
-      if (autosaveTimer !== null) { clearTimeout(autosaveTimer); autosaveTimer = null; }
-      applyDocument(parsed.document, false);
+      await applyDocument(parsed.document, false);
       // Anything but the live primary — a backup, a legacy key, or the copy the
       // unload path left in localStorage — is promoted to the primary at once,
       // so the next autosave cannot overwrite the drawing that was recovered.
@@ -92,11 +117,12 @@ export async function restoreAutosave(skipConfirmation = false, backupOnly = fal
   }
 }
 
-export function newDrawing(skipConfirmation = false) {
+export async function newDrawing(skipConfirmation = false) {
   if (!skipConfirmation && state.entities.length &&
       !window.confirm('Start a new drawing? Use Save first if you need a separate copy of the current drawing.')) {
     return false;
   }
+  await flushOutgoingDocument();
   releaseBackupPin();
   state.entities = [];
   state.layers = createDefaultLayers();
