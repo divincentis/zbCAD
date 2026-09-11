@@ -16600,6 +16600,10 @@ kbd { font-size: 9px; opacity: .65; }
     imageFitScale,
     imageTargetSize,
     underlayNameFromFile,
+    // The real decode-and-re-encode path. Unreachable from the Node harness,
+    // whose Image and canvas are stubs, so it is exposed for the browser pass.
+    underlayDescriptorFromFile,
+    encodeUnderlayImage,
     openUnderlayDialog,
     closeUnderlayDialog,
     applyUnderlayDialog,

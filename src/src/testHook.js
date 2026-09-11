@@ -35,7 +35,7 @@ import { closePlotDialog, openPlotDialog, pendingPlot, plotDownloadName, runPlot
 import { applyUnderlayDialog, closeUnderlayDialog, deleteUnderlayFromDialog, openUnderlayDialog, pendingUnderlay, setPendingUnderlay } from './ui/dialogs/underlay.js';
 import { setPendingUnderlayImage, startImagePlacement } from './commands/underlay.js';
 import { calibrateUnderlay, cloneUnderlays, underlayBBox, underlayContainsPoint, underlayCorners, underlayHeight, underlayIsSelectable, underlaySelectionId, underlayWidth, underlayWorldToLocal } from './model/underlay.js';
-import { imageFitScale, imageTargetSize, underlayNameFromFile } from './model/imageImport.js';
+import { encodeUnderlayImage, imageFitScale, imageTargetSize, underlayDescriptorFromFile, underlayNameFromFile } from './model/imageImport.js';
 import { underlayDialog } from './dom.js';
 import { buildDxfPlan } from './output/dxfPlan.js';
 import { buildDxfDocument } from './output/dxf.js';
@@ -281,6 +281,10 @@ window.__cadPrototype = {
   imageFitScale,
   imageTargetSize,
   underlayNameFromFile,
+  // The real decode-and-re-encode path. Unreachable from the Node harness,
+  // whose Image and canvas are stubs, so it is exposed for the browser pass.
+  underlayDescriptorFromFile,
+  encodeUnderlayImage,
   openUnderlayDialog,
   closeUnderlayDialog,
   applyUnderlayDialog,
