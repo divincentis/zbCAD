@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>zbCAD v0.24.3</title>
+  <title>zbCAD v0.25.0</title>
   <style>
 :root {
   font-family: Arial, Helvetica, sans-serif;
@@ -590,7 +590,7 @@ kbd { font-size: 9px; opacity: .65; }
 </head>
 <body>
   <header id="topbar" class="topbar">
-    <div class="brand">zbCAD <span class="version">v0.24.3</span></div>
+    <div class="brand">zbCAD <span class="version">v0.25.0</span></div>
     <button id="toolbarAutohideBtn" class="toolbar-autohide-btn toggle" title="Auto-hide the toolbar; mouse over this bar (or Tab into it) to show it again" aria-pressed="false">Auto-hide</button>
     <div class="tool-group">
       <span class="group-label">File</span>
@@ -630,6 +630,15 @@ kbd { font-size: 9px; opacity: .65; }
         <button data-command="ARC">Arc (A)</button>
       </div>
       <div class="tool-group">
+        <span class="group-label">Annotate</span>
+        <button data-command="DIMLINEAR">Dim Linear (DLI)</button>
+        <button data-command="DIMALIGNED">Dim Aligned (DAL)</button>
+        <button data-command="DIMRADIUS">Dim Radius (DRA)</button>
+        <button data-command="DIMDIAMETER">Dim Diameter (DDI)</button>
+        <button data-command="TEXT">Text (T)</button>
+        <button id="dimStyleBtn">Dim Style (DST)</button>
+      </div>
+      <div class="tool-group">
         <span class="group-label">Modify</span>
         <button data-command="MOVE">Move (M)</button>
         <button data-command="COPY">Copy (CO)</button>
@@ -646,15 +655,6 @@ kbd { font-size: 9px; opacity: .65; }
         <button data-command="JOIN">Join (J)</button>
         <button data-command="EXPLODE">Explode (X)</button>
         <button data-command="ERASE">Erase (E)</button>
-      </div>
-      <div class="tool-group">
-        <span class="group-label">Annotate</span>
-        <button data-command="DIMLINEAR">Dim Linear (DLI)</button>
-        <button data-command="DIMALIGNED">Dim Aligned (DAL)</button>
-        <button data-command="DIMRADIUS">Dim Radius (DRA)</button>
-        <button data-command="DIMDIAMETER">Dim Diameter (DDI)</button>
-        <button data-command="TEXT">Text (T)</button>
-        <button id="dimStyleBtn">Dim Style (DST)</button>
       </div>
     </div>
     <a id="docsLink" class="docs-link" href="docs.html" target="_blank" rel="noopener">Docs</a>
