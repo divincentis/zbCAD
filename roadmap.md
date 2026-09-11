@@ -65,7 +65,9 @@ The architectural refactor (Phase 1) and most of Phase 2 have already happened:
 
 **Update September 2026: multiline text (MTEXT) shipped.** `MTEXT`/`MT` follows single-line TEXT's staged point/distance/angle-then-free-text shape with one addition: after the insertion point, an opposite corner (or typed distance) sets a fixed wrap width, then height and rotation as before, then content — except content is multi-line, so each Enter commits one line and stays in the command, and a blank Enter is what finishes entry (the same command-line shape AutoCAD's own MTEXT uses). Word wrap is estimated the same way TEXT's single-line footprint already was (character count × height × a fixed factor, since no real glyph metrics exist outside a canvas context), with a hard break for any single word wider than the box. MTEXT is wired into every place TEXT already was — bbox, hit-testing, move/rotate/scale/mirror/stretch, grips (an insertion-point grip plus a width grip, since there is no properties panel yet to type a new width into), save/load validation, ID/LIST, and PDF output (one plotted text run per wrapped line). Also fixed, for both TEXT and MTEXT: the content being typed previously showed only in the command-line input box, not on the drawing, until Enter committed it — every keystroke now updates an on-canvas preview too. 61 new headless checks in `test-mtext.mjs`; also verified in a real (headless) Chromium session that a multi-line box wraps and renders correctly and that the live preview actually appears on canvas while typing, not just in the command line.
 
-**Not yet started:** blocks, leaders and callouts, hatches, a multi-selection properties panel, underlays, DXF import/export (Phase 3 remainder and the input half of Phase 4).
+**Not yet started:** blocks, leaders and callouts, hatches, a multi-selection properties panel (all Phase 3 remainder).
+
+**Update September 2026: calibrated underlays and DXF import/export shipped.** Both are described in Phase 4's status notes below. This closes Phase 4 and the product definition in section 1: a drawing can now enter the tool as a calibrated PDF/image underlay, be traced and annotated, and leave as an accurately scaled PDF or a useful DXF, without another CAD program.
 
 **Process note:** Phase 0's benchmark validation was run retroactively — the mechanical pass headlessly (see the Phase 0 status note), and the human feel-pass by the product owner in September 2026. Phase 0 is closed.
 
@@ -361,7 +363,38 @@ graphical print preview (the dialog reports the plotted size, scale and
 warnings as text instead), and any title block — a title block wants blocks,
 which are still not started.
 
-### Underlays
+### Status — calibrated underlays shipped (September 2026)
+
+A PNG, JPEG, or PDF page can be imported as an underlay, then moved, rotated,
+scaled, faded, and locked, and calibrated by picking two points and entering
+a known real-world distance. Underlays are stored separately from drawing
+entities (`state.underlays`, not `state.entities`) but share the existing
+layer table, so visibility, lock, and printability need no parallel system,
+and they participate in MOVE/COPY/ROTATE/SCALE/MIRROR/ERASE and selection
+like any other object. They plot: the underlay's raster travels through the
+PDF writer as a filtered JPEG stream rather than being dropped at print time.
+Images are re-encoded to JPEG and capped at 2400px on import, since the
+payload rides inline in the native document's JSON. Verified headlessly (132
+checks in `tools/tests/test-underlay.mjs`) and in a real Chromium session.
+
+### Status — DXF import and export shipped (September 2026)
+
+`DXF` writes R2000/AC1015 ASCII DXF and reads it back. Import and export
+share one intermediate plan, so a round trip can be asserted as
+plan → text → plan without going through the document model. Covered: LINE,
+LWPOLYLINE (including bulged/curved segments), ARC, CIRCLE, TEXT/MTEXT,
+INSERT/BLOCK (flattened on import), DIMENSION (built from the same geometry
+PLOT already uses, so there is no second dimension renderer to drift), and
+layers. Import approximates ellipses and splines and reports every skip or
+approximation to the inquiry panel rather than discarding anything silently.
+Deliberately not done: DXF `IMAGE` entities for underlays (export warns
+instead), angular/ordinate dimensions (no zbCAD model for them — their block
+geometry is exploded on import), and inserting a DXF into the current
+drawing rather than replacing it. Verified headlessly (154 checks in
+`tools/tests/test-dxf.mjs`) and against FreeCAD as an independent DXF
+reader/writer.
+
+### Underlays *(shipped — see Status note above)*
 
 - Import PDF pages, PNG, and JPEG.
 - Move, rotate, scale, fade, and lock an underlay.
@@ -369,7 +402,7 @@ which are still not started.
 - Preserve calibration and placement in the native drawing.
 - Keep underlays visually separate from CAD geometry.
 
-### PDF output
+### PDF output *(shipped — see Status note above)*
 
 - Vector output rather than screenshots
 - Standard construction page sizes plus custom sizes
@@ -377,9 +410,9 @@ which are still not started.
 - Configurable monochrome/color and lineweights
 - Print preview with explicit paper units and drawing scale
 
-**Scale acceptance test:** a 100-foot model-space line exported at `1" = 20'` must measure 5.00 inches in the PDF coordinate system, within 0.01 inch. Physical printer error is separate from PDF correctness.
+**Scale acceptance test:** a 100-foot model-space line exported at `1" = 20'` must measure 5.00 inches in the PDF coordinate system, within 0.01 inch. Physical printer error is separate from PDF correctness. *(Passes — see the PDF status note above.)*
 
-### DXF
+### DXF *(shipped — see Status note above)*
 
 - Start with an explicit whitelist: LINE, LWPOLYLINE, ARC, CIRCLE, TEXT/MTEXT, INSERT/BLOCK, DIMENSION where practical, and layers.
 - Export before attempting broad import support.
@@ -389,10 +422,12 @@ which are still not started.
 
 ### Exit gate
 
-- A real underlay can be calibrated and traced accurately.
-- The resulting PDF is dimensionally correct at the selected scale.
-- Supported DXF content round-trips without meaningful geometry changes.
-- Unsupported content produces an actionable report rather than a broken or deceptively incomplete drawing.
+- A real underlay can be calibrated and traced accurately. *(Met.)*
+- The resulting PDF is dimensionally correct at the selected scale. *(Met.)*
+- Supported DXF content round-trips without meaningful geometry changes. *(Met.)*
+- Unsupported content produces an actionable report rather than a broken or deceptively incomplete drawing. *(Met.)*
+
+**Phase 4 is closed.**
 
 ## 11. Phase 6 — Internal Pilot and Hardening
 
@@ -504,11 +539,13 @@ note). What's left:
 5. ~~**Complete the layer record: linetype, lineweight, printability.**~~ —
    shipped September 2026. Was a prerequisite for PDF/DXF's lineweight and
    ByLayer semantics, done before rather than after Phase 4 for that reason.
-6. ~~**Exact-scale PDF output.**~~ — shipped September 2026. See the Phase 4
-   status note below. Calibrated underlays are the remaining half of item 6
-   and are **next**: a drawing can now be created, annotated and issued, but
-   still cannot be traced from an existing PDF or image.
-7. Add controlled DXF export/import.
+6. ~~**Exact-scale PDF output, and calibrated underlays.**~~ — both shipped
+   September 2026. See the Phase 4 status notes. A drawing can now be traced
+   from an existing PDF or image, as well as created from a blank sheet,
+   annotated, and issued.
+7. ~~Add controlled DXF export/import.~~ — shipped September 2026. See the
+   Phase 4 status note. Phase 4 is closed; item 6 and item 7 together were
+   the last of the roadmap's product definition in section 1.
 8. ~~IndexedDB autosave~~ — shipped September 2026. `model/autosaveStore.js`
    holds the drawing in IndexedDB; localStorage now carries only the snapshot
    written synchronously from `beforeunload` (an IndexedDB transaction opened
@@ -671,6 +708,21 @@ one flat scope, so a stale import still resolves there and only shows up as a
 module graph that no longer describes the program — which is exactly what had
 happened to `commitGeometry`, imported from `model/document.js` by twelve
 modules when it lives in `model/history.js`. All twelve are corrected.
+
+**Update September 2026: TRIM gained a Fence option.** Typing `F` (or
+`FENCE`) mid-TRIM switches from clicking one piece at a time to drawing a
+polyline; Enter then trims everything it crossed in one pass, at the point it
+crossed each object, instead of requiring a boundary to be picked before each
+click. This was the last item on the 2026-09-08 live-testing punch list
+(`fence trim` in AutoCAD terms), deliberately deferred until now. The new
+`geometry/fence.js` adds no trimming logic of its own: a fence crossing is
+just a click point computed instead of clicked, so it is handed to the same
+`calculateTrimOperation`/`replaceEditedEntity` pair a literal click already
+uses, which is what makes it inherit every existing rule (preselected
+boundaries, self-intersection, the curved-polyline refusal) for free. EXTEND
+deliberately does not gain Fence — TRIM's `F` keyword and its Undo are only
+attached to TRIM's command object, not shared with EXTEND's. 37 new headless
+checks in `test-fence-trim.mjs`.
 
 <details>
 <summary>Already shipped (original items 4–10)</summary>

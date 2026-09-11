@@ -9538,6 +9538,75 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   // ---------------------------------------------------------------------------
+  // geometry/fence.js
+  // ---------------------------------------------------------------------------
+  // TRIM's Fence option: a drawn polyline whose crossings pick the trim points
+  // instead of a sequence of individual clicks. This reuses calculateTrimOperation
+  // and replaceEditedEntity as-is — a fence crossing is nothing but a click point
+  // whose location was computed instead of clicked, so it inherits every rule the
+  // click path already enforces (preselected boundaries, self-intersection,
+  // curved-polyline refusal) with no separate logic to keep in sync.
+
+  // Ordered along the fence rather than by entity, so a fence that weaves back
+  // over the same object still trims each crossing where it was actually drawn.
+  function fenceCrossingPoints(fencePoints) {
+    const excludedIds = state.edit?.boundaryIds ? new Set(state.edit.boundaryIds) : null;
+    const crossings = [];
+    let travelled = 0;
+    for (let i = 0; i < fencePoints.length - 1; i++) {
+      const f0 = fencePoints[i];
+      const f1 = fencePoints[i + 1];
+      const length = dist(f0, f1);
+      for (const entity of state.entities) {
+        if (excludedIds?.has(entity.id) || !isEntityEditable(entity)) continue;
+        if (entity.type === 'CIRCLE' || entity.type === 'ARC') {
+          for (const hit of segmentCircularIntersections(f0, f1, entity)) {
+            crossings.push({ point: hit.point, along: travelled + hit.t * length });
+          }
+          continue;
+        }
+        for (const [a, b, arc] of entitySegments(entity)) {
+          if (arc) {
+            for (const hit of segmentCircularIntersections(f0, f1, arc)) {
+              crossings.push({ point: hit.point, along: travelled + hit.t * length });
+            }
+          } else {
+            const hit = segmentIntersectionParameters(f0, f1, a, b);
+            if (hit) crossings.push({ point: hit.point, along: travelled + hit.t * length });
+          }
+        }
+      }
+      travelled += length;
+    }
+    crossings.sort((first, second) => first.along - second.along);
+    return crossings.map(crossing => crossing.point);
+  }
+
+  function applyFenceTrim(fencePoints) {
+    const crossings = fenceCrossingPoints(fencePoints);
+    if (!crossings.length) {
+      updatePrompt('TRIM Fence — That fence crossed nothing to trim.');
+      draw();
+      return;
+    }
+    let trimmed = 0;
+    let skipped = 0;
+    for (const point of crossings) {
+      const operation = calculateTrimOperation(point);
+      if (operation.error) {
+        skipped++;
+        continue;
+      }
+      if (replaceEditedEntity(operation.hit.entity, operation.pieces) === false) skipped++;
+      else trimmed++;
+    }
+    updatePrompt(skipped
+      ? `TRIM Fence — trimmed ${trimmed}, skipped ${skipped} (no cutting boundary there).`
+      : `TRIM Fence — trimmed ${trimmed}.`);
+    draw();
+  }
+
+  // ---------------------------------------------------------------------------
   // interaction/selection.js
   // ---------------------------------------------------------------------------
 
@@ -14542,9 +14611,18 @@ kbd { font-size: 9px; opacity: .65; }
   // TRIM and EXTEND share every stage: they take optional boundaries from the
   // selection, then repeat one click until dismissed. Only the operation each
   // click performs differs.
+  //
+  // TRIM alone also offers Fence: instead of clicking one piece at a time, draw
+  // a polyline (state.currentPoints, exactly as PLINE collects its own points —
+  // that is what makes typed points and the U keyword work here for free) and
+  // Enter trims every object it crosses in one pass. A fence point is still a
+  // click point, computed rather than clicked, so it is handed to the same
+  // calculateTrimOperation/replaceEditedEntity pair a literal click uses — see
+  // geometry/fence.js.
   function edgeEditCommand(type) {
     const verb = type === 'TRIM' ? 'portions' : 'ends';
-    return {
+    const supportsFence = type === 'TRIM';
+    const command = {
       begin() {
         // An empty selection means "use everything else as a boundary", which
         // is a different instruction from an empty list of boundaries.
@@ -14553,6 +14631,7 @@ kbd { font-size: 9px; opacity: .65; }
           boundaryIds: state.selected.size
             ? editableSelectionIds()
             : null,
+          fence: false,
         };
         state.selected.clear();
       },
@@ -14562,19 +14641,37 @@ kbd { font-size: 9px; opacity: .65; }
         const boundaries = boundaryCount
           ? `${boundaryCount} preselected ${boundaryCount === 1 ? 'boundary' : 'boundaries'}`
           : 'all other geometry as boundaries';
-        return `${type} — Click ${verb} to ${type.toLowerCase()}; ${boundaries}; Enter/right-click/Esc to finish:`;
+        if (state.edit?.fence) {
+          return state.currentPoints.length
+            ? 'TRIM Fence — Specify next fence point, or [Undo]; Enter to trim:'
+            : 'TRIM Fence — Specify first fence point:';
+        }
+        const options = supportsFence ? `, or [Fence]` : '';
+        return `${type} — Click ${verb} to ${type.toLowerCase()}${options}; ${boundaries}; Enter/right-click/Esc to finish:`;
       },
 
       // The click selects which piece of which object is meant, so it is taken
       // from the raw cursor: a snap would pull it onto an endpoint and change
-      // which side of a boundary it names.
+      // which side of a boundary it names. A fence point is a location along a
+      // cutting path instead, so typed coordinates are accepted for it exactly
+      // as PLINE accepts them for its own points.
       usesSnap: false,
 
       acceptsPoint() {
-        return false;
+        return Boolean(state.edit?.fence);
       },
 
       point(p) {
+        if (state.edit?.fence) {
+          const last = state.currentPoints[state.currentPoints.length - 1];
+          if (last && dist(last, p) <= 1e-9) {
+            updatePrompt('TRIM Fence — That is the same point. Specify a different next point:');
+            return;
+          }
+          state.currentPoints.push({ ...p });
+          updatePrompt();
+          return;
+        }
         if (type === 'TRIM') trimAt(p);
         else extendAt(p);
       },
@@ -14584,15 +14681,54 @@ kbd { font-size: 9px; opacity: .65; }
       },
 
       preview(p) {
+        if (state.edit?.fence) {
+          if (state.currentPoints.length) drawEntity({ type: 'PLINE', points: [...state.currentPoints, p] }, true);
+          return;
+        }
         if (type === 'TRIM') drawTrimPreview(p);
         else drawExtendPreview(p);
       },
 
       finish() {
+        if (state.edit?.fence) {
+          if (state.currentPoints.length < 2) {
+            updatePrompt('TRIM Fence — Specify at least two points, or Esc to cancel the fence.');
+            draw();
+            return true;
+          }
+          applyFenceTrim(state.currentPoints);
+          state.edit.fence = false;
+          state.currentPoints = [];
+          return true;
+        }
         finishEdgeEdit();
         return true;
       },
     };
+
+    // Only TRIM gets the Fence keyword and its Undo — EXTEND keeps the plain
+    // click-only contract it always had, rather than gaining dead hooks that
+    // would otherwise swallow a keyboard Undo mid-EXTEND for no reason.
+    if (supportsFence) {
+      command.keyword = function (text) {
+        if (state.edit?.fence) return false;
+        if (!['F', 'FENCE'].includes(text.trim().toUpperCase())) return false;
+        state.edit.fence = true;
+        state.currentPoints = [];
+        updatePrompt();
+        draw();
+        return true;
+      };
+
+      command.undoPoint = function () {
+        if (!state.edit?.fence) return;
+        state.currentPoints.pop();
+        updatePrompt();
+        draw();
+      };
+    }
+
+    return command;
   }
 
   defineCommand('TRIM', edgeEditCommand('TRIM'));

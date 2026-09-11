@@ -44,6 +44,7 @@
   "interaction/tracking.js",
   "geometry/edgeEdit.js",
   "geometry/trim.js",
+  "geometry/fence.js",
   "interaction/selection.js",
   "geometry/extend.js",
   "geometry/grips.js",
@@ -682,7 +683,9 @@
   "layerPanelInitiallyCollapsed": "ui/shell.js",
   "TOOLBAR_AUTOHIDE_KEY": "ui/shell.js",
   "setToolbarAutohide": "ui/shell.js",
-  "toolbarAutohideInitially": "ui/shell.js"
+  "toolbarAutohideInitially": "ui/shell.js",
+  "fenceCrossingPoints": "geometry/fence.js",
+  "applyFenceTrim": "geometry/fence.js"
  },
  "kinds": {
   "canvas": "const",
@@ -1292,6 +1295,8 @@
   "layerPanelInitiallyCollapsed": "let",
   "TOOLBAR_AUTOHIDE_KEY": "const",
   "setToolbarAutohide": "function",
-  "toolbarAutohideInitially": "let"
+  "toolbarAutohideInitially": "let",
+  "fenceCrossingPoints": "function",
+  "applyFenceTrim": "function"
  }
 }
