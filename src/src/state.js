@@ -2,6 +2,9 @@ import { createDefaultLayers, defaultDimStyle, defaultSnapTypes, defaultUnitSett
 
 export const state = {
   entities: [],
+  // Raster reference images, kept out of `entities` so no geometry dispatch
+  // has to grow a branch for them. See model/underlay.js.
+  underlays: [],
   layers: createDefaultLayers(),
   currentLayerId: '0',
   drawingName: 'Untitled',
@@ -22,6 +25,7 @@ export const state = {
   grip: null,
   circle: null,
   text: null,
+  underlay: null,
   mouseScreen: { x: 0, y: 0 },
   mouseWorld: { x: 0, y: 0 },
   activePoint: { x: 0, y: 0 },
@@ -44,6 +48,7 @@ export const state = {
   future: [],
   nextId: 1,
   nextLayerId: 1,
+  nextUnderlayId: 1,
   dimStyles: [defaultDimStyle()],
 };
 

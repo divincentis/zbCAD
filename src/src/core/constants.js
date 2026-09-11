@@ -5,7 +5,8 @@ export const MAX_VIEW_SCALE = 100000;
 export const DOCUMENT_FORMAT = 'browser-2d-draft';
 // Version 4 had no per-layer linetype/lineweight/printability (see
 // core/defaults.js and model/document.js's layer parsing for the migration).
-export const DOCUMENT_VERSION = 6;
+// Version 6 had no underlays; a file without the key simply loads with none.
+export const DOCUMENT_VERSION = 7;
 export const AUTOSAVE_KEY = `${DOCUMENT_FORMAT}.autosave`;
 export const AUTOSAVE_BACKUP_KEY = `${AUTOSAVE_KEY}.previous`;
 export const LEGACY_AUTOSAVE_KEYS = [`${DOCUMENT_FORMAT}.autosave.v1`];
@@ -93,3 +94,19 @@ export const LAYER_BASIC_COLORS = Object.freeze([
 // width (1.35px), so drawings made before this feature render unchanged.
 export const LINEWEIGHT_PX_PER_MM = 1.35 / DEFAULT_LINEWEIGHT;
 export const MIN_LINEWEIGHT_PX = 1;
+
+// Underlays. An imported raster is re-encoded to JPEG and capped on its long
+// edge, because the image travels inline in the document JSON: every autosave
+// re-serialises it, and the synchronous unload copy has a localStorage quota to
+// fit inside. 2400px still resolves far more detail than anyone traces at.
+export const UNDERLAY_MAX_EDGE_PX = 2400;
+export const UNDERLAY_JPEG_QUALITY = 0.86;
+export const UNDERLAY_MIN_UNITS_PER_PIXEL = 1e-9;
+export const UNDERLAY_MAX_UNITS_PER_PIXEL = 1e9;
+export const UNDERLAY_DEFAULT_FADE = 35;
+
+// A 1x1 transparent GIF, used as the stand-in when an unload-time autosave has
+// to drop underlay images to fit the localStorage quota. It satisfies the
+// document validator's "data:image/" rule, so the recovered drawing still
+// opens, showing an empty frame where the image was.
+export const UNDERLAY_DROPPED_DATA = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';

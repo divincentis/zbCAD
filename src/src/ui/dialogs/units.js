@@ -4,6 +4,7 @@ import { DRAWING_UNITS, LENGTH_FORMATS, formatLength, formatLengthLabel, formats
 import { canvas, coordXEl, coordYEl, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitPreview, unitRescaleCheck, unitRescaleRow, unitStatus, unitsDialog } from '../../dom.js';
 import { scaleEntity } from '../../geometry/transform.js';
 import { commitGeometry } from '../../model/history.js';
+import { scaleUnderlay } from '../../model/underlay.js';
 import { state } from '../../state.js';
 import { updatePrompt } from '../prompt.js';
 import { setFileStatus } from '../status.js';
@@ -110,12 +111,17 @@ export function applyUnitsDialog() {
   if (unchanged) { closeUnitsDialog(); return; }
 
   let entities = state.entities;
+  let underlays = state.underlays;
   if (rescale) {
     // Convert geometry about the origin so a 120" line stays 10 feet long when
-    // the drawing unit becomes millimetres.
+    // the drawing unit becomes millimetres. Underlays are converted with it —
+    // a calibrated image left at its old scale would silently stop lining up
+    // with the geometry traced from it, which is the one thing calibration
+    // exists to guarantee.
     const factor = unitConversion(previousUnit, next.drawingUnit);
     const origin = { x: 0, y: 0 };
     entities = entities.map(entity => scaleEntity(entity, origin, factor));
+    underlays = underlays.map(underlay => scaleUnderlay(underlay, origin, factor));
   }
   let dimStyles = state.dimStyles;
   if (next.drawingUnit !== previousUnit) {
@@ -126,7 +132,7 @@ export function applyUnitsDialog() {
   dimStyles = dimStyles.map(style => style.precision !== null &&
     !LENGTH_FORMATS[next.format].precisions.includes(style.precision)
     ? { ...style, precision: null } : style);
-  if (!commitGeometry(entities, { unitSettings: next, dimStyles })) return;
+  if (!commitGeometry(entities, { unitSettings: next, dimStyles, underlays })) return;
   renderUnitStatus();
   updatePrompt();
   setFileStatus(`${state.drawingName} · Units set to ${unitSummary()}`);

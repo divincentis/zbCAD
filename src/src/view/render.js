@@ -12,6 +12,7 @@ import { entitySegments, mtextLineHeight, mtextLines } from '../model/entity.js'
 import { getLayer, isEntityVisible } from '../model/layerQuery.js';
 import { state } from '../state.js';
 import { drawGrid } from './grid.js';
+import { drawUnderlays } from './underlay.js';
 import { worldToScreen } from './viewport.js';
 
 // A selected entity used to be recolored solid white, which erased the one
@@ -464,6 +465,9 @@ export function render() {
   ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);
   ctx.fillStyle = '#111';
   ctx.fillRect(0,0,canvas.clientWidth,canvas.clientHeight);
+  // Underlays sit under the grid, not just under the geometry: the grid is a
+  // drafting aid and has to stay readable over a dark scan or aerial.
+  drawUnderlays();
   drawGrid();
   for (const e of state.entities) {
     // The entity currently being retyped (EDITTEXT/DDEDIT-style) is represented

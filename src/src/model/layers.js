@@ -3,6 +3,7 @@ import { DEFAULT_LINETYPE, DEFAULT_LINEWEIGHT, LINETYPES, LINEWEIGHTS } from '..
 import { pushHistory } from './history.js';
 import { getLayer, isEntityEditable } from './layerQuery.js';
 import { state } from '../state.js';
+import { underlaySelectionId } from './underlay.js';
 import { renderLayerManager } from '../ui/layerPanel.js';
 import { updatePrompt } from '../ui/prompt.js';
 import { setFileStatus } from '../ui/status.js';
@@ -139,6 +140,15 @@ export function setCurrentLayer(id) {
   return true;
 }
 
+// A layer that has just been hidden or locked must not leave its underlays in
+// the selection, for the same reason its entities are dropped: the next command
+// would otherwise act on something the user can no longer see or pick.
+function dropUnderlaySelection(layerId) {
+  for (const underlay of state.underlays) {
+    if (underlay.layerId === layerId) state.selected.delete(underlaySelectionId(underlay.id));
+  }
+}
+
 export function toggleLayerVisibility(id) {
   if (!requireIdle('changing layer visibility')) return false;
   const layer = getLayer(id);
@@ -153,6 +163,7 @@ export function toggleLayerVisibility(id) {
     for (const entity of state.entities) {
       if (entity.layerId === layer.id) state.selected.delete(entity.id);
     }
+    dropUnderlaySelection(layer.id);
   }
   renderLayerManager();
   draw();
@@ -173,6 +184,7 @@ export function toggleLayerLock(id) {
     for (const entity of state.entities) {
       if (entity.layerId === layer.id) state.selected.delete(entity.id);
     }
+    dropUnderlaySelection(layer.id);
   }
   renderLayerManager();
   draw();

@@ -1,13 +1,14 @@
 import { resolveCommandName } from '../commands/aliases.js';
 import { startTextEdit } from '../commands/annotate.js';
 import { activeCommand, cancelCurrent, commandSelectsObjects, commitPoint, finishCurrent, navigateHistory, startCommand } from '../commands/registry.js';
-import { canvas, commandInput, currentLayerSelect, dimStyleDialog, plotDialog, polarDialog, snapDialog, unitsDialog } from '../dom.js';
+import { canvas, commandInput, currentLayerSelect, dimStyleDialog, plotDialog, polarDialog, snapDialog, underlayDialog, unitsDialog } from '../dom.js';
 import { hitTestGrip, startGripEdit } from '../geometry/grips.js';
 import { commitCommandKeyword, commitCommandValue, commitDistance, commitPointInput, parseDistance } from './input.js';
 import { deleteSelected, distanceToEntityPx, finishBoxSelection, selectAt } from './selection.js';
 import { getActivePoint } from './tracking.js';
 import { isEntityEditable } from '../model/layerQuery.js';
 import { chooseOpenFile, newDrawing, saveDrawing } from '../model/persistence.js';
+import { applyUnderlayDialog, closeUnderlayDialog } from '../ui/dialogs/underlay.js';
 import { state } from '../state.js';
 import { applyDimStyleDialog, closeDimStyleDialog } from '../ui/dialogs/dimstyle.js';
 import { closePolarDialog, closeSnapDialog, setOrtho, setPolar } from '../ui/dialogs/drafting.js';
@@ -171,6 +172,11 @@ canvas.addEventListener('wheel', ev => {
 document.addEventListener('keydown', ev => {
   // The dialog owns the keyboard while it is open, otherwise the catch-all
   // below would type into the command line behind it.
+  if (!underlayDialog.hidden) {
+    if (ev.key === 'Escape') { ev.preventDefault(); closeUnderlayDialog(); }
+    else if (ev.key === 'Enter') { ev.preventDefault(); applyUnderlayDialog(); }
+    return;
+  }
   if (!unitsDialog.hidden) {
     if (ev.key === 'Escape') { ev.preventDefault(); closeUnitsDialog(); }
     else if (ev.key === 'Enter') { ev.preventDefault(); applyUnitsDialog(); }

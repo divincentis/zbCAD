@@ -1,8 +1,9 @@
 import { activeCommand } from '../commands/registry.js';
-import { angleFromCenter, angleOnArc, circularPoint, dist, pointOnSegmentClosest } from '../core/math.js';
+import { angleFromCenter, angleOnArc, circularPoint, dist, pointOnSegmentClosest, segmentIntersection } from '../core/math.js';
 import { commitGeometry } from '../model/history.js';
 import { boxContains, entityBBox, entityCrossesBox, pickSegments, textContainsPoint } from '../model/entity.js';
 import { isEntityEditable } from '../model/layerQuery.js';
+import { underlayBBox, underlayContainsPoint, underlayCorners, underlayIsSelectable, underlaySelectionId } from '../model/underlay.js';
 import { state } from '../state.js';
 import { updatePrompt } from '../ui/prompt.js';
 import { draw } from '../view/frame.js';
@@ -43,6 +44,17 @@ export function distanceToEntityPx(world, entity) {
   return best;
 }
 
+// Geometry always wins a contested pick: an underlay is a background, so it is
+// only offered when nothing drawn on top of it is within reach.
+export function underlayAt(world) {
+  for (let index = state.underlays.length - 1; index >= 0; index--) {
+    const underlay = state.underlays[index];
+    if (!underlayIsSelectable(underlay)) continue;
+    if (underlayContainsPoint(underlay, world)) return underlay;
+  }
+  return null;
+}
+
 export function selectAt(world, add = false) {
   let hit = null;
   let best = 8;
@@ -51,8 +63,14 @@ export function selectAt(world, add = false) {
     const d = distanceToEntityPx(world, e);
     if (d < best) { best = d; hit = e; }
   }
+  const underlay = hit ? null : underlayAt(world);
   if (!add) state.selected.clear();
-  if (hit) {
+  if (underlay) {
+    const key = underlaySelectionId(underlay.id);
+    if (add && state.selected.has(key)) state.selected.delete(key);
+    else state.selected.add(key);
+    activeCommand()?.noteSelection?.({ underlayId: underlay.id });
+  } else if (hit) {
     if (add && state.selected.has(hit.id)) state.selected.delete(hit.id);
     else state.selected.add(hit.id);
     activeCommand()?.noteSelection?.({ entityId: hit.id });
@@ -81,10 +99,44 @@ export function finishBoxSelection(add = false) {
     const hit = crossing ? entityCrossesBox(e, box) : boxContains(box, bb);
     if (hit) state.selected.add(e.id);
   }
+  for (const underlay of state.underlays) {
+    if (!underlayIsSelectable(underlay)) continue;
+    // A crossing window catches an image whose frame overlaps it at all; a
+    // window selection needs the whole frame inside, matching the entity rule
+    // above. Both test the four corners, which for a rectangle is exact.
+    const hit = crossing
+      ? underlayCrossesBox(underlay, box)
+      : boxContains(box, underlayBBox(underlay));
+    if (hit) state.selected.add(underlaySelectionId(underlay.id));
+  }
   activeCommand()?.noteSelection?.({ box, crossing });
   state.dragSelect = null;
   updatePrompt();
   draw();
+}
+
+function underlayCrossesBox(underlay, box) {
+  const corners = underlayCorners(underlay);
+  if (corners.some(p => p.x >= box.minX && p.x <= box.maxX && p.y >= box.minY && p.y <= box.maxY)) return true;
+  const bb = underlayBBox(underlay);
+  if (boxContains(bb, box)) return true;
+  for (let index = 0; index < corners.length; index++) {
+    const a = corners[index];
+    const b = corners[(index + 1) % corners.length];
+    if (segmentCrossesBox(a, b, box)) return true;
+  }
+  return false;
+}
+
+function segmentCrossesBox(a, b, box) {
+  const corners = [
+    { x: box.minX, y: box.minY }, { x: box.maxX, y: box.minY },
+    { x: box.maxX, y: box.maxY }, { x: box.minX, y: box.maxY },
+  ];
+  for (let index = 0; index < 4; index++) {
+    if (segmentIntersection(a, b, corners[index], corners[(index + 1) % 4])) return true;
+  }
+  return false;
 }
 
 // The one implementation of "remove what is selected", shared by the Delete
@@ -94,14 +146,18 @@ export function eraseSelection() {
   const deletable = new Set(state.entities
     .filter(entity => state.selected.has(entity.id) && isEntityEditable(entity))
     .map(entity => entity.id));
-  if (!deletable.size) return { error: 'No objects selected.', erased: 0 };
-  if (!commitGeometry(state.entities.filter(e => !deletable.has(e.id)))) {
+  const removableUnderlays = new Set(state.underlays
+    .filter(underlay => state.selected.has(underlaySelectionId(underlay.id)) && underlayIsSelectable(underlay))
+    .map(underlay => underlay.id));
+  if (!deletable.size && !removableUnderlays.size) return { error: 'No objects selected.', erased: 0 };
+  const keptUnderlays = state.underlays.filter(underlay => !removableUnderlays.has(underlay.id));
+  if (!commitGeometry(state.entities.filter(e => !deletable.has(e.id)), { underlays: keptUnderlays })) {
     return { error: 'That deletion was rejected.', erased: 0 };
   }
   state.selected.clear();
   updatePrompt();
   draw();
-  return { erased: deletable.size };
+  return { erased: deletable.size + removableUnderlays.size };
 }
 
 // A dimension whose geometry is erased freezes at its last measured value

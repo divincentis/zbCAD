@@ -1,4 +1,4 @@
-import { AUTOSAVE_BACKUP_KEY, AUTOSAVE_KEY } from '../core/constants.js';
+import { AUTOSAVE_BACKUP_KEY, AUTOSAVE_KEY, UNDERLAY_DROPPED_DATA } from '../core/constants.js';
 import { readAutosaveRecord, writeAutosaveRecord, writeAutosaveRecordSync } from './autosaveStore.js';
 import { exportDocumentText, parseDocumentText } from './document.js';
 import { state } from '../state.js';
@@ -46,9 +46,32 @@ export async function writeAutosave() {
 // likely be aborted before it commits, so this one write stays synchronous.
 // It only ever covers the edits made since the last autosave settled — at most
 // the debounce window — and the next successful autosave clears it again.
+//
+// Underlay images are the one payload that can push this past the localStorage
+// quota. Losing the whole unload copy over them would be the wrong trade: the
+// geometry is the irreplaceable part, IndexedDB already holds the full drawing
+// including the images, and a restored copy whose images need re-importing
+// beats no restored copy at all. So a quota failure retries without them.
 export function writeAutosaveOnUnload() {
-  writeAutosaveRecordSync(AUTOSAVE_KEY, exportDocumentText(false));
+  const text = exportDocumentText(false);
+  try {
+    writeAutosaveRecordSync(AUTOSAVE_KEY, text);
+    return true;
+  } catch (error) {
+    if (!state.underlays.length) throw error;
+  }
+  writeAutosaveRecordSync(AUTOSAVE_KEY, documentTextWithoutImages(text));
   return true;
+}
+
+// Strips only the base64 payloads, leaving each underlay's placement, scale and
+// name intact so a recovered drawing says what is missing and where it sat.
+export function documentTextWithoutImages(text) {
+  const parsed = JSON.parse(text);
+  for (const underlay of parsed.underlays || []) {
+    underlay.data = UNDERLAY_DROPPED_DATA;
+  }
+  return JSON.stringify(parsed);
 }
 
 export function scheduleAutosave() {

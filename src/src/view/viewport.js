@@ -1,7 +1,8 @@
 import { MAX_VIEW_SCALE, MIN_VIEW_SCALE } from '../core/constants.js';
 import { canvas, ctx } from '../dom.js';
 import { entityBBox } from '../model/entity.js';
-import { isEntityVisible } from '../model/layerQuery.js';
+import { isEntityVisible, isLayerVisible } from '../model/layerQuery.js';
+import { underlayBBox } from '../model/underlay.js';
 import { state } from '../state.js';
 import { draw } from './frame.js';
 
@@ -58,14 +59,16 @@ export function zoomAt(screen, factor) {
 
 export function zoomExtents() {
   const visibleEntities = state.entities.filter(isEntityVisible);
-  if (!visibleEntities.length) {
+  const visibleUnderlays = state.underlays.filter(underlay => isLayerVisible(underlay.layerId));
+  if (!visibleEntities.length && !visibleUnderlays.length) {
     state.view.scale = 1.5;
     state.view.offsetX = canvas.clientWidth / 2;
     state.view.offsetY = canvas.clientHeight / 2;
     draw();
     return;
   }
-  const boxes = visibleEntities.map(entityBBox).filter(Boolean);
+  const boxes = visibleEntities.map(entityBBox).filter(Boolean)
+    .concat(visibleUnderlays.map(underlayBBox));
   const box = {
     minX: Math.min(...boxes.map(b=>b.minX)), maxX: Math.max(...boxes.map(b=>b.maxX)),
     minY: Math.min(...boxes.map(b=>b.minY)), maxY: Math.max(...boxes.map(b=>b.maxY)),

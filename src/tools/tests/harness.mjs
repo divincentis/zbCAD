@@ -194,6 +194,107 @@ function makeIndexedDB({ broken = false } = {}) {
 // `options.indexedDB: false` boots as a browser that refuses to open a database
 // at all, and `'broken'` as one that opens it and then fails every read and
 // write, so both localStorage fallbacks can be tested.
+// Sizes for stub images, keyed by data URL or by object URL, so a test can say
+// how big the raster it is pretending to load is.
+export const imageRegistry = new Map();
+
+export function registerStubImage(src, width, height) {
+  imageRegistry.set(src, { width, height });
+}
+
+function stubImageSize(registry, src) {
+  const registered = registry.get(src);
+  if (registered) return registered;
+  const fragment = /#(\d+)x(\d+)$/.exec(String(src || ''));
+  if (fragment) return { width: Number(fragment[1]), height: Number(fragment[2]) };
+  return { width: 100, height: 100 };
+}
+
+function makeImageStub(registry) {
+  return class ImageStub {
+    constructor() {
+      this.onload = null;
+      this.onerror = null;
+      this.width = 0;
+      this.height = 0;
+      this.naturalWidth = 0;
+      this.naturalHeight = 0;
+      this.complete = false;
+    }
+
+    set src(value) {
+      this._src = value;
+      const size = stubImageSize(registry, value);
+      this.width = size.width;
+      this.height = size.height;
+      this.naturalWidth = size.width;
+      this.naturalHeight = size.height;
+      // Asynchronous on purpose: a synchronous onload would let tests pass that
+      // depend on decode order the browser does not guarantee.
+      queueMicrotask(() => {
+        this.complete = true;
+        if (typeof this.onload === 'function') this.onload();
+      });
+    }
+
+    get src() { return this._src; }
+  };
+}
+
+class FileReaderStub {
+  constructor() {
+    this.onload = null;
+    this.onerror = null;
+    this.result = null;
+  }
+
+  readAsText(file) { this._finish(file?.text ? file.text : String(file || '')); }
+
+  readAsDataURL(file) {
+    this._finish(file?.dataUrl || 'data:application/octet-stream;base64,');
+  }
+
+  _finish(result) {
+    this.result = result;
+    queueMicrotask(() => {
+      if (typeof this.onload === 'function') this.onload({ target: this });
+    });
+  }
+}
+
+const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+function base64Encode(binary) {
+  const text = String(binary);
+  let out = '';
+  for (let index = 0; index < text.length; index += 3) {
+    const a = text.charCodeAt(index);
+    const b = index + 1 < text.length ? text.charCodeAt(index + 1) : NaN;
+    const c = index + 2 < text.length ? text.charCodeAt(index + 2) : NaN;
+    out += BASE64_CHARS[a >> 2];
+    out += BASE64_CHARS[((a & 3) << 4) | (Number.isNaN(b) ? 0 : b >> 4)];
+    out += Number.isNaN(b) ? '=' : BASE64_CHARS[((b & 15) << 2) | (Number.isNaN(c) ? 0 : c >> 6)];
+    out += Number.isNaN(c) ? '=' : BASE64_CHARS[c & 63];
+  }
+  return out;
+}
+
+function base64Decode(base64) {
+  const clean = String(base64).replace(/[^A-Za-z0-9+/]/g, '');
+  let out = '';
+  let buffer = 0;
+  let bits = 0;
+  for (const character of clean) {
+    buffer = (buffer << 6) | BASE64_CHARS.indexOf(character);
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out += String.fromCharCode((buffer >> bits) & 255);
+    }
+  }
+  return out;
+}
+
 export function boot(bundlePath, options = {}) {
   const html = fs.readFileSync(bundlePath, 'utf8');
   // The bundle is one inline <script>; take the largest one so a small
@@ -274,8 +375,15 @@ export function boot(bundlePath, options = {}) {
     performance: windowStub.performance,
     Blob: class { constructor(parts) { this.parts = parts; } },
     URL: { createObjectURL: () => 'blob:stub', revokeObjectURL: NOOP },
-    FileReader: class { readAsText() {} },
-    Image: class { },
+    FileReader: FileReaderStub,
+    // An Image that actually resolves. The previous `class {}` could be
+    // constructed but never loaded, so anything awaiting onload hung forever —
+    // which is why the underlay code is written never to await a decode. The
+    // size comes from a registry a test populates via registerStubImage(), or
+    // from a `#WxH` fragment on the URL, since a stub cannot read a real JPEG.
+    Image: makeImageStub(imageRegistry),
+    atob: base64Decode,
+    btoa: base64Encode,
     devicePixelRatio: 1,
     getComputedStyle: windowStub.getComputedStyle,
     matchMedia: windowStub.matchMedia,

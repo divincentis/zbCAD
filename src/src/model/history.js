@@ -15,12 +15,18 @@ export function pushHistory() {
 
 // Build a complete candidate without mutating entities, IDs, history, or the
 // command stage. Only a validated candidate may enter the undoable document.
+//
+// Underlays ride in the same candidate rather than getting a commit path of
+// their own, so a MOVE over a selection holding both geometry and an image is
+// one undo step instead of two half-steps that can be separated.
 export function commitGeometry(entities, options = {}) {
   const candidate = {
     ...documentSnapshot(), entities: updateAssociativeDimensions(entities),
     nextId: options.nextId ?? state.nextId,
     units: options.unitSettings ?? state.unitSettings,
     dimStyles: options.dimStyles ?? state.dimStyles,
+    underlays: options.underlays ?? state.underlays,
+    nextUnderlayId: options.nextUnderlayId ?? state.nextUnderlayId,
   };
   if (!Number.isSafeInteger(candidate.nextId) || candidate.nextId <= 0) {
     updatePrompt('Edit rejected: no valid entity IDs remain.');
@@ -36,6 +42,8 @@ export function commitGeometry(entities, options = {}) {
   state.nextId = checked.document.nextId;
   state.unitSettings = checked.document.unitSettings;
   state.dimStyles = checked.document.dimStyles;
+  state.underlays = checked.document.underlays;
+  state.nextUnderlayId = checked.document.nextUnderlayId;
   return true;
 }
 

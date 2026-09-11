@@ -1,26 +1,31 @@
-import { DEFAULT_LINETYPE, DEFAULT_LINEWEIGHT, DIM_REF_PARTS, DIM_TYPES, DOCUMENT_FORMAT, DOCUMENT_VERSION, LINETYPES, LINEWEIGHTS, TAU } from '../core/constants.js';
+import { DEFAULT_LINETYPE, DEFAULT_LINEWEIGHT, DIM_REF_PARTS, DIM_TYPES, DOCUMENT_FORMAT, DOCUMENT_VERSION, LINETYPES, LINEWEIGHTS, TAU, UNDERLAY_MAX_UNITS_PER_PIXEL, UNDERLAY_MIN_UNITS_PER_PIXEL } from '../core/constants.js';
 import { DEFAULT_DIM_STYLE_ID, defaultDimStyle, derivedNextLayerId } from '../core/defaults.js';
 import { parseDimStyle } from '../core/dimstyle.js';
 import { bulgeArc, dist, normalizeAngle } from '../core/math.js';
 import { parseUnitSettings } from '../core/units.js';
 import { dimensionGeometry } from './dimension.js';
 import { cloneDimStyles, cloneEntities, cloneLayers, entityArea, entityBBox, entityLength } from './entity.js';
+import { cloneUnderlays } from './underlay.js';
 import { state } from '../state.js';
 
 export function editSnapshot() {
   return {
     entities: cloneEntities(),
+    underlays: cloneUnderlays(),
     layers: cloneLayers(),
     dimStyles: cloneDimStyles(),
     unitSettings: { ...state.unitSettings },
     currentLayerId: state.currentLayerId,
     nextId: state.nextId,
     nextLayerId: state.nextLayerId,
+    nextUnderlayId: state.nextUnderlayId,
   };
 }
 
 export function restoreEditSnapshot(snapshot) {
   state.entities = snapshot.entities;
+  state.underlays = snapshot.underlays || [];
+  state.nextUnderlayId = snapshot.nextUnderlayId || derivedNextUnderlayId(state.underlays);
   state.layers = snapshot.layers;
   if (snapshot.dimStyles) state.dimStyles = snapshot.dimStyles.map(style => ({ ...style }));
   if (snapshot.unitSettings) state.unitSettings = { ...snapshot.unitSettings };
@@ -40,7 +45,9 @@ export function documentSnapshot() {
     currentLayerId: state.currentLayerId,
     nextId: state.nextId,
     nextLayerId: state.nextLayerId,
+    nextUnderlayId: state.nextUnderlayId,
     entities: state.entities,
+    underlays: state.underlays,
   };
 }
 
@@ -257,6 +264,54 @@ export function cleanEntity(value, layerIds) {
   return { error: `uses unsupported entity type ${type || '(missing)'}` };
 }
 
+// Underlays carry an image payload, so validation checks the shape and the
+// numbers but deliberately does not inspect the raster: a data URL that the
+// browser later fails to decode draws as nothing, which is a far better outcome
+// than refusing to open the whole drawing.
+export function cleanUnderlay(value, layerIds) {
+  if (!value || typeof value !== 'object') return { error: 'is not an object' };
+  if (!Number.isSafeInteger(value.id) || value.id <= 0) return { error: 'has an invalid ID' };
+  const layerId = typeof value.layerId === 'string' && value.layerId ? value.layerId : '0';
+  if (!layerIds.has(layerId)) return { error: `references unknown layer ${layerId}` };
+  const origin = cleanPoint(value.origin);
+  if (!origin) return { error: 'has an invalid origin' };
+  if (!Number.isFinite(value.rotation)) return { error: 'has an invalid rotation' };
+  if (!Number.isFinite(value.unitsPerPixel)
+    || value.unitsPerPixel <= UNDERLAY_MIN_UNITS_PER_PIXEL
+    || value.unitsPerPixel > UNDERLAY_MAX_UNITS_PER_PIXEL) {
+    return { error: 'has an invalid scale' };
+  }
+  if (!Number.isSafeInteger(value.widthPx) || value.widthPx <= 0) return { error: 'has an invalid pixel width' };
+  if (!Number.isSafeInteger(value.heightPx) || value.heightPx <= 0) return { error: 'has an invalid pixel height' };
+  if (typeof value.data !== 'string' || !value.data.startsWith('data:image/')) {
+    return { error: 'has no image data' };
+  }
+  const fade = Number.isFinite(value.fade) ? Math.min(100, Math.max(0, value.fade)) : 0;
+  const name = typeof value.name === 'string' && value.name.trim()
+    ? value.name.trim().slice(0, 120)
+    : 'image';
+  return {
+    underlay: {
+      id: value.id,
+      layerId,
+      name,
+      origin,
+      rotation: normalizeAngle(value.rotation),
+      unitsPerPixel: value.unitsPerPixel,
+      widthPx: value.widthPx,
+      heightPx: value.heightPx,
+      fade,
+      locked: value.locked === true,
+      plot: value.plot === true,
+      data: value.data,
+    },
+  };
+}
+
+export function derivedNextUnderlayId(underlays) {
+  return underlays.reduce((maximum, underlay) => Math.max(maximum, (underlay?.id || 0) + 1), 1);
+}
+
 export function parseDocumentText(text) {
   let value;
   try {
@@ -358,6 +413,27 @@ export function validateDocumentData(value) {
     entities.push(cleaned.entity);
   }
 
+  // Version 6 and earlier had no underlays. An absent key is not a migration,
+  // just a drawing with none.
+  if (value.underlays !== undefined && !Array.isArray(value.underlays)) {
+    return { error: 'The drawing has an invalid underlay table.' };
+  }
+  const underlays = [];
+  const underlayIds = new Set();
+  for (let index = 0; index < (value.underlays || []).length; index++) {
+    const cleaned = cleanUnderlay(value.underlays[index], layerIds);
+    if (cleaned.error) return { error: `Underlay ${index + 1} ${cleaned.error}.` };
+    if (underlayIds.has(cleaned.underlay.id)) {
+      return { error: `Underlay ID ${cleaned.underlay.id} is duplicated.` };
+    }
+    underlayIds.add(cleaned.underlay.id);
+    underlays.push(cleaned.underlay);
+  }
+  const minimumNextUnderlayId = underlays.reduce((maximum, underlay) => Math.max(maximum, underlay.id + 1), 1);
+  const suppliedNextUnderlayId = Number.isSafeInteger(value.nextUnderlayId) && value.nextUnderlayId > 0
+    ? value.nextUnderlayId
+    : 1;
+
   const minimumNextId = entities.reduce((maximum, entity) => Math.max(maximum, entity.id + 1), 1);
   const suppliedNextId = Number.isSafeInteger(value.nextId) && value.nextId > 0 ? value.nextId : 1;
   const derivedLayerId = derivedNextLayerId(layers);
@@ -375,7 +451,9 @@ export function validateDocumentData(value) {
       currentLayerId,
       nextId: Math.max(minimumNextId, suppliedNextId),
       nextLayerId: Math.max(derivedLayerId, suppliedNextLayerId),
+      nextUnderlayId: Math.max(minimumNextUnderlayId, suppliedNextUnderlayId),
       entities,
+      underlays,
     },
   };
 }

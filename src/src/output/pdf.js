@@ -178,6 +178,140 @@ export function pdfTextOperators(op) {
   ];
 }
 
+
+// ---------------------------------------------------------------------------
+// Images
+//
+// A PDF carrying a raster is normally a binary file, which would mean this
+// module could no longer return a string: xref offsets are byte offsets, and
+// the Blob that delivers the file encodes strings as UTF-8, so every byte above
+// 127 would shift and corrupt. Rather than give that up — the purity here is
+// what lets the test suite assert on the PDF directly — the image bytes are
+// ASCII85-encoded and declared as `/Filter [/ASCII85Decode /DCTDecode]`. The
+// reader undoes both, the file stays 7-bit, and the cost is 25% size on a
+// payload that is already compressed.
+//
+// Underlays are always JPEG by the time they get here (model/imageImport.js
+// normalises every source format), so DCTDecode is the only image filter this
+// writer ever needs.
+// ---------------------------------------------------------------------------
+
+export const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+// Hand-rolled rather than using atob, which does not exist in the headless test
+// environment and would make the whole image path untestable.
+export function base64ToBytes(base64) {
+  const clean = String(base64).replace(/[^A-Za-z0-9+/]/g, '');
+  const bytes = [];
+  let buffer = 0;
+  let bits = 0;
+  for (const character of clean) {
+    const value = BASE64_ALPHABET.indexOf(character);
+    if (value < 0) continue;
+    buffer = (buffer << 6) | value;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((buffer >> bits) & 255);
+    }
+  }
+  return bytes;
+}
+
+export function dataUrlPayload(dataUrl) {
+  const comma = String(dataUrl).indexOf(',');
+  return comma < 0 ? '' : String(dataUrl).slice(comma + 1);
+}
+
+// ASCII85 as PDF defines it: four bytes to five printable characters, 'z' for
+// an all-zero group, '~>' to end. Line length is capped because some readers
+// baulk at very long lines.
+export function ascii85Encode(bytes) {
+  let out = '';
+  let lineLength = 0;
+  const emit = text => {
+    for (const character of text) {
+      out += character;
+      if (++lineLength >= 75) { out += '\n'; lineLength = 0; }
+    }
+  };
+  for (let index = 0; index < bytes.length; index += 4) {
+    const remaining = Math.min(4, bytes.length - index);
+    let value = 0;
+    for (let offset = 0; offset < 4; offset++) {
+      value = value * 256 + (offset < remaining ? bytes[index + offset] : 0);
+    }
+    if (remaining === 4 && value === 0) { emit('z'); continue; }
+    const group = [];
+    let rest = value;
+    for (let position = 4; position >= 0; position--) {
+      group[position] = String.fromCharCode(33 + (rest % 85));
+      rest = Math.floor(rest / 85);
+    }
+    // A partial final group drops the same number of characters as it was
+    // short of bytes, which is what tells the decoder how much to keep.
+    emit(group.slice(0, remaining + 1).join(''));
+  }
+  return out + '~>';
+}
+
+// JPEG is self-describing, and the PDF image dictionary has to agree with it on
+// size and colour space or the reader rejects the stream. Reading them back out
+// of the bytes is more trustworthy than carrying the canvas's numbers along,
+// since a re-encode can legitimately change them.
+export function jpegInfo(bytes) {
+  let index = 2;
+  while (index + 9 < bytes.length) {
+    if (bytes[index] !== 0xff) { index++; continue; }
+    const marker = bytes[index + 1];
+    // SOF0..SOF15, skipping the four that are not frame headers.
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return {
+        height: (bytes[index + 5] << 8) | bytes[index + 6],
+        width: (bytes[index + 7] << 8) | bytes[index + 8],
+        components: bytes[index + 9],
+      };
+    }
+    const length = (bytes[index + 2] << 8) | bytes[index + 3];
+    if (!(length > 0)) break;
+    index += 2 + length;
+  }
+  return null;
+}
+
+export function pdfImageObject(op) {
+  const bytes = base64ToBytes(dataUrlPayload(op.data));
+  if (!bytes.length) return null;
+  const info = jpegInfo(bytes);
+  const width = info?.width || op.pixelWidth;
+  const height = info?.height || op.pixelHeight;
+  if (!(width > 0) || !(height > 0)) return null;
+  const colorSpace = info && info.components === 1 ? '/DeviceGray' : '/DeviceRGB';
+  const encoded = ascii85Encode(bytes);
+  return {
+    width, height, colorSpace,
+    body: `<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} ` +
+      `/ColorSpace ${colorSpace} /BitsPerComponent 8 ` +
+      `/Filter [/ASCII85Decode /DCTDecode] /Length ${encoded.length} >>\nstream\n${encoded}\nendstream`,
+  };
+}
+
+// The unit square an image XObject draws into is mapped by `cm` onto the
+// parallelogram the plan supplies, which is what carries rotation without this
+// writer needing to know an angle.
+export function pdfImageOperators(op, name, graphicsStateName) {
+  const origin = op.origin;
+  return [
+    'q',
+    graphicsStateName ? `/${graphicsStateName} gs` : null,
+    `${pdfPoint(op.edgeX.x)} ${pdfPoint(op.edgeX.y)} ` +
+      `${pdfPoint(op.edgeY.x)} ${pdfPoint(op.edgeY.y)} ` +
+      `${pdfPoint(origin.x)} ${pdfPoint(origin.y)} cm`,
+    `/${name} Do`,
+    'Q',
+  ].filter(Boolean);
+}
+
 export function pdfContentStream(plan) {
   const lines = ['q'];
   // Clipped to the picked area intersected with the printable rectangle, so a
@@ -187,10 +321,17 @@ export function pdfContentStream(plan) {
   const clip = plan.clipMM || plan.printable;
   lines.push(`${pdfPoint(clip.xMM)} ${pdfPoint(clip.yMM)} ` +
     `${pdfPoint(clip.widthMM)} ${pdfPoint(clip.heightMM)} re W n`);
+  let imageIndex = 0;
   for (const op of plan.ops) {
     if (op.kind === 'stroke') lines.push(...pdfStrokeOperators(op));
     else if (op.kind === 'fill') lines.push(...pdfFillOperators(op));
     else if (op.kind === 'text') lines.push(...pdfTextOperators(op));
+    else if (op.kind === 'image') {
+      const name = `Im${imageIndex}`;
+      const alphaName = op.alpha < 1 ? `GSa${imageIndex}` : null;
+      lines.push(...pdfImageOperators(op, name, alphaName));
+      imageIndex++;
+    }
   }
   lines.push('Q');
   return lines.join('\n');
@@ -198,16 +339,40 @@ export function pdfContentStream(plan) {
 
 export function buildPdfDocument(plan, title = 'Drawing') {
   const content = pdfContentStream(plan);
+  // Objects 1-6 are fixed (catalog, pages, page, contents, two fonts); image
+  // XObjects and their transparency states are appended after the Info object,
+  // so their numbers are computed rather than written literally.
+  const imageOps = plan.ops.filter(op => op.kind === 'image');
+  const images = imageOps.map(pdfImageObject);
+  const FIXED_OBJECTS = 7;
+  const xobjectEntries = [];
+  const gsEntries = [];
+  const extraObjects = [];
+  images.forEach((image, index) => {
+    if (!image) return;
+    const objectNumber = FIXED_OBJECTS + extraObjects.length + 1;
+    extraObjects.push(image.body);
+    xobjectEntries.push(`/Im${index} ${objectNumber} 0 R`);
+    if (imageOps[index].alpha < 1) {
+      const gsNumber = FIXED_OBJECTS + extraObjects.length + 1;
+      extraObjects.push(`<< /Type /ExtGState /ca ${pdfNumber(imageOps[index].alpha)} ` +
+        `/CA ${pdfNumber(imageOps[index].alpha)} >>`);
+      gsEntries.push(`/GSa${index} ${gsNumber} 0 R`);
+    }
+  });
+  const xobjectResource = xobjectEntries.length ? ` /XObject << ${xobjectEntries.join(' ')} >>` : '';
+  const gsResource = gsEntries.length ? ` /ExtGState << ${gsEntries.join(' ')} >>` : '';
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
     '<< /Type /Page /Parent 2 0 R ' +
       `/MediaBox [0 0 ${pdfPoint(plan.page.widthMM)} ${pdfPoint(plan.page.heightMM)}] ` +
-      '/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>',
+      `/Resources << /Font << /F1 5 0 R /F2 6 0 R >>${xobjectResource}${gsResource} >> /Contents 4 0 R >>`,
     `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>',
     `<< /Title (${pdfEncodeText(title)}) /Producer (zbCAD) /Creator (zbCAD) >>`,
+    ...extraObjects,
   ];
 
   let pdf = '%PDF-1.4\n';
@@ -221,7 +386,7 @@ export function buildPdfDocument(plan, title = 'Drawing') {
   for (const offset of offsets) {
     pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
   }
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info ${objects.length} 0 R >>\n` +
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 7 0 R >>\n` +
     `startxref\n${xrefOffset}\n%%EOF\n`;
   return pdf;
 }

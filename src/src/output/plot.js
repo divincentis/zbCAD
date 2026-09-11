@@ -8,6 +8,7 @@ import { dimensionGeometry, dimensionText } from '../model/dimension.js';
 import { entityBBox, entitySegments, mtextLinePosition, mtextLines } from '../model/entity.js';
 import { getLayer, isLayerPrintable, isLayerVisible } from '../model/layerQuery.js';
 import { pdfTextWidthMM, pdfUnsupportedCharacters } from './pdf.js';
+import { underlayBBox, underlayCorners, underlayFadeAlpha, underlayHeight, underlayWidth } from '../model/underlay.js';
 import { state } from '../state.js';
 import { screenToWorld } from '../view/viewport.js';
 
@@ -72,6 +73,38 @@ export function plottableEntities() {
     isLayerVisible(entity.layerId) && isLayerPrintable(entity.layerId));
 }
 
+// An underlay plots only when it is explicitly marked to, on top of the same
+// layer rules geometry obeys. The extra flag exists because an underlay is far
+// more often a tracing aid than part of the sheet being issued, and a reference
+// aerial silently appearing on an issued drawing is a worse failure than one
+// silently missing from it.
+export function plottableUnderlays() {
+  return state.underlays.filter(underlay => underlay.plot
+    && isLayerVisible(underlay.layerId) && isLayerPrintable(underlay.layerId));
+}
+
+// The image is placed by its four corners rather than by an x/y/width/height
+// box, because a rotated underlay has no axis-aligned box to give. Both the
+// PDF writer and the preview turn these into their own transform.
+export function plotImageOp(underlay, context) {
+  const corners = underlayCorners(underlay).map(context.toPaper);
+  return {
+    kind: 'image',
+    id: underlay.id,
+    data: underlay.data,
+    pixelWidth: underlay.widthPx,
+    pixelHeight: underlay.heightPx,
+    // Origin plus the two edge vectors: exactly a PDF `cm` matrix, and exactly
+    // what canvas setTransform wants too.
+    origin: corners[0],
+    edgeX: { x: corners[1].x - corners[0].x, y: corners[1].y - corners[0].y },
+    edgeY: { x: corners[3].x - corners[0].x, y: corners[3].y - corners[0].y },
+    alpha: underlayFadeAlpha(underlay),
+    widthMM: underlayWidth(underlay) * context.mmPerUnit,
+    heightMM: underlayHeight(underlay) * context.mmPerUnit,
+  };
+}
+
 export function plotHexColor(hex) {
   const match = /^#([0-9a-fA-F]{6})$/.exec(String(hex || ''));
   if (!match) return [0, 0, 0];
@@ -83,7 +116,7 @@ export function plotHexColor(hex) {
   return [((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255];
 }
 
-export function plotAreaBox(settings, entities = plottableEntities()) {
+export function plotAreaBox(settings, entities = plottableEntities(), underlays = plottableUnderlays()) {
   if (settings.area === 'window') {
     const picked = settings.window;
     if (!picked) return null;
@@ -100,7 +133,11 @@ export function plotAreaBox(settings, entities = plottableEntities()) {
       minY: Math.min(topLeft.y, bottomRight.y), maxY: Math.max(topLeft.y, bottomRight.y),
     };
   }
-  const boxes = entities.map(entityBBox).filter(Boolean);
+  // Extents means everything that will be on the sheet, so a plotted image
+  // counts toward it — a drawing that is nothing but a marked-up aerial would
+  // otherwise report having nothing to plot.
+  const boxes = entities.map(entityBBox).filter(Boolean)
+    .concat(underlays.map(underlayBBox));
   if (!boxes.length) return null;
   return {
     minX: Math.min(...boxes.map(box => box.minX)), maxX: Math.max(...boxes.map(box => box.maxX)),
@@ -341,6 +378,7 @@ export function plotTextMask(anchor, angle, widthMM, heightMM) {
 
 export function buildPlotPlan(settings) {
   const entities = plottableEntities();
+  const underlays = plottableUnderlays();
   const page = paperSizeMM(settings.paperSizeId, settings.orientation);
   const printable = {
     xMM: PAPER_MARGIN_MM,
@@ -351,7 +389,7 @@ export function buildPlotPlan(settings) {
   if (printable.widthMM <= 0 || printable.heightMM <= 0) {
     return { error: 'That sheet is smaller than its own margins.' };
   }
-  const area = plotAreaBox(settings, entities);
+  const area = plotAreaBox(settings, entities, underlays);
   if (!area) {
     return {
       error: settings.area === 'window'
@@ -397,6 +435,9 @@ export function buildPlotPlan(settings) {
 
   const ops = [];
   const unsupported = new Set();
+  // Images first: PDF and canvas both paint in order, so anything emitted
+  // after these draws on top of them, which is what an underlay is for.
+  for (const underlay of underlays) ops.push(plotImageOp(underlay, context));
   for (const entity of entities) {
     for (const op of plotEntityOps(entity, context)) {
       if (op.kind === 'text') pdfUnsupportedCharacters(op.text).forEach(bad => unsupported.add(bad));
@@ -428,6 +469,11 @@ export function buildPlotPlan(settings) {
       `${plotHeightMM.toFixed(1)} mm and will be clipped to the ${printable.widthMM.toFixed(1)} × ` +
       `${printable.heightMM.toFixed(1)} mm printable area.`);
   }
+  const excludedImages = state.underlays.length - underlays.length;
+  if (excludedImages > 0) {
+    warnings.push(`${excludedImages} image${excludedImages === 1 ? ' is' : 's are'} not included: ` +
+      'tick "Include this image when plotting" in Image Properties to plot one.');
+  }
   const excluded = state.entities.length - entities.length;
   if (excluded > 0) {
     warnings.push(`${excluded} object${excluded === 1 ? '' : 's'} on hidden or non-printable layers ` +
@@ -444,5 +490,6 @@ export function buildPlotPlan(settings) {
     page, printable, clipMM, area, scale, fitted, mmPerUnit, ops, warnings,
     plotWidthMM, plotHeightMM,
     entityCount: entities.length,
+    underlayCount: underlays.length,
   };
 }

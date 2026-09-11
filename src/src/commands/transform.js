@@ -7,6 +7,8 @@ import { commitGeometry } from '../model/history.js';
 import { duplicateEntities, entityBBox } from '../model/entity.js';
 import { isEntityEditable } from '../model/layerQuery.js';
 import { state } from '../state.js';
+import { duplicateUnderlays, mirrorUnderlay, rotateUnderlay, scaleUnderlay, translateUnderlay, underlayIsSelectable, underlaySelectionId } from '../model/underlay.js';
+import { drawUnderlayOutline } from '../view/underlay.js';
 import { updatePrompt } from '../ui/prompt.js';
 import { draw } from '../view/frame.js';
 import { drawEntity, drawTransformGuide } from '../view/render.js';
@@ -20,12 +22,14 @@ export function transformStages(type, initial = {}) {
 
     begin() {
       const ids = editableSelectionIds();
+      const underlayIds = editableUnderlayIds();
       state.transform = {
         type,
         // A preselection is taken as the answer to "select objects", so the
         // command opens at the base point instead of asking again.
-        stage: ids.length ? 'BASE' : 'SELECT',
+        stage: (ids.length || underlayIds.length) ? 'BASE' : 'SELECT',
         ids,
+        underlayIds,
         base: null,
         ...initial,
       };
@@ -109,6 +113,7 @@ export function translateCommand(type) {
           drawEntity(translateEntity(entity, dx, dy), true);
         }
       }
+      previewUnderlays(state.transform, underlay => translateUnderlay(underlay, dx, dy));
       drawTransformGuide(
         state.transform.base,
         p,
@@ -262,6 +267,7 @@ defineCommand('ROTATE', {
       const referenceEnd = circularPoint(operation.base, guideRadius, operation.referenceAngle);
       drawTransformGuide(operation.base, referenceEnd, 'Reference', true);
     }
+    previewUnderlays(operation, underlay => rotateUnderlay(underlay, operation.base, rotation));
     const label = stage === 'ROTATE_TARGET'
       ? `Target ${formatAngle(targetAngle)} · Δ ${formatAngle(rotation)}`
       : `Δ ${formatAngle(rotation)}`;
@@ -406,6 +412,7 @@ defineCommand('SCALE', {
         }
       }
     }
+    previewUnderlays(operation, underlay => scaleUnderlay(underlay, operation.base, factor));
     const label = stage === 'SCALE_REF_NEW'
       ? `${formatLength(candidateLength)} / ${formatLength(operation.referenceLength)} = ${factor.toFixed(3)}x`
       : `${factor.toFixed(3)}x`;
@@ -498,6 +505,7 @@ defineCommand('MIRROR', {
         drawEntity(mirrorEntity(entity, operation.base, axisEnd), true);
       }
     }
+    previewUnderlays(operation, underlay => mirrorUnderlay(underlay, operation.base, axisEnd));
     drawTransformGuide(
       operation.base,
       axisEnd,
@@ -523,14 +531,50 @@ export function editableSelectionIds() {
     .map(entity => entity.id);
 }
 
+export function editableUnderlayIds() {
+  return state.underlays
+    .filter(underlay => state.selected.has(underlaySelectionId(underlay.id)) && underlayIsSelectable(underlay))
+    .map(underlay => underlay.id);
+}
+
+// Re-derived at apply time rather than trusted from begin(), for the same
+// reason the entity id sets are: a layer can be locked while the command runs.
+export function operationUnderlaySet(operation) {
+  return new Set(state.underlays
+    .filter(underlay => (operation.underlayIds || []).includes(underlay.id) && underlayIsSelectable(underlay))
+    .map(underlay => underlay.id));
+}
+
+export function mapSelectedUnderlays(set, transformFn) {
+  return state.underlays.map(underlay => (set.has(underlay.id) ? transformFn(underlay) : underlay));
+}
+
+// Selection after a transform names both halves of what was transformed.
+export function selectionOf(idSet, underlaySet) {
+  return new Set([...idSet, ...[...underlaySet].map(underlaySelectionId)]);
+}
+
+// Underlays preview as an outline, not as a redrawn raster: at typical aerial
+// resolutions, re-blitting the image on every mouse move to throw it away is a
+// poor trade for a frame that says the same thing.
+export function previewUnderlays(operation, transformFn) {
+  for (const underlay of state.underlays) {
+    if (!(operation.underlayIds || []).includes(underlay.id)) continue;
+    if (!underlayIsSelectable(underlay)) continue;
+    drawUnderlayOutline(transformFn(underlay), true);
+  }
+}
+
 export function acceptTransformSelection() {
   if (!state.transform || state.transform.stage !== 'SELECT') return false;
   const ids = editableSelectionIds();
-  if (!ids.length) {
+  const underlayIds = editableUnderlayIds();
+  if (!ids.length && !underlayIds.length) {
     updatePrompt('No objects selected.');
     return true;
   }
   state.transform.ids = ids;
+  state.transform.underlayIds = underlayIds;
   state.transform.stage = 'BASE';
   updatePrompt();
   draw();
@@ -550,7 +594,8 @@ export function applyTransform(destination) {
   const idSet = new Set(state.entities
     .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
     .map(entity => entity.id));
-  if (!idSet.size) {
+  const underlaySet = operationUnderlaySet(operation);
+  if (!idSet.size && !underlaySet.size) {
     updatePrompt('The selected objects are no longer editable.');
     return;
   }
@@ -558,15 +603,27 @@ export function applyTransform(destination) {
     const entities = state.entities.map(entity =>
       idSet.has(entity.id) ? translateEntity(entity, dx, dy) : entity,
     );
-    if (!commitGeometry(entities)) return;
-    state.selected = new Set(idSet);
+    const underlays = mapSelectedUnderlays(underlaySet, underlay => translateUnderlay(underlay, dx, dy));
+    if (!commitGeometry(entities, { underlays })) return;
+    state.selected = selectionOf(idSet, underlaySet);
   } else {
     const moved = state.entities
       .filter(entity => idSet.has(entity.id))
       .map(entity => translateEntity(entity, dx, dy));
     const { entities: copies, nextId } = duplicateEntities(moved, state.nextId);
-    if (!commitGeometry([...state.entities, ...copies], { nextId })) return;
-    state.selected = new Set(copies.map(entity => entity.id));
+    const movedUnderlays = state.underlays
+      .filter(underlay => underlaySet.has(underlay.id))
+      .map(underlay => translateUnderlay(underlay, dx, dy));
+    const { underlays: underlayCopies, nextUnderlayId } = duplicateUnderlays(movedUnderlays, state.nextUnderlayId);
+    if (!commitGeometry([...state.entities, ...copies], {
+      nextId,
+      underlays: [...state.underlays, ...underlayCopies],
+      nextUnderlayId,
+    })) return;
+    state.selected = selectionOf(
+      new Set(copies.map(entity => entity.id)),
+      new Set(underlayCopies.map(underlay => underlay.id)),
+    );
   }
   setMode('SELECT');
 }
@@ -587,7 +644,8 @@ export function applyRotation(angle) {
   const idSet = new Set(state.entities
     .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
     .map(entity => entity.id));
-  if (!idSet.size) {
+  const underlaySet = operationUnderlaySet(operation);
+  if (!idSet.size && !underlaySet.size) {
     updatePrompt('The selected objects are no longer editable.');
     return;
   }
@@ -595,8 +653,10 @@ export function applyRotation(angle) {
     idSet.has(entity.id) ? rotateEntity(entity, operation.base, reducedAngle) : entity,
   );
   entities = realignDimensionReferences(entities, idSet, 'rotate', { angle: reducedAngle });
-  if (!commitGeometry(entities)) return;
-  state.selected = new Set(idSet);
+  const underlays = mapSelectedUnderlays(underlaySet, underlay =>
+    rotateUnderlay(underlay, operation.base, reducedAngle));
+  if (!commitGeometry(entities, { underlays })) return;
+  state.selected = selectionOf(idSet, underlaySet);
   setMode('SELECT');
 }
 
@@ -615,7 +675,8 @@ export function applyScale(factor) {
   const idSet = new Set(state.entities
     .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
     .map(entity => entity.id));
-  if (!idSet.size) {
+  const underlaySet = operationUnderlaySet(operation);
+  if (!idSet.size && !underlaySet.size) {
     updatePrompt('The selected objects are no longer editable.');
     return;
   }
@@ -632,8 +693,10 @@ export function applyScale(factor) {
     scaled.set(entity.id, result);
   }
 
-  if (!commitGeometry(state.entities.map(entity => scaled.get(entity.id) || entity))) return;
-  state.selected = new Set(idSet);
+  const underlays = mapSelectedUnderlays(underlaySet, underlay =>
+    scaleUnderlay(underlay, operation.base, factor));
+  if (!commitGeometry(state.entities.map(entity => scaled.get(entity.id) || entity), { underlays })) return;
+  state.selected = selectionOf(idSet, underlaySet);
   setMode('SELECT');
 }
 
@@ -648,7 +711,8 @@ export function applyMirror(eraseSource) {
   const idSet = new Set(state.entities
     .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
     .map(entity => entity.id));
-  if (!idSet.size) {
+  const underlaySet = operationUnderlaySet(operation);
+  if (!idSet.size && !underlaySet.size) {
     updatePrompt('The selected objects are no longer editable.');
     return;
   }
@@ -660,8 +724,9 @@ export function applyMirror(eraseSource) {
       idSet.has(entity.id) ? mirrorEntity(entity, axisA, axisB) : entity,
     );
     entities = realignDimensionReferences(entities, idSet, 'mirror', { axisA, axisB });
-    if (!commitGeometry(entities)) return;
-    state.selected = new Set(idSet);
+    const underlays = mapSelectedUnderlays(underlaySet, underlay => mirrorUnderlay(underlay, axisA, axisB));
+    if (!commitGeometry(entities, { underlays })) return;
+    state.selected = selectionOf(idSet, underlaySet);
   } else {
     // The reflected entities keep their original ids on the way into
     // duplicateEntities, which is what lets a mirrored dimension be remapped
@@ -672,8 +737,19 @@ export function applyMirror(eraseSource) {
       .map(entity => mirrorEntity(entity, axisA, axisB));
     reflected = realignDimensionReferences(reflected, idSet, 'mirror', { axisA, axisB });
     const { entities: copies, nextId } = duplicateEntities(reflected, state.nextId);
-    if (!commitGeometry([...state.entities, ...copies], { nextId })) return;
-    state.selected = new Set(copies.map(entity => entity.id));
+    const reflectedUnderlays = state.underlays
+      .filter(underlay => underlaySet.has(underlay.id))
+      .map(underlay => mirrorUnderlay(underlay, axisA, axisB));
+    const { underlays: underlayCopies, nextUnderlayId } = duplicateUnderlays(reflectedUnderlays, state.nextUnderlayId);
+    if (!commitGeometry([...state.entities, ...copies], {
+      nextId,
+      underlays: [...state.underlays, ...underlayCopies],
+      nextUnderlayId,
+    })) return;
+    state.selected = selectionOf(
+      new Set(copies.map(entity => entity.id)),
+      new Set(underlayCopies.map(underlay => underlay.id)),
+    );
   }
   setMode('SELECT');
 }

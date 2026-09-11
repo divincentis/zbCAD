@@ -639,6 +639,12 @@ kbd { font-size: 9px; opacity: .65; }
         <button id="dimStyleBtn">Dim Style (DST)</button>
       </div>
       <div class="tool-group">
+        <span class="group-label">Underlay</span>
+        <button id="imageBtn" title="Place a reference image to trace over (IMAGE)">Image</button>
+        <button data-command="CALIBRATE" title="Scale an image to a known distance (CALIBRATE)">Calibrate</button>
+        <button id="underlayBtn" title="Fade, lock and plot settings for the selected image (UNDERLAY)">Image Props</button>
+      </div>
+      <div class="tool-group">
         <span class="group-label">Modify</span>
         <button data-command="MOVE">Move (M)</button>
         <button data-command="COPY">Copy (CO)</button>
@@ -659,6 +665,7 @@ kbd { font-size: 9px; opacity: .65; }
     </div>
     <a id="docsLink" class="docs-link" href="docs.html" target="_blank" rel="noopener">Docs</a>
     <input id="openInput" type="file" accept=".json,.zbCAD.json,application/json" hidden />
+  <input id="imageInput" type="file" accept="image/*" hidden />
   </header>
 
   <main class="workspace">
@@ -822,6 +829,42 @@ kbd { font-size: 9px; opacity: .65; }
       <div class="dialog-actions">
         <button id="dimStyleCancel">Cancel</button>
         <button id="dimStyleApply" class="primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="underlayDialog" class="dialog" hidden>
+    <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="underlayDialogTitle">
+      <h2 id="underlayDialogTitle">Image Properties</h2>
+      <p class="dialog-note" id="underlayDialogSubject">&mdash;</p>
+
+      <label for="underlayFade">Fade
+        <input id="underlayFade" type="range" min="0" max="90" step="5" />
+      </label>
+      <p class="dialog-note">
+        Fading the image makes the geometry drawn over it readable. It affects
+        the screen and the plot alike.
+      </p>
+
+      <label class="dialog-check" for="underlayLocked">
+        <input type="checkbox" id="underlayLocked" />
+        <span>Lock this image so clicks pass through to the drawing</span>
+      </label>
+      <label class="dialog-check" for="underlayPlot">
+        <input type="checkbox" id="underlayPlot" />
+        <span>Include this image when plotting to PDF</span>
+      </label>
+      <p class="dialog-note">
+        An underlay is off the plot by default: it is usually a tracing aid
+        rather than part of the drawing being issued.
+      </p>
+
+      <div class="dialog-preview">Size: <strong id="underlayPreview">&mdash;</strong></div>
+
+      <div class="dialog-actions">
+        <button id="underlayDelete">Delete Image</button>
+        <button id="underlayCancel">Cancel</button>
+        <button id="underlayApply" class="primary">Apply</button>
       </div>
     </div>
   </div>

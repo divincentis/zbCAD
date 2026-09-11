@@ -5,8 +5,9 @@ import { openInput } from '../dom.js';
 import { documentChanged } from '../events.js';
 import { readAutosaveRecord } from './autosaveStore.js';
 import { autosaveTimer, markDirty, releaseBackupPin, scheduleAutosave, writeAutosave } from './dirty.js';
-import { exportDocumentText, parseDocumentText } from './document.js';
+import { derivedNextUnderlayId, exportDocumentText, parseDocumentText } from './document.js';
 import { state } from '../state.js';
+import { cloneUnderlays } from './underlay.js';
 import { setAutosaveStatus, setFileStatus } from '../ui/status.js';
 import { zoomExtents } from '../view/viewport.js';
 
@@ -38,6 +39,9 @@ async function flushOutgoingDocument() {
 export async function applyDocument(documentData, dirty = true) {
   releaseBackupPin();
   state.entities = JSON.parse(JSON.stringify(documentData.entities));
+  // Shallow, unlike the entities above: see cloneUnderlays on why the image
+  // payload must never be deep-copied.
+  state.underlays = cloneUnderlays(documentData.underlays || []);
   state.layers = JSON.parse(JSON.stringify(documentData.layers));
   state.currentLayerId = documentData.currentLayerId;
   state.drawingName = documentData.name;
@@ -45,6 +49,7 @@ export async function applyDocument(documentData, dirty = true) {
   state.dimStyles = documentData.dimStyles.map(style => ({ ...style }));
   state.nextId = documentData.nextId;
   state.nextLayerId = documentData.nextLayerId || derivedNextLayerId(state.layers);
+  state.nextUnderlayId = documentData.nextUnderlayId || derivedNextUnderlayId(state.underlays);
   state.selected.clear();
   state.history = [];
   state.future = [];
@@ -118,13 +123,14 @@ export async function restoreAutosave(skipConfirmation = false, backupOnly = fal
 }
 
 export async function newDrawing(skipConfirmation = false) {
-  if (!skipConfirmation && state.entities.length &&
+  if (!skipConfirmation && (state.entities.length || state.underlays.length) &&
       !window.confirm('Start a new drawing? Use Save first if you need a separate copy of the current drawing.')) {
     return false;
   }
   await flushOutgoingDocument();
   releaseBackupPin();
   state.entities = [];
+  state.underlays = [];
   state.layers = createDefaultLayers();
   state.currentLayerId = '0';
   state.drawingName = 'Untitled';
@@ -132,6 +138,7 @@ export async function newDrawing(skipConfirmation = false) {
   state.dimStyles = [defaultDimStyle()];
   state.nextId = 1;
   state.nextLayerId = 1;
+  state.nextUnderlayId = 1;
   state.selected.clear();
   state.history = [];
   state.future = [];

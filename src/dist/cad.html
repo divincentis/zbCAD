@@ -639,6 +639,12 @@ kbd { font-size: 9px; opacity: .65; }
         <button id="dimStyleBtn">Dim Style (DST)</button>
       </div>
       <div class="tool-group">
+        <span class="group-label">Underlay</span>
+        <button id="imageBtn" title="Place a reference image to trace over (IMAGE)">Image</button>
+        <button data-command="CALIBRATE" title="Scale an image to a known distance (CALIBRATE)">Calibrate</button>
+        <button id="underlayBtn" title="Fade, lock and plot settings for the selected image (UNDERLAY)">Image Props</button>
+      </div>
+      <div class="tool-group">
         <span class="group-label">Modify</span>
         <button data-command="MOVE">Move (M)</button>
         <button data-command="COPY">Copy (CO)</button>
@@ -659,6 +665,7 @@ kbd { font-size: 9px; opacity: .65; }
     </div>
     <a id="docsLink" class="docs-link" href="docs.html" target="_blank" rel="noopener">Docs</a>
     <input id="openInput" type="file" accept=".json,.zbCAD.json,application/json" hidden />
+  <input id="imageInput" type="file" accept="image/*" hidden />
   </header>
 
   <main class="workspace">
@@ -826,6 +833,42 @@ kbd { font-size: 9px; opacity: .65; }
     </div>
   </div>
 
+  <div id="underlayDialog" class="dialog" hidden>
+    <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="underlayDialogTitle">
+      <h2 id="underlayDialogTitle">Image Properties</h2>
+      <p class="dialog-note" id="underlayDialogSubject">&mdash;</p>
+
+      <label for="underlayFade">Fade
+        <input id="underlayFade" type="range" min="0" max="90" step="5" />
+      </label>
+      <p class="dialog-note">
+        Fading the image makes the geometry drawn over it readable. It affects
+        the screen and the plot alike.
+      </p>
+
+      <label class="dialog-check" for="underlayLocked">
+        <input type="checkbox" id="underlayLocked" />
+        <span>Lock this image so clicks pass through to the drawing</span>
+      </label>
+      <label class="dialog-check" for="underlayPlot">
+        <input type="checkbox" id="underlayPlot" />
+        <span>Include this image when plotting to PDF</span>
+      </label>
+      <p class="dialog-note">
+        An underlay is off the plot by default: it is usually a tracing aid
+        rather than part of the drawing being issued.
+      </p>
+
+      <div class="dialog-preview">Size: <strong id="underlayPreview">&mdash;</strong></div>
+
+      <div class="dialog-actions">
+        <button id="underlayDelete">Delete Image</button>
+        <button id="underlayCancel">Cancel</button>
+        <button id="underlayApply" class="primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
   <div id="plotDialog" class="dialog" hidden>
     <div class="dialog-card plot-card" role="dialog" aria-modal="true" aria-labelledby="plotDialogTitle">
       <h2 id="plotDialogTitle">Plot to PDF</h2>
@@ -984,6 +1027,17 @@ kbd { font-size: 9px; opacity: .65; }
   const dimPrecisionSelect = document.getElementById('dimPrecision');
   const dimStylePreview = document.getElementById('dimStylePreview');
 
+  const imageInput = document.getElementById('imageInput');
+  const underlayDialog = document.getElementById('underlayDialog');
+  const underlayDialogSubject = document.getElementById('underlayDialogSubject');
+  const underlayFadeInput = document.getElementById('underlayFade');
+  const underlayLockedCheck = document.getElementById('underlayLocked');
+  const underlayPlotCheck = document.getElementById('underlayPlot');
+  const underlayPreviewEl = document.getElementById('underlayPreview');
+  const underlayApplyBtn = document.getElementById('underlayApply');
+  const underlayCancelBtn = document.getElementById('underlayCancel');
+  const underlayDeleteBtn = document.getElementById('underlayDelete');
+
   // ---------------------------------------------------------------------------
   // core/constants.js
   // ---------------------------------------------------------------------------
@@ -994,7 +1048,8 @@ kbd { font-size: 9px; opacity: .65; }
   const DOCUMENT_FORMAT = 'browser-2d-draft';
   // Version 4 had no per-layer linetype/lineweight/printability (see
   // core/defaults.js and model/document.js's layer parsing for the migration).
-  const DOCUMENT_VERSION = 6;
+  // Version 6 had no underlays; a file without the key simply loads with none.
+  const DOCUMENT_VERSION = 7;
   const AUTOSAVE_KEY = `${DOCUMENT_FORMAT}.autosave`;
   const AUTOSAVE_BACKUP_KEY = `${AUTOSAVE_KEY}.previous`;
   const LEGACY_AUTOSAVE_KEYS = [`${DOCUMENT_FORMAT}.autosave.v1`];
@@ -1083,6 +1138,22 @@ kbd { font-size: 9px; opacity: .65; }
   const LINEWEIGHT_PX_PER_MM = 1.35 / DEFAULT_LINEWEIGHT;
   const MIN_LINEWEIGHT_PX = 1;
 
+  // Underlays. An imported raster is re-encoded to JPEG and capped on its long
+  // edge, because the image travels inline in the document JSON: every autosave
+  // re-serialises it, and the synchronous unload copy has a localStorage quota to
+  // fit inside. 2400px still resolves far more detail than anyone traces at.
+  const UNDERLAY_MAX_EDGE_PX = 2400;
+  const UNDERLAY_JPEG_QUALITY = 0.86;
+  const UNDERLAY_MIN_UNITS_PER_PIXEL = 1e-9;
+  const UNDERLAY_MAX_UNITS_PER_PIXEL = 1e9;
+  const UNDERLAY_DEFAULT_FADE = 35;
+
+  // A 1x1 transparent GIF, used as the stand-in when an unload-time autosave has
+  // to drop underlay images to fit the localStorage quota. It satisfies the
+  // document validator's "data:image/" rule, so the recovered drawing still
+  // opens, showing an empty frame where the image was.
+  const UNDERLAY_DROPPED_DATA = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
   // ---------------------------------------------------------------------------
   // core/defaults.js
   // ---------------------------------------------------------------------------
@@ -1163,6 +1234,9 @@ kbd { font-size: 9px; opacity: .65; }
 
   const state = {
     entities: [],
+    // Raster reference images, kept out of `entities` so no geometry dispatch
+    // has to grow a branch for them. See model/underlay.js.
+    underlays: [],
     layers: createDefaultLayers(),
     currentLayerId: '0',
     drawingName: 'Untitled',
@@ -1183,6 +1257,7 @@ kbd { font-size: 9px; opacity: .65; }
     grip: null,
     circle: null,
     text: null,
+    underlay: null,
     mouseScreen: { x: 0, y: 0 },
     mouseWorld: { x: 0, y: 0 },
     activePoint: { x: 0, y: 0 },
@@ -1205,6 +1280,7 @@ kbd { font-size: 9px; opacity: .65; }
     future: [],
     nextId: 1,
     nextLayerId: 1,
+    nextUnderlayId: 1,
     dimStyles: [defaultDimStyle()],
   };
 
@@ -1960,6 +2036,246 @@ kbd { font-size: 9px; opacity: .65; }
     if (layer?.visible && !layer.locked) return true;
     updatePrompt('Choose a visible, unlocked current layer before drawing.');
     return false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // model/underlay.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Underlays
+  //
+  // A raster reference image the drawing is traced over. Underlays are kept in
+  // their own array rather than joining state.entities for two reasons: the
+  // roadmap requires them to stay visually distinct from CAD geometry, and every
+  // one of the seven-way type dispatches across this codebase (segments, bbox,
+  // snap, offset, trim, grips, plot) would otherwise need a branch for a thing
+  // that has no geometry to speak of.
+  //
+  // The record is deliberately small:
+  //
+  //   origin          bottom-left corner in world space
+  //   rotation        radians CCW about that corner
+  //   unitsPerPixel   the one number CALIBRATE solves for
+  //   widthPx/heightPx  the raster's own size, fixed at import
+  //   fade            0..100, purely a display property
+  //   locked          this image is not pickable (but still draws)
+  //   plot            include it in PDF output; off by default, since an
+  //                   underlay is a tracing aid far more often than artwork
+  //   layerId         so visibility/lock/printability come from the layer table
+  //                   instead of a second, parallel permission system
+  //   data            a JPEG data URL (model/imageImport.js normalises every
+  //                   source format to JPEG so the PDF writer needs one filter)
+  // ---------------------------------------------------------------------------
+
+  function allocateUnderlayId() {
+    return state.nextUnderlayId++;
+  }
+
+  // Underlays share state.selected with entities. Entity ids are positive
+  // integers, so prefixing makes the two id spaces provably disjoint and every
+  // existing `state.selected.has(entity.id)` filter keeps working untouched.
+  function underlaySelectionId(id) {
+    return `u:${id}`;
+  }
+
+  function isUnderlaySelectionId(value) {
+    return typeof value === 'string' && value.startsWith('u:');
+  }
+
+  function underlayIdFromSelectionId(value) {
+    return isUnderlaySelectionId(value) ? Number(value.slice(2)) : null;
+  }
+
+  function makeUnderlay(descriptor, origin, options = {}) {
+    return {
+      id: options.id ?? allocateUnderlayId(),
+      layerId: options.layerId ?? state.currentLayerId,
+      name: descriptor.name || 'image',
+      origin: { x: origin.x, y: origin.y },
+      rotation: options.rotation ?? 0,
+      unitsPerPixel: options.unitsPerPixel ?? 1,
+      widthPx: descriptor.widthPx,
+      heightPx: descriptor.heightPx,
+      fade: options.fade ?? 0,
+      locked: options.locked ?? false,
+      plot: options.plot ?? false,
+      data: descriptor.data,
+    };
+  }
+
+  // A shallow copy is the point, not an oversight: `data` is a base64 string that
+  // can run to hundreds of kilobytes, and strings are immutable, so sharing the
+  // reference across every history snapshot costs nothing. Deep-cloning underlays
+  // (as JSON.parse(JSON.stringify(...)) would) copies that payload on every undo
+  // push and every commit.
+  function cloneUnderlays(underlays = state.underlays) {
+    return underlays.map(underlay => ({ ...underlay, origin: { ...underlay.origin } }));
+  }
+
+  function underlayWidth(underlay) {
+    return underlay.widthPx * underlay.unitsPerPixel;
+  }
+
+  function underlayHeight(underlay) {
+    return underlay.heightPx * underlay.unitsPerPixel;
+  }
+
+  // Corners counter-clockwise from the origin: bottom-left, bottom-right,
+  // top-right, top-left.
+  function underlayCorners(underlay) {
+    const cos = Math.cos(underlay.rotation);
+    const sin = Math.sin(underlay.rotation);
+    const w = underlayWidth(underlay);
+    const h = underlayHeight(underlay);
+    const at = (u, v) => ({
+      x: underlay.origin.x + u * cos - v * sin,
+      y: underlay.origin.y + u * sin + v * cos,
+    });
+    return [at(0, 0), at(w, 0), at(w, h), at(0, h)];
+  }
+
+  function underlayBBox(underlay) {
+    const corners = underlayCorners(underlay);
+    const xs = corners.map(p => p.x);
+    const ys = corners.map(p => p.y);
+    return {
+      minX: Math.min(...xs), maxX: Math.max(...xs),
+      minY: Math.min(...ys), maxY: Math.max(...ys),
+    };
+  }
+
+  // World point expressed in the image's own unrotated frame, measured in
+  // drawing units from the bottom-left corner.
+  function underlayWorldToLocal(underlay, point) {
+    const cos = Math.cos(underlay.rotation);
+    const sin = Math.sin(underlay.rotation);
+    const dx = point.x - underlay.origin.x;
+    const dy = point.y - underlay.origin.y;
+    return { x: dx * cos + dy * sin, y: -dx * sin + dy * cos };
+  }
+
+  function underlayContainsPoint(underlay, point) {
+    const local = underlayWorldToLocal(underlay, point);
+    return local.x >= 0 && local.y >= 0
+      && local.x <= underlayWidth(underlay) && local.y <= underlayHeight(underlay);
+  }
+
+  // Pickable means the layer allows editing AND the underlay is not locked. The
+  // per-underlay flag exists on top of the layer's because the usual reason to
+  // bring an image in is to trace over it, and an image that keeps catching
+  // clicks meant for the geometry on top of it is worse than no image.
+  function underlayIsSelectable(underlay) {
+    return !underlay.locked && isLayerVisible(underlay.layerId) && !isLayerLocked(underlay.layerId);
+  }
+
+  // Copies share the base64 payload by reference, so duplicating an underlay
+  // costs a small object rather than the image.
+  function duplicateUnderlays(underlays, firstId = null) {
+    let nextUnderlayId = firstId ?? state.nextUnderlayId;
+    const copies = underlays.map(underlay => ({
+      ...underlay,
+      id: nextUnderlayId++,
+      origin: { ...underlay.origin },
+    }));
+    return { underlays: copies, nextUnderlayId };
+  }
+
+  function translateUnderlay(underlay, dx, dy) {
+    return { ...underlay, origin: { x: underlay.origin.x + dx, y: underlay.origin.y + dy } };
+  }
+
+  function rotateUnderlay(underlay, base, angle) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const dx = underlay.origin.x - base.x;
+    const dy = underlay.origin.y - base.y;
+    return {
+      ...underlay,
+      origin: { x: base.x + dx * cos - dy * sin, y: base.y + dx * sin + dy * cos },
+      rotation: normalizeAngle(underlay.rotation + angle),
+    };
+  }
+
+  // Scaling an underlay moves its corner and changes how much ground a pixel
+  // covers, the same way scaling TEXT moves its position and changes its height.
+  function scaleUnderlay(underlay, base, factor) {
+    return {
+      ...underlay,
+      origin: {
+        x: base.x + (underlay.origin.x - base.x) * factor,
+        y: base.y + (underlay.origin.y - base.y) * factor,
+      },
+      unitsPerPixel: underlay.unitsPerPixel * factor,
+    };
+  }
+
+  // A mirrored raster would have to be drawn flipped, and nothing downstream
+  // (canvas, PDF) carries a flip flag, so MIRROR reflects the placement and
+  // leaves the image reading the right way round. The corner that ends up
+  // bottom-left after reflection becomes the new origin.
+  function mirrorUnderlay(underlay, axisA, axisB) {
+    const ax = axisB.x - axisA.x;
+    const ay = axisB.y - axisA.y;
+    const lengthSquared = ax * ax + ay * ay;
+    if (lengthSquared < 1e-18) return { ...underlay, origin: { ...underlay.origin } };
+    const reflect = point => {
+      const dx = point.x - axisA.x;
+      const dy = point.y - axisA.y;
+      const t = (dx * ax + dy * ay) / lengthSquared;
+      const projX = axisA.x + t * ax;
+      const projY = axisA.y + t * ay;
+      return { x: 2 * projX - point.x, y: 2 * projY - point.y };
+    };
+    const axisAngle = Math.atan2(ay, ax);
+    // Reflection reverses handedness; keeping the image unflipped means the
+    // mirrored bottom-left corner is the old bottom-RIGHT corner.
+    const corners = underlayCorners(underlay);
+    const origin = reflect(corners[1]);
+    return {
+      ...underlay,
+      origin,
+      rotation: normalizeAngle(2 * axisAngle - underlay.rotation + Math.PI),
+    };
+  }
+
+  // CALIBRATE: the user names two points on the image and the real distance
+  // between them. The first pick is held fixed so the part of the drawing they
+  // measured from does not walk away underneath them.
+  function calibrateUnderlay(underlay, from, to, knownDistance) {
+    const measured = dist(from, to);
+    if (!(measured > 1e-9)) return { error: 'Those two points are in the same place.' };
+    if (!Number.isFinite(knownDistance) || knownDistance <= 0) {
+      return { error: 'Enter a distance greater than zero.' };
+    }
+    const factor = knownDistance / measured;
+    const scaled = scaleUnderlay(underlay, from, factor);
+    if (!(scaled.unitsPerPixel > UNDERLAY_MIN_UNITS_PER_PIXEL) || !Number.isFinite(scaled.unitsPerPixel)) {
+      return { error: 'That distance would scale the image beyond a usable size.' };
+    }
+    return { underlay: scaled, factor };
+  }
+
+  function underlayFadeAlpha(underlay) {
+    return 1 - Math.min(100, Math.max(0, underlay.fade || 0)) / 100;
+  }
+
+  function underlayScaleLabel(underlay) {
+    const width = underlayWidth(underlay);
+    return { width, height: underlayHeight(underlay), unitsPerPixel: underlay.unitsPerPixel };
+  }
+
+  function selectedUnderlays() {
+    return state.underlays.filter(underlay => state.selected.has(underlaySelectionId(underlay.id)));
+  }
+
+  function underlayById(id) {
+    return state.underlays.find(underlay => underlay.id === id) || null;
+  }
+
+  function normalizeUnderlayRotation(rotation) {
+    const value = normalizeAngle(rotation);
+    return value >= TAU ? value - TAU : value;
   }
 
   // ---------------------------------------------------------------------------
@@ -2814,14 +3130,16 @@ kbd { font-size: 9px; opacity: .65; }
 
   function zoomExtents() {
     const visibleEntities = state.entities.filter(isEntityVisible);
-    if (!visibleEntities.length) {
+    const visibleUnderlays = state.underlays.filter(underlay => isLayerVisible(underlay.layerId));
+    if (!visibleEntities.length && !visibleUnderlays.length) {
       state.view.scale = 1.5;
       state.view.offsetX = canvas.clientWidth / 2;
       state.view.offsetY = canvas.clientHeight / 2;
       draw();
       return;
     }
-    const boxes = visibleEntities.map(entityBBox).filter(Boolean);
+    const boxes = visibleEntities.map(entityBBox).filter(Boolean)
+      .concat(visibleUnderlays.map(underlayBBox));
     const box = {
       minX: Math.min(...boxes.map(b=>b.minX)), maxX: Math.max(...boxes.map(b=>b.maxX)),
       minY: Math.min(...boxes.map(b=>b.minY)), maxY: Math.max(...boxes.map(b=>b.maxY)),
@@ -3024,6 +3342,140 @@ kbd { font-size: 9px; opacity: .65; }
     ];
   }
 
+
+  // ---------------------------------------------------------------------------
+  // Images
+  //
+  // A PDF carrying a raster is normally a binary file, which would mean this
+  // module could no longer return a string: xref offsets are byte offsets, and
+  // the Blob that delivers the file encodes strings as UTF-8, so every byte above
+  // 127 would shift and corrupt. Rather than give that up — the purity here is
+  // what lets the test suite assert on the PDF directly — the image bytes are
+  // ASCII85-encoded and declared as `/Filter [/ASCII85Decode /DCTDecode]`. The
+  // reader undoes both, the file stays 7-bit, and the cost is 25% size on a
+  // payload that is already compressed.
+  //
+  // Underlays are always JPEG by the time they get here (model/imageImport.js
+  // normalises every source format), so DCTDecode is the only image filter this
+  // writer ever needs.
+  // ---------------------------------------------------------------------------
+
+  const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+  // Hand-rolled rather than using atob, which does not exist in the headless test
+  // environment and would make the whole image path untestable.
+  function base64ToBytes(base64) {
+    const clean = String(base64).replace(/[^A-Za-z0-9+/]/g, '');
+    const bytes = [];
+    let buffer = 0;
+    let bits = 0;
+    for (const character of clean) {
+      const value = BASE64_ALPHABET.indexOf(character);
+      if (value < 0) continue;
+      buffer = (buffer << 6) | value;
+      bits += 6;
+      if (bits >= 8) {
+        bits -= 8;
+        bytes.push((buffer >> bits) & 255);
+      }
+    }
+    return bytes;
+  }
+
+  function dataUrlPayload(dataUrl) {
+    const comma = String(dataUrl).indexOf(',');
+    return comma < 0 ? '' : String(dataUrl).slice(comma + 1);
+  }
+
+  // ASCII85 as PDF defines it: four bytes to five printable characters, 'z' for
+  // an all-zero group, '~>' to end. Line length is capped because some readers
+  // baulk at very long lines.
+  function ascii85Encode(bytes) {
+    let out = '';
+    let lineLength = 0;
+    const emit = text => {
+      for (const character of text) {
+        out += character;
+        if (++lineLength >= 75) { out += '\n'; lineLength = 0; }
+      }
+    };
+    for (let index = 0; index < bytes.length; index += 4) {
+      const remaining = Math.min(4, bytes.length - index);
+      let value = 0;
+      for (let offset = 0; offset < 4; offset++) {
+        value = value * 256 + (offset < remaining ? bytes[index + offset] : 0);
+      }
+      if (remaining === 4 && value === 0) { emit('z'); continue; }
+      const group = [];
+      let rest = value;
+      for (let position = 4; position >= 0; position--) {
+        group[position] = String.fromCharCode(33 + (rest % 85));
+        rest = Math.floor(rest / 85);
+      }
+      // A partial final group drops the same number of characters as it was
+      // short of bytes, which is what tells the decoder how much to keep.
+      emit(group.slice(0, remaining + 1).join(''));
+    }
+    return out + '~>';
+  }
+
+  // JPEG is self-describing, and the PDF image dictionary has to agree with it on
+  // size and colour space or the reader rejects the stream. Reading them back out
+  // of the bytes is more trustworthy than carrying the canvas's numbers along,
+  // since a re-encode can legitimately change them.
+  function jpegInfo(bytes) {
+    let index = 2;
+    while (index + 9 < bytes.length) {
+      if (bytes[index] !== 0xff) { index++; continue; }
+      const marker = bytes[index + 1];
+      // SOF0..SOF15, skipping the four that are not frame headers.
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        return {
+          height: (bytes[index + 5] << 8) | bytes[index + 6],
+          width: (bytes[index + 7] << 8) | bytes[index + 8],
+          components: bytes[index + 9],
+        };
+      }
+      const length = (bytes[index + 2] << 8) | bytes[index + 3];
+      if (!(length > 0)) break;
+      index += 2 + length;
+    }
+    return null;
+  }
+
+  function pdfImageObject(op) {
+    const bytes = base64ToBytes(dataUrlPayload(op.data));
+    if (!bytes.length) return null;
+    const info = jpegInfo(bytes);
+    const width = info?.width || op.pixelWidth;
+    const height = info?.height || op.pixelHeight;
+    if (!(width > 0) || !(height > 0)) return null;
+    const colorSpace = info && info.components === 1 ? '/DeviceGray' : '/DeviceRGB';
+    const encoded = ascii85Encode(bytes);
+    return {
+      width, height, colorSpace,
+      body: `<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} ` +
+        `/ColorSpace ${colorSpace} /BitsPerComponent 8 ` +
+        `/Filter [/ASCII85Decode /DCTDecode] /Length ${encoded.length} >>\nstream\n${encoded}\nendstream`,
+    };
+  }
+
+  // The unit square an image XObject draws into is mapped by `cm` onto the
+  // parallelogram the plan supplies, which is what carries rotation without this
+  // writer needing to know an angle.
+  function pdfImageOperators(op, name, graphicsStateName) {
+    const origin = op.origin;
+    return [
+      'q',
+      graphicsStateName ? `/${graphicsStateName} gs` : null,
+      `${pdfPoint(op.edgeX.x)} ${pdfPoint(op.edgeX.y)} ` +
+        `${pdfPoint(op.edgeY.x)} ${pdfPoint(op.edgeY.y)} ` +
+        `${pdfPoint(origin.x)} ${pdfPoint(origin.y)} cm`,
+      `/${name} Do`,
+      'Q',
+    ].filter(Boolean);
+  }
+
   function pdfContentStream(plan) {
     const lines = ['q'];
     // Clipped to the picked area intersected with the printable rectangle, so a
@@ -3033,10 +3485,17 @@ kbd { font-size: 9px; opacity: .65; }
     const clip = plan.clipMM || plan.printable;
     lines.push(`${pdfPoint(clip.xMM)} ${pdfPoint(clip.yMM)} ` +
       `${pdfPoint(clip.widthMM)} ${pdfPoint(clip.heightMM)} re W n`);
+    let imageIndex = 0;
     for (const op of plan.ops) {
       if (op.kind === 'stroke') lines.push(...pdfStrokeOperators(op));
       else if (op.kind === 'fill') lines.push(...pdfFillOperators(op));
       else if (op.kind === 'text') lines.push(...pdfTextOperators(op));
+      else if (op.kind === 'image') {
+        const name = `Im${imageIndex}`;
+        const alphaName = op.alpha < 1 ? `GSa${imageIndex}` : null;
+        lines.push(...pdfImageOperators(op, name, alphaName));
+        imageIndex++;
+      }
     }
     lines.push('Q');
     return lines.join('\n');
@@ -3044,16 +3503,40 @@ kbd { font-size: 9px; opacity: .65; }
 
   function buildPdfDocument(plan, title = 'Drawing') {
     const content = pdfContentStream(plan);
+    // Objects 1-6 are fixed (catalog, pages, page, contents, two fonts); image
+    // XObjects and their transparency states are appended after the Info object,
+    // so their numbers are computed rather than written literally.
+    const imageOps = plan.ops.filter(op => op.kind === 'image');
+    const images = imageOps.map(pdfImageObject);
+    const FIXED_OBJECTS = 7;
+    const xobjectEntries = [];
+    const gsEntries = [];
+    const extraObjects = [];
+    images.forEach((image, index) => {
+      if (!image) return;
+      const objectNumber = FIXED_OBJECTS + extraObjects.length + 1;
+      extraObjects.push(image.body);
+      xobjectEntries.push(`/Im${index} ${objectNumber} 0 R`);
+      if (imageOps[index].alpha < 1) {
+        const gsNumber = FIXED_OBJECTS + extraObjects.length + 1;
+        extraObjects.push(`<< /Type /ExtGState /ca ${pdfNumber(imageOps[index].alpha)} ` +
+          `/CA ${pdfNumber(imageOps[index].alpha)} >>`);
+        gsEntries.push(`/GSa${index} ${gsNumber} 0 R`);
+      }
+    });
+    const xobjectResource = xobjectEntries.length ? ` /XObject << ${xobjectEntries.join(' ')} >>` : '';
+    const gsResource = gsEntries.length ? ` /ExtGState << ${gsEntries.join(' ')} >>` : '';
     const objects = [
       '<< /Type /Catalog /Pages 2 0 R >>',
       '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
       '<< /Type /Page /Parent 2 0 R ' +
         `/MediaBox [0 0 ${pdfPoint(plan.page.widthMM)} ${pdfPoint(plan.page.heightMM)}] ` +
-        '/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>',
+        `/Resources << /Font << /F1 5 0 R /F2 6 0 R >>${xobjectResource}${gsResource} >> /Contents 4 0 R >>`,
       `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
       '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
       '<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>',
       `<< /Title (${pdfEncodeText(title)}) /Producer (zbCAD) /Creator (zbCAD) >>`,
+      ...extraObjects,
     ];
 
     let pdf = '%PDF-1.4\n';
@@ -3067,7 +3550,7 @@ kbd { font-size: 9px; opacity: .65; }
     for (const offset of offsets) {
       pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
     }
-    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info ${objects.length} 0 R >>\n` +
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 7 0 R >>\n` +
       `startxref\n${xrefOffset}\n%%EOF\n`;
     return pdf;
   }
@@ -3137,6 +3620,38 @@ kbd { font-size: 9px; opacity: .65; }
       isLayerVisible(entity.layerId) && isLayerPrintable(entity.layerId));
   }
 
+  // An underlay plots only when it is explicitly marked to, on top of the same
+  // layer rules geometry obeys. The extra flag exists because an underlay is far
+  // more often a tracing aid than part of the sheet being issued, and a reference
+  // aerial silently appearing on an issued drawing is a worse failure than one
+  // silently missing from it.
+  function plottableUnderlays() {
+    return state.underlays.filter(underlay => underlay.plot
+      && isLayerVisible(underlay.layerId) && isLayerPrintable(underlay.layerId));
+  }
+
+  // The image is placed by its four corners rather than by an x/y/width/height
+  // box, because a rotated underlay has no axis-aligned box to give. Both the
+  // PDF writer and the preview turn these into their own transform.
+  function plotImageOp(underlay, context) {
+    const corners = underlayCorners(underlay).map(context.toPaper);
+    return {
+      kind: 'image',
+      id: underlay.id,
+      data: underlay.data,
+      pixelWidth: underlay.widthPx,
+      pixelHeight: underlay.heightPx,
+      // Origin plus the two edge vectors: exactly a PDF `cm` matrix, and exactly
+      // what canvas setTransform wants too.
+      origin: corners[0],
+      edgeX: { x: corners[1].x - corners[0].x, y: corners[1].y - corners[0].y },
+      edgeY: { x: corners[3].x - corners[0].x, y: corners[3].y - corners[0].y },
+      alpha: underlayFadeAlpha(underlay),
+      widthMM: underlayWidth(underlay) * context.mmPerUnit,
+      heightMM: underlayHeight(underlay) * context.mmPerUnit,
+    };
+  }
+
   function plotHexColor(hex) {
     const match = /^#([0-9a-fA-F]{6})$/.exec(String(hex || ''));
     if (!match) return [0, 0, 0];
@@ -3148,7 +3663,7 @@ kbd { font-size: 9px; opacity: .65; }
     return [((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255];
   }
 
-  function plotAreaBox(settings, entities = plottableEntities()) {
+  function plotAreaBox(settings, entities = plottableEntities(), underlays = plottableUnderlays()) {
     if (settings.area === 'window') {
       const picked = settings.window;
       if (!picked) return null;
@@ -3165,7 +3680,11 @@ kbd { font-size: 9px; opacity: .65; }
         minY: Math.min(topLeft.y, bottomRight.y), maxY: Math.max(topLeft.y, bottomRight.y),
       };
     }
-    const boxes = entities.map(entityBBox).filter(Boolean);
+    // Extents means everything that will be on the sheet, so a plotted image
+    // counts toward it — a drawing that is nothing but a marked-up aerial would
+    // otherwise report having nothing to plot.
+    const boxes = entities.map(entityBBox).filter(Boolean)
+      .concat(underlays.map(underlayBBox));
     if (!boxes.length) return null;
     return {
       minX: Math.min(...boxes.map(box => box.minX)), maxX: Math.max(...boxes.map(box => box.maxX)),
@@ -3406,6 +3925,7 @@ kbd { font-size: 9px; opacity: .65; }
 
   function buildPlotPlan(settings) {
     const entities = plottableEntities();
+    const underlays = plottableUnderlays();
     const page = paperSizeMM(settings.paperSizeId, settings.orientation);
     const printable = {
       xMM: PAPER_MARGIN_MM,
@@ -3416,7 +3936,7 @@ kbd { font-size: 9px; opacity: .65; }
     if (printable.widthMM <= 0 || printable.heightMM <= 0) {
       return { error: 'That sheet is smaller than its own margins.' };
     }
-    const area = plotAreaBox(settings, entities);
+    const area = plotAreaBox(settings, entities, underlays);
     if (!area) {
       return {
         error: settings.area === 'window'
@@ -3462,6 +3982,9 @@ kbd { font-size: 9px; opacity: .65; }
 
     const ops = [];
     const unsupported = new Set();
+    // Images first: PDF and canvas both paint in order, so anything emitted
+    // after these draws on top of them, which is what an underlay is for.
+    for (const underlay of underlays) ops.push(plotImageOp(underlay, context));
     for (const entity of entities) {
       for (const op of plotEntityOps(entity, context)) {
         if (op.kind === 'text') pdfUnsupportedCharacters(op.text).forEach(bad => unsupported.add(bad));
@@ -3493,6 +4016,11 @@ kbd { font-size: 9px; opacity: .65; }
         `${plotHeightMM.toFixed(1)} mm and will be clipped to the ${printable.widthMM.toFixed(1)} × ` +
         `${printable.heightMM.toFixed(1)} mm printable area.`);
     }
+    const excludedImages = state.underlays.length - underlays.length;
+    if (excludedImages > 0) {
+      warnings.push(`${excludedImages} image${excludedImages === 1 ? ' is' : 's are'} not included: ` +
+        'tick "Include this image when plotting" in Image Properties to plot one.');
+    }
     const excluded = state.entities.length - entities.length;
     if (excluded > 0) {
       warnings.push(`${excluded} object${excluded === 1 ? '' : 's'} on hidden or non-printable layers ` +
@@ -3509,7 +4037,104 @@ kbd { font-size: 9px; opacity: .65; }
       page, printable, clipMM, area, scale, fitted, mmPerUnit, ops, warnings,
       plotWidthMM, plotHeightMM,
       entityCount: entities.length,
+      underlayCount: underlays.length,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // view/underlay.js
+  // ---------------------------------------------------------------------------
+
+  // Decoded images keyed by the underlay's data URL rather than by its id, so a
+  // MOVE — which replaces the record — reuses the decode instead of throwing it
+  // away and flashing an empty frame.
+  const IMAGE_CACHE = new Map();
+
+  // Decoding is asynchronous and rendering is not, so this never waits: a frame
+  // drawn before the image is ready simply skips it and the load handler asks for
+  // another frame. That also keeps the headless harness, whose Image never
+  // loads, from deadlocking on a paint.
+  function underlayImage(underlay) {
+    const cached = IMAGE_CACHE.get(underlay.data);
+    if (cached) return cached.ready ? cached.image : null;
+    const image = new Image();
+    const record = { image, ready: false };
+    IMAGE_CACHE.set(underlay.data, record);
+    image.onload = () => {
+      record.ready = true;
+      draw();
+    };
+    // A payload the browser cannot decode stays un-ready forever, which renders
+    // as an empty frame rather than as a broken drawing.
+    image.onerror = () => { record.failed = true; };
+    image.src = underlay.data;
+    return null;
+  }
+
+  function forgetUnderlayImages() {
+    IMAGE_CACHE.clear();
+  }
+
+  function drawUnderlays() {
+    for (const underlay of state.underlays) {
+      if (!isLayerVisible(underlay.layerId)) continue;
+      drawUnderlay(underlay);
+    }
+  }
+
+  function drawUnderlay(underlay) {
+    const image = underlayImage(underlay);
+    const origin = worldToScreen(underlay.origin);
+    const scale = underlay.unitsPerPixel * state.view.scale;
+    if (image) {
+      ctx.save();
+      ctx.globalAlpha = underlayFadeAlpha(underlay);
+      ctx.translate(origin.x, origin.y);
+      // World Y and screen Y point opposite ways. Text solves this by rotating
+      // backwards (see drawText); a raster cannot, because its own rows are laid
+      // out top-down, so the whole frame is flipped instead and the image is
+      // drawn from 0,0 downward in that flipped space.
+      ctx.rotate(-underlay.rotation);
+      ctx.scale(scale, scale);
+      ctx.drawImage(image, 0, -underlay.heightPx, underlay.widthPx, underlay.heightPx);
+      ctx.restore();
+    }
+    if (state.selected.has(underlaySelectionId(underlay.id))) drawUnderlayOutline(underlay, true);
+    else if (!image) drawUnderlayOutline(underlay, false);
+  }
+
+  // The outline doubles as the placeholder for an image that has not decoded yet
+  // and as the selection indicator, since an underlay has no line work of its own
+  // that a selection halo could sit behind.
+  function drawUnderlayOutline(underlay, selected) {
+    const corners = underlayCorners(underlay).map(worldToScreen);
+    ctx.save();
+    ctx.setLineDash(selected ? [] : [6, 4]);
+    ctx.lineWidth = selected ? 2 : 1;
+    ctx.strokeStyle = selected ? 'rgba(86, 214, 255, 0.95)' : 'rgba(120, 120, 120, 0.7)';
+    ctx.beginPath();
+    ctx.moveTo(corners[0].x, corners[0].y);
+    for (let index = 1; index < corners.length; index++) ctx.lineTo(corners[index].x, corners[index].y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // The rubber band IMAGE draws while the insertion point is being picked. The
+  // raster itself is not drawn during placement: at an uncalibrated default scale
+  // it is routinely the size of a city block, and painting that on every mouse
+  // move to throw it away is a poor trade for an outline that says the same
+  // thing.
+  function drawUnderlayPreview(descriptor, origin, unitsPerPixel) {
+    const preview = {
+      origin,
+      rotation: 0,
+      unitsPerPixel,
+      widthPx: descriptor.widthPx,
+      heightPx: descriptor.heightPx,
+    };
+    drawUnderlayOutline(preview, true);
+    return { width: underlayWidth(preview), height: underlayHeight(preview) };
   }
 
   // ---------------------------------------------------------------------------
@@ -3645,11 +4270,38 @@ kbd { font-size: 9px; opacity: .65; }
     context.restore();
   }
 
+  // The plan hands over an origin and two edge vectors — a parallelogram — which
+  // is what carries a rotated underlay without the preview needing to know an
+  // angle. Mapping the unit square onto it is exactly a canvas transform, and the
+  // Y edge is negated because paper Y points up and canvas Y points down.
+  function drawPlotPreviewImage(context, view, op, clipped) {
+    const image = underlayImage({ data: op.data });
+    const origin = view.toPx(op.origin);
+    const edgeX = { x: op.edgeX.x * view.scale, y: -op.edgeX.y * view.scale };
+    const edgeY = { x: op.edgeY.x * view.scale, y: -op.edgeY.y * view.scale };
+    context.save();
+    if (clipped) context.globalAlpha *= 0.25;
+    else context.globalAlpha *= op.alpha;
+    context.transform(edgeX.x, edgeX.y, edgeY.x, edgeY.y, origin.x, origin.y);
+    if (image) {
+      // The unit square maps onto the image's own frame, bottom-left at 0,0.
+      context.drawImage(image, 0, -1, 1, 1);
+    } else {
+      // Not decoded yet: show the frame so the preview still says where the
+      // image will land rather than silently omitting it.
+      context.strokeStyle = PLOT_PREVIEW_CLIPPED_COLOR;
+      context.lineWidth = 1 / Math.max(1e-6, Math.hypot(edgeX.x, edgeX.y));
+      context.strokeRect(0, -1, 1, 1);
+    }
+    context.restore();
+  }
+
   function drawPlotPreviewOps(context, view, ops, clipped) {
     for (const op of ops) {
       if (op.kind === 'stroke') drawPlotPreviewStroke(context, view, op, clipped);
       else if (op.kind === 'fill') drawPlotPreviewFill(context, view, op, clipped);
       else if (op.kind === 'text') drawPlotPreviewText(context, view, op, clipped);
+      else if (op.kind === 'image') drawPlotPreviewImage(context, view, op, clipped);
     }
   }
 
@@ -3851,23 +4503,125 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   // ---------------------------------------------------------------------------
+  // model/imageImport.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Turning a picked file into an underlay descriptor.
+  //
+  // This is the one part of the underlay feature that touches the DOM, and it is
+  // isolated here for two reasons. The obvious one is testability: everything
+  // downstream takes a plain { name, widthPx, heightPx, data } record and can be
+  // driven headlessly. The less obvious one is that this is also where the
+  // feature's two size decisions are enforced, and they are decisions rather than
+  // details:
+  //
+  //   1. Every source format is re-encoded to JPEG. The drawing travels as JSON
+  //      with the image inline, and the PDF writer embeds the bytes verbatim, so
+  //      normalising the format here means output/pdf.js needs exactly one image
+  //      filter (DCTDecode) instead of a PNG decoder and a deflate compressor.
+  //      Transparency is composited onto white on the way through, since an
+  //      underlay sits behind the drawing and has nothing to show through to.
+  //
+  //   2. The raster is capped on its long edge. Every autosave re-serialises this
+  //      payload, so an uncapped 40-megapixel phone photo would make each save
+  //      cost tens of megabytes of string building. 2400px still resolves far
+  //      more than anyone traces at.
+  // ---------------------------------------------------------------------------
+
+  // Returns the scale to draw the source at, never above 1: an image smaller than
+  // the cap is left exactly as it came in rather than being enlarged.
+  function imageFitScale(widthPx, heightPx, maxEdge = UNDERLAY_MAX_EDGE_PX) {
+    const longest = Math.max(widthPx, heightPx);
+    if (!(longest > 0)) return 1;
+    return Math.min(1, maxEdge / longest);
+  }
+
+  function imageTargetSize(widthPx, heightPx, maxEdge = UNDERLAY_MAX_EDGE_PX) {
+    const scale = imageFitScale(widthPx, heightPx, maxEdge);
+    return {
+      widthPx: Math.max(1, Math.round(widthPx * scale)),
+      heightPx: Math.max(1, Math.round(heightPx * scale)),
+      scale,
+    };
+  }
+
+  function decodeImageFile(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(image);
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('That file could not be read as an image.'));
+      };
+      image.src = url;
+    });
+  }
+
+  function encodeUnderlayImage(image, name) {
+    const sourceWidth = image.naturalWidth || image.width;
+    const sourceHeight = image.naturalHeight || image.height;
+    if (!(sourceWidth > 0) || !(sourceHeight > 0)) {
+      throw new Error('That image has no usable size.');
+    }
+    const target = imageTargetSize(sourceWidth, sourceHeight);
+    const canvas = document.createElement('canvas');
+    canvas.width = target.widthPx;
+    canvas.height = target.heightPx;
+    const context = canvas.getContext('2d');
+    // JPEG has no alpha, and an undrawn canvas is transparent black, which would
+    // turn every transparent pixel into solid black rather than into paper.
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, target.widthPx, target.heightPx);
+    context.drawImage(image, 0, 0, target.widthPx, target.heightPx);
+    const data = canvas.toDataURL('image/jpeg', UNDERLAY_JPEG_QUALITY);
+    if (!data.startsWith('data:image/jpeg')) {
+      throw new Error('This browser could not encode the image.');
+    }
+    return {
+      name: underlayNameFromFile(name),
+      widthPx: target.widthPx,
+      heightPx: target.heightPx,
+      data,
+    };
+  }
+
+  function underlayNameFromFile(name) {
+    const base = String(name || 'image').replace(/\.[^.]+$/, '').trim();
+    return base.slice(0, 60) || 'image';
+  }
+
+  async function underlayDescriptorFromFile(file) {
+    const image = await decodeImageFile(file);
+    return encodeUnderlayImage(image, file.name);
+  }
+
+  // ---------------------------------------------------------------------------
   // model/document.js
   // ---------------------------------------------------------------------------
 
   function editSnapshot() {
     return {
       entities: cloneEntities(),
+      underlays: cloneUnderlays(),
       layers: cloneLayers(),
       dimStyles: cloneDimStyles(),
       unitSettings: { ...state.unitSettings },
       currentLayerId: state.currentLayerId,
       nextId: state.nextId,
       nextLayerId: state.nextLayerId,
+      nextUnderlayId: state.nextUnderlayId,
     };
   }
 
   function restoreEditSnapshot(snapshot) {
     state.entities = snapshot.entities;
+    state.underlays = snapshot.underlays || [];
+    state.nextUnderlayId = snapshot.nextUnderlayId || derivedNextUnderlayId(state.underlays);
     state.layers = snapshot.layers;
     if (snapshot.dimStyles) state.dimStyles = snapshot.dimStyles.map(style => ({ ...style }));
     if (snapshot.unitSettings) state.unitSettings = { ...snapshot.unitSettings };
@@ -3887,7 +4641,9 @@ kbd { font-size: 9px; opacity: .65; }
       currentLayerId: state.currentLayerId,
       nextId: state.nextId,
       nextLayerId: state.nextLayerId,
+      nextUnderlayId: state.nextUnderlayId,
       entities: state.entities,
+      underlays: state.underlays,
     };
   }
 
@@ -4104,6 +4860,54 @@ kbd { font-size: 9px; opacity: .65; }
     return { error: `uses unsupported entity type ${type || '(missing)'}` };
   }
 
+  // Underlays carry an image payload, so validation checks the shape and the
+  // numbers but deliberately does not inspect the raster: a data URL that the
+  // browser later fails to decode draws as nothing, which is a far better outcome
+  // than refusing to open the whole drawing.
+  function cleanUnderlay(value, layerIds) {
+    if (!value || typeof value !== 'object') return { error: 'is not an object' };
+    if (!Number.isSafeInteger(value.id) || value.id <= 0) return { error: 'has an invalid ID' };
+    const layerId = typeof value.layerId === 'string' && value.layerId ? value.layerId : '0';
+    if (!layerIds.has(layerId)) return { error: `references unknown layer ${layerId}` };
+    const origin = cleanPoint(value.origin);
+    if (!origin) return { error: 'has an invalid origin' };
+    if (!Number.isFinite(value.rotation)) return { error: 'has an invalid rotation' };
+    if (!Number.isFinite(value.unitsPerPixel)
+      || value.unitsPerPixel <= UNDERLAY_MIN_UNITS_PER_PIXEL
+      || value.unitsPerPixel > UNDERLAY_MAX_UNITS_PER_PIXEL) {
+      return { error: 'has an invalid scale' };
+    }
+    if (!Number.isSafeInteger(value.widthPx) || value.widthPx <= 0) return { error: 'has an invalid pixel width' };
+    if (!Number.isSafeInteger(value.heightPx) || value.heightPx <= 0) return { error: 'has an invalid pixel height' };
+    if (typeof value.data !== 'string' || !value.data.startsWith('data:image/')) {
+      return { error: 'has no image data' };
+    }
+    const fade = Number.isFinite(value.fade) ? Math.min(100, Math.max(0, value.fade)) : 0;
+    const name = typeof value.name === 'string' && value.name.trim()
+      ? value.name.trim().slice(0, 120)
+      : 'image';
+    return {
+      underlay: {
+        id: value.id,
+        layerId,
+        name,
+        origin,
+        rotation: normalizeAngle(value.rotation),
+        unitsPerPixel: value.unitsPerPixel,
+        widthPx: value.widthPx,
+        heightPx: value.heightPx,
+        fade,
+        locked: value.locked === true,
+        plot: value.plot === true,
+        data: value.data,
+      },
+    };
+  }
+
+  function derivedNextUnderlayId(underlays) {
+    return underlays.reduce((maximum, underlay) => Math.max(maximum, (underlay?.id || 0) + 1), 1);
+  }
+
   function parseDocumentText(text) {
     let value;
     try {
@@ -4205,6 +5009,27 @@ kbd { font-size: 9px; opacity: .65; }
       entities.push(cleaned.entity);
     }
 
+    // Version 6 and earlier had no underlays. An absent key is not a migration,
+    // just a drawing with none.
+    if (value.underlays !== undefined && !Array.isArray(value.underlays)) {
+      return { error: 'The drawing has an invalid underlay table.' };
+    }
+    const underlays = [];
+    const underlayIds = new Set();
+    for (let index = 0; index < (value.underlays || []).length; index++) {
+      const cleaned = cleanUnderlay(value.underlays[index], layerIds);
+      if (cleaned.error) return { error: `Underlay ${index + 1} ${cleaned.error}.` };
+      if (underlayIds.has(cleaned.underlay.id)) {
+        return { error: `Underlay ID ${cleaned.underlay.id} is duplicated.` };
+      }
+      underlayIds.add(cleaned.underlay.id);
+      underlays.push(cleaned.underlay);
+    }
+    const minimumNextUnderlayId = underlays.reduce((maximum, underlay) => Math.max(maximum, underlay.id + 1), 1);
+    const suppliedNextUnderlayId = Number.isSafeInteger(value.nextUnderlayId) && value.nextUnderlayId > 0
+      ? value.nextUnderlayId
+      : 1;
+
     const minimumNextId = entities.reduce((maximum, entity) => Math.max(maximum, entity.id + 1), 1);
     const suppliedNextId = Number.isSafeInteger(value.nextId) && value.nextId > 0 ? value.nextId : 1;
     const derivedLayerId = derivedNextLayerId(layers);
@@ -4222,7 +5047,9 @@ kbd { font-size: 9px; opacity: .65; }
         currentLayerId,
         nextId: Math.max(minimumNextId, suppliedNextId),
         nextLayerId: Math.max(derivedLayerId, suppliedNextLayerId),
+        nextUnderlayId: Math.max(minimumNextUnderlayId, suppliedNextUnderlayId),
         entities,
+        underlays,
       },
     };
   }
@@ -4441,9 +5268,32 @@ kbd { font-size: 9px; opacity: .65; }
   // likely be aborted before it commits, so this one write stays synchronous.
   // It only ever covers the edits made since the last autosave settled — at most
   // the debounce window — and the next successful autosave clears it again.
+  //
+  // Underlay images are the one payload that can push this past the localStorage
+  // quota. Losing the whole unload copy over them would be the wrong trade: the
+  // geometry is the irreplaceable part, IndexedDB already holds the full drawing
+  // including the images, and a restored copy whose images need re-importing
+  // beats no restored copy at all. So a quota failure retries without them.
   function writeAutosaveOnUnload() {
-    writeAutosaveRecordSync(AUTOSAVE_KEY, exportDocumentText(false));
+    const text = exportDocumentText(false);
+    try {
+      writeAutosaveRecordSync(AUTOSAVE_KEY, text);
+      return true;
+    } catch (error) {
+      if (!state.underlays.length) throw error;
+    }
+    writeAutosaveRecordSync(AUTOSAVE_KEY, documentTextWithoutImages(text));
     return true;
+  }
+
+  // Strips only the base64 payloads, leaving each underlay's placement, scale and
+  // name intact so a recovered drawing says what is missing and where it sat.
+  function documentTextWithoutImages(text) {
+    const parsed = JSON.parse(text);
+    for (const underlay of parsed.underlays || []) {
+      underlay.data = UNDERLAY_DROPPED_DATA;
+    }
+    return JSON.stringify(parsed);
   }
 
   function scheduleAutosave() {
@@ -4513,12 +5363,18 @@ kbd { font-size: 9px; opacity: .65; }
 
   // Build a complete candidate without mutating entities, IDs, history, or the
   // command stage. Only a validated candidate may enter the undoable document.
+  //
+  // Underlays ride in the same candidate rather than getting a commit path of
+  // their own, so a MOVE over a selection holding both geometry and an image is
+  // one undo step instead of two half-steps that can be separated.
   function commitGeometry(entities, options = {}) {
     const candidate = {
       ...documentSnapshot(), entities: updateAssociativeDimensions(entities),
       nextId: options.nextId ?? state.nextId,
       units: options.unitSettings ?? state.unitSettings,
       dimStyles: options.dimStyles ?? state.dimStyles,
+      underlays: options.underlays ?? state.underlays,
+      nextUnderlayId: options.nextUnderlayId ?? state.nextUnderlayId,
     };
     if (!Number.isSafeInteger(candidate.nextId) || candidate.nextId <= 0) {
       updatePrompt('Edit rejected: no valid entity IDs remain.');
@@ -4534,6 +5390,8 @@ kbd { font-size: 9px; opacity: .65; }
     state.nextId = checked.document.nextId;
     state.unitSettings = checked.document.unitSettings;
     state.dimStyles = checked.document.dimStyles;
+    state.underlays = checked.document.underlays;
+    state.nextUnderlayId = checked.document.nextUnderlayId;
     return true;
   }
 
@@ -5701,12 +6559,17 @@ kbd { font-size: 9px; opacity: .65; }
     if (unchanged) { closeUnitsDialog(); return; }
 
     let entities = state.entities;
+    let underlays = state.underlays;
     if (rescale) {
       // Convert geometry about the origin so a 120" line stays 10 feet long when
-      // the drawing unit becomes millimetres.
+      // the drawing unit becomes millimetres. Underlays are converted with it —
+      // a calibrated image left at its old scale would silently stop lining up
+      // with the geometry traced from it, which is the one thing calibration
+      // exists to guarantee.
       const factor = unitConversion(previousUnit, next.drawingUnit);
       const origin = { x: 0, y: 0 };
       entities = entities.map(entity => scaleEntity(entity, origin, factor));
+      underlays = underlays.map(underlay => scaleUnderlay(underlay, origin, factor));
     }
     let dimStyles = state.dimStyles;
     if (next.drawingUnit !== previousUnit) {
@@ -5717,7 +6580,7 @@ kbd { font-size: 9px; opacity: .65; }
     dimStyles = dimStyles.map(style => style.precision !== null &&
       !LENGTH_FORMATS[next.format].precisions.includes(style.precision)
       ? { ...style, precision: null } : style);
-    if (!commitGeometry(entities, { unitSettings: next, dimStyles })) return;
+    if (!commitGeometry(entities, { unitSettings: next, dimStyles, underlays })) return;
     renderUnitStatus();
     updatePrompt();
     setFileStatus(`${state.drawingName} · Units set to ${unitSummary()}`);
@@ -6690,6 +7553,17 @@ kbd { font-size: 9px; opacity: .65; }
     return best;
   }
 
+  // Geometry always wins a contested pick: an underlay is a background, so it is
+  // only offered when nothing drawn on top of it is within reach.
+  function underlayAt(world) {
+    for (let index = state.underlays.length - 1; index >= 0; index--) {
+      const underlay = state.underlays[index];
+      if (!underlayIsSelectable(underlay)) continue;
+      if (underlayContainsPoint(underlay, world)) return underlay;
+    }
+    return null;
+  }
+
   function selectAt(world, add = false) {
     let hit = null;
     let best = 8;
@@ -6698,8 +7572,14 @@ kbd { font-size: 9px; opacity: .65; }
       const d = distanceToEntityPx(world, e);
       if (d < best) { best = d; hit = e; }
     }
+    const underlay = hit ? null : underlayAt(world);
     if (!add) state.selected.clear();
-    if (hit) {
+    if (underlay) {
+      const key = underlaySelectionId(underlay.id);
+      if (add && state.selected.has(key)) state.selected.delete(key);
+      else state.selected.add(key);
+      activeCommand()?.noteSelection?.({ underlayId: underlay.id });
+    } else if (hit) {
       if (add && state.selected.has(hit.id)) state.selected.delete(hit.id);
       else state.selected.add(hit.id);
       activeCommand()?.noteSelection?.({ entityId: hit.id });
@@ -6728,10 +7608,44 @@ kbd { font-size: 9px; opacity: .65; }
       const hit = crossing ? entityCrossesBox(e, box) : boxContains(box, bb);
       if (hit) state.selected.add(e.id);
     }
+    for (const underlay of state.underlays) {
+      if (!underlayIsSelectable(underlay)) continue;
+      // A crossing window catches an image whose frame overlaps it at all; a
+      // window selection needs the whole frame inside, matching the entity rule
+      // above. Both test the four corners, which for a rectangle is exact.
+      const hit = crossing
+        ? underlayCrossesBox(underlay, box)
+        : boxContains(box, underlayBBox(underlay));
+      if (hit) state.selected.add(underlaySelectionId(underlay.id));
+    }
     activeCommand()?.noteSelection?.({ box, crossing });
     state.dragSelect = null;
     updatePrompt();
     draw();
+  }
+
+  function underlayCrossesBox(underlay, box) {
+    const corners = underlayCorners(underlay);
+    if (corners.some(p => p.x >= box.minX && p.x <= box.maxX && p.y >= box.minY && p.y <= box.maxY)) return true;
+    const bb = underlayBBox(underlay);
+    if (boxContains(bb, box)) return true;
+    for (let index = 0; index < corners.length; index++) {
+      const a = corners[index];
+      const b = corners[(index + 1) % corners.length];
+      if (segmentCrossesBox(a, b, box)) return true;
+    }
+    return false;
+  }
+
+  function segmentCrossesBox(a, b, box) {
+    const corners = [
+      { x: box.minX, y: box.minY }, { x: box.maxX, y: box.minY },
+      { x: box.maxX, y: box.maxY }, { x: box.minX, y: box.maxY },
+    ];
+    for (let index = 0; index < 4; index++) {
+      if (segmentIntersection(a, b, corners[index], corners[(index + 1) % 4])) return true;
+    }
+    return false;
   }
 
   // The one implementation of "remove what is selected", shared by the Delete
@@ -6741,14 +7655,18 @@ kbd { font-size: 9px; opacity: .65; }
     const deletable = new Set(state.entities
       .filter(entity => state.selected.has(entity.id) && isEntityEditable(entity))
       .map(entity => entity.id));
-    if (!deletable.size) return { error: 'No objects selected.', erased: 0 };
-    if (!commitGeometry(state.entities.filter(e => !deletable.has(e.id)))) {
+    const removableUnderlays = new Set(state.underlays
+      .filter(underlay => state.selected.has(underlaySelectionId(underlay.id)) && underlayIsSelectable(underlay))
+      .map(underlay => underlay.id));
+    if (!deletable.size && !removableUnderlays.size) return { error: 'No objects selected.', erased: 0 };
+    const keptUnderlays = state.underlays.filter(underlay => !removableUnderlays.has(underlay.id));
+    if (!commitGeometry(state.entities.filter(e => !deletable.has(e.id)), { underlays: keptUnderlays })) {
       return { error: 'That deletion was rejected.', erased: 0 };
     }
     state.selected.clear();
     updatePrompt();
     draw();
-    return { erased: deletable.size };
+    return { erased: deletable.size + removableUnderlays.size };
   }
 
   // A dimension whose geometry is erased freezes at its last measured value
@@ -7697,6 +8615,9 @@ kbd { font-size: 9px; opacity: .65; }
     ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);
     ctx.fillStyle = '#111';
     ctx.fillRect(0,0,canvas.clientWidth,canvas.clientHeight);
+    // Underlays sit under the grid, not just under the geometry: the grid is a
+    // drafting aid and has to stay readable over a dark scan or aerial.
+    drawUnderlays();
     drawGrid();
     for (const e of state.entities) {
       // The entity currently being retyped (EDITTEXT/DDEDIT-style) is represented
@@ -9371,12 +10292,14 @@ kbd { font-size: 9px; opacity: .65; }
 
       begin() {
         const ids = editableSelectionIds();
+        const underlayIds = editableUnderlayIds();
         state.transform = {
           type,
           // A preselection is taken as the answer to "select objects", so the
           // command opens at the base point instead of asking again.
-          stage: ids.length ? 'BASE' : 'SELECT',
+          stage: (ids.length || underlayIds.length) ? 'BASE' : 'SELECT',
           ids,
+          underlayIds,
           base: null,
           ...initial,
         };
@@ -9460,6 +10383,7 @@ kbd { font-size: 9px; opacity: .65; }
             drawEntity(translateEntity(entity, dx, dy), true);
           }
         }
+        previewUnderlays(state.transform, underlay => translateUnderlay(underlay, dx, dy));
         drawTransformGuide(
           state.transform.base,
           p,
@@ -9613,6 +10537,7 @@ kbd { font-size: 9px; opacity: .65; }
         const referenceEnd = circularPoint(operation.base, guideRadius, operation.referenceAngle);
         drawTransformGuide(operation.base, referenceEnd, 'Reference', true);
       }
+      previewUnderlays(operation, underlay => rotateUnderlay(underlay, operation.base, rotation));
       const label = stage === 'ROTATE_TARGET'
         ? `Target ${formatAngle(targetAngle)} · Δ ${formatAngle(rotation)}`
         : `Δ ${formatAngle(rotation)}`;
@@ -9757,6 +10682,7 @@ kbd { font-size: 9px; opacity: .65; }
           }
         }
       }
+      previewUnderlays(operation, underlay => scaleUnderlay(underlay, operation.base, factor));
       const label = stage === 'SCALE_REF_NEW'
         ? `${formatLength(candidateLength)} / ${formatLength(operation.referenceLength)} = ${factor.toFixed(3)}x`
         : `${factor.toFixed(3)}x`;
@@ -9849,6 +10775,7 @@ kbd { font-size: 9px; opacity: .65; }
           drawEntity(mirrorEntity(entity, operation.base, axisEnd), true);
         }
       }
+      previewUnderlays(operation, underlay => mirrorUnderlay(underlay, operation.base, axisEnd));
       drawTransformGuide(
         operation.base,
         axisEnd,
@@ -9874,14 +10801,50 @@ kbd { font-size: 9px; opacity: .65; }
       .map(entity => entity.id);
   }
 
+  function editableUnderlayIds() {
+    return state.underlays
+      .filter(underlay => state.selected.has(underlaySelectionId(underlay.id)) && underlayIsSelectable(underlay))
+      .map(underlay => underlay.id);
+  }
+
+  // Re-derived at apply time rather than trusted from begin(), for the same
+  // reason the entity id sets are: a layer can be locked while the command runs.
+  function operationUnderlaySet(operation) {
+    return new Set(state.underlays
+      .filter(underlay => (operation.underlayIds || []).includes(underlay.id) && underlayIsSelectable(underlay))
+      .map(underlay => underlay.id));
+  }
+
+  function mapSelectedUnderlays(set, transformFn) {
+    return state.underlays.map(underlay => (set.has(underlay.id) ? transformFn(underlay) : underlay));
+  }
+
+  // Selection after a transform names both halves of what was transformed.
+  function selectionOf(idSet, underlaySet) {
+    return new Set([...idSet, ...[...underlaySet].map(underlaySelectionId)]);
+  }
+
+  // Underlays preview as an outline, not as a redrawn raster: at typical aerial
+  // resolutions, re-blitting the image on every mouse move to throw it away is a
+  // poor trade for a frame that says the same thing.
+  function previewUnderlays(operation, transformFn) {
+    for (const underlay of state.underlays) {
+      if (!(operation.underlayIds || []).includes(underlay.id)) continue;
+      if (!underlayIsSelectable(underlay)) continue;
+      drawUnderlayOutline(transformFn(underlay), true);
+    }
+  }
+
   function acceptTransformSelection() {
     if (!state.transform || state.transform.stage !== 'SELECT') return false;
     const ids = editableSelectionIds();
-    if (!ids.length) {
+    const underlayIds = editableUnderlayIds();
+    if (!ids.length && !underlayIds.length) {
       updatePrompt('No objects selected.');
       return true;
     }
     state.transform.ids = ids;
+    state.transform.underlayIds = underlayIds;
     state.transform.stage = 'BASE';
     updatePrompt();
     draw();
@@ -9901,7 +10864,8 @@ kbd { font-size: 9px; opacity: .65; }
     const idSet = new Set(state.entities
       .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
       .map(entity => entity.id));
-    if (!idSet.size) {
+    const underlaySet = operationUnderlaySet(operation);
+    if (!idSet.size && !underlaySet.size) {
       updatePrompt('The selected objects are no longer editable.');
       return;
     }
@@ -9909,15 +10873,27 @@ kbd { font-size: 9px; opacity: .65; }
       const entities = state.entities.map(entity =>
         idSet.has(entity.id) ? translateEntity(entity, dx, dy) : entity,
       );
-      if (!commitGeometry(entities)) return;
-      state.selected = new Set(idSet);
+      const underlays = mapSelectedUnderlays(underlaySet, underlay => translateUnderlay(underlay, dx, dy));
+      if (!commitGeometry(entities, { underlays })) return;
+      state.selected = selectionOf(idSet, underlaySet);
     } else {
       const moved = state.entities
         .filter(entity => idSet.has(entity.id))
         .map(entity => translateEntity(entity, dx, dy));
       const { entities: copies, nextId } = duplicateEntities(moved, state.nextId);
-      if (!commitGeometry([...state.entities, ...copies], { nextId })) return;
-      state.selected = new Set(copies.map(entity => entity.id));
+      const movedUnderlays = state.underlays
+        .filter(underlay => underlaySet.has(underlay.id))
+        .map(underlay => translateUnderlay(underlay, dx, dy));
+      const { underlays: underlayCopies, nextUnderlayId } = duplicateUnderlays(movedUnderlays, state.nextUnderlayId);
+      if (!commitGeometry([...state.entities, ...copies], {
+        nextId,
+        underlays: [...state.underlays, ...underlayCopies],
+        nextUnderlayId,
+      })) return;
+      state.selected = selectionOf(
+        new Set(copies.map(entity => entity.id)),
+        new Set(underlayCopies.map(underlay => underlay.id)),
+      );
     }
     setMode('SELECT');
   }
@@ -9938,7 +10914,8 @@ kbd { font-size: 9px; opacity: .65; }
     const idSet = new Set(state.entities
       .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
       .map(entity => entity.id));
-    if (!idSet.size) {
+    const underlaySet = operationUnderlaySet(operation);
+    if (!idSet.size && !underlaySet.size) {
       updatePrompt('The selected objects are no longer editable.');
       return;
     }
@@ -9946,8 +10923,10 @@ kbd { font-size: 9px; opacity: .65; }
       idSet.has(entity.id) ? rotateEntity(entity, operation.base, reducedAngle) : entity,
     );
     entities = realignDimensionReferences(entities, idSet, 'rotate', { angle: reducedAngle });
-    if (!commitGeometry(entities)) return;
-    state.selected = new Set(idSet);
+    const underlays = mapSelectedUnderlays(underlaySet, underlay =>
+      rotateUnderlay(underlay, operation.base, reducedAngle));
+    if (!commitGeometry(entities, { underlays })) return;
+    state.selected = selectionOf(idSet, underlaySet);
     setMode('SELECT');
   }
 
@@ -9966,7 +10945,8 @@ kbd { font-size: 9px; opacity: .65; }
     const idSet = new Set(state.entities
       .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
       .map(entity => entity.id));
-    if (!idSet.size) {
+    const underlaySet = operationUnderlaySet(operation);
+    if (!idSet.size && !underlaySet.size) {
       updatePrompt('The selected objects are no longer editable.');
       return;
     }
@@ -9983,8 +10963,10 @@ kbd { font-size: 9px; opacity: .65; }
       scaled.set(entity.id, result);
     }
 
-    if (!commitGeometry(state.entities.map(entity => scaled.get(entity.id) || entity))) return;
-    state.selected = new Set(idSet);
+    const underlays = mapSelectedUnderlays(underlaySet, underlay =>
+      scaleUnderlay(underlay, operation.base, factor));
+    if (!commitGeometry(state.entities.map(entity => scaled.get(entity.id) || entity), { underlays })) return;
+    state.selected = selectionOf(idSet, underlaySet);
     setMode('SELECT');
   }
 
@@ -9999,7 +10981,8 @@ kbd { font-size: 9px; opacity: .65; }
     const idSet = new Set(state.entities
       .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
       .map(entity => entity.id));
-    if (!idSet.size) {
+    const underlaySet = operationUnderlaySet(operation);
+    if (!idSet.size && !underlaySet.size) {
       updatePrompt('The selected objects are no longer editable.');
       return;
     }
@@ -10011,8 +10994,9 @@ kbd { font-size: 9px; opacity: .65; }
         idSet.has(entity.id) ? mirrorEntity(entity, axisA, axisB) : entity,
       );
       entities = realignDimensionReferences(entities, idSet, 'mirror', { axisA, axisB });
-      if (!commitGeometry(entities)) return;
-      state.selected = new Set(idSet);
+      const underlays = mapSelectedUnderlays(underlaySet, underlay => mirrorUnderlay(underlay, axisA, axisB));
+      if (!commitGeometry(entities, { underlays })) return;
+      state.selected = selectionOf(idSet, underlaySet);
     } else {
       // The reflected entities keep their original ids on the way into
       // duplicateEntities, which is what lets a mirrored dimension be remapped
@@ -10023,8 +11007,19 @@ kbd { font-size: 9px; opacity: .65; }
         .map(entity => mirrorEntity(entity, axisA, axisB));
       reflected = realignDimensionReferences(reflected, idSet, 'mirror', { axisA, axisB });
       const { entities: copies, nextId } = duplicateEntities(reflected, state.nextId);
-      if (!commitGeometry([...state.entities, ...copies], { nextId })) return;
-      state.selected = new Set(copies.map(entity => entity.id));
+      const reflectedUnderlays = state.underlays
+        .filter(underlay => underlaySet.has(underlay.id))
+        .map(underlay => mirrorUnderlay(underlay, axisA, axisB));
+      const { underlays: underlayCopies, nextUnderlayId } = duplicateUnderlays(reflectedUnderlays, state.nextUnderlayId);
+      if (!commitGeometry([...state.entities, ...copies], {
+        nextId,
+        underlays: [...state.underlays, ...underlayCopies],
+        nextUnderlayId,
+      })) return;
+      state.selected = selectionOf(
+        new Set(copies.map(entity => entity.id)),
+        new Set(underlayCopies.map(underlay => underlay.id)),
+      );
     }
     setMode('SELECT');
   }
@@ -10354,6 +11349,9 @@ kbd { font-size: 9px; opacity: .65; }
   async function applyDocument(documentData, dirty = true) {
     releaseBackupPin();
     state.entities = JSON.parse(JSON.stringify(documentData.entities));
+    // Shallow, unlike the entities above: see cloneUnderlays on why the image
+    // payload must never be deep-copied.
+    state.underlays = cloneUnderlays(documentData.underlays || []);
     state.layers = JSON.parse(JSON.stringify(documentData.layers));
     state.currentLayerId = documentData.currentLayerId;
     state.drawingName = documentData.name;
@@ -10361,6 +11359,7 @@ kbd { font-size: 9px; opacity: .65; }
     state.dimStyles = documentData.dimStyles.map(style => ({ ...style }));
     state.nextId = documentData.nextId;
     state.nextLayerId = documentData.nextLayerId || derivedNextLayerId(state.layers);
+    state.nextUnderlayId = documentData.nextUnderlayId || derivedNextUnderlayId(state.underlays);
     state.selected.clear();
     state.history = [];
     state.future = [];
@@ -10434,13 +11433,14 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   async function newDrawing(skipConfirmation = false) {
-    if (!skipConfirmation && state.entities.length &&
+    if (!skipConfirmation && (state.entities.length || state.underlays.length) &&
         !window.confirm('Start a new drawing? Use Save first if you need a separate copy of the current drawing.')) {
       return false;
     }
     await flushOutgoingDocument();
     releaseBackupPin();
     state.entities = [];
+    state.underlays = [];
     state.layers = createDefaultLayers();
     state.currentLayerId = '0';
     state.drawingName = 'Untitled';
@@ -10448,6 +11448,7 @@ kbd { font-size: 9px; opacity: .65; }
     state.dimStyles = [defaultDimStyle()];
     state.nextId = 1;
     state.nextLayerId = 1;
+    state.nextUnderlayId = 1;
     state.selected.clear();
     state.history = [];
     state.future = [];
@@ -11938,6 +12939,8 @@ kbd { font-size: 9px; opacity: .65; }
   // ---------------------------------------------------------------------------
 
   const COMMAND_ALIASES = Object.freeze({
+    IM:'IMAGE', IMAGE:'IMAGE', CAL:'CALIBRATE', CALIBRATE:'CALIBRATE',
+    UN:'UNDERLAY', UNDERLAY:'UNDERLAY',
     L:'LINE', LINE:'LINE', PL:'PLINE', PLINE:'PLINE', P:'PLINE',
     REC:'RECTANGLE', RECTANG:'RECTANGLE', RECTANGLE:'RECTANGLE', C:'CIRCLE', CIRCLE:'CIRCLE',
     A:'ARC', ARC:'ARC',
@@ -11967,6 +12970,360 @@ kbd { font-size: 9px; opacity: .65; }
 
   function resolveCommandName(value) {
     return COMMAND_ALIASES[String(value).trim().toUpperCase()] || null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // ui/dialogs/underlay.js
+  // ---------------------------------------------------------------------------
+
+  // The draft the dialog edits, kept separate from the underlay itself so Cancel
+  // is free and Apply is a single undoable commit — the same shape the units and
+  // dimension-style dialogs use.
+  let pendingUnderlay = null;
+
+  function setPendingUnderlay(patch) {
+    if (!pendingUnderlay) return;
+    Object.assign(pendingUnderlay, patch);
+    refreshUnderlayDialog();
+  }
+
+  function dialogTarget() {
+    const selected = state.underlays.filter(underlay =>
+      state.selected.has(underlaySelectionId(underlay.id)));
+    if (selected.length === 1) return selected[0];
+    // A single unlocked image in the drawing is unambiguous even unselected;
+    // asking the user to select it first would be ceremony, not clarity.
+    const selectable = state.underlays.filter(underlayIsSelectable);
+    return selectable.length === 1 ? selectable[0] : null;
+  }
+
+  function openUnderlayDialog() {
+    if (!requireIdle('changing image properties')) return;
+    const target = dialogTarget();
+    if (!target) {
+      updatePrompt(state.underlays.length
+        ? 'Select one image first.'
+        : 'There is no image in the drawing. Use the Image button to place one.');
+      return;
+    }
+    pendingUnderlay = {
+      id: target.id,
+      fade: target.fade,
+      locked: target.locked,
+      plot: target.plot,
+    };
+    underlayDialog.hidden = false;
+    refreshUnderlayDialog();
+    underlayFadeInput.focus();
+  }
+
+  function closeUnderlayDialog() {
+    pendingUnderlay = null;
+    underlayDialog.hidden = true;
+    canvas.focus();
+  }
+
+  function refreshUnderlayDialog() {
+    if (!pendingUnderlay) return;
+    const target = state.underlays.find(underlay => underlay.id === pendingUnderlay.id);
+    if (!target) { closeUnderlayDialog(); return; }
+    underlayFadeInput.value = String(pendingUnderlay.fade);
+    underlayLockedCheck.checked = pendingUnderlay.locked;
+    underlayPlotCheck.checked = pendingUnderlay.plot;
+    underlayDialogSubject.textContent =
+      `${target.name} · ${target.widthPx} × ${target.heightPx} pixels`;
+    underlayPreviewEl.textContent =
+      `${formatLengthLabel(underlayWidth(target))} × ${formatLengthLabel(underlayHeight(target))} · fade ${pendingUnderlay.fade}%`;
+  }
+
+  function applyUnderlayDialog() {
+    if (!pendingUnderlay) return;
+    const target = state.underlays.find(underlay => underlay.id === pendingUnderlay.id);
+    if (!target) { closeUnderlayDialog(); return; }
+    const unchanged = target.fade === pendingUnderlay.fade
+      && target.locked === pendingUnderlay.locked
+      && target.plot === pendingUnderlay.plot;
+    if (unchanged) { closeUnderlayDialog(); return; }
+    const underlays = state.underlays.map(underlay => underlay.id === target.id
+      ? { ...underlay, fade: pendingUnderlay.fade, locked: pendingUnderlay.locked, plot: pendingUnderlay.plot }
+      : underlay);
+    if (!commitGeometry(state.entities, { underlays })) return;
+    setFileStatus(`${state.drawingName} · Image ${pendingUnderlay.plot ? 'will plot' : 'is reference only'}`);
+    closeUnderlayDialog();
+    draw();
+  }
+
+  function deleteUnderlayFromDialog() {
+    if (!pendingUnderlay) return;
+    const target = state.underlays.find(underlay => underlay.id === pendingUnderlay.id);
+    if (!target) { closeUnderlayDialog(); return; }
+    const underlays = state.underlays.filter(underlay => underlay.id !== target.id);
+    if (!commitGeometry(state.entities, { underlays })) return;
+    state.selected.delete(underlaySelectionId(target.id));
+    closeUnderlayDialog();
+    updatePrompt(`Removed image ${target.name}.`);
+    draw();
+  }
+
+  // ---------------------------------------------------------------------------
+  // commands/underlay.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Underlay commands
+  //
+  // IMAGE places a raster; CALIBRATE tells the drawing how big it really is.
+  // They are separate commands rather than one wizard because calibration is not
+  // a one-time step: a traced image gets re-calibrated whenever a better known
+  // dimension turns up, and having to re-import to do that would be absurd.
+  // ---------------------------------------------------------------------------
+
+  // The descriptor waiting to be placed. It is handed in from the file picker
+  // (ui/shell.js) or, in tests, injected directly — the command itself never
+  // touches a File, which is what keeps it drivable headlessly.
+  let pendingUnderlayImage = null;
+
+  function setPendingUnderlayImage(descriptor) {
+    pendingUnderlayImage = descriptor;
+  }
+
+  // Routed through startCommand rather than setMode so the placement obeys the
+  // same rules every other command does: it refuses while another command is
+  // mid-stage, and `creates` clears the selection and checks the current layer.
+  function startImagePlacement(descriptor) {
+    if (!descriptor) return false;
+    pendingUnderlayImage = descriptor;
+    startCommand('IMAGE');
+    return true;
+  }
+
+  defineCommand('IMAGE', {
+    creates: true,
+
+    canBegin() {
+      if (!pendingUnderlayImage) {
+        updatePrompt('IMAGE — choose a file with the Image button first.');
+        return false;
+      }
+      return true;
+    },
+
+    begin() {
+      state.underlay = {
+        stage: 'PLACE',
+        descriptor: pendingUnderlayImage,
+        // One drawing unit per pixel is an arbitrary but honest default: the
+        // image carries no real-world scale, and pretending otherwise would be
+        // a guess the user then has to detect and undo. CALIBRATE is the answer,
+        // and the prompt says so.
+        unitsPerPixel: 1,
+      };
+    },
+
+    takesDistance: true,
+
+    prompt() {
+      const operation = state.underlay;
+      if (!operation) return 'IMAGE:';
+      const width = operation.descriptor.widthPx * operation.unitsPerPixel;
+      return `IMAGE — Specify bottom-left corner, or type a width (${formatLengthLabel(width)} at present):`;
+    },
+
+    // A typed number at the placement stage means "make the image this wide",
+    // which is the fastest possible calibration when the width is already known.
+    distance(value) {
+      const operation = state.underlay;
+      if (!operation || !(value > 0)) {
+        updatePrompt('Enter a width greater than zero.');
+        return;
+      }
+      operation.unitsPerPixel = value / operation.descriptor.widthPx;
+      updatePrompt();
+      draw();
+    },
+
+    previewReady() {
+      return Boolean(state.underlay);
+    },
+
+    preview(p) {
+      const operation = state.underlay;
+      if (!operation) return;
+      drawUnderlayPreview(operation.descriptor, p, operation.unitsPerPixel);
+    },
+
+    point(p) {
+      const operation = state.underlay;
+      if (!operation) return;
+      if (!currentLayerIsEditable()) {
+        updatePrompt('The current layer is locked or hidden.');
+        return;
+      }
+      const underlay = makeUnderlay(operation.descriptor, p, {
+        unitsPerPixel: operation.unitsPerPixel,
+        fade: UNDERLAY_DEFAULT_FADE,
+      });
+      const nextUnderlayId = underlay.id + 1;
+      if (!commitGeometry(state.entities, {
+        underlays: [...state.underlays, underlay],
+        nextUnderlayId,
+      })) return;
+      pendingUnderlayImage = null;
+      state.selected = new Set([underlaySelectionId(underlay.id)]);
+      setMode('SELECT');
+      updatePrompt(`Image placed ${formatLengthLabel(underlayWidth(underlay))} wide. Use CALIBRATE to set its true scale.`);
+    },
+
+    finish() {
+      pendingUnderlayImage = null;
+      setMode('SELECT');
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // CALIBRATE
+  //
+  // Pick two points whose real separation is known, type the distance, and the
+  // image is scaled about the first pick. Holding the first pick fixed matters:
+  // the user has just told you where a known point on the image is, and moving it
+  // out from under them would undo the very thing they were establishing.
+  // ---------------------------------------------------------------------------
+
+  defineCommand('CALIBRATE', {
+    stateMode: 'CALIBRATE',
+
+    canBegin() {
+      if (!state.underlays.some(underlayIsSelectable)) {
+        updatePrompt('CALIBRATE — there is no unlocked image to calibrate.');
+        return false;
+      }
+      return true;
+    },
+
+    begin() {
+      const preselected = state.underlays.filter(underlay =>
+        state.selected.has(underlaySelectionId(underlay.id)) && underlayIsSelectable(underlay));
+      const selectable = state.underlays.filter(underlayIsSelectable);
+      // One image, or exactly one selected, is not a choice worth asking about.
+      const target = preselected.length === 1 ? preselected[0]
+        : (selectable.length === 1 ? selectable[0] : null);
+      state.underlay = {
+        stage: target ? 'FIRST' : 'PICK',
+        targetId: target ? target.id : null,
+        first: null,
+        second: null,
+      };
+    },
+
+    // Calibration points are read off a raster, so OSNAP has nothing useful to
+    // contribute and a stray endpoint snap would silently calibrate against the
+    // wrong place.
+    usesSnap: false,
+
+    takesDistance() {
+      return state.underlay?.stage === 'DISTANCE';
+    },
+
+    acceptsPoint() {
+      return state.underlay?.stage !== 'DISTANCE';
+    },
+
+    prompt() {
+      const operation = state.underlay;
+      if (!operation) return 'CALIBRATE:';
+      if (operation.stage === 'PICK') return 'CALIBRATE — Select the image to calibrate:';
+      if (operation.stage === 'FIRST') return 'CALIBRATE — Specify first point of a known distance:';
+      if (operation.stage === 'SECOND') return 'CALIBRATE — Specify second point of the known distance:';
+      const measured = dist(operation.first, operation.second);
+      return `CALIBRATE — Enter the true distance between those points (${formatLength(measured)} at present):`;
+    },
+
+    point(p) {
+      const operation = state.underlay;
+      if (!operation) return;
+      if (operation.stage === 'PICK') {
+        const target = [...state.underlays].reverse()
+          .find(underlay => underlayIsSelectable(underlay) && underlayContainsPoint(underlay, p));
+        if (!target) {
+          updatePrompt('CALIBRATE — that is not on an unlocked image. Pick again:');
+          return;
+        }
+        operation.targetId = target.id;
+        operation.stage = 'FIRST';
+        updatePrompt();
+        return;
+      }
+      if (operation.stage === 'FIRST') {
+        operation.first = { ...p };
+        operation.stage = 'SECOND';
+        updatePrompt();
+        return;
+      }
+      if (operation.stage === 'SECOND') {
+        if (dist(operation.first, p) < 1e-9) {
+          updatePrompt('CALIBRATE — those points are in the same place. Pick the second point again:');
+          return;
+        }
+        operation.second = { ...p };
+        operation.stage = 'DISTANCE';
+        updatePrompt();
+        draw();
+      }
+    },
+
+    distance(value) {
+      applyCalibration(value);
+    },
+
+    // The typed value can carry a unit suffix (12', 150mm), which parseDistance
+    // already understands, so it is routed here as well as through distance().
+    value(text) {
+      if (state.underlay?.stage !== 'DISTANCE') return false;
+      const parsed = parseDistance(text);
+      if (parsed === null) {
+        updatePrompt('Enter a distance, for example 24 or 2\' or 600mm.');
+        return true;
+      }
+      applyCalibration(parsed);
+      return true;
+    },
+
+    previewReady() {
+      return Boolean(state.underlay?.first) && state.underlay.stage === 'SECOND';
+    },
+
+    // The measuring line is the whole feedback for this stage: it is what tells
+    // the user which two features of the image they are about to declare a
+    // distance between.
+    preview(p) {
+      drawEntity({ type: 'LINE', a: state.underlay.first, b: p }, true);
+    },
+
+    finish() {
+      setMode('SELECT');
+    },
+  });
+
+  function applyCalibration(knownDistance) {
+    const operation = state.underlay;
+    if (!operation || operation.stage !== 'DISTANCE') return;
+    const target = state.underlays.find(underlay => underlay.id === operation.targetId);
+    if (!target) {
+      updatePrompt('That image is no longer in the drawing.');
+      setMode('SELECT');
+      return;
+    }
+    const result = calibrateUnderlay(target, operation.first, operation.second, knownDistance);
+    if (result.error) {
+      updatePrompt(`CALIBRATE — ${result.error}`);
+      return;
+    }
+    const underlays = state.underlays.map(underlay =>
+      underlay.id === target.id ? result.underlay : underlay);
+    if (!commitGeometry(state.entities, { underlays })) return;
+    state.selected = new Set([underlaySelectionId(target.id)]);
+    setMode('SELECT');
+    updatePrompt(`Image calibrated: scaled ${result.factor.toFixed(4)}x, now ${formatLengthLabel(underlayWidth(result.underlay))} wide.`);
   }
 
   // ---------------------------------------------------------------------------
@@ -12127,6 +13484,11 @@ kbd { font-size: 9px; opacity: .65; }
   document.addEventListener('keydown', ev => {
     // The dialog owns the keyboard while it is open, otherwise the catch-all
     // below would type into the command line behind it.
+    if (!underlayDialog.hidden) {
+      if (ev.key === 'Escape') { ev.preventDefault(); closeUnderlayDialog(); }
+      else if (ev.key === 'Enter') { ev.preventDefault(); applyUnderlayDialog(); }
+      return;
+    }
     if (!unitsDialog.hidden) {
       if (ev.key === 'Escape') { ev.preventDefault(); closeUnitsDialog(); }
       else if (ev.key === 'Enter') { ev.preventDefault(); applyUnitsDialog(); }
@@ -12401,6 +13763,15 @@ kbd { font-size: 9px; opacity: .65; }
     return true;
   }
 
+  // A layer that has just been hidden or locked must not leave its underlays in
+  // the selection, for the same reason its entities are dropped: the next command
+  // would otherwise act on something the user can no longer see or pick.
+  function dropUnderlaySelection(layerId) {
+    for (const underlay of state.underlays) {
+      if (underlay.layerId === layerId) state.selected.delete(underlaySelectionId(underlay.id));
+    }
+  }
+
   function toggleLayerVisibility(id) {
     if (!requireIdle('changing layer visibility')) return false;
     const layer = getLayer(id);
@@ -12415,6 +13786,7 @@ kbd { font-size: 9px; opacity: .65; }
       for (const entity of state.entities) {
         if (entity.layerId === layer.id) state.selected.delete(entity.id);
       }
+      dropUnderlaySelection(layer.id);
     }
     renderLayerManager();
     draw();
@@ -12435,6 +13807,7 @@ kbd { font-size: 9px; opacity: .65; }
       for (const entity of state.entities) {
         if (entity.layerId === layer.id) state.selected.delete(entity.id);
       }
+      dropUnderlaySelection(layer.id);
     }
     renderLayerManager();
     draw();
@@ -12715,6 +14088,39 @@ kbd { font-size: 9px; opacity: .65; }
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && !layerColorMenu.hidden) closeColorMenu();
   });
+  // Choosing an image decodes and re-encodes it (see model/imageImport.js) and
+  // then hands the descriptor to the IMAGE command, which does the placing. The
+  // decode lives here rather than in the command so the command stays drivable
+  // without a File.
+  imageInput.addEventListener('change', async () => {
+    const file = imageInput.files?.[0];
+    if (!file) return;
+    try {
+      const descriptor = await underlayDescriptorFromFile(file);
+      startImagePlacement(descriptor);
+      canvas.focus();
+    } catch (error) {
+      setFileStatus(error.message || 'Could not read the selected image', true);
+    }
+  });
+
+  document.getElementById('imageBtn').addEventListener('click', () => {
+    if (!requireIdle('placing an image')) return;
+    imageInput.value = '';
+    imageInput.click();
+  });
+  document.getElementById('underlayBtn').addEventListener('click', openUnderlayDialog);
+
+  underlayCancelBtn.addEventListener('click', closeUnderlayDialog);
+  underlayApplyBtn.addEventListener('click', applyUnderlayDialog);
+  underlayDeleteBtn.addEventListener('click', deleteUnderlayFromDialog);
+  underlayDialog.addEventListener('click', ev => {
+    if (ev.target === underlayDialog) closeUnderlayDialog();
+  });
+  underlayFadeInput.addEventListener('input', () => setPendingUnderlay({ fade: Number(underlayFadeInput.value) }));
+  underlayLockedCheck.addEventListener('change', () => setPendingUnderlay({ locked: underlayLockedCheck.checked }));
+  underlayPlotCheck.addEventListener('change', () => setPendingUnderlay({ plot: underlayPlotCheck.checked }));
+
   openInput.addEventListener('change', async () => {
     const file = openInput.files?.[0];
     if (!file) return;
@@ -13013,6 +14419,34 @@ kbd { font-size: 9px; opacity: .65; }
     toggleLayerPrintable,
     deleteLayer,
     assignSelectionToLayer,
+
+    // Underlays. The raster itself never reaches these: a test hands in a
+    // descriptor the way the file picker would, so placement, calibration and
+    // transform behaviour are all exercised without an image ever decoding.
+    get underlays() { return cloneUnderlays(); },
+    get underlayCount() { return state.underlays.length; },
+    get pendingUnderlay() { return pendingUnderlay ? { ...pendingUnderlay } : null; },
+    get underlayDialogVisible() { return !underlayDialog.hidden; },
+    get underlayStage() { return state.underlay?.stage || null; },
+    setPendingUnderlayImage,
+    startImagePlacement,
+    underlaySelectionId,
+    underlayCorners,
+    underlayBBox,
+    underlayWidth,
+    underlayHeight,
+    underlayContainsPoint,
+    underlayWorldToLocal,
+    underlayIsSelectable,
+    calibrateUnderlay,
+    imageFitScale,
+    imageTargetSize,
+    underlayNameFromFile,
+    openUnderlayDialog,
+    closeUnderlayDialog,
+    applyUnderlayDialog,
+    deleteUnderlayFromDialog,
+    setPendingUnderlay,
   };
 
   // ---------------------------------------------------------------------------
@@ -13041,6 +14475,7 @@ kbd { font-size: 9px; opacity: .65; }
   registerDirectAction('UNITS', openUnitsDialog);
   registerDirectAction('DIMSTYLE', openDimStyleDialog);
   registerDirectAction('PLOT', openPlotDialog);
+  registerDirectAction('UNDERLAY', openUnderlayDialog);
 
   // Chrome that has to be rebuilt whenever the whole document is replaced.
   onDocumentChanged(renderLayerManager);

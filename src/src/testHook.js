@@ -32,6 +32,11 @@ import { state } from './state.js';
 import { applyDimStyleDialog, closeDimStyleDialog, openDimStyleDialog, pendingDimStyle, refreshDimStyleDialog } from './ui/dialogs/dimstyle.js';
 import { closePolarDialog, closeSnapDialog, openPolarDialog, openSnapDialog, setAllSnapTypes, setOrtho, setPolar, setPolarIncrement, setSnapType } from './ui/dialogs/drafting.js';
 import { closePlotDialog, openPlotDialog, pendingPlot, plotDownloadName, runPlot, setPendingPlot, startPlotWindowPick } from './ui/dialogs/plot.js';
+import { applyUnderlayDialog, closeUnderlayDialog, deleteUnderlayFromDialog, openUnderlayDialog, pendingUnderlay, setPendingUnderlay } from './ui/dialogs/underlay.js';
+import { setPendingUnderlayImage, startImagePlacement } from './commands/underlay.js';
+import { calibrateUnderlay, cloneUnderlays, underlayBBox, underlayContainsPoint, underlayCorners, underlayHeight, underlayIsSelectable, underlaySelectionId, underlayWidth, underlayWorldToLocal } from './model/underlay.js';
+import { imageFitScale, imageTargetSize, underlayNameFromFile } from './model/imageImport.js';
+import { underlayDialog } from './dom.js';
 import { applyUnitsDialog, closeUnitsDialog, coordinateFieldChars, openUnitsDialog, pendingUnits, refreshUnitsDialog } from './ui/dialogs/units.js';
 import { promptText } from './ui/prompt.js';
 import { drawNow } from './view/frame.js';
@@ -248,4 +253,32 @@ window.__cadPrototype = {
   toggleLayerPrintable,
   deleteLayer,
   assignSelectionToLayer,
+
+  // Underlays. The raster itself never reaches these: a test hands in a
+  // descriptor the way the file picker would, so placement, calibration and
+  // transform behaviour are all exercised without an image ever decoding.
+  get underlays() { return cloneUnderlays(); },
+  get underlayCount() { return state.underlays.length; },
+  get pendingUnderlay() { return pendingUnderlay ? { ...pendingUnderlay } : null; },
+  get underlayDialogVisible() { return !underlayDialog.hidden; },
+  get underlayStage() { return state.underlay?.stage || null; },
+  setPendingUnderlayImage,
+  startImagePlacement,
+  underlaySelectionId,
+  underlayCorners,
+  underlayBBox,
+  underlayWidth,
+  underlayHeight,
+  underlayContainsPoint,
+  underlayWorldToLocal,
+  underlayIsSelectable,
+  calibrateUnderlay,
+  imageFitScale,
+  imageTargetSize,
+  underlayNameFromFile,
+  openUnderlayDialog,
+  closeUnderlayDialog,
+  applyUnderlayDialog,
+  deleteUnderlayFromDialog,
+  setPendingUnderlay,
 };

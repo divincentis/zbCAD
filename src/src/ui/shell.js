@@ -1,11 +1,14 @@
 import { commandCapturesSpace, commandLiveValue, navigateHistory, startCommand } from '../commands/registry.js';
 import { LAYER_BASIC_COLORS } from '../core/constants.js';
 import { LENGTH_FORMATS } from '../core/units.js';
-import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, layerColorMenu, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, toolbarAutohideBtn, topbar, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
+import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, engineStatus, imageInput, layerColorMenu, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, toolbarAutohideBtn, topbar, underlayApplyBtn, underlayCancelBtn, underlayDeleteBtn, underlayDialog, underlayFadeInput, underlayLockedCheck, underlayPlotCheck, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
 import { submitCommandInput } from '../interaction/pointer.js';
 import { writeAutosaveOnUnload } from '../model/dirty.js';
 import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, setLayerLinetype, setLayerLineweight, toggleLayerLock, toggleLayerPrintable, toggleLayerVisibility } from '../model/layers.js';
 import { chooseOpenFile, loadDocumentText, newDrawing, restoreAutosave, saveDrawing } from '../model/persistence.js';
+import { startImagePlacement } from '../commands/underlay.js';
+import { underlayDescriptorFromFile } from '../model/imageImport.js';
+import { applyUnderlayDialog, closeUnderlayDialog, deleteUnderlayFromDialog, openUnderlayDialog, setPendingUnderlay } from './dialogs/underlay.js';
 import { state } from '../state.js';
 import { applyDimStyleDialog, closeDimStyleDialog, openDimStyleDialog, pendingDimStyle, refreshDimStyleDialog } from './dialogs/dimstyle.js';
 import { closePolarDialog, closeSnapDialog, openPolarDialog, openSnapDialog, setAllSnapTypes, setOrtho, setPolar, setPolarIncrement } from './dialogs/drafting.js';
@@ -224,6 +227,39 @@ document.addEventListener('click', event => {
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && !layerColorMenu.hidden) closeColorMenu();
 });
+// Choosing an image decodes and re-encodes it (see model/imageImport.js) and
+// then hands the descriptor to the IMAGE command, which does the placing. The
+// decode lives here rather than in the command so the command stays drivable
+// without a File.
+imageInput.addEventListener('change', async () => {
+  const file = imageInput.files?.[0];
+  if (!file) return;
+  try {
+    const descriptor = await underlayDescriptorFromFile(file);
+    startImagePlacement(descriptor);
+    canvas.focus();
+  } catch (error) {
+    setFileStatus(error.message || 'Could not read the selected image', true);
+  }
+});
+
+document.getElementById('imageBtn').addEventListener('click', () => {
+  if (!requireIdle('placing an image')) return;
+  imageInput.value = '';
+  imageInput.click();
+});
+document.getElementById('underlayBtn').addEventListener('click', openUnderlayDialog);
+
+underlayCancelBtn.addEventListener('click', closeUnderlayDialog);
+underlayApplyBtn.addEventListener('click', applyUnderlayDialog);
+underlayDeleteBtn.addEventListener('click', deleteUnderlayFromDialog);
+underlayDialog.addEventListener('click', ev => {
+  if (ev.target === underlayDialog) closeUnderlayDialog();
+});
+underlayFadeInput.addEventListener('input', () => setPendingUnderlay({ fade: Number(underlayFadeInput.value) }));
+underlayLockedCheck.addEventListener('change', () => setPendingUnderlay({ locked: underlayLockedCheck.checked }));
+underlayPlotCheck.addEventListener('change', () => setPendingUnderlay({ plot: underlayPlotCheck.checked }));
+
 openInput.addEventListener('change', async () => {
   const file = openInput.files?.[0];
   if (!file) return;

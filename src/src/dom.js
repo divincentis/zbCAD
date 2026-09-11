@@ -66,3 +66,14 @@ export const dimTextHeightInput = document.getElementById('dimTextHeight');
 export const dimArrowSizeInput = document.getElementById('dimArrowSize');
 export const dimPrecisionSelect = document.getElementById('dimPrecision');
 export const dimStylePreview = document.getElementById('dimStylePreview');
+
+export const imageInput = document.getElementById('imageInput');
+export const underlayDialog = document.getElementById('underlayDialog');
+export const underlayDialogSubject = document.getElementById('underlayDialogSubject');
+export const underlayFadeInput = document.getElementById('underlayFade');
+export const underlayLockedCheck = document.getElementById('underlayLocked');
+export const underlayPlotCheck = document.getElementById('underlayPlot');
+export const underlayPreviewEl = document.getElementById('underlayPreview');
+export const underlayApplyBtn = document.getElementById('underlayApply');
+export const underlayCancelBtn = document.getElementById('underlayCancel');
+export const underlayDeleteBtn = document.getElementById('underlayDelete');

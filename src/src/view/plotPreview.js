@@ -1,4 +1,5 @@
 import { pdfTextWidthMM } from '../output/pdf.js';
+import { underlayImage } from './underlay.js';
 
 // ---------------------------------------------------------------------------
 // Plot preview
@@ -129,11 +130,38 @@ export function drawPlotPreviewText(context, view, op, clipped) {
   context.restore();
 }
 
+// The plan hands over an origin and two edge vectors — a parallelogram — which
+// is what carries a rotated underlay without the preview needing to know an
+// angle. Mapping the unit square onto it is exactly a canvas transform, and the
+// Y edge is negated because paper Y points up and canvas Y points down.
+export function drawPlotPreviewImage(context, view, op, clipped) {
+  const image = underlayImage({ data: op.data });
+  const origin = view.toPx(op.origin);
+  const edgeX = { x: op.edgeX.x * view.scale, y: -op.edgeX.y * view.scale };
+  const edgeY = { x: op.edgeY.x * view.scale, y: -op.edgeY.y * view.scale };
+  context.save();
+  if (clipped) context.globalAlpha *= 0.25;
+  else context.globalAlpha *= op.alpha;
+  context.transform(edgeX.x, edgeX.y, edgeY.x, edgeY.y, origin.x, origin.y);
+  if (image) {
+    // The unit square maps onto the image's own frame, bottom-left at 0,0.
+    context.drawImage(image, 0, -1, 1, 1);
+  } else {
+    // Not decoded yet: show the frame so the preview still says where the
+    // image will land rather than silently omitting it.
+    context.strokeStyle = PLOT_PREVIEW_CLIPPED_COLOR;
+    context.lineWidth = 1 / Math.max(1e-6, Math.hypot(edgeX.x, edgeX.y));
+    context.strokeRect(0, -1, 1, 1);
+  }
+  context.restore();
+}
+
 export function drawPlotPreviewOps(context, view, ops, clipped) {
   for (const op of ops) {
     if (op.kind === 'stroke') drawPlotPreviewStroke(context, view, op, clipped);
     else if (op.kind === 'fill') drawPlotPreviewFill(context, view, op, clipped);
     else if (op.kind === 'text') drawPlotPreviewText(context, view, op, clipped);
+    else if (op.kind === 'image') drawPlotPreviewImage(context, view, op, clipped);
   }
 }
 
