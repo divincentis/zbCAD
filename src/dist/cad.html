@@ -636,6 +636,7 @@ kbd { font-size: 9px; opacity: .65; }
         <button data-command="ROTATE">Rotate (RO)</button>
         <button data-command="SCALE">Scale (SC)</button>
         <button data-command="MIRROR">Mirror (MI)</button>
+        <button data-command="ARRAY">Array (AR)</button>
         <button data-command="OFFSET">Offset (O)</button>
         <button data-command="FILLET">Fillet (F)</button>
         <button data-command="CHAMFER">Chamfer (CHA)</button>
@@ -10028,6 +10029,299 @@ kbd { font-size: 9px; opacity: .65; }
     setMode('SELECT');
   }
 
+  // ARRAY keeps its settings between invocations, the way OFFSET/FILLET do —
+  // tracing a grid of columns or a bolt circle almost always means the same
+  // counts and spacing as the last one.
+  const lastArraySettings = {
+    type: 'RECT',
+    rows: 3, cols: 3, rowSpacing: 1, colSpacing: 1,
+    items: 6, angleFill: 360, rotateItems: true,
+  };
+
+  const ARRAY_TYPE_KEYWORDS = { R: 'RECT', RECT: 'RECT', RECTANGULAR: 'RECT', P: 'POLAR', POLAR: 'POLAR' };
+
+  // The counts (rows/columns/items) share one whole-number rule; the two
+  // spacings and the angle-to-fill share a different one, so distance() below
+  // switches on stage rather than repeating either check per field.
+  function arrayCountStage(operation, field, nextStage, value) {
+    if (!Number.isInteger(value) || value < 1) {
+      updatePrompt('Enter a whole number, 1 or more.');
+      return true;
+    }
+    operation[field] = value;
+    lastArraySettings[field] = value;
+    operation.stage = nextStage;
+    updatePrompt();
+    draw();
+    return true;
+  }
+
+  defineCommand('ARRAY', {
+    additiveSelection: true,
+
+    begin() {
+      const ids = editableSelectionIds();
+      state.transform = {
+        type: 'ARRAY',
+        stage: ids.length ? 'TYPE' : 'SELECT',
+        ids,
+        arrayType: null,
+        rows: null, cols: null, rowSpacing: null, colSpacing: null,
+        center: null, items: null, angleFill: null, rotateItems: null,
+      };
+    },
+
+    selectsObjects() {
+      return state.transform?.type === 'ARRAY' && state.transform.stage === 'SELECT';
+    },
+
+    acceptsPoint() {
+      return state.transform?.type === 'ARRAY' && state.transform.stage === 'CENTER';
+    },
+
+    prompt() {
+      const operation = state.transform;
+      const stage = operation?.stage || 'SELECT';
+      if (stage === 'SELECT') return transformSelectionPrompt('ARRAY');
+      if (stage === 'TYPE') {
+        return `ARRAY — Enter array type [Rectangular/Polar] <${lastArraySettings.type === 'POLAR' ? 'Polar' : 'Rectangular'}>:`;
+      }
+      if (stage === 'ROWS') return `ARRAY — Enter number of rows <${lastArraySettings.rows}>:`;
+      if (stage === 'COLS') return `ARRAY — Enter number of columns <${lastArraySettings.cols}>:`;
+      if (stage === 'ROWSPACE') {
+        return `ARRAY — Specify distance between rows <${formatLengthLabel(lastArraySettings.rowSpacing)}>:`;
+      }
+      if (stage === 'COLSPACE') {
+        return `ARRAY — Specify distance between columns <${formatLengthLabel(lastArraySettings.colSpacing)}>:`;
+      }
+      if (stage === 'CENTER') return 'ARRAY — Specify center point of array:';
+      if (stage === 'ITEMS') return `ARRAY — Enter number of items in array <${lastArraySettings.items}>:`;
+      if (stage === 'ANGLEFILL') {
+        return `ARRAY — Specify angle to fill, +=ccw/-=cw <${lastArraySettings.angleFill}°>:`;
+      }
+      if (stage === 'ROTATEITEMS') {
+        return `ARRAY — Rotate arrayed objects? [Yes/No] <${lastArraySettings.rotateItems ? 'Yes' : 'No'}>:`;
+      }
+      // CONFIRM
+      return operation.arrayType === 'POLAR'
+        ? `ARRAY — ${operation.items} items over ${operation.angleFill}°, rotate ${operation.rotateItems ? 'Yes' : 'No'}; Enter to accept:`
+        : `ARRAY — ${operation.rows}×${operation.cols} grid, ${formatLengthLabel(operation.rowSpacing)} rows × ${formatLengthLabel(operation.colSpacing)} columns; Enter to accept:`;
+    },
+
+    keyword(text) {
+      const operation = state.transform;
+      if (!operation || operation.type !== 'ARRAY') return false;
+      const answer = text.trim().toUpperCase();
+      if (operation.stage === 'TYPE') {
+        const arrayType = ARRAY_TYPE_KEYWORDS[answer];
+        if (!arrayType) return false;
+        operation.arrayType = arrayType;
+        lastArraySettings.type = arrayType;
+        operation.stage = arrayType === 'RECT' ? 'ROWS' : 'CENTER';
+        updatePrompt();
+        draw();
+        return true;
+      }
+      if (operation.stage === 'ROTATEITEMS') {
+        if (!YES_KEYWORDS.includes(answer) && !NO_KEYWORDS.includes(answer)) return false;
+        operation.rotateItems = YES_KEYWORDS.includes(answer);
+        lastArraySettings.rotateItems = operation.rotateItems;
+        operation.stage = 'CONFIRM';
+        updatePrompt();
+        draw();
+        return true;
+      }
+      return false;
+    },
+
+    point(p) {
+      const operation = state.transform;
+      if (!operation || operation.type !== 'ARRAY' || operation.stage !== 'CENTER') return;
+      operation.center = { ...p };
+      operation.stage = 'ITEMS';
+      updatePrompt();
+      draw();
+    },
+
+    distance(value) {
+      const operation = state.transform;
+      if (!operation || operation.type !== 'ARRAY') return false;
+      const stage = operation.stage;
+      if (stage === 'ROWS') return arrayCountStage(operation, 'rows', 'COLS', value);
+      if (stage === 'COLS') return arrayCountStage(operation, 'cols', 'ROWSPACE', value);
+      if (stage === 'ITEMS') return arrayCountStage(operation, 'items', 'ANGLEFILL', value);
+      if (stage === 'ROWSPACE' || stage === 'COLSPACE') {
+        if (value === 0) {
+          updatePrompt('Spacing must not be zero.');
+          return true;
+        }
+        if (stage === 'ROWSPACE') {
+          operation.rowSpacing = value;
+          lastArraySettings.rowSpacing = value;
+          operation.stage = 'COLSPACE';
+        } else {
+          operation.colSpacing = value;
+          lastArraySettings.colSpacing = value;
+          operation.stage = 'CONFIRM';
+        }
+        updatePrompt();
+        draw();
+        return true;
+      }
+      if (stage === 'ANGLEFILL') {
+        if (value === 0 || Math.abs(value) > 360) {
+          updatePrompt('Angle to fill must be nonzero and no more than 360°.');
+          return true;
+        }
+        operation.angleFill = value;
+        lastArraySettings.angleFill = value;
+        operation.stage = 'ROTATEITEMS';
+        updatePrompt();
+        draw();
+        return true;
+      }
+      return false;
+    },
+
+    previewReady() {
+      return state.transform?.type === 'ARRAY' && state.transform.stage === 'CONFIRM';
+    },
+
+    preview() {
+      const operation = state.transform;
+      const idSet = new Set(operation.ids);
+      const source = state.entities.filter(entity => idSet.has(entity.id) && isEntityEditable(entity));
+      if (!source.length) return;
+      const batches = operation.arrayType === 'POLAR'
+        ? polarArrayBatches(source, idSet, operation)
+        : rectangularArrayBatches(source, operation);
+      for (const batch of batches) {
+        for (const entity of batch) drawEntity(entity, true);
+      }
+    },
+
+    // One rule for Enter at every stage: answer whichever question is open,
+    // accepting the bracketed default when nothing was typed — the same
+    // contract OFFSET's DISTANCE stage uses.
+    finish() {
+      const operation = state.transform;
+      if (!operation || operation.type !== 'ARRAY') return false;
+      const stage = operation.stage;
+      if (stage === 'SELECT') return acceptArraySelection();
+      if (stage === 'TYPE') return Boolean(this.keyword(lastArraySettings.type === 'POLAR' ? 'P' : 'R'));
+      if (stage === 'ROWS') return Boolean(this.distance(lastArraySettings.rows));
+      if (stage === 'COLS') return Boolean(this.distance(lastArraySettings.cols));
+      if (stage === 'ROWSPACE') return Boolean(this.distance(lastArraySettings.rowSpacing));
+      if (stage === 'COLSPACE') return Boolean(this.distance(lastArraySettings.colSpacing));
+      if (stage === 'ITEMS') return Boolean(this.distance(lastArraySettings.items));
+      if (stage === 'ANGLEFILL') return Boolean(this.distance(lastArraySettings.angleFill));
+      if (stage === 'ROTATEITEMS') return Boolean(this.keyword(lastArraySettings.rotateItems ? 'Y' : 'N'));
+      if (stage === 'CONFIRM') {
+        applyArray();
+        return true;
+      }
+      return false;
+    },
+  });
+
+  function acceptArraySelection() {
+    const operation = state.transform;
+    if (!operation || operation.type !== 'ARRAY' || operation.stage !== 'SELECT') return false;
+    const ids = editableSelectionIds();
+    if (!ids.length) {
+      updatePrompt('No objects selected.');
+      return true;
+    }
+    operation.ids = ids;
+    operation.stage = 'TYPE';
+    updatePrompt();
+    draw();
+    return true;
+  }
+
+  // One instance's worth of source entities, still carrying their original ids
+  // so duplicateEntities can remap any reference (e.g. a dimension measuring a
+  // line in the same selection) onto that instance's own copies rather than
+  // another instance's.
+  function rectangularArrayBatches(source, operation) {
+    const { rows, cols, rowSpacing, colSpacing } = operation;
+    const batches = [];
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        if (row === 0 && col === 0) continue; // the original occupies this cell
+        batches.push(source.map(entity => translateEntity(entity, col * colSpacing, row * rowSpacing)));
+      }
+    }
+    return batches;
+  }
+
+  // A full-circle fill spaces n items n ways (the last gap wraps back to the
+  // first item, which is why it must not be placed again); a partial fill
+  // spaces them across n-1 gaps, since both ends are real, distinct items.
+  function polarArrayBatches(source, idSet, operation) {
+    const { center, items, angleFill, rotateItems } = operation;
+    const isFullCircle = Math.abs(Math.abs(angleFill) - 360) < 1e-9;
+    const stepDegrees = isFullCircle ? angleFill / items : angleFill / (items - 1);
+
+    // "Don't rotate items" still moves the whole selection as one rigid group,
+    // carried by the group's own bounding-box centre rather than each entity's
+    // own — an OFFSET-drawn bolt pattern of identical bolts should stay
+    // upright as one shape, not fan out per entity.
+    let groupCenter = null;
+    if (!rotateItems) {
+      const boxes = source.map(entityBBox).filter(Boolean);
+      const box = {
+        minX: Math.min(...boxes.map(b => b.minX)), maxX: Math.max(...boxes.map(b => b.maxX)),
+        minY: Math.min(...boxes.map(b => b.minY)), maxY: Math.max(...boxes.map(b => b.maxY)),
+      };
+      groupCenter = { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
+    }
+
+    const batches = [];
+    for (let i = 1; i < items; i++) {
+      const angle = stepDegrees * i * Math.PI / 180;
+      if (rotateItems) {
+        let rotated = source.map(entity => rotateEntity(entity, center, angle));
+        rotated = realignDimensionReferences(rotated, idSet, 'rotate', { angle });
+        batches.push(rotated);
+      } else {
+        const rotatedCenter = rotatePoint(groupCenter, center, angle);
+        const dx = rotatedCenter.x - groupCenter.x;
+        const dy = rotatedCenter.y - groupCenter.y;
+        batches.push(source.map(entity => translateEntity(entity, dx, dy)));
+      }
+    }
+    return batches;
+  }
+
+  function applyArray() {
+    const operation = state.transform;
+    if (!operation || operation.type !== 'ARRAY' || operation.stage !== 'CONFIRM') return;
+
+    const idSet = new Set(state.entities
+      .filter(entity => operation.ids.includes(entity.id) && isEntityEditable(entity))
+      .map(entity => entity.id));
+    if (!idSet.size) {
+      updatePrompt('The selected objects are no longer editable.');
+      return;
+    }
+    const source = state.entities.filter(entity => idSet.has(entity.id));
+    const batches = operation.arrayType === 'POLAR'
+      ? polarArrayBatches(source, idSet, operation)
+      : rectangularArrayBatches(source, operation);
+
+    let nextId = state.nextId;
+    const allCopies = [];
+    for (const batch of batches) {
+      const { entities: copies, nextId: after } = duplicateEntities(batch, nextId);
+      allCopies.push(...copies);
+      nextId = after;
+    }
+    if (!commitGeometry([...state.entities, ...allCopies], { nextId })) return;
+    state.selected = new Set([...idSet, ...allCopies.map(entity => entity.id)]);
+    setMode('SELECT');
+  }
+
   // ---------------------------------------------------------------------------
   // model/persistence.js
   // ---------------------------------------------------------------------------
@@ -11649,6 +11943,7 @@ kbd { font-size: 9px; opacity: .65; }
     A:'ARC', ARC:'ARC',
     M:'MOVE', MOVE:'MOVE', CO:'COPY', COPY:'COPY', CP:'COPY', RO:'ROTATE', ROTATE:'ROTATE',
     SC:'SCALE', SCALE:'SCALE', MI:'MIRROR', MIRROR:'MIRROR',
+    AR:'ARRAY', ARRAY:'ARRAY',
     E:'ERASE', ERASE:'ERASE', DEL:'ERASE', DELETE:'ERASE',
     O:'OFFSET', OFFSET:'OFFSET',
     F:'FILLET', FILLET:'FILLET', CHA:'CHAMFER', CHAMFER:'CHAMFER',
