@@ -57,7 +57,7 @@ The architectural refactor (Phase 1) and most of Phase 2 have already happened:
 
 **Correction, September 2026:** this section previously claimed a "full command set" while ERASE, MIRROR, FILLET, CHAMFER, DIMRADIUS and DIMDIAMETER did not exist — there was no way to erase except the Delete key, and no way to type it at all. All six have since been added. Phase 2's exit gate ("benchmark roof geometry can be built without manual workarounds") was not honestly met before that, because a symmetric plan with filleted corners could not be drawn without them.
 
-**Known gaps in what is listed above:** there is no properties panel for multi-selection editing. FILLET and CHAMFER handle polyline segments (including the shared vertex of two adjacent segments, the everyday "round/chamfer this corner" case) as well as plain lines, arcs and circles; polylines now hold a curved segment, so rounding a polyline corner leaves one polyline rather than a polyline plus a loose arc. OFFSET, TRIM and EXTEND do not reshape a polyline that has a curved segment and refuse it by name (EXPLODE first).
+**Known gaps in what is listed above:** FILLET and CHAMFER handle polyline segments (including the shared vertex of two adjacent segments, the everyday "round/chamfer this corner" case) as well as plain lines, arcs and circles; polylines now hold a curved segment, so rounding a polyline corner leaves one polyline rather than a polyline plus a loose arc. OFFSET, TRIM and EXTEND do not reshape a polyline that has a curved segment and refuse it by name (EXPLODE first).
 
 **Update September 2026: layer record completed (linetype, lineweight, printability).** Each layer now carries a `linetype` (continuous/dashed/dotted/dashdot/center), a `lineweight` (the standard CAD mm table, e.g. 0.25, 0.50, 1.00) and a `printable` flag, editable from the layer panel. Rendering applies a layer's linetype and lineweight to its entities' strokes (dimension and text entities are exempt, matching standard CAD convention that dimension lines/text carry their own style rather than the layer's); on-screen line width is a fixed pixel-per-mm multiple rather than something that scales with zoom, so lineweight stays legible at any view scale, and the multiplier was chosen so the previous default (0.25mm) reproduces the exact pre-feature line width — existing drawings render unchanged. `printable` had no effect when it shipped, since PDF output did not exist yet; it was stored so PDF output (the next item) would have something to read instead of adding it retroactively, and it now excludes a layer from the plotted sheet. Legacy files (pre-version-5, no linetype/lineweight/printable on their layers) open with all three defaulted exactly as a v4 file would have looked if it could have held them; garbage/out-of-table values in a hand-edited file are cleaned to those same defaults rather than rejected. `model/layers.js`, `model/document.js`, `core/constants.js`, `core/defaults.js`, `view/render.js`, `ui/layerPanel.js`. 36 new headless checks in `test-layers.mjs` (covering defaults, setter validation, save/reload round-trip, and legacy/garbage-file migration), full suite still green. Verified live in a real (headless) Chromium session: layer panel renders correctly with multiple layers, and lines drawn on layers with different linetypes/lineweights/printability render visibly distinctly.
 
@@ -65,7 +65,11 @@ The architectural refactor (Phase 1) and most of Phase 2 have already happened:
 
 **Update September 2026: multiline text (MTEXT) shipped.** `MTEXT`/`MT` follows single-line TEXT's staged point/distance/angle-then-free-text shape with one addition: after the insertion point, an opposite corner (or typed distance) sets a fixed wrap width, then height and rotation as before, then content — except content is multi-line, so each Enter commits one line and stays in the command, and a blank Enter is what finishes entry (the same command-line shape AutoCAD's own MTEXT uses). Word wrap is estimated the same way TEXT's single-line footprint already was (character count × height × a fixed factor, since no real glyph metrics exist outside a canvas context), with a hard break for any single word wider than the box. MTEXT is wired into every place TEXT already was — bbox, hit-testing, move/rotate/scale/mirror/stretch, grips (an insertion-point grip plus a width grip, since there is no properties panel yet to type a new width into), save/load validation, ID/LIST, and PDF output (one plotted text run per wrapped line). Also fixed, for both TEXT and MTEXT: the content being typed previously showed only in the command-line input box, not on the drawing, until Enter committed it — every keystroke now updates an on-canvas preview too. 61 new headless checks in `test-mtext.mjs`; also verified in a real (headless) Chromium session that a multi-line box wraps and renders correctly and that the live preview actually appears on canvas while typing, not just in the command line.
 
-**Not yet started:** blocks, leaders and callouts, hatches, a multi-selection properties panel (all Phase 3 remainder).
+**Not yet started:** blocks, leaders and callouts, hatches (all Phase 3 remainder).
+
+**Update September 2026: properties panel shipped, layer-driven scope.** See
+the Status note under Phase 3 (section 8) for what it covers and what was
+deliberately left out (no per-entity color/linetype/lineweight override).
 
 **Update September 2026: calibrated underlays and DXF import/export shipped.** Both are described in Phase 4's status notes below. This closes Phase 4 and the product definition in section 1: a drawing can now enter the tool as a calibrated PDF/image underlay, be traced and annotated, and leave as an accurately scaled PDF or a useful DXF, without another CAD program.
 
@@ -302,6 +306,54 @@ Linetype, lineweight and printability were added to the layer record; see the
 Current Position update in section 3 for detail. The layer record is now
 complete as originally scoped below.
 
+### Status — properties panel shipped, layer-driven scope (September 2026)
+
+A docked panel next to the layer list (`ui/propertiesPanel.js`) now shows the
+current selection: a count and type summary, the selection's layer (blank —
+"Varies" — when it is mixed, and editable as a bulk reassignment across the
+whole selection, entities and images together), and, when every selected
+entity is the same type, that type's plain scalar fields — CIRCLE/ARC radius;
+TEXT/MTEXT height, rotation, and content; MTEXT width — editable in place and
+applied to every selected entity of that type at once. Editing a field commits
+through the same `commitGeometry` path as every other edit, so associative
+dimensions on an edited circle or text stay associative and the edit is one
+undo step.
+
+Deliberately scoped to what the layer record already carries: no per-entity
+color/linetype/lineweight override was introduced (everything stays ByLayer,
+as it always has been — adding an override would mean new schema, a
+`DOCUMENT_VERSION` bump, and legacy-file migration, for a need nothing has
+demonstrated yet). Line/polyline geometry, and dimension style, have no
+type-specific fields in this pass — a line or polyline's shape stays grip-only,
+and this app currently has only one dimension style to assign anyway. Building
+this surfaced and fixed a real pre-existing gap: "Assign selection to current"
+previously reassigned only entities, silently skipping any image in a mixed
+selection — `assignSelectionToLayer` (`model/layers.js`) now moves both.
+
+99 new headless checks in `tools/tests/test-properties-panel.mjs` (reads,
+writes, mixed/varying selections, mixed entity+underlay selections, the
+requireIdle mid-command guard, undo). Verified live in a real Chromium session
+via CDP: real click and box-select drive the panel, a real `change` event on
+the radius field commits through the actual DOM path (not just the test
+hook), and a real hidden/shown toggle bug was caught and fixed this way — the
+panel's body used `display: flex` in its own CSS, which (author styles always
+beat the UA default) silently overrode the `[hidden]` attribute clearing it,
+so a deselect left the stale fields of the previous selection visible under
+"Nothing selected." Fixed with the same explicit `.properties-body[hidden] {
+display: none; }` override this file's dialogs and the inquiry panel already
+carry — this codebase's established fix for exactly this class of bug.
+
+**Known gap, left alone on purpose:** the panel only refreshes on selection
+change (click, box-select, erase, undo/redo, its own edits) — a grip-drag or
+another command's edit to an already-selected, already-displayed entity (e.g.
+resizing a circle by its grip) does not live-update the panel's fields until
+the next selection change. This is the same class of staleness the
+pre-existing "Assign selection to current" button's disabled state already
+had before this change (also not fixed here — see `ui/layerPanel.js`'s
+`renderLayerManager`, whose `assignLayerBtn.disabled` line only refreshes on
+a layer action, not a plain click-select). Revisit both if it becomes a real
+complaint rather than a hooking exercise done for its own sake.
+
 ### Features
 
 - Layers *(complete)*
@@ -312,7 +364,9 @@ complete as originally scoped below.
   - Linetype
   - Lineweight
   - Printability
-- Properties panel with multi-selection editing
+- Properties panel with multi-selection editing *(shipped, layer-driven scope
+  — see Status note above; per-entity color/linetype/lineweight override not
+  built)*
 - Single-line and multiline text
 - Linear and aligned dimensions
 - Minimal dimension styles
@@ -731,7 +785,7 @@ checks in `test-fence-trim.mjs`.
 - Native save/open, autosave, and crash recovery
 - Closed polyline, rectangle, circle, arc
 - Rotate and grips
-- Layers, via a dedicated layer panel — **no multi-selection properties panel yet** (checked: no properties module in `ui/`)
+- Layers, via a dedicated layer panel — plus a multi-selection properties panel alongside it (`ui/propertiesPanel.js`, shipped September 2026, layer-driven scope — see section 8's Status note)
 - Offset, trim, extend
 
 </details>

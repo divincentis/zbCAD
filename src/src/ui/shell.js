@@ -1,7 +1,7 @@
 import { commandCapturesSpace, commandLiveValue, navigateHistory, startCommand } from '../commands/registry.js';
 import { LAYER_BASIC_COLORS } from '../core/constants.js';
 import { LENGTH_FORMATS } from '../core/units.js';
-import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, dxfInput, engineStatus, imageInput, layerColorMenu, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, snapBtn, snapDialog, snapStatus, toolbarAutohideBtn, topbar, underlayApplyBtn, underlayCancelBtn, underlayDeleteBtn, underlayDialog, underlayFadeInput, underlayLockedCheck, underlayPlotCheck, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
+import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, dxfInput, engineStatus, imageInput, layerColorMenu, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, propertiesFields, propertiesLayerSelect, snapBtn, snapDialog, snapStatus, toolbarAutohideBtn, topbar, underlayApplyBtn, underlayCancelBtn, underlayDeleteBtn, underlayDialog, underlayFadeInput, underlayLockedCheck, underlayPlotCheck, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
 import { submitCommandInput } from '../interaction/pointer.js';
 import { writeAutosaveOnUnload } from '../model/dirty.js';
 import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, setLayerLinetype, setLayerLineweight, toggleLayerLock, toggleLayerPrintable, toggleLayerVisibility } from '../model/layers.js';
@@ -16,6 +16,7 @@ import { closePolarDialog, closeSnapDialog, openPolarDialog, openSnapDialog, set
 import { closePlotDialog, openPlotDialog, runPlot, setPendingPlot, startPlotWindowPick } from './dialogs/plot.js';
 import { applyUnitsDialog, closeUnitsDialog, openUnitsDialog, pendingUnits, refreshUnitsDialog } from './dialogs/units.js';
 import { hideInquiryReport } from './inquiry.js';
+import { applyPropertiesField, renderPropertiesPanel } from './propertiesPanel.js';
 import { setFileStatus } from './status.js';
 import { draw } from '../view/frame.js';
 import { resize, zoomExtents } from '../view/viewport.js';
@@ -149,6 +150,7 @@ addLayerBtn.addEventListener('click', () => {
 });
 assignLayerBtn.addEventListener('click', () => {
   assignSelectionToLayer();
+  renderPropertiesPanel();
   canvas.focus();
 });
 currentLayerSelect.addEventListener('change', () => {
@@ -167,6 +169,27 @@ layerList.addEventListener('click', event => {
     activeColorLayerId = id;
     openColorMenu(event.target, event.target.dataset.layerColor);
   }
+  // Hiding/locking a layer, or deleting one, can drop entities out of the
+  // current selection (model/layers.js) — the properties panel needs to
+  // notice even though none of these actions go through commitGeometry.
+  renderPropertiesPanel();
+});
+
+// The layer-driven-only properties panel (see roadmap.md): reassigning the
+// selection's layer reuses the exact function the "Assign selection to
+// current" button already calls, just with a picked id instead of the
+// default. Per-type fields commit on change/blur, matching how a layer's own
+// name field already commits (not on every keystroke).
+propertiesLayerSelect.addEventListener('change', () => {
+  assignSelectionToLayer(propertiesLayerSelect.value);
+  renderPropertiesPanel();
+  canvas.focus();
+});
+propertiesFields.addEventListener('change', event => {
+  const field = event.target?.dataset?.propField;
+  if (!field) return;
+  applyPropertiesField(field, event.target.value, event.target.dataset.propAngle === '1');
+  canvas.focus();
 });
 layerList.addEventListener('change', event => {
   const action = event.target?.dataset?.layerAction;

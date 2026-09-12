@@ -33,6 +33,7 @@ import { applyDimStyleDialog, closeDimStyleDialog, openDimStyleDialog, pendingDi
 import { closePolarDialog, closeSnapDialog, openPolarDialog, openSnapDialog, setAllSnapTypes, setOrtho, setPolar, setPolarIncrement, setSnapType } from './ui/dialogs/drafting.js';
 import { closePlotDialog, openPlotDialog, pendingPlot, plotDownloadName, runPlot, setPendingPlot, startPlotWindowPick } from './ui/dialogs/plot.js';
 import { applyUnderlayDialog, closeUnderlayDialog, deleteUnderlayFromDialog, openUnderlayDialog, pendingUnderlay, setPendingUnderlay } from './ui/dialogs/underlay.js';
+import { applyPropertiesField, selectionPropertiesSummary } from './ui/propertiesPanel.js';
 import { setPendingUnderlayImage, startImagePlacement } from './commands/underlay.js';
 import { calibrateUnderlay, cloneUnderlays, underlayBBox, underlayContainsPoint, underlayCorners, underlayHeight, underlayIsSelectable, underlaySelectionId, underlayWidth, underlayWorldToLocal } from './model/underlay.js';
 import { encodeUnderlayImage, imageFitScale, imageTargetSize, underlayDescriptorFromFile, underlayNameFromFile } from './model/imageImport.js';
@@ -258,6 +259,13 @@ window.__cadPrototype = {
   toggleLayerPrintable,
   deleteLayer,
   assignSelectionToLayer,
+
+  // The multi-selection properties panel. `propertiesSummary` is the same
+  // pure read the panel renders from, so a test asserts against it directly
+  // instead of parsing rendered markup (no other panel in this codebase is
+  // tested that way either).
+  get propertiesSummary() { return selectionPropertiesSummary(); },
+  applyPropertiesField,
 
   // Underlays. The raster itself never reaches these: a test hands in a
   // descriptor the way the file picker would, so placement, calibration and

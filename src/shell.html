@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>zbCAD v0.30.0</title>
+  <title>zbCAD v0.31.0</title>
   <style>
 :root {
   font-family: Arial, Helvetica, sans-serif;
@@ -142,7 +142,8 @@ button.active, button.on { background: #565656; border-color: #888; }
 .layer-panel.collapsed #currentLayerSelect,
 .layer-panel.collapsed .assign-layer,
 .layer-panel.collapsed .layer-list,
-.layer-panel.collapsed .layer-hint {
+.layer-panel.collapsed .layer-hint,
+.layer-panel.collapsed .properties-section {
   display: none;
 }
 /* :has() lets the collapse state live purely on the panel's own class, so
@@ -247,6 +248,42 @@ button.layer-color {
   pointer-events: none;
 }
 .layer-hint { margin-top: auto; color: #888; font-size: 10px; line-height: 1.35; }
+.properties-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #363636;
+}
+.properties-heading strong { font-size: 13px; }
+.properties-empty { color: #888; font-size: 11px; }
+.properties-body { display: flex; flex-direction: column; gap: 6px; }
+.properties-body[hidden] { display: none; }
+.properties-summary { color: #ccc; font-size: 11px; }
+#propertiesLayerSelect {
+  width: 100%;
+  padding: 5px 6px;
+  color: #e8e8e8;
+  background: #292929;
+  border: 1px solid #414141;
+  border-radius: 2px;
+  font-size: 11px;
+}
+.properties-fields { display: flex; flex-direction: column; gap: 6px; }
+.properties-field { display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
+.properties-field span { color: #aaa; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.properties-input {
+  width: 100%;
+  padding: 4px 5px;
+  color: #e8e8e8;
+  background: #292929;
+  border: 1px solid #414141;
+  border-radius: 2px;
+  font-size: 11px;
+  font-family: inherit;
+  resize: vertical;
+}
+.properties-field-content textarea.properties-input { min-height: 48px; }
 .color-menu {
   position: fixed;
   z-index: 50;
@@ -590,7 +627,7 @@ kbd { font-size: 9px; opacity: .65; }
 </head>
 <body>
   <header id="topbar" class="topbar">
-    <div class="brand">zbCAD <span class="version">v0.30.0</span></div>
+    <div class="brand">zbCAD <span class="version">v0.31.0</span></div>
     <button id="toolbarAutohideBtn" class="toolbar-autohide-btn toggle" title="Auto-hide the toolbar; mouse over this bar (or Tab into it) to show it again" aria-pressed="false">Auto-hide</button>
     <div class="tool-group">
       <span class="group-label">File</span>
@@ -694,6 +731,16 @@ kbd { font-size: 9px; opacity: .65; }
         <div class="layer-heading-actions">
           <button id="addLayerBtn" class="layer-add" title="Create a new layer">+ Add</button>
           <button id="layerPanelToggle" class="layer-collapse" title="Collapse layers panel" aria-label="Collapse layers panel" aria-expanded="true">▸</button>
+        </div>
+      </div>
+      <div id="propertiesSection" class="properties-section">
+        <div class="properties-heading"><strong>Properties</strong></div>
+        <div id="propertiesEmpty" class="properties-empty">Nothing selected.</div>
+        <div id="propertiesBody" class="properties-body" hidden>
+          <div id="propertiesSummary" class="properties-summary"></div>
+          <label class="layer-label" for="propertiesLayerSelect">Layer</label>
+          <select id="propertiesLayerSelect" aria-label="Selected objects' layer"></select>
+          <div id="propertiesFields" class="properties-fields"></div>
         </div>
       </div>
       <label class="layer-label" for="currentLayerSelect">Current layer</label>

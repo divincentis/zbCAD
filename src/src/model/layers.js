@@ -3,7 +3,7 @@ import { DEFAULT_LINETYPE, DEFAULT_LINEWEIGHT, LINETYPES, LINEWEIGHTS } from '..
 import { pushHistory } from './history.js';
 import { getLayer, isEntityEditable } from './layerQuery.js';
 import { state } from '../state.js';
-import { underlaySelectionId } from './underlay.js';
+import { underlayIsSelectable, underlaySelectionId } from './underlay.js';
 import { renderLayerManager } from '../ui/layerPanel.js';
 import { updatePrompt } from '../ui/prompt.js';
 import { setFileStatus } from '../ui/status.js';
@@ -236,19 +236,27 @@ export function assignSelectionToLayer(id = state.currentLayerId) {
     return false;
   }
   const selectedEntities = state.entities.filter(entity => state.selected.has(entity.id) && isEntityEditable(entity));
-  if (!selectedEntities.length) {
+  // Underlays share the same selection set under a `u:<n>` id (see
+  // model/underlay.js), so a selection that mixes geometry and a traced image
+  // reassigns both in one action instead of silently skipping the image.
+  const selectedUnderlays = state.underlays.filter(underlay =>
+    state.selected.has(underlaySelectionId(underlay.id)) && underlayIsSelectable(underlay));
+  if (!selectedEntities.length && !selectedUnderlays.length) {
     updatePrompt('Select at least one editable object to assign.');
     return false;
   }
-  const changing = selectedEntities.filter(entity => entity.layerId !== layer.id);
-  if (!changing.length) {
+  const changingEntities = selectedEntities.filter(entity => entity.layerId !== layer.id);
+  const changingUnderlays = selectedUnderlays.filter(underlay => underlay.layerId !== layer.id);
+  const changedCount = changingEntities.length + changingUnderlays.length;
+  if (!changedCount) {
     updatePrompt(`Selection is already on ${layer.name}.`);
     return true;
   }
   pushHistory();
-  for (const entity of changing) entity.layerId = layer.id;
+  for (const entity of changingEntities) entity.layerId = layer.id;
+  for (const underlay of changingUnderlays) underlay.layerId = layer.id;
   renderLayerManager();
-  setFileStatus(`${state.drawingName} · Assigned ${changing.length} to ${layer.name}`);
+  setFileStatus(`${state.drawingName} · Assigned ${changedCount} to ${layer.name}`);
   draw();
   return true;
 }

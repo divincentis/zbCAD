@@ -9,6 +9,7 @@ import { openUnderlayDialog } from './ui/dialogs/underlay.js';
 import { chooseDxfFile, exportDxf } from './ui/dialogs/dxf.js';
 import { openUnitsDialog, renderUnitStatus } from './ui/dialogs/units.js';
 import { renderLayerManager } from './ui/layerPanel.js';
+import { renderPropertiesPanel } from './ui/propertiesPanel.js';
 import { setFrameRenderer } from './view/frame.js';
 import { render } from './view/render.js';
 import { resize, zoomExtents } from './view/viewport.js';
@@ -42,10 +43,14 @@ registerDirectAction('DXFIN', chooseDxfFile);
 // Chrome that has to be rebuilt whenever the whole document is replaced.
 onDocumentChanged(renderLayerManager);
 onDocumentChanged(renderUnitStatus);
+// Undo/redo clear the selection (model/history.js), so the properties panel
+// needs the same "document replaced" refresh as the other chrome above.
+onDocumentChanged(renderPropertiesPanel);
 
 setTimeout(() => help.style.opacity = '0', 12000);
 renderLayerManager();
 renderUnitStatus();
+renderPropertiesPanel();
 resize();
 refreshTrackingButtons();
 setMode('SELECT');

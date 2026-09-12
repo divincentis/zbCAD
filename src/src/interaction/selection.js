@@ -6,6 +6,7 @@ import { isEntityEditable } from '../model/layerQuery.js';
 import { underlayBBox, underlayContainsPoint, underlayCorners, underlayIsSelectable, underlaySelectionId } from '../model/underlay.js';
 import { state } from '../state.js';
 import { updatePrompt } from '../ui/prompt.js';
+import { renderPropertiesPanel } from '../ui/propertiesPanel.js';
 import { draw } from '../view/frame.js';
 import { screenToWorld, worldToScreen } from '../view/viewport.js';
 
@@ -78,6 +79,7 @@ export function selectAt(world, add = false) {
   // A command gathering a selection may be reporting how many it has, and
   // idle SELECT surfaces its own Shift-click add/remove hint the same way.
   updatePrompt();
+  renderPropertiesPanel();
   draw();
 }
 
@@ -112,6 +114,7 @@ export function finishBoxSelection(add = false) {
   activeCommand()?.noteSelection?.({ box, crossing });
   state.dragSelect = null;
   updatePrompt();
+  renderPropertiesPanel();
   draw();
 }
 
@@ -156,6 +159,7 @@ export function eraseSelection() {
   }
   state.selected.clear();
   updatePrompt();
+  renderPropertiesPanel();
   draw();
   return { erased: deletable.size + removableUnderlays.size };
 }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>zbCAD v0.30.0</title>
+  <title>zbCAD v0.31.0</title>
   <style>
 :root {
   font-family: Arial, Helvetica, sans-serif;
@@ -142,7 +142,8 @@ button.active, button.on { background: #565656; border-color: #888; }
 .layer-panel.collapsed #currentLayerSelect,
 .layer-panel.collapsed .assign-layer,
 .layer-panel.collapsed .layer-list,
-.layer-panel.collapsed .layer-hint {
+.layer-panel.collapsed .layer-hint,
+.layer-panel.collapsed .properties-section {
   display: none;
 }
 /* :has() lets the collapse state live purely on the panel's own class, so
@@ -247,6 +248,42 @@ button.layer-color {
   pointer-events: none;
 }
 .layer-hint { margin-top: auto; color: #888; font-size: 10px; line-height: 1.35; }
+.properties-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #363636;
+}
+.properties-heading strong { font-size: 13px; }
+.properties-empty { color: #888; font-size: 11px; }
+.properties-body { display: flex; flex-direction: column; gap: 6px; }
+.properties-body[hidden] { display: none; }
+.properties-summary { color: #ccc; font-size: 11px; }
+#propertiesLayerSelect {
+  width: 100%;
+  padding: 5px 6px;
+  color: #e8e8e8;
+  background: #292929;
+  border: 1px solid #414141;
+  border-radius: 2px;
+  font-size: 11px;
+}
+.properties-fields { display: flex; flex-direction: column; gap: 6px; }
+.properties-field { display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
+.properties-field span { color: #aaa; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.properties-input {
+  width: 100%;
+  padding: 4px 5px;
+  color: #e8e8e8;
+  background: #292929;
+  border: 1px solid #414141;
+  border-radius: 2px;
+  font-size: 11px;
+  font-family: inherit;
+  resize: vertical;
+}
+.properties-field-content textarea.properties-input { min-height: 48px; }
 .color-menu {
   position: fixed;
   z-index: 50;
@@ -590,7 +627,7 @@ kbd { font-size: 9px; opacity: .65; }
 </head>
 <body>
   <header id="topbar" class="topbar">
-    <div class="brand">zbCAD <span class="version">v0.30.0</span></div>
+    <div class="brand">zbCAD <span class="version">v0.31.0</span></div>
     <button id="toolbarAutohideBtn" class="toolbar-autohide-btn toggle" title="Auto-hide the toolbar; mouse over this bar (or Tab into it) to show it again" aria-pressed="false">Auto-hide</button>
     <div class="tool-group">
       <span class="group-label">File</span>
@@ -694,6 +731,16 @@ kbd { font-size: 9px; opacity: .65; }
         <div class="layer-heading-actions">
           <button id="addLayerBtn" class="layer-add" title="Create a new layer">+ Add</button>
           <button id="layerPanelToggle" class="layer-collapse" title="Collapse layers panel" aria-label="Collapse layers panel" aria-expanded="true">▸</button>
+        </div>
+      </div>
+      <div id="propertiesSection" class="properties-section">
+        <div class="properties-heading"><strong>Properties</strong></div>
+        <div id="propertiesEmpty" class="properties-empty">Nothing selected.</div>
+        <div id="propertiesBody" class="properties-body" hidden>
+          <div id="propertiesSummary" class="properties-summary"></div>
+          <label class="layer-label" for="propertiesLayerSelect">Layer</label>
+          <select id="propertiesLayerSelect" aria-label="Selected objects' layer"></select>
+          <div id="propertiesFields" class="properties-fields"></div>
         </div>
       </div>
       <label class="layer-label" for="currentLayerSelect">Current layer</label>
@@ -989,6 +1036,11 @@ kbd { font-size: 9px; opacity: .65; }
   const layerColorMenu = document.getElementById('layerColorMenu');
   const layerPanel = document.getElementById('layerPanel');
   const layerPanelToggle = document.getElementById('layerPanelToggle');
+  const propertiesEmpty = document.getElementById('propertiesEmpty');
+  const propertiesBody = document.getElementById('propertiesBody');
+  const propertiesSummary = document.getElementById('propertiesSummary');
+  const propertiesLayerSelect = document.getElementById('propertiesLayerSelect');
+  const propertiesFields = document.getElementById('propertiesFields');
   const topbar = document.getElementById('topbar');
   const toolbarAutohideBtn = document.getElementById('toolbarAutohideBtn');
   const help = document.getElementById('help');
@@ -8799,6 +8851,168 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   // ---------------------------------------------------------------------------
+  // ui/propertiesPanel.js
+  // ---------------------------------------------------------------------------
+
+  const ENTITY_TYPE_LABELS = {
+    LINE: 'Line', PLINE: 'Polyline', CIRCLE: 'Circle', ARC: 'Arc',
+    TEXT: 'Text', MTEXT: 'Mtext', DIM: 'Dimension',
+  };
+
+  // Only fields with a plain scalar meaning are exposed here — geometry that
+  // would need re-deriving a shape (line endpoints, polyline vertices) stays
+  // grip-only. `angle` fields are shown and typed in degrees, matching every
+  // other angle the user ever types at the command line, and stored back in
+  // the radians the entity itself holds.
+  const NUMERIC_FIELDS = {
+    CIRCLE: [{ key: 'radius', label: 'Radius' }],
+    ARC: [{ key: 'radius', label: 'Radius' }],
+    TEXT: [
+      { key: 'height', label: 'Height' },
+      { key: 'rotation', label: 'Rotation (deg)', angle: true },
+    ],
+    MTEXT: [
+      { key: 'height', label: 'Height' },
+      { key: 'width', label: 'Width' },
+      { key: 'rotation', label: 'Rotation (deg)', angle: true },
+    ],
+  };
+  const CONTENT_TYPES = new Set(['TEXT', 'MTEXT']);
+  const POSITIVE_FIELDS = new Set(['radius', 'height', 'width']);
+
+  function selectedEntities() {
+    return state.entities.filter(entity => state.selected.has(entity.id));
+  }
+
+  function commonValue(items, key) {
+    const values = new Set(items.map(item => item[key]));
+    return values.size === 1 ? [...values][0] : null;
+  }
+
+  // The pure read of "what does the selection currently look like," kept
+  // separate from renderPropertiesPanel's DOM building so a headless test can
+  // assert this directly (see testHook.js) instead of parsing rendered markup —
+  // this codebase's tests never inspect rendered HTML, only state/model reads.
+  function selectionPropertiesSummary() {
+    const entities = selectedEntities();
+    const underlays = selectedUnderlays();
+    const count = entities.length + underlays.length;
+    if (!count) return null;
+
+    const types = [...new Set(entities.map(entity => entity.type))];
+    const homogeneousType = !underlays.length && types.length === 1 ? types[0] : null;
+    const layerId = commonValue([...entities, ...underlays], 'layerId');
+
+    const fields = {};
+    if (homogeneousType) {
+      for (const field of NUMERIC_FIELDS[homogeneousType] || []) {
+        fields[field.key] = commonValue(entities, field.key);
+      }
+      if (CONTENT_TYPES.has(homogeneousType)) fields.content = commonValue(entities, 'content');
+    }
+
+    return {
+      count,
+      entityCount: entities.length,
+      underlayCount: underlays.length,
+      types,
+      homogeneousType,
+      layerId,
+      fields,
+    };
+  }
+
+  function summaryLabel(summary) {
+    if (summary.underlayCount && !summary.entityCount) {
+      return `${summary.underlayCount} image${summary.underlayCount === 1 ? '' : 's'} selected`;
+    }
+    if (summary.homogeneousType) {
+      const label = ENTITY_TYPE_LABELS[summary.homogeneousType] || summary.homogeneousType;
+      return `${summary.entityCount} ${label}${summary.entityCount === 1 ? '' : 's'} selected`;
+    }
+    return `${summary.count} objects selected`;
+  }
+
+  function renderPropertiesPanel() {
+    if (!propertiesBody) return;
+    const summary = selectionPropertiesSummary();
+    propertiesEmpty.hidden = Boolean(summary);
+    propertiesBody.hidden = !summary;
+    if (!summary) return;
+
+    propertiesSummary.textContent = summaryLabel(summary);
+
+    propertiesLayerSelect.innerHTML =
+      `<option value=""${summary.layerId === null ? ' selected' : ''} disabled hidden>— Varies —</option>` +
+      state.layers.map(layer =>
+        `<option value="${escapeHtml(layer.id)}"${layer.id === summary.layerId ? ' selected' : ''}>${escapeHtml(layer.name)}</option>`).join('');
+    if (summary.layerId !== null) propertiesLayerSelect.value = summary.layerId;
+
+    const numericFields = summary.homogeneousType ? (NUMERIC_FIELDS[summary.homogeneousType] || []) : [];
+    let html = numericFields.map(field => {
+      const value = summary.fields[field.key];
+      const shown = value === null || value === undefined ? '' : (field.angle ? (value * 180 / Math.PI).toFixed(2) : String(value));
+      return `
+        <label class="properties-field">
+          <span>${field.label}</span>
+          <input type="text" class="properties-input" data-prop-field="${field.key}"${field.angle ? ' data-prop-angle="1"' : ''} value="${escapeHtml(shown)}" placeholder="${value === null ? 'Varies' : ''}" />
+        </label>`;
+    }).join('');
+    if (summary.homogeneousType && CONTENT_TYPES.has(summary.homogeneousType)) {
+      const value = summary.fields.content;
+      html += `
+        <label class="properties-field properties-field-content">
+          <span>Content</span>
+          <textarea class="properties-input" data-prop-field="content" placeholder="${value === null || value === undefined ? 'Varies' : ''}">${escapeHtml(value || '')}</textarea>
+        </label>`;
+    }
+    propertiesFields.innerHTML = html;
+  }
+
+  // Applies one field to every selected entity of the (necessarily homogeneous —
+  // see selectionPropertiesSummary) selected type at once. Mirrors the shape of
+  // model/layers.js's mutators: requireIdle, mutate, commit, refresh.
+  function applyPropertiesField(field, rawValue, isAngle) {
+    if (!requireIdle('editing properties')) { renderPropertiesPanel(); return false; }
+    const entities = selectedEntities().filter(isEntityEditable);
+    if (!entities.length) { renderPropertiesPanel(); return false; }
+    const type = entities[0].type;
+    if (!entities.every(entity => entity.type === type)) { renderPropertiesPanel(); return false; }
+
+    let nextValue;
+    if (field === 'content') {
+      const content = String(rawValue);
+      if (!content.trim()) {
+        updatePrompt('Content cannot be empty.');
+        renderPropertiesPanel();
+        return false;
+      }
+      nextValue = content.slice(0, type === 'MTEXT' ? 4000 : 1000);
+    } else {
+      const parsed = Number(rawValue);
+      if (!Number.isFinite(parsed)) {
+        updatePrompt('Enter a number.');
+        renderPropertiesPanel();
+        return false;
+      }
+      nextValue = isAngle ? parsed * Math.PI / 180 : parsed;
+      if (POSITIVE_FIELDS.has(field) && nextValue <= 1e-9) {
+        updatePrompt('Value must be greater than zero.');
+        renderPropertiesPanel();
+        return false;
+      }
+    }
+
+    const ids = new Set(entities.map(entity => entity.id));
+    const nextEntities = state.entities.map(entity => (ids.has(entity.id) ? { ...entity, [field]: nextValue } : entity));
+    if (!commitGeometry(nextEntities)) { renderPropertiesPanel(); return false; }
+    setFileStatus(`${state.drawingName} · Updated ${entities.length} object${entities.length === 1 ? '' : 's'}`);
+    renderPropertiesPanel();
+    draw();
+    return true;
+  }
+
+  // ---------------------------------------------------------------------------
   // interaction/snap.js
   // ---------------------------------------------------------------------------
 
@@ -9679,6 +9893,7 @@ kbd { font-size: 9px; opacity: .65; }
     // A command gathering a selection may be reporting how many it has, and
     // idle SELECT surfaces its own Shift-click add/remove hint the same way.
     updatePrompt();
+    renderPropertiesPanel();
     draw();
   }
 
@@ -9713,6 +9928,7 @@ kbd { font-size: 9px; opacity: .65; }
     activeCommand()?.noteSelection?.({ box, crossing });
     state.dragSelect = null;
     updatePrompt();
+    renderPropertiesPanel();
     draw();
   }
 
@@ -9757,6 +9973,7 @@ kbd { font-size: 9px; opacity: .65; }
     }
     state.selected.clear();
     updatePrompt();
+    renderPropertiesPanel();
     draw();
     return { erased: deletable.size + removableUnderlays.size };
   }
@@ -16139,19 +16356,27 @@ kbd { font-size: 9px; opacity: .65; }
       return false;
     }
     const selectedEntities = state.entities.filter(entity => state.selected.has(entity.id) && isEntityEditable(entity));
-    if (!selectedEntities.length) {
+    // Underlays share the same selection set under a `u:<n>` id (see
+    // model/underlay.js), so a selection that mixes geometry and a traced image
+    // reassigns both in one action instead of silently skipping the image.
+    const selectedUnderlays = state.underlays.filter(underlay =>
+      state.selected.has(underlaySelectionId(underlay.id)) && underlayIsSelectable(underlay));
+    if (!selectedEntities.length && !selectedUnderlays.length) {
       updatePrompt('Select at least one editable object to assign.');
       return false;
     }
-    const changing = selectedEntities.filter(entity => entity.layerId !== layer.id);
-    if (!changing.length) {
+    const changingEntities = selectedEntities.filter(entity => entity.layerId !== layer.id);
+    const changingUnderlays = selectedUnderlays.filter(underlay => underlay.layerId !== layer.id);
+    const changedCount = changingEntities.length + changingUnderlays.length;
+    if (!changedCount) {
       updatePrompt(`Selection is already on ${layer.name}.`);
       return true;
     }
     pushHistory();
-    for (const entity of changing) entity.layerId = layer.id;
+    for (const entity of changingEntities) entity.layerId = layer.id;
+    for (const underlay of changingUnderlays) underlay.layerId = layer.id;
     renderLayerManager();
-    setFileStatus(`${state.drawingName} · Assigned ${changing.length} to ${layer.name}`);
+    setFileStatus(`${state.drawingName} · Assigned ${changedCount} to ${layer.name}`);
     draw();
     return true;
   }
@@ -16289,6 +16514,7 @@ kbd { font-size: 9px; opacity: .65; }
   });
   assignLayerBtn.addEventListener('click', () => {
     assignSelectionToLayer();
+    renderPropertiesPanel();
     canvas.focus();
   });
   currentLayerSelect.addEventListener('change', () => {
@@ -16307,6 +16533,27 @@ kbd { font-size: 9px; opacity: .65; }
       activeColorLayerId = id;
       openColorMenu(event.target, event.target.dataset.layerColor);
     }
+    // Hiding/locking a layer, or deleting one, can drop entities out of the
+    // current selection (model/layers.js) — the properties panel needs to
+    // notice even though none of these actions go through commitGeometry.
+    renderPropertiesPanel();
+  });
+
+  // The layer-driven-only properties panel (see roadmap.md): reassigning the
+  // selection's layer reuses the exact function the "Assign selection to
+  // current" button already calls, just with a picked id instead of the
+  // default. Per-type fields commit on change/blur, matching how a layer's own
+  // name field already commits (not on every keystroke).
+  propertiesLayerSelect.addEventListener('change', () => {
+    assignSelectionToLayer(propertiesLayerSelect.value);
+    renderPropertiesPanel();
+    canvas.focus();
+  });
+  propertiesFields.addEventListener('change', event => {
+    const field = event.target?.dataset?.propField;
+    if (!field) return;
+    applyPropertiesField(field, event.target.value, event.target.dataset.propAngle === '1');
+    canvas.focus();
   });
   layerList.addEventListener('change', event => {
     const action = event.target?.dataset?.layerAction;
@@ -16714,6 +16961,13 @@ kbd { font-size: 9px; opacity: .65; }
     deleteLayer,
     assignSelectionToLayer,
 
+    // The multi-selection properties panel. `propertiesSummary` is the same
+    // pure read the panel renders from, so a test asserts against it directly
+    // instead of parsing rendered markup (no other panel in this codebase is
+    // tested that way either).
+    get propertiesSummary() { return selectionPropertiesSummary(); },
+    applyPropertiesField,
+
     // Underlays. The raster itself never reaches these: a test hands in a
     // descriptor the way the file picker would, so placement, calibration and
     // transform behaviour are all exercised without an image ever decoding.
@@ -16791,10 +17045,14 @@ kbd { font-size: 9px; opacity: .65; }
   // Chrome that has to be rebuilt whenever the whole document is replaced.
   onDocumentChanged(renderLayerManager);
   onDocumentChanged(renderUnitStatus);
+  // Undo/redo clear the selection (model/history.js), so the properties panel
+  // needs the same "document replaced" refresh as the other chrome above.
+  onDocumentChanged(renderPropertiesPanel);
 
   setTimeout(() => help.style.opacity = '0', 12000);
   renderLayerManager();
   renderUnitStatus();
+  renderPropertiesPanel();
   resize();
   refreshTrackingButtons();
   setMode('SELECT');
