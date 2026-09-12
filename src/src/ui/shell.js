@@ -1,7 +1,7 @@
 import { commandCapturesSpace, commandLiveValue, navigateHistory, startCommand } from '../commands/registry.js';
 import { LAYER_BASIC_COLORS } from '../core/constants.js';
 import { LENGTH_FORMATS } from '../core/units.js';
-import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, dxfInput, engineStatus, imageInput, layerColorMenu, layerColorPicker, layerList, layerPanel, layerPanelToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, propertiesFields, propertiesLayerSelect, snapBtn, snapDialog, snapStatus, toolbarAutohideBtn, topbar, underlayApplyBtn, underlayCancelBtn, underlayDeleteBtn, underlayDialog, underlayFadeInput, underlayLockedCheck, underlayPlotCheck, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog } from '../dom.js';
+import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, dxfInput, engineStatus, imageInput, layerColorMenu, layerColorPicker, layerList, layerPanel, layerPanelHandle, layersSection, layersSectionToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, propertiesFields, propertiesLayerSelect, propertiesSection, propertiesSectionToggle, snapBtn, snapDialog, snapStatus, toolbarAutohideBtn, topbar, underlayApplyBtn, underlayCancelBtn, underlayDeleteBtn, underlayDialog, underlayFadeInput, underlayLockedCheck, underlayPlotCheck, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog, workspace } from '../dom.js';
 import { submitCommandInput } from '../interaction/pointer.js';
 import { writeAutosaveOnUnload } from '../model/dirty.js';
 import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, setLayerLinetype, setLayerLineweight, toggleLayerLock, toggleLayerPrintable, toggleLayerVisibility } from '../model/layers.js';
@@ -311,25 +311,94 @@ openInput.addEventListener('change', async () => {
 snapBtn.addEventListener('click', () => { state.snapEnabled=!state.snapEnabled; snapBtn.classList.toggle('on',state.snapEnabled); draw(); });
 orthoBtn.addEventListener('click', () => setOrtho(!state.ortho));
 
-// Collapse state is a per-browser convenience, not drawing data, so it lives
-// in its own localStorage key rather than the document/autosave model.
+// Collapse state and width are both per-browser convenience, not drawing
+// data, so they live in their own localStorage keys rather than the
+// document/autosave model. Width is applied as a direct inline style, the
+// convention this codebase already uses everywhere else it touches .style
+// (see layerColorMenu.style.left/top above) rather than a CSS custom
+// property — the latter needs style.setProperty, which the headless test
+// harness's minimal style stub doesn't implement.
 const LAYER_PANEL_COLLAPSED_KEY = 'zbcad.layerPanelCollapsed';
+const LAYER_PANEL_WIDTH_KEY = 'zbcad.layerPanelWidth';
+const LAYER_PANEL_MIN_WIDTH = 220;
+const LAYER_PANEL_MAX_WIDTH = 480;
+const LAYER_PANEL_COLLAPSED_WIDTH = 34;
+// A drag shorter than this reads as a click — the same handle serves both
+// gestures (see .panel-resize-handle in shell.html), told apart by movement
+// distance in the mouseup handler below rather than by separate elements.
+const LAYER_PANEL_DRAG_THRESHOLD = 4;
+
+// The panel's chosen width, independent of whether it's currently collapsed
+// (collapsing never changes it — it's what the handle drag returns to).
+let layerPanelWidth = window.innerWidth <= 820 ? 230 : 274;
+try {
+  const stored = Number(window.localStorage.getItem(LAYER_PANEL_WIDTH_KEY));
+  if (Number.isFinite(stored) && stored > 0) layerPanelWidth = stored;
+} catch {
+  // Fall back to the viewport-based default.
+}
+
+function applyWorkspaceColumns() {
+  const width = layerPanel.classList.contains('collapsed') ? LAYER_PANEL_COLLAPSED_WIDTH : layerPanelWidth;
+  workspace.style.gridTemplateColumns = `minmax(0, 1fr) ${width}px`;
+}
+
 function setLayerPanelCollapsed(collapsed) {
   layerPanel.classList.toggle('collapsed', collapsed);
-  layerPanelToggle.textContent = collapsed ? '◂' : '▸';
-  layerPanelToggle.title = collapsed ? 'Expand layers panel' : 'Collapse layers panel';
-  layerPanelToggle.setAttribute('aria-label', layerPanelToggle.title);
-  layerPanelToggle.setAttribute('aria-expanded', String(!collapsed));
+  layerPanelHandle.setAttribute('aria-expanded', String(!collapsed));
+  applyWorkspaceColumns();
   try {
     window.localStorage.setItem(LAYER_PANEL_COLLAPSED_KEY, collapsed ? '1' : '0');
   } catch {
     // Private browsing or storage disabled: the toggle still works this session.
   }
 }
-layerPanelToggle.addEventListener('click', () => {
+
+function setLayerPanelWidth(width) {
+  layerPanelWidth = Math.min(LAYER_PANEL_MAX_WIDTH, Math.max(LAYER_PANEL_MIN_WIDTH, width));
+  applyWorkspaceColumns();
+  try {
+    window.localStorage.setItem(LAYER_PANEL_WIDTH_KEY, String(layerPanelWidth));
+  } catch {
+    // Private browsing or storage disabled: the resize still works this session.
+  }
+}
+setLayerPanelWidth(layerPanelWidth);
+
+layerPanelHandle.addEventListener('mousedown', event => {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  const startX = event.clientX;
+  const startWidth = layerPanelWidth;
+  let dragging = false;
+
+  function onMove(moveEvent) {
+    const delta = startX - moveEvent.clientX;
+    if (!dragging) {
+      if (Math.abs(delta) < LAYER_PANEL_DRAG_THRESHOLD) return;
+      dragging = true;
+      layerPanelHandle.classList.add('dragging');
+      setLayerPanelCollapsed(false);
+    }
+    setLayerPanelWidth(startWidth + delta);
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    layerPanelHandle.classList.remove('dragging');
+    if (!dragging) setLayerPanelCollapsed(!layerPanel.classList.contains('collapsed'));
+    canvas.focus();
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+});
+layerPanelHandle.addEventListener('keydown', event => {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
   setLayerPanelCollapsed(!layerPanel.classList.contains('collapsed'));
   canvas.focus();
 });
+
 let layerPanelInitiallyCollapsed = false;
 try {
   layerPanelInitiallyCollapsed = window.localStorage.getItem(LAYER_PANEL_COLLAPSED_KEY) === '1';
@@ -337,6 +406,37 @@ try {
   // Fall back to expanded.
 }
 setLayerPanelCollapsed(layerPanelInitiallyCollapsed);
+
+// Properties and Layers are two independent concerns that used to share one
+// heading; each now collapses on its own (an accordion within the still-open
+// panel), separate from the whole-panel toggle above which frees canvas width.
+function makeSectionCollapser(section, toggle, label, storageKey) {
+  function setCollapsed(collapsed) {
+    section.classList.toggle('collapsed', collapsed);
+    toggle.textContent = collapsed ? '▸' : '▾';
+    toggle.title = collapsed ? `Expand ${label}` : `Collapse ${label}`;
+    toggle.setAttribute('aria-label', toggle.title);
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    try {
+      window.localStorage.setItem(storageKey, collapsed ? '1' : '0');
+    } catch {
+      // Private browsing or storage disabled: the toggle still works this session.
+    }
+  }
+  toggle.addEventListener('click', () => {
+    setCollapsed(!section.classList.contains('collapsed'));
+    canvas.focus();
+  });
+  let initiallyCollapsed = false;
+  try {
+    initiallyCollapsed = window.localStorage.getItem(storageKey) === '1';
+  } catch {
+    // Fall back to expanded.
+  }
+  setCollapsed(initiallyCollapsed);
+}
+makeSectionCollapser(propertiesSection, propertiesSectionToggle, 'properties', 'zbcad.propertiesSectionCollapsed');
+makeSectionCollapser(layersSection, layersSectionToggle, 'layers', 'zbcad.layersSectionCollapsed');
 
 // Same per-browser convenience as the layer panel above: whether the toolbar
 // auto-hides is a display preference, not drawing data.
