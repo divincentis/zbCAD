@@ -134,9 +134,9 @@
 </head>
 <body>
   <nav class="toc">
-    <a class="back" href="cad.html">&larr; Back to zbCAD</a>
+    <a class="back" href="cad.html" id="back-link">&larr; Close &amp; return to zbCAD</a>
     <p class="brand">zbCAD</p>
-    <span class="version">Documentation &middot; v0.30.0</span>
+    <span class="version">Documentation &middot; v0.31.0</span>
     <div class="search-box">
       <input type="search" id="doc-search" placeholder="Search docs&hellip;" autocomplete="off" spellcheck="false" aria-label="Search documentation" />
       <button type="button" class="clear" id="doc-search-clear" hidden aria-label="Clear search">&times;</button>
@@ -155,6 +155,8 @@
           <li><a href="#units">Units &amp; dimension style</a></li>
           <li><a href="#files">Files &amp; autosave</a></li>
           <li><a href="#plotting">Plotting to PDF</a></li>
+          <li><a href="#images">Images &amp; underlays</a></li>
+          <li><a href="#dxf">DXF import &amp; export</a></li>
         </ul>
       </li>
       <li><a class="section" href="#shortcuts">Keyboard shortcuts</a></li>
@@ -165,6 +167,7 @@
           <li><a href="#cmd-transform">Transform</a></li>
           <li><a href="#cmd-annotate">Annotate</a></li>
           <li><a href="#cmd-inquiry">Inquiry</a></li>
+          <li><a href="#cmd-other">Other</a></li>
         </ul>
       </li>
     </ul>
@@ -210,7 +213,7 @@
       <ul>
         <li><strong>Toolbar</strong> (top) &mdash; the <strong>File</strong>, <strong>Edit</strong>, <strong>View</strong>, and <strong>Inquiry</strong> groups sit in the always-visible top row beside the zbCAD logo; <strong>Select</strong>, <strong>Draw</strong>, <strong>Modify</strong>, and <strong>Annotate</strong> follow it, wrapping onto further rows as the window narrows. Buttons that start a command show its keyboard alias in parentheses, e.g. <strong>Line (L)</strong>. The <strong>Auto-hide</strong> button next to the logo collapses those drawing groups away, freeing up canvas height; mouse over the bar (or <kbd>Tab</kbd> into it) to bring them back as an overlay without resizing the canvas underneath it. File, Edit, View, and Inquiry stay put either way, so opening a drawing or undoing never needs the overlay. This preference is remembered per browser.</li>
         <li><strong>Canvas</strong> (center) &mdash; the drawing area. Left-click to pick points or select objects, scroll to zoom, middle-drag to pan, right-click or <kbd>Enter</kbd> to accept the current command's default action.</li>
-        <li><strong>Layers panel</strong> (right) &mdash; lists every layer with its visibility, lock, and color controls, plus its linetype, lineweight, and printable toggle; collapsible via the <strong>&#9656;</strong> / <strong>&#9666;</strong> toggle at its top.</li>
+        <li><strong>Side panel</strong> (right) &mdash; a <strong>Properties</strong> section on top for editing the current selection, and a <strong>Layers</strong> section below listing every layer with its visibility, lock, and color controls, plus its linetype, lineweight, and printable toggle. Each section collapses independently with the <strong>&#9656;</strong> / <strong>&#9666;</strong> toggle on its own heading (an accordion within the panel). The whole panel can be resized by dragging the handle on its left edge, or collapsed entirely by clicking the handle; both the width and collapsed state are remembered per browser.</li>
         <li><strong>Command line &amp; status bar</strong> (bottom) &mdash; the text input where you type commands, coordinates, and keywords, plus toggle buttons for <strong>SNAP</strong>, <strong>ORTHO</strong>, <strong>POLAR</strong>, the active object-snap set, the drawing units, the current file name, and the live cursor coordinates.</li>
         <li><strong>Inquiry panel</strong> &mdash; a small overlay that appears with the result of <code>DIST</code>, <code>AREA</code>, <code>ID</code>, or <code>LIST</code>; close it with the &times; button or <kbd>Esc</kbd>.</li>
       </ul>
@@ -309,6 +312,16 @@
         center, etc.). Click and drag a grip to reshape or reposition that point directly, without
         starting a command; click a grip without dragging to leave the edit live and then type or pick
         a destination point.
+      </p>
+      <p>
+        The <strong>Properties</strong> section of the side panel reflects whatever is currently
+        selected: a layer dropdown (change it to reassign every selected object, and images, to that
+        layer at once), and, when the selection is a single entity type, editable fields for that
+        type's plain scalar properties &mdash; radius for CIRCLE/ARC, height/rotation for TEXT,
+        height/width/rotation for MTEXT, plus the text content itself for TEXT and MTEXT. A mixed
+        selection just shows the summary and the layer field; geometry that would need reshaping a
+        whole entity (line endpoints, polyline vertices) stays grip-only. Editing a field applies it to
+        every selected entity of that type at once.
       </p>
     </section>
 
@@ -447,6 +460,63 @@
       </div>
     </section>
 
+    <section>
+      <h3 id="images">Images &amp; underlays</h3>
+      <p>
+        <strong>Image</strong> places a raster image &mdash; a scan, a photo, an exported PDF page
+        &mdash; as an underlay to trace over. Pick a file, then either click a bottom-left corner to
+        place it at a provisional scale of one drawing unit per pixel, or type a width first to place
+        it at that width instead. The image is re-encoded to JPEG and capped at 2400px on the long
+        side on import, which keeps it small enough to travel inline in the saved drawing and every
+        autosave.
+      </p>
+      <p>
+        An image imported this way carries no real-world scale until you set one. <strong>Calibrate</strong>
+        does that: click two points on the image a known distance apart, then type (or click to measure)
+        that true distance, and the image is rescaled about the first point so the second lands exactly
+        that far away. Recalibrating is not a one-time step &mdash; do it again whenever a better-known
+        dimension turns up.
+      </p>
+      <p>
+        An underlay lives on a layer like any other object, so its visibility, lock, and
+        <a href="#layers">printable</a> state come from the ordinary layer controls rather than a
+        separate system &mdash; hide, lock, or leave a traced-over image off the plotted sheet the same
+        way you would a layer of construction lines. A printable underlay's image does appear on a
+        plotted PDF, not just on screen. Selecting an image shows fade, lock and layer controls in the
+        <strong>Image Props</strong> dialog (also opened by the <code>UNDERLAY</code> command); it also
+        participates in MOVE, COPY, ROTATE, SCALE, MIRROR and ERASE like any selected object, and shows
+        up in the <a href="#selection">Properties panel</a>'s selection summary.
+      </p>
+    </section>
+
+    <section>
+      <h3 id="dxf">DXF import &amp; export</h3>
+      <p>
+        <strong>Import DXF</strong> (<code>DXFIN</code>) and <strong>Export DXF</strong>
+        (<code>DXFOUT</code>) read and write the AutoCAD DXF format (R2000/AC1015 ASCII), for moving
+        drawings to and from other CAD software. Importing <em>replaces</em> the current drawing rather
+        than inserting into it &mdash; save first if you want to keep what's currently open. The
+        drawing's unit is read from (and written to) the file's <code>$INSUNITS</code> header, so
+        geometry round-trips at the same real-world size.
+      </p>
+      <p>
+        Export writes real ARCs, symbolic layer names (with their color, linetype, lineweight and
+        printable state), and live DIMENSION entities &mdash; not lines standing in for them &mdash; so
+        a dimension opened in another application still reads as a dimension. Import understands both
+        the older R12 POLYLINE/VERTEX form and the modern LWPOLYLINE, and flattens block references
+        (INSERT), including nested and arrayed ones, into plain geometry. Ellipses and splines have no
+        exact zbCAD equivalent and are approximated; angular and ordinate dimensions likewise have no
+        matching zbCAD entity, so their block geometry is imported as exploded lines rather than a live
+        dimension. Every skip or approximation made during import is reported to the inquiry panel
+        rather than happening silently.
+      </p>
+      <p>
+        Image underlays have no DXF equivalent (that would need a separate <code>IMAGEDEF</code>
+        reference to an external file) and are left out of an export, which warns that it did so rather
+        than silently dropping them.
+      </p>
+    </section>
+
     <h2 id="shortcuts">Keyboard shortcuts</h2>
     <section>
       <table>
@@ -519,6 +589,13 @@
         <p class="steps">Click the start point, click a point the arc passes through, click the endpoint. The three points must be distinct and non-collinear.</p>
         <p class="keys">A typed number is a directed distance from the previous point &middot; ORTHO/POLAR apply.</p>
       </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">IMAGE</span><span class="aliases">alias IM</span></h4>
+        <p>Places a raster image as an underlay to trace over. See <a href="#images">Images &amp; underlays</a>.</p>
+        <p class="steps">Started from the toolbar's <strong>Image</strong> button, which opens a file picker first (there is no plain typed invocation without a file already chosen). Then click the bottom-left corner to place it, or type a width to set its initial scale before placing.</p>
+        <p class="keys">A typed number before placing sets the image's width (and scales it proportionally); the image places at one drawing unit per pixel otherwise, to be corrected with CALIBRATE.</p>
+      </div>
     </section>
 
     <section id="cmd-modify">
@@ -536,6 +613,7 @@
         <p>TRIM shortens a line/polyline/circle/arc against boundary geometry; EXTEND lengthens an open end to meet boundary geometry. The two share one command flow. Neither reshapes a polyline that has a curved segment, and nor does OFFSET &mdash; each says so and leaves the polyline alone; EXPLODE it first if you need the edit.</p>
         <p class="steps">If objects are selected before starting, those act as the boundary set; otherwise every other visible, editable object in the drawing is a valid boundary. Click the portion to remove (TRIM) or the end to extend (EXTEND) &mdash; repeat for as many edits as needed.</p>
         <p class="keys">Enter / right-click / Esc: finish. Picks are unsnapped, since they name which piece of which object is meant, not a coordinate.</p>
+        <p class="keys">TRIM only: type <code>F</code>/<code>FENCE</code> to trim everything a drawn polyline crosses in one pass, instead of clicking one piece at a time &mdash; click each fence point, then Enter to trim every boundary edge that fence crossed. <code>U</code>/Undo removes the last fence point.</p>
       </div>
 
       <div class="cmd-card">
@@ -557,6 +635,13 @@
         <p>Moves the vertices of selected geometry that fall inside a crossing (partial) selection window, reshaping rather than only translating &mdash; an ordinary object pick instead moves that whole entity, matching the conventional CAD STRETCH behavior.</p>
         <p class="steps">Make a crossing-window selection (or pick whole objects), Enter/right-click to confirm, click a base point, then click a destination.</p>
         <p class="keys">A typed distance, a relative <code>@</code> point, and ORTHO/POLAR all apply to the destination pick, same as MOVE.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">CALIBRATE</span><span class="aliases">alias CAL</span></h4>
+        <p>Sets an image underlay's true scale from a known distance. See <a href="#images">Images &amp; underlays</a>.</p>
+        <p class="steps">Select the image first, or the command asks you to click one. Click two points on it a known distance apart, then type (or click to measure) the true distance between them.</p>
+        <p class="keys">The image is rescaled about the first point, so it stays put and everything else on it moves to match. Picks are unsnapped (a raster has no snappable geometry of its own).</p>
       </div>
     </section>
 
@@ -590,6 +675,15 @@
         <p class="steps">Select objects, click the first point of the mirror line, click the second point, then answer "Erase source objects? [Yes/No] &lt;No&gt;".</p>
         <p class="keys">Type <code>Y</code>/<code>YES</code> or <code>N</code>/<code>NO</code>, or press Enter to accept the default (No &mdash; keep the originals, so the default behaves like a mirrored copy) &middot; ORTHO applies to the second mirror-line point &middot; a mirrored associative dimension stays linked to its mirrored copy of the geometry, not the original.</p>
       </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">ARRAY</span><span class="aliases">alias AR</span></h4>
+        <p>Repeats the selection in a rectangular grid or around a center point, in one step.</p>
+        <p class="steps">Select objects, then type <code>R</code>/<code>RECTANGULAR</code> or <code>P</code>/<code>POLAR</code> (or Enter for whichever you used last).</p>
+        <p class="steps"><strong>Rectangular</strong>: enter the number of rows, then columns, then the spacing between rows, then between columns.</p>
+        <p class="steps"><strong>Polar</strong>: click the center point, enter the number of items, the angle to fill (positive = counterclockwise, negative = clockwise, up to &plusmn;360&deg;), and whether to rotate each item to follow the array (Yes/No).</p>
+        <p class="keys">Every stage previews live and remembers its value as the default for next time. Enter with nothing typed accepts each bracketed default in turn, so a repeat ARRAY with the same settings is just Enter, Enter, Enter&hellip; until the final confirm. A zero spacing, a zero/over-360&deg; fill angle, or a net-zero result is rejected.</p>
+      </div>
     </section>
 
     <section id="cmd-annotate">
@@ -614,6 +708,13 @@
         <p>Places a single line of text.</p>
         <p class="steps">Click the insertion point &rarr; click a point or type a value for height (Enter accepts the current dimension style's text height) &rarr; click a point or type degrees for rotation (Enter accepts 0&deg;) &rarr; type the text content and press Enter.</p>
         <p class="keys">ORTHO applies to the height pick &middot; while typing content, Space is a literal space rather than the command terminator, so multi-word text is typed normally.</p>
+      </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">MTEXT</span><span class="aliases">alias MT (typed only &mdash; no toolbar button)</span></h4>
+        <p>Places word-wrapped paragraph text inside a fixed-width box, unlike TEXT's single unwrapped line.</p>
+        <p class="steps">Click the insertion point &rarr; click a point or type a value for the box width &rarr; click a point or type a value for height &rarr; click a point or type degrees for rotation &rarr; type the content, Enter for a new line, and a second (blank-line) Enter to finish.</p>
+        <p class="keys">ORTHO applies to the width and height picks &middot; the Properties panel can edit an existing MTEXT's width, height, rotation, and content afterward (see <a href="#selection">Selection &amp; grips</a>).</p>
       </div>
 
       <div class="cmd-card">
@@ -661,6 +762,9 @@
         <tr><td>ZOOMEXTENTS</td><td><code>Z</code>, <code>ZE</code></td><td>Fits the view to the drawing extents (same as the Zoom Extents toolbar button).</td></tr>
         <tr><td>UNITS</td><td><code>UN</code>, <code>DDUNITS</code></td><td>Opens the Units dialog.</td></tr>
         <tr><td>PLOT</td><td><code>PLT</code>, <code>PRINT</code></td><td>Opens the Plot to PDF dialog. See <a href="#plotting">Plotting to PDF</a>.</td></tr>
+        <tr><td>UNDERLAY</td><td><code>IP</code></td><td>Opens the Image Properties dialog for the selected image (fade, lock, layer). See <a href="#images">Images &amp; underlays</a>. Also reachable via the toolbar's <strong>Image Props</strong> button.</td></tr>
+        <tr><td>DXFOUT</td><td><code>DXF</code>, <code>DXFEXPORT</code></td><td>Exports the drawing as an AutoCAD DXF file. See <a href="#dxf">DXF import &amp; export</a>.</td></tr>
+        <tr><td>DXFIN</td><td><code>DXFIMPORT</code></td><td>Imports an AutoCAD DXF file, replacing the current drawing. See <a href="#dxf">DXF import &amp; export</a>.</td></tr>
         <tr><td>SELECT</td><td><code>S</code></td><td>The idle mode everything returns to &mdash; click to pick objects, drag for a window/crossing selection. Not a drawing command in its own right.</td></tr>
       </table>
     </section>
@@ -768,6 +872,19 @@
           input.value = '';
           runFilter();
         }
+      });
+    })();
+
+    (() => {
+      // cad.html opens docs.html with target="_blank", so "back" should close
+      // this tab rather than navigate it; fall back to navigating cad.html
+      // in the (rare) case the tab can't be closed by script, e.g. the user
+      // arrived here directly rather than via the in-app Docs link.
+      const backLink = document.getElementById('back-link');
+      backLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.close();
+        setTimeout(() => { window.location.href = backLink.href; }, 300);
       });
     })();
   </script>
