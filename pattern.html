@@ -83,6 +83,24 @@ tr.grp td{background:var(--soft);font-weight:600;text-align:left}
   .lower{grid-template-columns:1fr}
   .work{overflow:visible}
 }
+dialog#pdlg{border:0;padding:0;border-radius:12px;background:var(--panel);color:var(--ink);width:min(560px,calc(100vw - 20px));max-height:calc(100vh - 20px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog#pdlg::backdrop{background:rgba(0,0,0,.45)}
+.dlg{display:flex;flex-direction:column;max-height:calc(100vh - 20px)}
+.dh{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
+.dh .x{border:0;background:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted)}
+.dbody{padding:6px 16px 12px;overflow:auto}
+.dbody .field{grid-template-columns:1fr 210px}
+.checks{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin:10px 0;font-size:13px}
+.checks label{display:flex;gap:6px;align-items:center}
+#pprev{width:100%;height:220px;background:var(--sheet);border:1px solid var(--line);border-radius:8px;--tile:color-mix(in srgb,var(--match) 8%,transparent)}
+:root{--match:#1c63d6}
+@media (prefers-color-scheme: dark){:root{--match:#6ea8ff}}
+#psum{font-size:12.5px;color:var(--muted);margin-top:8px}
+#psum .bad{color:var(--bend)}
+.dfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.hide{display:none!important}
+@media (max-width:480px){.checks{grid-template-columns:1fr}.dbody .field{grid-template-columns:1fr 150px}}
 @media print{
   .top,.side,.actions,.legend,.lower .card:first-child{display:none!important}
   .app{display:block;height:auto}
@@ -117,7 +135,7 @@ tr.grp td{background:var(--soft);font-weight:600;text-align:left}
         <button class="btn pri" id="dxf">DXF</button>
         <button class="btn" id="svgx">SVG</button>
         <button class="btn" id="csv">CSV</button>
-        <button class="btn" id="prt">Print</button>
+        <button class="btn" id="prt">Print full size</button>
       </div>
     </div>
     <div class="view" id="view">
@@ -130,6 +148,29 @@ tr.grp td{background:var(--soft);font-weight:600;text-align:left}
     </div>
   </section>
 </main>
+<dialog id="pdlg">
+  <div class="dlg">
+    <div class="dh"><b>Full-size print (PDF)</b><button class="x" id="pclose" aria-label="Close">×</button></div>
+    <div class="dbody">
+      <div class="field"><label for="p_paper">Paper</label><select id="p_paper"></select></div>
+      <div class="field custom"><label for="p_cw">Paper width <span class="u"></span></label><input id="p_cw"></div>
+      <div class="field custom"><label for="p_ch">Paper length <span class="u"></span></label><input id="p_ch"><div class="help">For a roll plotter, set the roll width and the longest sheet you want.</div></div>
+      <div class="field"><label for="p_orient">Orientation</label><select id="p_orient"><option value="auto">Auto (fewest sheets)</option><option value="p">Portrait</option><option value="l">Landscape</option></select></div>
+      <div class="field"><label for="p_margin">Printer margin <span class="u"></span></label><input id="p_margin"><div class="help">Unprintable edge of your printer. 1/4 in is safe for most.</div></div>
+      <div class="field"><label for="p_ovl">Overlap <span class="u"></span></label><input id="p_ovl"><div class="help">Shaded band repeated on the next sheet for lapping and taping.</div></div>
+      <div class="checks">
+        <label><input type="checkbox" id="p_rotate"> Rotate pieces to save paper</label>
+        <label><input type="checkbox" id="p_skip"> Skip blank sheets</label>
+        <label><input type="checkbox" id="p_labels"> Point labels</label>
+        <label><input type="checkbox" id="p_cover"> Cover sheet with sheet map</label>
+        <label><input type="checkbox" id="p_table"> Layout data table</label>
+      </div>
+      <svg id="pprev" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="psum"></div>
+    </div>
+    <div class="dfoot"><span>Print at 100% / Actual size.</span><button class="btn pri" id="pgo">Download PDF</button></div>
+  </div>
+</dialog>
 <script>
 "use strict";
 /* ============================================================
@@ -824,7 +865,299 @@ if (typeof document !== 'undefined') (function () {
     const lines = [tb.cols.map(q).join(','), ...tb.rows.map(r => r.grp ? q(r.grp) : tb.cols.map((_, i) => q(csvCell(r[i]))).join(','))];
     download(fname('csv'), lines.join('\n'), 'text/csv');
   };
-  $('prt').onclick = () => window.print();
+  /* ============================================================
+     Full-scale tiled PDF (vector, true size, match lines)
+     ============================================================ */
+  const MM = 72 / 25.4, FOOT = 34, PAD = 9;
+  const PAPERS = [
+    ['letter', 'Letter 8.5 × 11 in', 8.5 * 72, 11 * 72], ['legal', 'Legal 8.5 × 14 in', 8.5 * 72, 14 * 72],
+    ['tabloid', 'Tabloid 11 × 17 in', 11 * 72, 17 * 72], ['archc', 'ARCH C 18 × 24 in', 18 * 72, 24 * 72],
+    ['archd', 'ARCH D 24 × 36 in', 24 * 72, 36 * 72], ['a4', 'A4 210 × 297 mm', 210 * MM, 297 * MM],
+    ['a3', 'A3 297 × 420 mm', 297 * MM, 420 * MM], ['a1', 'A1 594 × 841 mm', 594 * MM, 841 * MM],
+    ['custom', 'Custom / plotter roll', 0, 0]];
+  const PO = { paper: null, orient: 'auto', margin: 18, ovl: 36, cw: 24 * 72, ch: 36 * 72, rotate: true, skip: true, cover: true, table: true, labels: true };
+  const k2pt = () => S.u === 'in' ? 72 : MM;
+  const rowName = r => r < 26 ? String.fromCharCode(65 + r) : String.fromCharCode(64 + Math.floor(r / 26)) + String.fromCharCode(65 + r % 26);
+  function paperDims() { if (PO.paper === 'custom') return [PO.cw, PO.ch]; const p = PAPERS.find(q => q[0] === PO.paper); return [p[2], p[3]]; }
+
+  function xformPiece(pc, rot, k) {
+    const f = rot ? (q => [-q[1] * k, q[0] * k]) : (q => [q[0] * k, q[1] * k]);
+    return { name: pc.name, qty: pc.qty, cut: pc.cut.map(l => l.map(f)), bend: pc.bend.map(l => l.map(f)), form: pc.form.map(l => l.map(f)), labels: pc.labels.map(l => ({ p: f(l.p), t: l.t })) };
+  }
+  function segHits(a, b, r) { // Liang–Barsky segment vs rect [x0,y0,x1,y1]
+    let t0 = 0, t1 = 1; const dx = b[0] - a[0], dy = b[1] - a[1];
+    for (const [p, q] of [[-dx, a[0] - r[0]], [dx, r[2] - a[0]], [-dy, a[1] - r[1]], [dy, r[3] - a[1]]]) {
+      if (Math.abs(p) < 1e-12) { if (q < 0) return false; }
+      else { const t = q / p; if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; } else { if (t < t0) return false; if (t < t1) t1 = t; } }
+    }
+    return true;
+  }
+  function planPiece(pc, prefix) {
+    const k = k2pt(), [W, H] = paperDims(), m = PO.margin, ov = PO.ovl; let best = null;
+    for (const rot of PO.rotate ? [0, 1] : [0]) for (const o of PO.orient === 'auto' ? ['p', 'l'] : [PO.orient]) {
+      const pw = o === 'p' ? Math.min(W, H) : Math.max(W, H), ph = o === 'p' ? Math.max(W, H) : Math.min(W, H);
+      const cw = pw - 2 * m - ov, ch = ph - 2 * m - FOOT - ov;
+      if (cw < 72 || ch < 72) continue;
+      const g = xformPiece(pc, rot, k), bb = bbox(g.cut.flat());
+      const bw = bb[2] - bb[0] + 2 * PAD, bh = bb[3] - bb[1] + 2 * PAD;
+      const cols = Math.max(1, Math.ceil(bw / cw - 1e-9)), rows = Math.max(1, Math.ceil(bh / ch - 1e-9));
+      const x0 = bb[0] - PAD - (cols * cw - bw) / 2, yT = bb[3] + PAD + (rows * ch - bh) / 2;
+      const segs = []; for (const set of [g.cut, g.bend, g.form]) for (const l of set) for (let i = 1; i < l.length; i++) segs.push([l[i - 1], l[i]]);
+      const tiles = [];
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        const cx0 = x0 + c * cw, cyT = yT - r * ch;
+        const reg = [cx0, cyT - ch - (r < rows - 1 ? ov : 0), cx0 + cw + (c < cols - 1 ? ov : 0), cyT];
+        tiles.push({ r, c, cx0, cyT, reg, blank: !segs.some(s => segHits(s[0], s[1], reg)), id: prefix + rowName(r) + (c + 1) });
+      }
+      const n = tiles.filter(t => !(PO.skip && t.blank)).length;
+      const cand = { g, rot, o, pw, ph, cw, ch, cols, rows, tiles, n, x0, yT };
+      if (!best || n < best.n || (n === best.n && rows * cols < best.rows * best.cols)) best = cand;
+    }
+    return best;
+  }
+  const printed = (pl, r, c) => { const t = pl.tiles.find(q => q.r === r && q.c === c); return t && !(PO.skip && t.blank) ? t : null; };
+
+  /* ---- minimal PDF writer ---- */
+  const PMAP = { '′': "'", '″': '"', '→': '->', '–': '\x96', '—': '\x97', '·': '\xb7', '×': '\xd7', '°': '\xb0', '≈': '~', 'θ': 'theta ', '−': '-' };
+  function pdfEsc(s) {
+    let o = '';
+    for (const ch of String(s)) for (const cc of (PMAP[ch] ?? ch)) {
+      const code = cc.charCodeAt(0);
+      if (cc === '(' || cc === ')' || cc === '\\') o += '\\' + cc;
+      else if (code < 32) continue;
+      else if (code < 127) o += cc;
+      else if (code < 256) o += '\\' + code.toString(8).padStart(3, '0');
+      else o += '?';
+    }
+    return o;
+  }
+  const tw = (s, sz, b) => String(s).length * sz * (b ? 0.58 : 0.52);
+  function Ops() {
+    const a = [], n = v => (+v).toFixed(2);
+    return {
+      a, raw: s => a.push(s),
+      stroke(rgb, w, dash) { a.push(`${rgb.map(n).join(' ')} RG ${n(w)} w ${dash ? `[${dash.join(' ')}] 0 d` : '[] 0 d'} 1 J 1 j`); },
+      fill(rgb) { a.push(`${rgb.map(n).join(' ')} rg`); },
+      poly(pts, tx, ty) { if (pts.length > 1) a.push(pts.map((q, i) => `${n(q[0] + tx)} ${n(q[1] + ty)} ${i ? 'l' : 'm'}`).join(' ') + ' S'); },
+      line(x1, y1, x2, y2) { a.push(`${n(x1)} ${n(y1)} m ${n(x2)} ${n(y2)} l S`); },
+      rect(x, y, w, h, op) { a.push(`${n(x)} ${n(y)} ${n(w)} ${n(h)} re ${op}`); },
+      text(x, y, sz, s, { bold = false, rot = 0, align = 'l' } = {}) {
+        const w = tw(s, sz, bold), d = align === 'c' ? -w / 2 : align === 'r' ? -w : 0, f = bold ? 'F2' : 'F1';
+        a.push(rot ? `BT /${f} ${n(sz)} Tf 0 1 -1 0 ${n(x)} ${n(y + d)} Tm (${pdfEsc(s)}) Tj ET`
+          : `BT /${f} ${n(sz)} Tf 1 0 0 1 ${n(x + d)} ${n(y)} Tm (${pdfEsc(s)}) Tj ET`);
+      }
+    };
+  }
+  function buildPDF(pages) {
+    const objs = [], add = s => (objs.push(s), objs.length);
+    const cat = add(''), pg = add('');
+    const f1 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+    const f2 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+    const kids = pages.map(p => {
+      const body = p.ops.join('\n'), cs = add(`<< /Length ${body.length} >>\nstream\n${body}\nendstream`);
+      return add(`<< /Type /Page /Parent ${pg} 0 R /MediaBox [0 0 ${p.w.toFixed(2)} ${p.h.toFixed(2)}] /Resources << /Font << /F1 ${f1} 0 R /F2 ${f2} 0 R >> >> /Contents ${cs} 0 R >>`);
+    });
+    objs[cat - 1] = `<< /Type /Catalog /Pages ${pg} 0 R /ViewerPreferences << /PrintScaling /None >> >>`;
+    objs[pg - 1] = `<< /Type /Pages /Kids [${kids.map(k => k + ' 0 R').join(' ')}] /Count ${kids.length} >>`;
+    let out = '%PDF-1.6\n%\xe2\xe3\xcf\xd3\n'; const offs = [];
+    objs.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+    const xr = out.length;
+    out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('') +
+      `trailer\n<< /Size ${objs.length + 1} /Root ${cat} 0 R >>\nstartxref\n${xr}\n%%EOF\n`;
+    const b = new Uint8Array(out.length); for (let i = 0; i < out.length; i++) b[i] = out.charCodeAt(i) & 255;
+    return b;
+  }
+
+  /* ---- page drawing ---- */
+  function scaleBar(o, xr, y, aw) {
+    const isIn = S.u === 'in', len = isIn ? (aw >= 700 ? 6 : aw >= 480 ? 3 : 2) * 72 : (aw >= 700 ? 150 : aw >= 480 ? 75 : 50) * MM;
+    const step = isIn ? 72 : 10 * MM, x0 = xr - len;
+    o.stroke([0, 0, 0], 0.8); o.line(x0, y, xr, y);
+    for (let x = x0, i = 0; x <= xr + 0.01; x += step, i++) o.line(x, y, x, y + (i === 0 || x > xr - 0.5 ? 7 : 4));
+    if (isIn) { o.stroke([0, 0, 0], 0.4); for (let x = x0 + 36; x < xr; x += 72) o.line(x, y, x, y + 2.5); }
+    o.fill([0, 0, 0]);
+    o.text(xr, y + 9, 7.5, `SCALE CHECK: bar = ${isIn ? Math.round(len / 72) + ' in' : Math.round(len / MM) + ' mm'} — measure before cutting`, { align: 'r', bold: true });
+  }
+
+  function tilePage(pl, t, title, pageNo, total) {
+    const { pw, ph, cw, ch, cols, rows } = pl, m = PO.margin, ov = PO.ovl, o = Ops(), g = pl.g;
+    const tx = m - t.cx0, ty = (ph - m) - t.cyT;
+    const R = [t.reg[0] + tx, t.reg[1] + ty, t.reg[2] + tx, t.reg[3] + ty];
+    const xL = m, xR = m + cw, yT = ph - m, yB = ph - m - ch;
+    const nR = t.c < cols - 1 && printed(pl, t.r, t.c + 1), nL = t.c > 0 && printed(pl, t.r, t.c - 1);
+    const nT = t.r > 0 && printed(pl, t.r - 1, t.c), nB = t.r < rows - 1 && printed(pl, t.r + 1, t.c);
+    o.fill([0.9, 0.93, 0.98]);
+    if (nR) o.rect(xR, R[1], ov, R[3] - R[1], 'f');
+    if (nB) o.rect(R[0], R[1], R[2] - R[0], ov, 'f');
+    o.raw('q'); o.rect(R[0], R[1], R[2] - R[0], R[3] - R[1], 'W n');
+    o.stroke([0.5, 0.53, 0.57], 0.4, [1.5, 2]); g.form.forEach(l => o.poly(l, tx, ty));
+    o.stroke([0.8, 0.1, 0.1], 0.7, [6, 3]); g.bend.forEach(l => o.poly(l, tx, ty));
+    o.stroke([0, 0, 0], 0.9); g.cut.forEach(l => o.poly(l, tx, ty));
+    if (PO.labels) { o.fill([0.2, 0.2, 0.2]); g.labels.forEach(l => o.text(l.p[0] + tx, l.p[1] + ty + 3, 7, l.t, { align: 'c' })); }
+    o.raw('Q');
+    const blue = [0, 0.35, 0.85], md = [10, 3, 2, 3];
+    if (nR) { o.stroke(blue, 0.8, md); o.line(xR, R[1], xR, R[3]); o.fill(blue); o.text(xR - 4, (R[1] + R[3]) / 2, 8, `MATCH LINE — sheet ${nR.id} laps here`, { rot: 1, align: 'c', bold: true }); }
+    if (nL) { o.stroke(blue, 0.8, md); o.line(xL, R[1], xL, R[3]); o.fill(blue); o.text(xL + 11, (R[1] + R[3]) / 2, 8, `TRIM & MATCH to sheet ${nL.id}`, { rot: 1, align: 'c', bold: true }); }
+    if (nT) { o.stroke(blue, 0.8, md); o.line(R[0], yT, R[2], yT); o.fill(blue); o.text((xL + xR) / 2, yT - 11, 8, `TRIM & MATCH to sheet ${nT.id}`, { align: 'c', bold: true }); }
+    if (nB) { o.stroke(blue, 0.8, md); o.line(R[0], yB, R[2], yB); o.fill(blue); o.text((xL + xR) / 2, yB + 4, 8, `MATCH LINE — sheet ${nB.id} laps here`, { align: 'c', bold: true }); }
+    o.stroke([0, 0, 0], 0.5);
+    for (const [x, y] of [[xL, yT], [xR, yT], [xL, yB], [xR, yB]]) {
+      if (x > R[2] + 0.5 || y < R[1] - 0.5) continue;
+      o.line(x - 9, y, x + 9, y); o.line(x, y - 9, x, y + 9);
+      { const r = 4, q = r * 0.5523, f = v => v.toFixed(2); o.raw(`${f(x + r)} ${f(y)} m ${f(x + r)} ${f(y + q)} ${f(x + q)} ${f(y + r)} ${f(x)} ${f(y + r)} c ${f(x - q)} ${f(y + r)} ${f(x - r)} ${f(y + q)} ${f(x - r)} ${f(y)} c ${f(x - r)} ${f(y - q)} ${f(x - q)} ${f(y - r)} ${f(x)} ${f(y - r)} c ${f(x + q)} ${f(y - r)} ${f(x + r)} ${f(y - q)} ${f(x + r)} ${f(y)} c S`); }
+    }
+    const tagW = tw(t.id, 13, true) + 12;
+    o.fill([1, 1, 1]); o.rect(xL + 16, yT - 30, tagW, 19, 'f');
+    o.stroke([0, 0, 0], 0.8); o.rect(xL + 16, yT - 30, tagW, 19, 'S');
+    o.fill([0, 0, 0]); o.text(xL + 22, yT - 25, 13, t.id, { bold: true });
+    o.stroke([0.6, 0.6, 0.6], 0.4); o.line(m, m + FOOT - 6, pw - m, m + FOOT - 6);
+    o.fill([0, 0, 0]);
+    o.text(m, m + 15, 8.5, `${g.name.startsWith(title) ? g.name : title + ' — ' + g.name}${g.qty > 1 ? `  (cut ${g.qty})` : ''}`, { bold: true });
+    o.text(m, m + 3, 7.5, `Sheet ${t.id} · row ${rowName(t.r)} of ${rows}, col ${t.c + 1} of ${cols}${pl.rot ? ' · rotated 90°' : ''} · page ${pageNo} of ${total}`);
+    scaleBar(o, pw - m, m + 3, pw - 2 * m);
+    return { w: pw, h: ph, ops: o.a };
+  }
+
+  function coverPage(plans, title, total) {
+    const [W, H] = paperDims(), pw = Math.max(W, H), ph = Math.min(W, H), m = Math.max(PO.margin, 18), o = Ops();
+    o.fill([0, 0, 0]);
+    o.text(m, ph - m - 16, 16, `${title} — full-scale layout`, { bold: true });
+    o.text(m, ph - m - 30, 8.5, `${new Date().toLocaleDateString()} · units: ${S.u === 'in' ? 'inches' : 'millimetres'} · ${PAPERS.find(p => p[0] === PO.paper)[1]} · ${total} pages`);
+    const colW = Math.min(250, (pw - 2 * m) * 0.36); let y = ph - m - 54;
+    const line = (s, sz = 8, bold = false) => { o.text(m, y, sz, s, { bold }); y -= sz + 4; };
+    line('PRINT AT 100% / "ACTUAL SIZE"', 9, true);
+    ['Turn off "Fit to page" / "Shrink oversized pages".', 'Measure the scale-check bar on a sheet before', 'assembling. It must measure exactly.', ''].forEach(s => line(s));
+    line('ASSEMBLY', 9, true);
+    ['Lay sheets out by row (A, B, ...) and column (1, 2, ...).', 'Trim each sheet along its TRIM & MATCH edges', '(top and left), then lap it over the shaded band of', 'its neighbor so the trimmed edge sits on the blue', 'match line. Line up the crosshairs and tape.', ''].forEach(s => line(s));
+    line('INPUTS', 9, true);
+    const { p } = parsed();
+    toolDef().fields.forEach(f => {
+      if (!f.k || (f.show && !f.show(p))) return;
+      const v = vals()[f.k], disp = f.type === 'select' ? (f.opts.find(q => q[0] === v) || [, v])[1] : v + (f.type === 'len' ? (S.u === 'in' ? ' in' : ' mm') : '');
+      o.text(m, y, 8, f.label); o.text(m + colW, y, 8, disp, { align: 'r' }); y -= 11;
+    });
+    y -= 6; line('PIECES', 9, true);
+    plans.forEach((pl, i) => {
+      const bb = bbox(pl.g.cut.flat()), k = k2pt();
+      line(`${i + 1}. ${pl.g.name}${pl.g.qty > 1 ? ` — cut ${pl.g.qty}` : ''}`, 8, true);
+      line(`   ${fmtPlain((bb[2] - bb[0]) / k)} × ${fmtPlain((bb[3] - bb[1]) / k)} · ${pl.n} sheet${pl.n === 1 ? '' : 's'} (${pl.cols}×${pl.rows})${pl.rot ? ' · rotated' : ''}`);
+    });
+    // tile map
+    const ax0 = m + colW + 24, ax1 = pw - m, ay0 = m, ay1 = ph - m - 44;
+    const boxes = plans.map(pl => [pl.x0, pl.yT - pl.rows * pl.ch, pl.x0 + pl.cols * pl.cw, pl.yT]);
+    const gap = Math.max(...boxes.map(b => b[2] - b[0])) * 0.12;
+    const totW = boxes.reduce((s, b) => s + b[2] - b[0], 0) + gap * (boxes.length - 1), totH = Math.max(...boxes.map(b => b[3] - b[1]));
+    const s = Math.min((ax1 - ax0) / totW, (ay1 - ay0 - 14) / totH);
+    let cx = ax0 + ((ax1 - ax0) - totW * s) / 2;
+    plans.forEach((pl, i) => {
+      const b = boxes[i], ox = cx - b[0] * s, oy = ay0 + ((ay1 - ay0 - 14) - (b[3] - b[1]) * s) / 2 - b[1] * s;
+      const sc = pts => pts.map(q => [q[0] * s, q[1] * s]);
+      pl.tiles.forEach(t => {
+        const skip = PO.skip && t.blank, x = t.cx0 * s + ox, yb = (t.cyT - pl.ch) * s + oy;
+        o.stroke(skip ? [0.75, 0.75, 0.75] : [0, 0.35, 0.85], skip ? 0.4 : 0.7, skip ? [2, 2] : null);
+        o.rect(x, yb, pl.cw * s, pl.ch * s, 'S');
+        if (!skip) { o.fill([0, 0.35, 0.85]); o.text(x + pl.cw * s / 2, yb + pl.ch * s / 2 - 4, Math.max(6, Math.min(14, pl.cw * s * 0.18)), t.id, { align: 'c', bold: true }); }
+      });
+      o.stroke([0, 0, 0], 0.7); pl.g.cut.forEach(l => o.poly(sc(l), ox, oy));
+      o.fill([0, 0, 0]); o.text(cx, oy + b[3] * s + 6, 8, `${i + 1}. ${pl.g.name}`, { bold: true });
+      cx += (b[2] - b[0]) * s + gap * s;
+    });
+    return { w: pw, h: ph, ops: o.a };
+  }
+
+  const cellPlain = c => c == null ? '' : typeof c === 'string' ? c : c.ang !== undefined ? `${c.ang.toFixed(3)}°`
+    : S.u === 'in' ? `${c.len.toFixed(3)}"  (${frac(c.len)})` : c.len.toFixed(1);
+  function tablePages(title) {
+    const tb = res.table; if (!tb || !tb.rows.length) return [];
+    const [W, H] = paperDims(), pw = Math.min(W, H), ph = Math.max(W, H), m = Math.max(PO.margin, 24), aw = pw - 2 * m;
+    const nc = tb.cols.length, c0 = aw * (nc > 2 ? 0.4 : 0.6), cwid = (aw - c0) / Math.max(1, nc - 1), rh = 12;
+    const pages = []; let o = null, y = 0;
+    const head = () => {
+      o = Ops(); pages.push(o); y = ph - m - 14;
+      o.fill([0, 0, 0]); o.text(m, y, 12, `${title} — layout data (${S.u})`, { bold: true }); y -= 22;
+      o.fill([0.35, 0.35, 0.35]); tb.cols.forEach((c, i) => o.text(i ? m + c0 + cwid * i : m, y, 8, c, { bold: true, align: i ? 'r' : 'l' }));
+      y -= 6; o.stroke([0.5, 0.5, 0.5], 0.5); o.line(m, y, pw - m, y); y -= rh;
+    };
+    head();
+    tb.rows.forEach(r => {
+      if (y < m + 20) head();
+      if (r.grp) { o.fill([0.92, 0.92, 0.92]); o.rect(m, y - 3.5, aw, rh, 'f'); o.fill([0, 0, 0]); o.text(m + 3, y, 8, r.grp, { bold: true }); }
+      else { o.fill([0, 0, 0]); for (let i = 0; i < nc; i++) o.text(i ? m + c0 + cwid * i : m, y, 8, cellPlain(r[i]), { align: i ? 'r' : 'l' }); }
+      y -= rh;
+    });
+    (res.notes || []).forEach(n => { if (y < m + 20) head(); o.fill([0.35, 0.35, 0.35]); o.text(m, y - 4, 7.5, '• ' + n); y -= 11; });
+    return pages.map(p => ({ w: pw, h: ph, ops: p.a }));
+  }
+
+  function planAll() {
+    if (!res || !res.pieces.length) return null;
+    const multi = res.pieces.length > 1, plans = res.pieces.map((pc, i) => planPiece(pc, multi ? `${i + 1}-` : ''));
+    return plans.some(p => !p) ? null : plans;
+  }
+
+  function makePDF() {
+    const plans = planAll(); if (!plans) return null;
+    const title = toolDef().name;
+    const specs = []; plans.forEach(pl => pl.tiles.forEach(t => { if (!(PO.skip && t.blank)) specs.push({ pl, t }); }));
+    const tbl = PO.table ? tablePages(title) : [];
+    const total = (PO.cover ? 1 : 0) + specs.length + tbl.length;
+    const pages = [];
+    if (PO.cover) pages.push(coverPage(plans, title, total));
+    specs.forEach(sp => pages.push(tilePage(sp.pl, sp.t, title, pages.length + 1, total)));
+    pages.push(...tbl);
+    return buildPDF(pages);
+  }
+
+  /* ---- dialog ---- */
+  const dlg = $('pdlg'), pf = id => $('p_' + id);
+  pf('paper').innerHTML = PAPERS.map(p => `<option value="${p[0]}">${p[1]}</option>`).join('');
+  const uLbl = () => S.u === 'in' ? 'in' : 'mm';
+  const showLen = pt => { const v = pt / k2pt(); return String(S.u === 'in' ? Math.round(v * 1000) / 1000 : Math.round(v * 10) / 10); };
+  function openPrint() {
+    if (!PO.paper) { PO.paper = S.u === 'mm' ? 'a4' : 'letter'; if (S.u === 'mm') { PO.margin = 6 * MM; PO.ovl = 12 * MM; } }
+    pf('paper').value = PO.paper; pf('orient').value = PO.orient;
+    ['margin', 'ovl', 'cw', 'ch'].forEach(k => pf(k).value = showLen(PO[k]));
+    ['rotate', 'skip', 'cover', 'table', 'labels'].forEach(k => pf(k).checked = PO[k]);
+    dlg.querySelectorAll('.u').forEach(e => e.textContent = `(${uLbl()})`);
+    refreshPrint(); dlg.showModal();
+  }
+  function readPrint() {
+    PO.paper = pf('paper').value; PO.orient = pf('orient').value;
+    ['margin', 'ovl', 'cw', 'ch'].forEach(k => { const v = parseNum(pf(k).value); pf(k).classList.toggle('bad', !isFinite(v) || v < 0); if (isFinite(v) && v >= 0) PO[k] = v * k2pt(); });
+    ['rotate', 'skip', 'cover', 'table', 'labels'].forEach(k => PO[k] = pf(k).checked);
+  }
+  function refreshPrint() {
+    readPrint();
+    dlg.querySelectorAll('.custom').forEach(e => e.classList.toggle('hide', PO.paper !== 'custom'));
+    const plans = planAll(), prev = $('pprev');
+    if (!plans) { prev.innerHTML = ''; $('psum').innerHTML = '<span class="bad">Paper is too small for these margins and overlap.</span>'; $('pgo').disabled = true; return; }
+    $('pgo').disabled = false;
+    const sheets = plans.reduce((s, p) => s + p.n, 0), tbl = PO.table ? tablePages('x').length : 0;
+    $('psum').innerHTML = `<b>${sheets} sheet${sheets === 1 ? '' : 's'}</b> of pattern${PO.cover ? ' + cover' : ''}${tbl ? ` + ${tbl} data page${tbl > 1 ? 's' : ''}` : ''}. ` +
+      plans.map((p, i) => `${plans.length > 1 ? `Piece ${i + 1}: ` : ''}${p.cols}×${p.rows} grid, ${p.o === 'p' ? 'portrait' : 'landscape'}${p.rot ? ', rotated 90°' : ''}`).join('; ') + '.';
+    // preview
+    const boxes = plans.map(pl => [pl.x0, pl.yT - pl.rows * pl.ch, pl.x0 + pl.cols * pl.cw, pl.yT]);
+    const gap = Math.max(...boxes.map(b => b[2] - b[0])) * 0.12; let cx = 0, svgS = '';
+    const fsz = Math.max(...boxes.map(b => Math.max(b[2] - b[0], b[3] - b[1]))) * 0.045;
+    plans.forEach((pl, i) => {
+      const b = boxes[i], dx = cx - b[0];
+      pl.tiles.forEach(t => {
+        const skip = PO.skip && t.blank;
+        svgS += `<rect x="${t.cx0 + dx}" y="${-t.cyT}" width="${pl.cw}" height="${pl.ch}" fill="${skip ? 'none' : 'var(--tile)'}" stroke="${skip ? 'var(--line)' : 'var(--match)'}" stroke-width="1" vector-effect="non-scaling-stroke"${skip ? ' stroke-dasharray="3 3"' : ''}/>`;
+        if (!skip) svgS += `<text x="${t.cx0 + dx + pl.cw / 2}" y="${-t.cyT + pl.ch / 2}" font-size="${Math.min(fsz, pl.cw * 0.2)}" text-anchor="middle" dominant-baseline="middle" fill="var(--match)" font-weight="700">${t.id}</text>`;
+      });
+      pl.g.cut.forEach(l => svgS += `<path d="${'M' + l.map(q => `${(q[0] + dx).toFixed(1)} ${(-q[1]).toFixed(1)}`).join('L')}" fill="none" stroke="var(--cut)" stroke-width="1.4" vector-effect="non-scaling-stroke"/>`);
+      cx += b[2] - b[0] + gap;
+    });
+    const all = [0, -Math.max(...boxes.map(b => b[3])), cx - gap, Math.max(...boxes.map(b => b[3])) - Math.min(...boxes.map(b => b[1]))];
+    const pad = fsz;
+    prev.setAttribute('viewBox', `${all[0] - pad} ${all[1] - pad} ${all[2] + 2 * pad} ${all[3] + 2 * pad}`);
+    prev.innerHTML = svgS;
+  }
+  dlg.addEventListener('input', refreshPrint); dlg.addEventListener('change', refreshPrint);
+  $('pclose').onclick = () => dlg.close();
+  $('pgo').onclick = () => { readPrint(); const b = makePDF(); if (b) download(`${S.tool}-full-scale-${PO.paper}.pdf`, b, 'application/pdf'); };
+  $('prt').onclick = openPrint;
 
   let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (autoFit) fit(); render3d(); }, 100); });
 
