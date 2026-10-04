@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>zbCAD</title>
+<meta name="description" content="Browser-based drafting, layout and takeoff tools for construction: 2D CAD, sheet metal flat patterns, tapered insulation layout and ASCE 7-22 wind zones.">
+<meta property="og:title" content="zbCAD">
+<meta property="og:description" content="Browser-based drafting, layout and takeoff tools for construction.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://zbcad.com/">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c1b19'/%3E%3Cpath d='M9 10h14L9 22h14' fill='none' stroke='%23f4f1ea' stroke-width='2.5' stroke-linecap='square'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f4ef;
+    --text: #1c1b19;
+    --muted: #6b675f;
+    --rule: #d9d4c9;
+    --accent: #9a4a1f;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, "Bitstream Charter", Georgia, serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161614;
+      --text: #e9e5dc;
+      --muted: #9a958a;
+      --rule: #2f2d29;
+      --accent: #e08a55;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--serif);
+    font-size: 19px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 72px 20px 56px;
+  }
+
+  header h1 {
+    font-size: 30px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 20px;
+  }
+  header h1 a { color: inherit; text-decoration: none; }
+  .intro { margin: 0; }
+
+  h2 {
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 64px 0 8px;
+  }
+
+  .tools { list-style: none; margin: 0; padding: 0; }
+  .tool {
+    padding: 22px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .tool:last-child { border-bottom: 0; }
+
+  .tool-name {
+    font-size: 21px;
+    font-weight: 600;
+    color: var(--text);
+    text-decoration: none;
+    background-image: linear-gradient(var(--rule), var(--rule));
+    background-size: 100% 1px;
+    background-position: 0 100%;
+    background-repeat: no-repeat;
+    transition: background-image .15s, color .15s;
+  }
+  .tool-name:hover, .tool-name:focus-visible {
+    color: var(--accent);
+    background-image: linear-gradient(var(--accent), var(--accent));
+    outline: none;
+  }
+  .tool p {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 17px;
+    line-height: 1.55;
+  }
+  .tool .links {
+    margin-top: 8px;
+    font-family: var(--sans);
+    font-size: 13px;
+  }
+  .tool .links a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .tool .links a:hover { text-decoration: underline; }
+  .tool .links span { color: var(--rule); margin: 0 6px; }
+
+  footer {
+    margin-top: 72px;
+    padding-top: 20px;
+    border-top: 1px solid var(--rule);
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  footer p { margin: 0 0 6px; }
+
+  @media (max-width: 480px) {
+    body { font-size: 18px; }
+    .wrap { padding-top: 48px; }
+    header h1 { font-size: 26px; }
+    h2 { margin-top: 48px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1><a href="/">zbCAD</a></h1>
+    <p class="intro">A small set of drafting, layout and takeoff tools for construction work. Each one runs in the browser: no install, no account, just open it and start working.</p>
+  </header>
+
+  <main>
+    <h2>Tools</h2>
+    <ul class="tools">
+
+      <li class="tool">
+        <a class="tool-name" href="cad.html">zbCAD</a>
+        <p>2D drafting with a typed command line, object snaps, layers and associative dimensions. Opens and saves DXF and plots to scaled vector PDF.</p>
+        <div class="links"><a href="cad.html">Open</a><span>/</span><a href="docs.html">Documentation</a></div>
+      </li>
+
+      <li class="tool">
+        <a class="tool-name" href="pattern.html">Sheet Metal Layout</a>
+        <p>Flat patterns for rectangle-to-round transitions, cones, offset reducers, elbows and branches. Exports DXF and SVG, or prints full size across multiple sheets.</p>
+      </li>
+
+      <li class="tool">
+        <a class="tool-name" href="taper.html">Taper Studio</a>
+        <p>Tapered roof insulation layout: drains, crickets and saddles, panel layout and takeoff, and average R-value. Exports a plan along with DXF, Excel and CSV.</p>
+      </li>
+
+      <li class="tool">
+        <a class="tool-name" href="zones/">Wind Zone Visualizer</a>
+        <p>Roof and wall wind zone geometry per ASCE 7-22, drawn to the building's actual dimensions.</p>
+      </li>
+
+    </ul>
+  </main>
+
+  <footer>
+    <p>These tools are built for a desktop with a mouse and keyboard, and are works in progress. Check anything that matters against the governing code and manufacturer data.</p>
+    <p>&copy; <span id="yr">2026</span> zbCAD</p>
+  </footer>
+
+</div>
+<script>document.getElementById('yr').textContent = new Date().getFullYear();</script>
+</body>
+</html>
