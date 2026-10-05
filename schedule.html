@@ -32,7 +32,7 @@ button{font:inherit;color:inherit}
 #content{display:flex;width:max-content;min-height:100%}
 #tpane{position:sticky;left:0;z-index:3;background:var(--panel);border-right:1px solid var(--rule2);overflow:hidden;flex:none}
 #thead{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--rule2)}
-.grid{display:grid;grid-template-columns:44px 270px 62px 104px 104px 110px 56px 54px;width:804px}
+.grid{display:grid;grid-template-columns:44px 270px 120px 62px 104px 104px 110px 56px 54px;width:924px}
 #thead .grid>div{height:44px;display:flex;align-items:flex-end;padding:0 6px 6px;font-size:11px;font-weight:600;color:var(--muted);border-right:1px solid var(--rule)}
 .row{height:26px;border-bottom:1px solid var(--rule)}
 .row>div{position:relative;border-right:1px solid var(--rule);display:flex;align-items:center;min-width:0}
@@ -75,6 +75,15 @@ svg text{font-family:var(--sans)}
 .stl{stroke:var(--status);stroke-width:1.5;stroke-dasharray:5 3}
 .tdl{stroke:var(--accent);stroke-width:1}
 [data-bar]{cursor:grab}
+.dim{opacity:.22}
+.ar.tr{stroke:var(--accent);stroke-width:2}.ah.tr{fill:var(--accent)}
+.row.trc .num span:first-child{color:var(--accent);font-weight:700}
+.bar select{font:inherit;color:inherit;background:transparent;border:1px solid var(--rule2);border-radius:5px;padding:3px 4px;max-width:170px}
+.bar select.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.trd{gap:0}.trd .sw{flex:none;width:8px;height:8px;border-radius:2px;margin-left:6px}
+.leg{display:inline-flex;align-items:center;gap:4px}.leg i{width:9px;height:9px;border-radius:2px;display:inline-block}
+.filt{color:var(--accent);font-weight:600;cursor:pointer}
+.bar button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 #drag{stroke:var(--accent);stroke-width:2;stroke-dasharray:4 3;pointer-events:none}
 .foot{display:flex;gap:18px;align-items:center;padding:5px 12px;border-top:1px solid var(--rule2);background:var(--panel);color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden}
 .foot b{color:var(--text);font-weight:600}
@@ -140,6 +149,7 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
     <button data-cmd="indent" title="Indent (Alt+Shift+→)">→</button>
     <button data-cmd="up" title="Move up (Alt+Shift+↑)">↑</button>
     <button data-cmd="down" title="Move down (Alt+Shift+↓)">↓</button>
+    <button data-cmd="dup" title="Duplicate selected tasks and their subtasks (Ctrl+D)">Duplicate</button>
     <button data-cmd="link" title="Link selected tasks finish-to-start (Ctrl+F2)">Link</button>
     <button data-cmd="unlink" title="Unlink selected tasks (Ctrl+Shift+F2)">Unlink</button>
     <button data-cmd="info" title="Task information (Shift+F2)">Info</button>
@@ -153,14 +163,23 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
     <button data-cmd="zout" title="Zoom out (Ctrl+−)">−</button>
     <button data-cmd="zin" title="Zoom in (Ctrl+=)">+</button>
     <button data-cmd="goto" title="Scroll to project start">Start</button>
+    <button data-cmd="trace" id="btnTrace" title="Highlight what drives the selected task's start (Alt+T)">Trace</button>
     <button data-cmd="help" title="Help (F1)">?</button>
+  </div>
+  <div class="grp"><span>Filter</span>
+    <select id="fShow" title="Which tasks to show">
+      <option value="">All tasks</option><option value="crit">Critical</option>
+      <option value="la2">2-week lookahead</option><option value="la3">3-week lookahead</option><option value="la4">4-week lookahead</option><option value="la6">6-week lookahead</option>
+    </select>
+    <select id="fTrade" title="Show one trade"></select>
+    <button data-cmd="color" id="btnColor" title="Color bars by trade instead of critical path">Color by trade</button>
   </div>
 </header>
 
 <div id="main">
   <div id="content">
     <div id="tpane">
-      <div id="thead"><div class="grid"><div>#</div><div>Task name</div><div>Duration</div><div>Start</div><div>Finish</div><div>Predecessors</div><div>Float</div><div>% done</div></div></div>
+      <div id="thead"><div class="grid"><div>#</div><div>Task name</div><div>Trade</div><div>Duration</div><div>Start</div><div>Finish</div><div>Predecessors</div><div>Float</div><div>% done</div></div></div>
       <div id="tbody"></div>
       <div id="resizer" title="Drag to resize"></div>
     </div>
@@ -170,6 +189,7 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
 
 <footer class="foot" id="foot"></footer>
 <div id="toast"></div>
+<datalist id="tradeList"></datalist>
 <input type="file" id="fileIn" accept=".json,.xml,application/json,text/xml" hidden>
 <div id="print"></div>
 
@@ -188,7 +208,7 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
 
 <dialog id="dlgInfo"><form method="dialog">
   <h3>Task information</h3>
-  <label>Name <input name="name"></label>
+  <div class="two" style="grid-template-columns:2fr 1fr"><label>Name <input name="name"></label><label>Trade <input name="trade" list="tradeList"></label></div>
   <div class="three"><label>Duration <input name="dur"></label><label>% complete <input name="pct" type="number" min="0" max="100"></label><label>Predecessors <input name="pred" placeholder="e.g. 4, 6SS+2d"></label></div>
   <div class="two"><label>Constraint <select name="ct">
     <option value="">As soon as possible</option><option value="SNET">Start no earlier than</option><option value="SNLT">Start no later than</option>
@@ -206,15 +226,20 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
   <label>Sheet (landscape) <select name="paper">
     <option value="letter">Letter — 11 × 8.5 in</option><option value="legal">Legal — 14 × 8.5 in</option>
     <option value="tabloid" selected>Tabloid — 17 × 11 in</option><option value="archd">ARCH D — 36 × 24 in</option></select></label>
-  <p style="font-size:12px;color:var(--muted);margin:0">The whole schedule is fitted to the sheet width and split across pages by rows. Collapsed summaries stay collapsed. Choose “Save as PDF” in your browser's print dialog for a PDF, and set margins to Default.</p>
+  <p style="font-size:12px;color:var(--muted);margin:0 0 8px">Prints what's on screen. For a lookahead or one sub's tasks, set the Filter first — a lookahead fits the timeline to its weeks.</p>
+  <p style="font-size:12px;color:var(--muted);margin:0">Otherwise the whole schedule is fitted to the sheet width and split across pages by rows. Collapsed summaries stay collapsed. Choose “Save as PDF” in your browser's print dialog for a PDF, and set margins to Default.</p>
   <menu><button value="cancel">Cancel</button><button value="ok" class="pri">Print</button></menu>
 </form></dialog>
 
 <dialog id="dlgHelp"><form method="dialog" class="help">
   <h3>How it works</h3>
   <p>Type tasks in the table. Durations are in workdays (<code>5</code>, <code>5d</code>, <code>2w</code>); <code>0</code> makes a milestone. Indent a task under another to make the one above it a summary.</p>
-  <p><b>Predecessors</b> use row numbers: <code>4</code> (finish-to-start), <code>4SS</code>, <code>4FF+2d</code>, <code>4SF</code>, <code>7FS-1d</code> (lead). Separate several with commas. You can also drag a bar up or down onto another bar to link them.</p>
+  <p><b>Predecessors</b> use row numbers: <code>4</code> (finish-to-start), <code>4SS</code>, <code>4FF+2d</code>, <code>4SF</code>, <code>7FS-1d</code> (lead). Use <code>ed</code> or <code>ew</code> for calendar-day lags that run through weekends and holidays, like cure time: <code>4FS+7ed</code>. Separate several with commas. You can also drag a bar up or down onto another bar to link them.</p>
   <p>Typing a date in <b>Start</b> or <b>Finish</b> sets a start/finish-no-earlier-than constraint, like MS Project. Dragging a bar sideways does the same. Clear it in Info.</p>
+  <p><b>Paste from Excel</b>: copy cells and paste into any cell here — columns fill left to right from that cell in table order (Name, Trade, Duration, Start, Finish, Predecessors, Float is skipped, % done). Paste with rows selected (not in a cell) to insert the rows above.</p>
+  <p><b>Trade</b> labels who does the work. Use <b>Color by trade</b> and the <b>Filter</b> menus for a sub's tasks or a 2–6 week lookahead; Print prints what's shown.</p>
+  <p><b>Status date</b> (in Settings) drives updates: tasks not started yet can't start before the day after it, and unfinished work on in-progress tasks is pushed past it. Tasks that slip show negative float.</p>
+  <p><b>Trace</b> highlights the chain of tasks that sets the selected task's start. Info and the bar tooltip also say what drives each start.</p>
   <p><b>Float</b> is total float in workdays; tasks with zero or negative float are critical and shown in red. A gray bar under a task is its baseline.</p>
   <table>
     <tr><td><code>Enter</code></td><td>Commit and move down</td></tr>
@@ -223,6 +248,9 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
     <tr><td><code>Alt+Shift+→ ← ↑ ↓</code></td><td>Indent, outdent, move up, move down</td></tr>
     <tr><td><code>Ctrl+F2</code> / <code>Ctrl+Shift+F2</code></td><td>Link / unlink selected</td></tr>
     <tr><td><code>Shift+F2</code></td><td>Task information (or double-click the # cell or a bar)</td></tr>
+    <tr><td><code>Ctrl+C</code> / <code>Ctrl+X</code> / <code>Ctrl+V</code></td><td>Copy, cut, paste selected rows (with subtasks). Paste goes above the selected row.</td></tr>
+    <tr><td><code>Ctrl+D</code></td><td>Duplicate selected rows below themselves</td></tr>
+    <tr><td><code>Alt+T</code></td><td>Trace what drives the selected task</td></tr>
     <tr><td><code>Ctrl+Z</code> / <code>Ctrl+Y</code></td><td>Undo / redo</td></tr>
     <tr><td><code>Ctrl+S</code> / <code>Ctrl+O</code> / <code>Ctrl+P</code></td><td>Save / open / print</td></tr>
   </table>
@@ -292,7 +320,14 @@ function buildCal(p){
     idxFinish:d=>lb(d+1)-o,       // end of last workday on/before d
     dateStart:i=>at(i+o),
     dateFinish:f=>at(f-1+o),
-    workBetween:(a,b)=>lb(b+1)-lb(a)};
+    workBetween:(a,b)=>lb(b+1)-lb(a),
+    // Elapsed-time helpers. A "moment" is the morning of a calendar date.
+    mS:i=>at(i+o),                // start boundary i → moment
+    mF:f=>at(f-1+o)+1,            // finish boundary f → moment (morning after last workday)
+    iS:m=>lb(m)-o,                // earliest start boundary at or after moment m
+    iF:m=>lb(m-1)-o+1,            // earliest finish boundary at or after moment m
+    lS:m=>lb(m+1)-o-1,            // latest start boundary at or before moment m
+    lF:m=>lb(m)-o};               // latest finish boundary at or before moment m
 }
 
 /* ===== Project model ===== */
@@ -301,12 +336,12 @@ function blankProject(){
   let d=todayDn();while(dow(d)!==1)d++;
   return {v:1,name:'Untitled schedule',start:isoOf(d),status:null,calendar:{workdays:[1,2,3,4,5],holidays:[]},tasks:[],nextUid:1};
 }
-function newTask(name,level){return {uid:P.nextUid++,name:name||'',dur:1,level:level||0,preds:[],cons:null,pct:0,as:null,af:null,bs:null,bf:null,notes:'',collapsed:false};}
+function newTask(name,level){return {uid:P.nextUid++,name:name||'',dur:1,level:level||0,preds:[],cons:null,pct:0,as:null,af:null,bs:null,bf:null,notes:'',trade:'',collapsed:false};}
 const ser=()=>JSON.stringify(P,(k,v)=>k[0]==='_'?undefined:v);
 function sanitize(p){
   const b=blankProject();p=Object.assign(b,p||{});
   p.calendar=Object.assign({workdays:[1,2,3,4,5],holidays:[]},p.calendar||{});
-  p.tasks=(p.tasks||[]).map(t=>Object.assign({uid:0,name:'',dur:1,level:0,preds:[],cons:null,pct:0,as:null,af:null,bs:null,bf:null,notes:'',collapsed:false},t));
+  p.tasks=(p.tasks||[]).map(t=>Object.assign({uid:0,name:'',dur:1,level:0,preds:[],cons:null,pct:0,as:null,af:null,bs:null,bf:null,notes:'',trade:'',collapsed:false},t));
   let mx=0;p.tasks.forEach(t=>{mx=Math.max(mx,t.uid||0);});
   p.tasks.forEach(t=>{if(!t.uid)t.uid=++mx;});
   p.nextUid=Math.max(p.nextUid||1,mx+1);
@@ -332,7 +367,7 @@ function linkGraph(){
   for(const t of leaf)for(const p of t.preds){
     const q=U.get(p.uid);if(!q)continue;
     if(q._sum){t._err='Links to summary tasks are ignored — link to a task inside it';continue;}
-    t._preds.push({t:q,type:p.type,lag:p.lag||0});q._succ.push({t,type:p.type,lag:p.lag||0});
+    t._preds.push({t:q,type:p.type,lag:p.lag||0,el:!!p.el});q._succ.push({t,type:p.type,lag:p.lag||0,el:!!p.el});
   }
   for(const t of T)if(t._sum&&t.preds.length)t._err='Links on summary tasks are ignored';
   return leaf;
@@ -347,33 +382,58 @@ function schedule(){
   if(cyc){const s=new Set(order);for(const t of leaf)if(!s.has(t)){t._err='Part of a circular link — check predecessors';order.push(t);}}
   for(const t of leaf){t._es=t._ef=t._ls=t._lf=null;}
   const cIdx=t=>{if(!t.cons||!t.cons.date||!t.cons.type)return null;const d=dn(t.cons.date);return {type:t.cons.type,s:cal.idxStart(d),f:cal.idxFinish(d)};};
+  // Link math. fromFin/toFin: which end of predecessor/successor the link ties.
+  // Workday lags shift boundary indexes; elapsed lags (el) shift calendar days.
+  const fwd=(p,q)=>{ // earliest allowed successor boundary (start or finish per link type)
+    const fromFin=p.type[0]==='F',toFin=p.type[1]==='F',pt=fromFin?q._ef:q._es;
+    if(!p.el)return pt+p.lag;
+    const m=(fromFin?cal.mF(pt):cal.mS(pt))+p.lag;return toFin?cal.iF(m):cal.iS(m);
+  };
+  const bwd=(s,u)=>{ // latest allowed predecessor boundary given successor late dates
+    const fromFin=s.type[0]==='F',toFin=s.type[1]==='F',pt=toFin?u._lf:u._ls;
+    if(!s.el)return pt-s.lag;
+    const m=(toFin?cal.mF(pt):cal.mS(pt))-s.lag;return fromFin?cal.lF(m):cal.lS(m);
+  };
+  const stIdx=P.status?cal.idxFinish(dn(P.status)):null; // first workday after status date
   // forward pass
   for(const t of order){
-    const D=t.dur;let es=0,st=true;
+    const D=t.dur;let es=0,st=true,why='start';const cand=[];
     for(const p of t._preds){
-      const q=p.t;if(q._es==null)continue;let v,s;
-      switch(p.type){case 'SS':v=q._es+p.lag;s=true;break;case 'FF':v=q._ef+p.lag-D;s=false;break;case 'SF':v=q._es+p.lag-D;s=true;break;default:v=q._ef+p.lag;s=false;}
-      if(v>es||(v===es&&!s)){es=v;st=s;}
+      const q=p.t;if(q._es==null)continue;
+      const r=fwd(p,q),v=p.type[1]==='F'?r-D:r,s=p.type[0]==='S';cand.push([p,v]);
+      if(v>es||(v===es&&!s)){es=v;st=s;why='pred';}
     }
     const c=cIdx(t);
     if(c){
+      const e0=es;
       if(c.type==='SNET'&&c.s>es){es=c.s;st=true;}
       else if(c.type==='FNET'&&c.f-D>es){es=c.f-D;st=false;}
       else if(c.type==='MSO'){es=c.s;st=true;}
       else if(c.type==='MFO'){es=c.f-D;st=false;}
+      if(es!==e0)why='cons';
     }
-    if(t.as){es=cal.idxStart(dn(t.as));st=true;}
-    let ef=es+D;
-    if(t.af)ef=Math.max(es,cal.idxFinish(dn(t.af)));
-    t._es=es;t._ef=ef;t._st=st;
+    let ef;
+    if(t.as){
+      es=cal.idxStart(dn(t.as));st=true;why='actual';
+      if(t.af)ef=Math.max(es,cal.idxFinish(dn(t.af)));
+      else if(stIdx!=null){ // in progress: remaining work resumes after the status date
+        const rem=Math.max(0,Math.round(D*(100-Math.min(99,t.pct))/100));
+        ef=Math.max(es+D-rem,stIdx)+rem;
+      }else ef=es+D;
+    }else{
+      if(stIdx!=null&&!t.af&&es<stIdx){es=stIdx;st=true;why='status';}
+      ef=t.af?Math.max(es,cal.idxFinish(dn(t.af))):es+D;
+    }
+    t._es=es;t._ef=ef;t._st=st;t._why=why;
+    t._drv=why==='pred'?cand.filter(x=>x[1]===es).map(x=>x[0]):[];
   }
   let pf=0;for(const t of leaf)pf=Math.max(pf,t._ef);
   // backward pass
   for(let k=order.length-1;k>=0;k--){
     const t=order[k],D=t._ef-t._es;let lf=pf;
     for(const s of t._succ){
-      const u=s.t;if(u._lf==null)continue;let v;
-      switch(s.type){case 'SS':v=u._ls-s.lag+D;break;case 'FF':v=u._lf-s.lag;break;case 'SF':v=u._lf-s.lag+D;break;default:v=u._ls-s.lag;}
+      const u=s.t;if(u._lf==null)continue;
+      const r=bwd(s,u),v=s.type[0]==='F'?r:r+D;
       if(v<lf)lf=v;
     }
     const c=cIdx(t);
@@ -389,9 +449,7 @@ function schedule(){
   let crit=0;
   for(const t of leaf){
     let ff=pf-t._ef;
-    for(const s of t._succ){const u=s.t;let v;
-      switch(s.type){case 'SS':v=u._es-s.lag-t._es;break;case 'FF':v=u._ef-s.lag-t._ef;break;case 'SF':v=u._ef-s.lag-t._es;break;default:v=u._es-s.lag-t._ef;}
-      if(v<ff)ff=v;}
+    for(const s of t._succ){const u=s.t,v=(s.type[1]==='F'?u._ef:u._es)-fwd(s,t);if(v<ff)ff=v;}
     t._ff=ff;
     t._ms=t.dur===0&&t._ef===t._es;
     if(t._ms){
@@ -425,7 +483,7 @@ function schedule(){
 /* ===== Predecessor text ===== */
 function fmtPreds(t){
   return t.preds.map(p=>{const q=U.get(p.uid);if(!q)return '';let s=String(q._row);
-    if(p.type!=='FS'||p.lag)s+=p.type;if(p.lag)s+=(p.lag>0?'+':'')+p.lag+'d';return s;}).filter(Boolean).join(', ');
+    if(p.type!=='FS'||p.lag)s+=p.type;if(p.lag)s+=(p.lag>0?'+':'')+p.lag+(p.el?'ed':'d');return s;}).filter(Boolean).join(', ');
 }
 function parsePreds(text,t){
   const out=[],T=P.tasks;
@@ -437,10 +495,16 @@ function parsePreds(text,t){
     if(!q)return {err:`There's no row ${m[1]}.`};
     if(q===t)return {err:'A task can’t be its own predecessor.'};
     if(isSumIdx(+m[1]-1))return {err:`Row ${m[1]} is a summary task — link to a task inside it.`};
-    let lag=0;
-    if(m[3]){const k=unitMul(m[5]||'d');if(k==null)return {err:`Unknown lag unit “${m[5]}”. Use d or w.`};lag=Math.round(parseFloat(m[4])*k)*(m[3]==='-'?-1:1);}
+    let lag=0,el=false;
+    if(m[3]){
+      let u=(m[5]||'d').toLowerCase();el=/^e/.test(u);if(el)u=u.slice(1)||'d';
+      const k=el?{d:1,w:7,mo:30}[u.replace(/^(dy|dys|day|days)$/,'d').replace(/^(wk|wks|week|weeks)$/,'w').replace(/^(mon|mons|month|months)$/,'mo')]:unitMul(u);
+      if(k==null)return {err:`Unknown lag unit “${m[5]}”. Use d or w for workdays, ed or ew for calendar days.`};
+      lag=Math.round(parseFloat(m[4])*k)*(m[3]==='-'?-1:1);
+      if(!lag)el=false;
+    }
     const i=out.findIndex(x=>x.uid===q.uid);if(i>=0)out.splice(i,1);
-    out.push({uid:q.uid,type:(m[2]||'FS').toUpperCase(),lag});
+    const o={uid:q.uid,type:(m[2]||'FS').toUpperCase(),lag};if(el)o.el=true;out.push(o);
   }
   return {preds:out};
 }
@@ -455,6 +519,7 @@ function exportMSP(){
   L.push('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>','<Project xmlns="http://schemas.microsoft.com/project">');
   L.push(`<Name>${xe(P.name)}</Name><ScheduleFromStart>1</ScheduleFromStart><StartDate>${st(dn(P.start))}</StartDate>`);
   L.push('<CalendarUID>1</CalendarUID><DefaultStartTime>08:00:00</DefaultStartTime><DefaultFinishTime>17:00:00</DefaultFinishTime><MinutesPerDay>480</MinutesPerDay><MinutesPerWeek>2400</MinutesPerWeek><DaysPerMonth>20</DaysPerMonth>');
+  L.push('<ExtendedAttributes><ExtendedAttribute><FieldID>188743731</FieldID><FieldName>Text1</FieldName><Alias>Trade</Alias></ExtendedAttribute></ExtendedAttributes>');
   L.push('<Calendars><Calendar><UID>1</UID><Name>Standard</Name><IsBaseCalendar>1</IsBaseCalendar><WeekDays>');
   const wk=new Set(P.calendar.workdays);
   for(let d=0;d<7;d++){
@@ -474,7 +539,8 @@ function exportMSP(){
     if(!t._sum&&t.af)x+=`<ActualFinish>${t.af}T17:00:00</ActualFinish>`;
     if(!t._sum){const c=t.cons&&t.cons.type?t.cons:null;x+=`<ConstraintType>${c?CT2N[c.type]:0}</ConstraintType>`;if(c&&c.date)x+=`<ConstraintDate>${c.date}T${/^F|MFO/.test(c.type)?'17:00:00':'08:00:00'}</ConstraintDate>`;}
     if(t.notes)x+=`<Notes>${xe(t.notes)}</Notes>`;
-    if(!t._sum)for(const p of t.preds)if(U.has(p.uid))x+=`<PredecessorLink><PredecessorUID>${p.uid}</PredecessorUID><Type>${LT2N[p.type]}</Type><CrossProject>0</CrossProject><LinkLag>${p.lag*4800}</LinkLag><LagFormat>7</LagFormat></PredecessorLink>`;
+    if(!t._sum)for(const p of t.preds)if(U.has(p.uid))x+=`<PredecessorLink><PredecessorUID>${p.uid}</PredecessorUID><Type>${LT2N[p.type]}</Type><CrossProject>0</CrossProject><LinkLag>${p.el?p.lag*14400:p.lag*4800}</LinkLag><LagFormat>${p.el?8:7}</LagFormat></PredecessorLink>`;
+    if(t.trade)x+=`<ExtendedAttribute><FieldID>188743731</FieldID><Value>${xe(t.trade)}</Value></ExtendedAttribute>`;
     if(!t._sum&&t.bs)x+=`<Baseline><Number>0</Number><Start>${t.bs}T08:00:00</Start><Finish>${t.bf}T17:00:00</Finish><Duration>${du(cal.workBetween(dn(t.bs),dn(t.bf)))}</Duration></Baseline>`;
     L.push(x+'</Task>');
   });
@@ -510,25 +576,29 @@ function importMSP(text){
       p.calendar.holidays=[...hol].sort((a,b)=>a[0]-b[0]).map(([d,n])=>({d:isoOf(d),n}));
     }
   }
+  let tradeFid='188743731';
+  const eas=kids(root,'ExtendedAttributes')[0];
+  if(eas)for(const a of kids(eas,'ExtendedAttribute'))if(/^(trade|responsible|sub(contractor)?|company)$/i.test(kid(a,'Alias'))){tradeFid=kid(a,'FieldID');break;}
   const tasksEl=kids(root,'Tasks')[0];if(!tasksEl)throw new Error('No tasks found in that file.');
   const map=new Map(),raw=[];let uid=1;
   const hours=s=>{const m=String(s).match(/PT(\d+(?:\.\d+)?)H(\d+(?:\.\d+)?)M/);return m?+m[1]+(+m[2])/60:0;};
   for(const x of kids(tasksEl,'Task')){
     if(kid(x,'IsNull')==='1'||kid(x,'OutlineLevel')==='0'||kid(x,'UID')==='0')continue;
     const t={uid:uid++,name:kid(x,'Name'),level:Math.max(0,(+kid(x,'OutlineLevel')||1)-1),preds:[],cons:null,pct:+kid(x,'PercentComplete')||0,
-      as:kid(x,'ActualStart').slice(0,10)||null,af:kid(x,'ActualFinish').slice(0,10)||null,bs:null,bf:null,notes:kid(x,'Notes'),collapsed:false};
+      as:kid(x,'ActualStart').slice(0,10)||null,trade:'',af:kid(x,'ActualFinish').slice(0,10)||null,bs:null,bf:null,notes:kid(x,'Notes'),collapsed:false};
     t.dur=kid(x,'Milestone')==='1'?0:Math.max(0,Math.round(hours(kid(x,'Duration'))*60/mpd));
     const ct=N2CT[+kid(x,'ConstraintType')||0],cd=kid(x,'ConstraintDate');if(ct&&cd)t.cons={type:ct,date:cd.slice(0,10)};
+    for(const a of kids(x,'ExtendedAttribute'))if(kid(a,'FieldID')===tradeFid)t.trade=kid(a,'Value');
     for(const b of kids(x,'Baseline'))if(kid(b,'Number')==='0'&&kid(b,'Start')){t.bs=kid(b,'Start').slice(0,10);t.bf=kid(b,'Finish').slice(0,10);}
     t._links=kids(x,'PredecessorLink').map(l=>{
       const lf=+kid(l,'LagFormat')||7,lag=+kid(l,'LinkLag')||0;
       const elapsed=[4,6,8,10,12].includes(lf);
-      const days=lf===19||lf===20?0:elapsed?lag/10/1440*5/7:lag/10/mpd;
-      return {uid:kid(l,'PredecessorUID'),type:N2LT[+kid(l,'Type')]||'FS',lag:Math.round(days)};
+      const days=lf===19||lf===20?0:elapsed?lag/10/1440:lag/10/mpd;
+      const o={uid:kid(l,'PredecessorUID'),type:N2LT[+kid(l,'Type')]||'FS',lag:Math.round(days)};if(elapsed&&o.lag)o.el=true;return o;
     });
     map.set(kid(x,'UID'),t.uid);raw.push(t);
   }
-  for(const t of raw){t.preds=t._links.filter(l=>map.has(l.uid)).map(l=>({uid:map.get(l.uid),type:l.type,lag:l.lag}));delete t._links;}
+  for(const t of raw){t.preds=t._links.filter(l=>map.has(l.uid)).map(l=>Object.assign({uid:map.get(l.uid),type:l.type,lag:l.lag},l.el?{el:true}:{}));delete t._links;}
   p.tasks=raw;p.nextUid=uid;
   return p;
 }
@@ -536,9 +606,9 @@ function importMSP(text){
 /* ===== CSV ===== */
 function exportCSV(){
   const q=v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
-  const rows=[['ID','Outline level','Task name','Duration (workdays)','Start','Finish','Predecessors','Total float','Free float','% complete','Critical','Baseline start','Baseline finish','Constraint','Constraint date','Notes']];
+  const rows=[['ID','Outline level','Task name','Trade','Duration (workdays)','Start','Finish','Predecessors','Total float','Free float','% complete','Critical','Baseline start','Baseline finish','Constraint','Constraint date','Notes']];
   for(const t of P.tasks){
-    rows.push([t._row,t.level+1,t.name,t._sum?t._sdur:t.dur,isoOf(t._sd),isoOf(t._fd),t._sum?'':fmtPreds(t),t._sum?'':t._tf,t._sum?'':t._ff,t._sum?t._pct:t.pct,t._crit?'Yes':'',
+    rows.push([t._row,t.level+1,t.name,t.trade||'',t._sum?t._sdur:t.dur,isoOf(t._sd),isoOf(t._fd),t._sum?'':fmtPreds(t),t._sum?'':t._tf,t._sum?'':t._ff,t._sum?t._pct:t.pct,t._crit?'Yes':'',
       t._sum?(t._bs!=null?isoOf(t._bs):''):(t.bs||''),t._sum?(t._bf!=null?isoOf(t._bf):''):(t.bf||''),t.cons?t.cons.type:'',t.cons?t.cons.date:'',t.notes]);
   }
   return rows.map(r=>r.map(q).join(',')).join('\r\n');
@@ -555,7 +625,8 @@ function sampleProject(){
     [0,'Roof Area B'],[1,'Tear-off & dry-in',6,'8'],[1,'Deck repairs',3,'14SS+2d'],[1,'Tapered insulation',7,'14, 15, 10'],[1,'TPO membrane',8,'16SS+2d, 11'],[1,'Perimeter flashings',4,'17FF+2d'],
     [0,'Sheet metal'],[1,'Fabricate coping & edge metal',8,'4FS+5d'],[1,'Install coping',5,'20, 12'],[1,'Gutters & downspouts',3,'21SS+2d, 18'],
     [0,'Closeout'],[1,'Punch list walk',1,'18, 22'],[1,'Punch list completion',4,'24'],[1,'Final inspection',1,'25'],[1,'Substantial completion',0,'26'],[1,'O&M manuals & warranties',5,'27']];
-  P.tasks=rows.map(r=>{const t=newTask(r[1],r[0]);t.dur=r[2]??1;return t;});
+  const TR=[[/submittal|review|procure|notice|mobilize|punch|inspection|completion|manual/i,'General'],[/deck/i,'Carpentry'],[/coping|edge metal|gutter/i,'Sheet metal'],[/tear|insul|tpo|flashing/i,'Roofing']];
+  P.tasks=rows.map(r=>{const t=newTask(r[1],r[0]);t.dur=r[2]??1;if(r.length>2){const m=TR.find(x=>x[0].test(r[1]));if(m)t.trade=m[1];}return t;});
   schedule();
   rows.forEach((r,i)=>{if(r[3]){const res=parsePreds(r[3],P.tasks[i]);if(res.preds)P.tasks[i].preds=res.preds;}});
   return P;
@@ -580,14 +651,64 @@ let asT;function autosave(){clearTimeout(asT);asT=setTimeout(()=>{try{localStora
 function refresh(){schedule();render();autosave();}
 
 /* ===== Visible rows ===== */
+/* ===== Filters and trades ===== */
+let fShow='',fTrade=''; // fShow: '', 'crit', 'la2' 'la3' 'la4' 'la6'; fTrade: '' all, '\u0000' none, else trade name
+const NOTRADE='\u0000';
+const PALETTE=['#4e79a7','#e1813a','#59a14f','#b07aa1','#d4a62a','#5fa8a3','#9c755f','#e0698c','#7d8a99','#8fb33f','#c45a5a','#6f6fc4'];
+function tradeList(){return [...new Set(P.tasks.filter(t=>!t._sum&&t.trade).map(t=>t.trade))].sort((a,b)=>a.localeCompare(b));}
+function tradeColor(tr){if(!tr)return null;const L=tradeList(),i=L.indexOf(tr);return i<0?null:PALETTE[i%PALETTE.length];}
+function laWin(){ // lookahead window: Monday of the week after the status date (or today) through N weeks
+  const wk=+fShow.slice(2);if(!wk)return null;
+  let a=P.status?dn(P.status)+1:todayDn();
+  if(dow(a)===6||dow(a)===0)while(dow(a)!==1)a++;else while(dow(a)!==1)a--; // weekend → next week
+  return [a,a+wk*7-1,wk];
+}
+function filterLabel(){
+  const w=laWin(),parts=[];
+  if(fShow==='crit')parts.push('Critical tasks');
+  if(w)parts.push(`${w[2]}-week lookahead ${fmtD(w[0])} – ${fmtD(w[1])}`);
+  if(fTrade)parts.push(fTrade===NOTRADE?'No trade':'Trade: '+fTrade);
+  return parts.join(' · ');
+}
+function matches(t){
+  if(fTrade&&(t.trade||NOTRADE)!==fTrade)return false;
+  if(fShow==='crit'&&!t._crit)return false;
+  const w=laWin();if(w&&(t._done||t._sd>w[1]||t._fd<w[0]))return false;
+  return true;
+}
 function visible(){
+  const T=P.tasks;let keep=null;
+  if(fShow||fTrade){ // keep matching tasks plus their summary ancestors
+    keep=new Set();
+    T.forEach((t,i)=>{if(t._sum||!matches(t))return;keep.add(i);let lv=t.level;for(let j=i-1;j>=0&&lv>0;j--)if(T[j].level<lv){keep.add(j);lv=T[j].level;}});
+  }
   const out=[];let hide=Infinity;
-  P.tasks.forEach(t=>{if(t.level>hide)return;hide=Infinity;out.push(t);if(t._sum&&t.collapsed)hide=t.level;});
+  T.forEach((t,i)=>{if(t.level>hide)return;hide=Infinity;if(keep&&!keep.has(i))return;out.push(t);if(t._sum&&t.collapsed)hide=t.level;});
   return out;
 }
 
 /* ===== Render table ===== */
 const CT_LABEL={SNET:'Start no earlier than',SNLT:'Start no later than',FNET:'Finish no earlier than',FNLT:'Finish no later than',MSO:'Must start on',MFO:'Must finish on'};
+/* ===== Driving trace ===== */
+let trace=false;
+function lagTxt(p){return p.type+(p.lag?(p.lag>0?'+':'')+p.lag+(p.el?'ed':'d'):'');}
+function whyText(t){
+  if(t._sum)return '';
+  switch(t._why){
+    case 'pred':return t._drv.map(p=>`row ${p.t._row} (${lagTxt(p)})`).join(', ').replace(/^r/,'R');
+    case 'cons':return `${CT_LABEL[t.cons.type]} ${fmtD(dn(t.cons.date))}`;
+    case 'status':return `Status date ${fmtD(dn(P.status))} (not started yet)`;
+    case 'actual':return `Actual start ${fmtD(dn(t.as))}`;
+    default:return 'Project start (Settings)';
+  }
+}
+function traceSet(){ // tasks and links on the driving chain back from the selected task
+  if(!trace||sel.size!==1)return null;
+  const t0=U.get([...sel][0]);if(!t0||t0._sum)return null;
+  const tasks=new Set([t0.uid]),links=new Set(),q=[t0];
+  while(q.length){const t=q.pop();for(const p of t._drv||[]){links.add(p.t.uid+'>'+t.uid);if(!tasks.has(p.t.uid)){tasks.add(p.t.uid);q.push(p.t);}}}
+  return {tasks,links,root:t0};
+}
 function rowHTML(t){
   const s=t._sum,ro=s?' readonly':'';
   const marks=(t.cons&&t.cons.type?`<i title="${esc(CT_LABEL[t.cons.type]+' '+fmtD(dn(t.cons.date)))}">${t.cons.type}</i>`:'')+(t._err?`<i class="e" title="${esc(t._err)}">!</i>`:'')+(t.notes?`<i title="${esc(t.notes)}">n</i>`:'');
@@ -595,6 +716,7 @@ function rowHTML(t){
   return `<div class="row grid${s?' sum':''}${t._crit?' crit':''}${sel.has(t.uid)?' sel':''}" data-uid="${t.uid}">`+
    `<div class="num" data-act="sel"><span>${t._row}</span><span class="m">${marks}</span></div>`+
    `<div class="name nm" style="--l:${t.level}">${s?`<button class="tog" data-act="tog" tabindex="-1">${t.collapsed?'▸':'▾'}</button>`:'<span class="tog"></span>'}<input data-col="name" value="${esc(t.name)}"></div>`+
+   `<div class="trd">${!s&&t.trade&&prefs.color==='trade'?`<span class="sw" style="background:${tradeColor(t.trade)}"></span>`:''}<input data-col="trade" list="tradeList" value="${s?'':esc(t.trade||'')}"${ro}></div>`+
    `<div class="r"><input data-col="dur" value="${s?t._sdur+'d':t.dur+'d'}"${ro}></div>`+
    `<div><input data-col="start" value="${fmtD(t._sd)}"${ro}></div>`+
    `<div><input data-col="finish" value="${fmtD(t._fd)}"${ro}></div>`+
@@ -607,21 +729,37 @@ function render(){
   if(!f&&a&&a.dataset&&a.dataset.col&&tbody.contains(a)){f={uid:a.closest('.row').dataset.uid,col:a.dataset.col,ss:a.selectionStart,se:a.selectionEnd,val:a.value!==a.defaultValue&&a.dataset.col!=='new'?null:undefined};}
   visRows=visible();
   tbody.innerHTML=visRows.map(rowHTML).join('')+
-    `<div class="row grid newrow" data-uid="new"><div class="num"></div><div class="name"><span class="tog"></span><input data-col="new" placeholder="Add a task…"></div><div></div><div></div><div></div><div></div><div></div><div></div></div>`;
-  renderGantt();renderFoot();
+    `<div class="row grid newrow" data-uid="new"><div class="num"></div><div class="name"><span class="tog"></span><input data-col="new" placeholder="Add a task…"></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>`;
+  $('#tradeList').innerHTML=tradeList().map(x=>`<option value="${esc(x)}">`).join('');
+  renderGantt();renderFoot();markTrace();syncFilterUI();
   if(f){
     const row=tbody.querySelector(`.row[data-uid="${f.uid}"]`),inp=row&&row.querySelector(`[data-col="${f.col}"]`);
     if(inp){inp.focus({preventScroll:true});try{if(f.ss!=null&&!f.sel)inp.setSelectionRange(f.ss,f.se);else inp.select();}catch(e){}}
   }
 }
+function syncFilterUI(){
+  const L=tradeList(),ft=$('#fTrade');
+  if(fTrade&&fTrade!==NOTRADE&&!L.includes(fTrade))fTrade='';
+  ft.innerHTML='<option value="">All trades</option>'+L.map(x=>`<option>${esc(x)}</option>`).join('')+(P.tasks.some(t=>!t._sum&&!t.trade)&&L.length?`<option value="${NOTRADE}">(No trade)</option>`:'');
+  ft.value=fTrade;$('#fShow').value=fShow;
+  ft.classList.toggle('on',!!fTrade);$('#fShow').classList.toggle('on',!!fShow);
+  $('#btnColor').classList.toggle('on',prefs.color==='trade');
+}
+$('#fShow').addEventListener('change',e=>{fShow=e.target.value;render();if(laWin())setTimeout(()=>scrollToDate(laWin()[0]-7),0);});
+$('#foot').addEventListener('click',e=>{if(e.target.closest('#clearFilt')){fShow=fTrade='';render();}});
+$('#fTrade').addEventListener('change',e=>{fTrade=e.target.value;render();});
+function markTrace(){const T=traceSet();tbody.querySelectorAll('.row').forEach(r=>r.classList.toggle('trc',!!T&&T.tasks.has(+r.dataset.uid)));}
 function renderFoot(){
   const n=S.leaf.length;
   $('#foot').innerHTML=`<span><b>${esc(P.name)}</b></span>`+
     (n?`<span>Start <b>${fmtD(S.start)}</b></span><span>Finish <b>${fmtD(S.finish)}</b></span><span><b>${S.days}</b> workdays</span><span><b>${S.crit}</b> critical</span>`:'<span>No tasks yet</span>')+
     (S.cyc?'<span style="color:var(--neg)">Circular link — some dates are not reliable</span>':'')+
+    (fShow||fTrade?`<span class="filt" id="clearFilt" title="Click to show all tasks">Filtered: ${esc(filterLabel())} ✕</span>`:'')+
+    (prefs.color==='trade'?tradeList().map(x=>`<span class="leg"><i style="background:${tradeColor(x)}"></i>${esc(x)}</span>`).join(''):'')+
     `<span style="margin-left:auto">${saved?'Saved':'Unsaved changes (autosaved in this browser)'}</span>`;
 }
 function updateSel(){
+  if(trace){renderGantt();markTrace();const T=traceSet();if(T)toast(`${T.root._row}: driven by ${whyText(T.root)}.`);}
   tbody.querySelectorAll('.row').forEach(r=>r.classList.toggle('sel',sel.has(+r.dataset.uid)));
   gbody.querySelectorAll('.rowbg').forEach(r=>r.classList.toggle('sel',sel.has(+r.dataset.row)));
 }
@@ -657,7 +795,8 @@ function headSVG(x0,x1,ppd,zt,zb,th){
 }
 function bodySVG(rows,o){
   const {x0,x1,ppd,rh,names,id,nonwork,gridUnit}=o,X=d=>(d-x0)*ppd,W=(x1-x0)*ppd,H=o.h;
-  let s=`<defs><marker id="${id}a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="ah" d="M0,0L8,4L0,8z"/></marker><marker id="${id}c" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="ah c" d="M0,0L8,4L0,8z"/></marker></defs>`;
+  const TR=o.print?null:traceSet();
+  let s=`<defs><marker id="${id}a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="ah" d="M0,0L8,4L0,8z"/></marker><marker id="${id}c" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="ah c" d="M0,0L8,4L0,8z"/></marker><marker id="${id}r" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path class="ah tr" d="M0,0L8,4L0,8z"/></marker></defs>`;
   rows.forEach((t,i)=>{s+=`<rect class="rowbg${sel.has(t.uid)&&!o.print?' sel':''}" data-row="${t.uid}" x="0" y="${i*rh}" width="${W}" height="${rh}"/>`;});
   if(nonwork)for(let d=x0;d<x1;d++)if(!cal.isW(d))s+=`<rect class="nw" x="${X(d)}" y="0" width="${ppd}" height="${H}"/>`;
   for(const d of bounds(gridUnit,x0,x1))s+=`<line class="gl" x1="${X(d)}" x2="${X(d)}" y1="0" y2="${H}"/>`;
@@ -675,29 +814,30 @@ function bodySVG(rows,o){
       let d;
       if((ein===1&&qx>=p1)||(ein===-1&&qx<=p1))d=`M${ax},${ay}H${qx}V${by}H${bx-ein*1}`;
       else{const ym=by+(by>ay?-rh/2:rh/2);d=`M${ax},${ay}H${p1}V${ym}H${qx}V${by}H${bx-ein*1}`;}
-      const c=q._crit&&t._crit;
-      ar+=`<path class="ar${c?' c':''}" d="${d}" marker-end="url(#${id}${c?'c':'a'})"/>`;
+      const c=q._crit&&t._crit,tr=TR&&TR.links.has(q.uid+'>'+t.uid);
+      ar+=`<path class="ar${tr?' tr':c?' c':''}${TR&&!tr?' dim':''}" d="${d}" marker-end="url(#${id}${tr?'r':c?'c':'a'})"/>`;
     }}
   // bars
   let br='';const bh=Math.round(rh*0.46),by0=(rh-bh)/2;
   rows.forEach((t,i)=>{
-    const y=i*rh,tip=`${esc(t.name)}\n${fmtD(t._sd)} – ${fmtD(t._fd)}`+(t._sum?'':`\nTotal float ${t._tf}d · free float ${t._ff}d`);
+    const y=i*rh,tip=`${esc(t.name)}\n${fmtD(t._sd)} – ${fmtD(t._fd)}`+(t._sum?'':`\nTotal float ${t._tf}d · free float ${t._ff}d\nDriven by ${whyText(t)}`);
+    const dim=TR&&!TR.tasks.has(t.uid)?' dim':'';
     if(t._sum){
       const xa=X(t._sd),xb=X(t._fd+1),yy=y+rh/2-3;
       if(t._bs!=null)br+=`<rect class="bl" x="${X(t._bs)}" y="${y+rh-6}" width="${Math.max(2,X(t._bf+1)-X(t._bs))}" height="3"/>`;
-      br+=`<g data-row="${t.uid}"><title>${tip}</title><path class="sm" d="M${xa},${yy}H${xb}V${yy+9}L${xb-5},${yy+5}H${xa+5}L${xa},${yy+9}Z"/></g>`;
+      br+=`<g class="${dim}" data-row="${t.uid}"><title>${tip}</title><path class="sm" d="M${xa},${yy}H${xb}V${yy+9}L${xb-5},${yy+5}H${xa+5}L${xa},${yy+9}Z"/></g>`;
       if(names)br+=`<text class="lbl" x="${xb+6}" y="${y+rh/2+4}">${esc(t.name)}</text>`;
       return;
     }
     if(t.bs){const a=dn(t.bs),b=dn(t.bf);br+=t.dur===0&&a===b?`<path class="bl" d="M${X(a+1)},${y+rh-8}l4,4l-4,4l-4,-4z"/>`:`<rect class="bl" x="${X(a)}" y="${y+rh-5}" width="${Math.max(2,X(b+1)-X(a))}" height="3"/>`;}
     if(t._ms){
       const cx=sx(t).s,cy=y+rh/2,r=Math.min(7,rh*0.3);
-      br+=`<g class="${t._crit?'c':''}" data-bar="${t.uid}"><title>${tip}</title><path class="ms" d="M${cx},${cy-r}L${cx+r},${cy}L${cx},${cy+r}L${cx-r},${cy}Z"/></g>`;
+      br+=`<g class="${t._crit?'c':''}${dim}" data-bar="${t.uid}"><title>${tip}</title><path class="ms" d="M${cx},${cy-r}L${cx+r},${cy}L${cx},${cy+r}L${cx-r},${cy}Z"/></g>`;
       if(names)br+=`<text class="lbl" x="${cx+r+5}" y="${cy+4}">${esc(t.name)}${o.print?'':' '+fmtD(t._sd).slice(4)}</text>`;
     }else{
-      const xa=X(t._sd),w=Math.max(2,X(t._fd+1)-xa),yy=y+by0;
-      br+=`<g class="${t._crit?'c':''}" data-bar="${t.uid}"><title>${tip}</title><rect class="b" x="${xa}" y="${yy}" width="${w}" height="${bh}" rx="2"/>`+
-        (t.pct>0?`<rect class="bp" x="${xa}" y="${yy+bh/2-2}" width="${w*Math.min(100,t.pct)/100}" height="4"/>`:'')+`</g>`;
+      const xa=X(t._sd),w=Math.max(2,X(t._fd+1)-xa),yy=y+by0,tc=prefs.color==='trade'?tradeColor(t.trade):null;
+      br+=`<g class="${t._crit?'c':''}${dim}" data-bar="${t.uid}"><title>${tip}</title><rect class="b" x="${xa}" y="${yy}" width="${w}" height="${bh}" rx="2"${tc?` style="fill:${tc}${t._crit?';stroke:var(--crit);stroke-width:1.6':''}"`:''}/>`+
+        (t.pct>0?`<rect class="bp" x="${xa}" y="${yy+bh/2-2}" width="${w*Math.min(100,t.pct)/100}" height="4"${tc?' style="fill:rgba(0,0,0,.45)"':''}/>`:'')+`</g>`;
       if(names)br+=`<text class="lbl" x="${xa+w+6}" y="${y+rh/2+4}">${esc(t.name)}</text>`;
     }
   });
@@ -732,6 +872,7 @@ function commitCell(uid,col,val){
   const bad=m=>{toast(m);render();};
   switch(col){
     case 'name':if(val!==t.name)commit(()=>{t.name=val;});break;
+    case 'trade':if(!t._sum&&val.trim()!==(t.trade||''))commit(()=>{t.trade=val.trim();});else render();break;
     case 'dur':{const d=parseDur(val);if(d==null)return bad('Duration not understood — try 5, 5d or 2w.');if(d!==t.dur)commit(()=>{t.dur=d;});else render();break;}
     case 'start':case 'finish':{
       if(!val.trim()){commit(()=>{t.cons=null;});toast('Constraint cleared.');break;}
@@ -768,8 +909,7 @@ function setStart(t,d){
 function afterMove(t,d,which){
   const got=which==='start'?t._sd:t._fd;
   if(got===d)return toast(`Set “${CT_LABEL[which==='start'?'SNET':'FNET']} ${fmtD(d)}”. Clear the date to remove it.`);
-  const why=t._preds.length?'its predecessors':'the project start (change it in Settings)';
-  toast(`Can't go earlier than ${fmtD(got)} — held by ${why}.`);
+  toast(`Can't go earlier than ${fmtD(got)} — held by ${whyText(t)}.`);
 }
 function setPct(t,v){
   const sd=t._sd,fd=t._fd;t.pct=v;
@@ -815,6 +955,111 @@ tbody.addEventListener('mousedown',e=>{
   updateSel();
 });
 tbody.addEventListener('dblclick',e=>{const a=e.target.closest('.num');const r=a&&a.closest('.row');if(r&&r.dataset.uid!=='new')openInfo(+r.dataset.uid);});
+
+/* ===== Clipboard: paste from Excel, copy/cut/paste/duplicate rows ===== */
+const COLS=['name','trade','dur','start','finish','pred','float','pct'];
+let clip=null; // {tasks, base, tsv, cut}
+function parseTSV(text){
+  const rows=[];let row=[],cell='',q=false;
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(q){if(c==='"'){if(text[i+1]==='"'){cell+='"';i++;}else q=false;}else cell+=c;}
+    else if(c==='"'&&cell==='')q=true;
+    else if(c==='\t'){row.push(cell);cell='';}
+    else if(c==='\r'||c==='\n'){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cell);rows.push(row);row=[];cell='';}
+    else cell+=c;}
+  if(cell!==''||row.length){row.push(cell);rows.push(row);}
+  return rows.filter(r=>r.some(c=>c.trim()));
+}
+const newLevelAt=i=>{const T=P.tasks;if(i<T.length)return T[i].level;const last=T[T.length-1];return last?(last._sum?last.level+1:last.level):0;};
+// mode 'over': write into visible rows from visRows[at] down, adding tasks past the end. 'insert': new tasks at P.tasks index at.
+function pasteGrid(data,col0,mode,at){
+  let errs=0,made=0,firstUid=null;
+  const ok=commit(()=>{
+    const pend=[],lv=newLevelAt(mode==='insert'?at:P.tasks.length),yr=ymd(dn(P.start))[0];
+    data.forEach((cells,k)=>{
+      let t=mode==='over'?visRows[at+k]:null;
+      if(!t){t=newTask('',lv);if(mode==='insert')P.tasks.splice(at+made,0,t);else P.tasks.push(t);made++;}
+      if(firstUid==null)firstUid=t.uid;
+      const sum=!!t._sum;let st=null,fi=null,durSet=false;
+      cells.forEach((raw,j)=>{const c=COLS[col0+j],v=raw.trim();if(!c||!v||c==='float')return;
+        if(c==='name'){t.name=v;return;}
+        if(sum){errs++;return;}
+        if(c==='trade')t.trade=v;
+        else if(c==='dur'){const d=parseDur(v);if(d==null)errs++;else{t.dur=d;durSet=true;}}
+        else if(c==='start'||c==='finish'){const d=parseDate(v,yr);if(d==null)errs++;else if(c==='start')st=d;else fi=d;}
+        else pend.push([t,c,v]);
+      });
+      if(st!=null&&fi!=null){if(!durSet)t.dur=Math.max(0,cal.workBetween(st,fi));t.cons={type:'SNET',date:isoOf(st)};}
+      else if(st!=null)t.cons={type:'SNET',date:isoOf(st)};
+      else if(fi!=null)t.cons={type:'FNET',date:isoOf(fi)};
+    });
+    schedule();
+    for(const [t,c,v] of pend)if(c==='pred'&&!t._sum){
+      const r=parsePreds(v,t);if(r.err){errs++;continue;}
+      const old=t.preds;t.preds=r.preds;if(hasCycle()){t.preds=old;errs++;}
+    }
+    schedule();
+    for(const [t,c,v] of pend)if(c==='pct'&&!t._sum){const n=parseFloat(v.replace('%',''));if(isFinite(n))setPct(t,Math.max(0,Math.min(100,Math.round(n))));else errs++;}
+  });
+  if(!ok)return;
+  toast(`Pasted ${data.length} row${data.length>1?'s':''}${made&&mode==='over'?` (${made} new)`:''}.${errs?` ${errs} cell${errs>1?'s':''} skipped — not understood or on a summary row.`:''}`);
+  if(mode==='insert'&&firstUid!=null){sel=new Set(P.tasks.slice(at,at+made).map(t=>t.uid));anchor=firstUid;updateSel();}
+}
+const cloneTask=t=>JSON.parse(JSON.stringify(t,(k,v)=>k[0]==='_'?undefined:v));
+function blockIdx(){const T=P.tasks,out=[];for(const i of topSel())for(let j=i;j<subtreeEnd(i);j++)out.push(j);return out;}
+function rowsTSV(ix){
+  const q=v=>{v=String(v??'');return /[\t\n"]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  return ix.map(i=>{const t=P.tasks[i];return [t.name,t._sum?'':t.trade||'',t._sum?'':t.dur+'d',fmtD(t._sd),fmtD(t._fd),t._sum?'':fmtPreds(t),'',t._sum?'':t.pct+'%'].map(q).join('\t');}).join('\r\n');
+}
+function makeClip(cut){
+  const ix=blockIdx(),tasks=ix.map(i=>cloneTask(P.tasks[i]));
+  return {tasks,base:Math.min(...tasks.map(t=>t.level)),tsv:rowsTSV(ix),cut};
+}
+// Copies a block of tasks: links inside the block follow the copy, links to outside tasks are kept.
+function cloneBlock(src,base,lv,keepUids,keepProgress){
+  const map=new Map(src.map(t=>[t.uid,keepUids?t.uid:P.nextUid++]));
+  return src.map(t=>{const c=cloneTask(t);c.uid=map.get(t.uid);c.level=t.level-base+lv;
+    c.preds=c.preds.map(p=>map.has(p.uid)?Object.assign({},p,{uid:map.get(p.uid)}):p).filter(p=>map.has(p.uid)||[...map.values()].includes(p.uid)||U.has(p.uid));
+    if(!keepProgress){c.as=c.af=c.bs=c.bf=null;c.pct=0;}
+    return c;});
+}
+function pasteClip(){
+  const ix=topSel(),at=ix.length?ix[0]:P.tasks.length,lv=newLevelAt(at);
+  const keep=clip.cut&&clip.tasks.every(t=>!U.has(t.uid));
+  let made;
+  commit(()=>{made=cloneBlock(clip.tasks,clip.base,lv,keep,clip.cut);P.tasks.splice(at,0,...made);});
+  clip.cut=false; // later pastes make copies
+  sel=new Set(made.map(t=>t.uid));anchor=made[0].uid;updateSel();
+  toast(`Pasted ${made.length} task${made.length>1?'s':''}${keep?(made.length>1?' with their links':' with its links'):''}.`);
+}
+function isTyping(e){return document.querySelector('dialog[open]')||(e.target.matches&&e.target.matches('input,textarea,select'));}
+document.addEventListener('copy',e=>{
+  if(isTyping(e)||!sel.size)return;e.preventDefault();
+  clip=makeClip(false);e.clipboardData.setData('text/plain',clip.tsv);
+  toast(`Copied ${clip.tasks.length} task${clip.tasks.length>1?'s':''}. Ctrl+V pastes above the selected row — or into Excel.`);
+});
+document.addEventListener('cut',e=>{
+  if(isTyping(e)||!sel.size)return;e.preventDefault();
+  clip=makeClip(true);e.clipboardData.setData('text/plain',clip.tsv);
+  deleteSel(true);toast(`Cut ${clip.tasks.length} task${clip.tasks.length>1?'s':''}. Select a row and Ctrl+V to paste above it.`);
+});
+document.addEventListener('paste',e=>{
+  if(document.querySelector('dialog[open]'))return;
+  const text=e.clipboardData.getData('text/plain'),inp=e.target.closest&&e.target.closest('#tbody input');
+  if(inp){
+    if(!/[\t\n]/.test(text.replace(/[\r\n]+$/,'')))return; // one cell: normal typing paste
+    e.preventDefault();
+    const col=inp.dataset.col==='new'?'name':inp.dataset.col,uid=inp.closest('.row').dataset.uid;
+    const at=uid==='new'?visRows.length:visRows.findIndex(t=>t.uid===+uid);
+    inp.value=inp.defaultValue;inp.blur();
+    pasteGrid(parseTSV(text),COLS.indexOf(col),'over',at);return;
+  }
+  if(isTyping(e))return;
+  e.preventDefault();
+  if(clip&&text.replace(/\r\n/g,'\n')===clip.tsv.replace(/\r\n/g,'\n'))return pasteClip();
+  const data=parseTSV(text);if(!data.length)return;
+  const ix=topSel();pasteGrid(data,0,'insert',ix.length?ix[0]:P.tasks.length);
+});
 
 /* ===== Gantt drag: sideways = SNET, up/down onto another bar = link ===== */
 let drag=null;
@@ -875,11 +1120,11 @@ const CMD={
     const lv=i<P.tasks.length?P.tasks[i].level:(P.tasks.length?P.tasks[P.tasks.length-1].level:0);
     let t;commit(()=>{t=newTask('',lv);P.tasks.splice(i,0,t);});sel=new Set([t.uid]);anchor=t.uid;updateSel();focusCell(t.uid,'name');
   },
-  del(){
-    if(!need())return;const T=P.tasks,kill=new Set();
-    for(const i of selIdx())for(let j=i;j<subtreeEnd(i);j++)kill.add(T[j].uid);
-    commit(()=>{P.tasks=T.filter(t=>!kill.has(t.uid));P.tasks.forEach(t=>{t.preds=t.preds.filter(p=>!kill.has(p.uid));});});
-    sel=new Set();updateSel();toast(`Deleted ${kill.size} task${kill.size>1?'s':''}. Ctrl+Z to undo.`);
+  del(){if(!need())return;const n=deleteSel(false);toast(`Deleted ${n} task${n>1?'s':''}. Ctrl+Z to undo.`);},
+  dup(){
+    if(!need())return;const ix=topSel();let made=[];
+    commit(()=>{for(const i of ix.slice().reverse()){const e=subtreeEnd(i),src=P.tasks.slice(i,e),c=cloneBlock(src,src[0].level,src[0].level,false,false);P.tasks.splice(e,0,...c);made.push(c[0].uid);}});
+    sel=new Set(made);anchor=made[0];updateSel();toast(`Duplicated ${ix.length>1?ix.length+' blocks':'it'} below — progress and baseline cleared.`);
   },
   indent(){if(!need())return;commit(()=>{let ch=false;for(const i of topSel()){if(i===0)continue;const T=P.tasks;if(T[i].level>T[i-1].level)continue;const e=subtreeEnd(i);for(let j=i;j<e;j++)T[j].level++;ch=true;}return ch;});},
   outdent(){if(!need())return;commit(()=>{let ch=false;for(const i of topSel()){const T=P.tasks;if(!T[i].level)continue;const e=subtreeEnd(i);for(let j=i;j<e;j++)T[j].level--;ch=true;}return ch;});},
@@ -903,15 +1148,27 @@ const CMD={
   project(){openProject();},
   baseline(){if(!S.leaf.length)return;commit(()=>{for(const t of S.leaf){t.bs=isoOf(t._sd);t.bf=isoOf(t._fd);}});toast('Baseline saved. Gray bars show it from now on.');},
   clearbase(){if(!P.tasks.some(t=>t.bs))return toast('There’s no baseline to clear.');commit(()=>{for(const t of P.tasks){t.bs=t.bf=null;}});},
+  color(){prefs.color=prefs.color==='trade'?'crit':'trade';savePrefs();render();if(prefs.color==='trade'&&!tradeList().length)toast('No trades yet — type one in the Trade column.');},
   zin(){if(zoom<ZOOMS.length-1)setZoom(zoom+1);},
   zout(){if(zoom>0)setZoom(zoom-1);},
   goto(){scrollToDate(S.start-7);},
+  trace(){
+    trace=!trace;$('#btnTrace').classList.toggle('on',trace);render();
+    if(trace){const T=traceSet();if(!T)toast('Select one task to see what drives its start.');else toast(`${T.root._row}: driven by ${whyText(T.root)}.`);}
+  },
   help(){$('#dlgHelp').showModal();}
 };
 function setZoom(z){
   const old=ZOOMS[zoom].ppd,mid=range[0]+(main.scrollLeft+(main.clientWidth-tpane.offsetWidth)/2)/old;
   zoom=z;prefs.zoom=z;savePrefs();renderGantt();
   main.scrollLeft=Math.max(0,(mid-range[0])*ZOOMS[zoom].ppd-(main.clientWidth-tpane.offsetWidth)/2);
+}
+// keepLinks: leave other tasks' links to the removed ones in place (cut), so pasting restores them
+function deleteSel(keepLinks){
+  const T=P.tasks,kill=new Set();
+  for(const i of selIdx())for(let j=i;j<subtreeEnd(i);j++)kill.add(T[j].uid);
+  commit(()=>{P.tasks=T.filter(t=>!kill.has(t.uid));if(!keepLinks)P.tasks.forEach(t=>{t.preds=t.preds.filter(p=>!kill.has(p.uid));});});
+  sel=new Set();updateSel();return kill.size;
 }
 function move(dir){
   if(!need())return;const ix=topSel();if(ix.length!==1)return toast('Move one task (with its subtasks) at a time.');
@@ -940,6 +1197,8 @@ document.addEventListener('keydown',e=>{
   else if(k==='F2'&&ctrl){e.preventDefault();if(inInput)e.target.blur();setTimeout(e.shiftKey?CMD.unlink:CMD.link,10);}
   else if(k==='F2'&&e.shiftKey){e.preventDefault();if(inInput)e.target.blur();setTimeout(CMD.info,10);}
   else if(k==='F1'){e.preventDefault();CMD.help();}
+  else if(ctrl&&!e.shiftKey&&k.toLowerCase()==='d'&&!dirty){e.preventDefault();if(inInput)e.target.blur();setTimeout(CMD.dup,10);}
+  else if(e.altKey&&!ctrl&&!e.shiftKey&&e.code==='KeyT'){e.preventDefault();CMD.trace();}
   else if(k==='Insert'){e.preventDefault();if(inInput)e.target.blur();setTimeout(CMD.insert,10);}
   else if(k==='Delete'&&!inInput&&sel.size){e.preventDefault();CMD.del();}
 });
@@ -947,7 +1206,7 @@ document.addEventListener('keydown',e=>{
 /* ===== Dialogs ===== */
 function openInfo(uid){
   const t=U.get(uid);if(!t)return;const f=$('#dlgInfo form'),s=t._sum;
-  f.name.value=t.name;f.dur.value=s?t._sdur+'d':t.dur+'d';f.pct.value=s?t._pct:t.pct;f.pred.value=s?'':fmtPreds(t);
+  f.name.value=t.name;f.trade.value=s?'':t.trade||'';f.trade.disabled=s;f.dur.value=s?t._sdur+'d':t.dur+'d';f.pct.value=s?t._pct:t.pct;f.pred.value=s?'':fmtPreds(t);
   f.ct.value=t.cons&&t.cons.type||'';f.cd.value=t.cons&&t.cons.date||'';f.as.value=t.as||'';f.af.value=t.af||'';f.notes.value=t.notes||'';
   for(const n of ['dur','pct','pred','ct','cd','as','af'])f[n].disabled=s;
   const bs=s?t._bs:t.bs&&dn(t.bs),bf=s?t._bf:t.bf&&dn(t.bf);
@@ -956,6 +1215,7 @@ function openInfo(uid){
     [['Early start',fmtD(t._sd),'Early finish',fmtD(t._fd)],['Late start',fmtD(t._lsd),'Late finish',fmtD(t._lfd)],['Total float',t._tf+'d','Free float',t._ff+'d']];
   rows.push(['Baseline start',bs!=null&&bs!==''?fmtD(bs):'—','Baseline finish',bf!=null&&bf!==''?fmtD(bf):'—']);
   if(varF!=null)rows.push(['Finish variance',(varF>0?'+':'')+varF+'d'+(varF>0?' late':varF<0?' early':''),'','']);
+  if(!s)rows.push(['Start driven by',whyText(t),'','']);
   if(t._err)rows.push(['Note',t._err,'','']);
   $('#facts').innerHTML=rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('');
   const dlg=$('#dlgInfo');dlg.onclose=()=>{
@@ -965,7 +1225,7 @@ function openInfo(uid){
     const r=parsePreds(f.pred.value,t);if(r.err)return toast(r.err+' Nothing was changed.');
     const old=t.preds;t.preds=r.preds;const cyc=hasCycle();t.preds=old;if(cyc)return toast('That would create a circular link. Nothing was changed.');
     if(f.ct.value&&!f.cd.value)return toast('Pick a constraint date. Nothing was changed.');
-    commit(()=>{t.name=f.name.value;t.dur=d;t.preds=r.preds;t.notes=f.notes.value;
+    commit(()=>{t.name=f.name.value;t.trade=f.trade.value.trim();t.dur=d;t.preds=r.preds;t.notes=f.notes.value;
       t.cons=f.ct.value?{type:f.ct.value,date:f.cd.value}:null;
       const hadAs=!!t.as;t.as=f.as.value||null;t.af=f.af.value||null;
       let p=Math.max(0,Math.min(100,Math.round(+f.pct.value||0)));if(t.af)p=100;else if(p===100)p=99;
@@ -1011,14 +1271,16 @@ $('#dlgPrint').addEventListener('close',()=>{if($('#dlgPrint').returnValue==='ok
 function doPrint(paper){
   const [pw,ph]=PAPER[paper],m=0.4,W=Math.floor((pw-2*m)*96),H=Math.floor((ph-2*m)*96);
   $('#pagesize').textContent=`@page{size:${pw}in ${ph}in;margin:${m}in}`;
-  const rows=visible(),rh=18,th=16,top=40,foot=22;
+  const rows=visible(),rh=18,th=16,top=40,foot=prefs.color==='trade'?36:22;
   const per=Math.max(1,Math.floor((H-top-2*th-foot)/rh)),pages=Math.max(1,Math.ceil(rows.length/per));
-  const cols=[['#',30],['Task name',Math.min(300,Math.round(W*0.24))],['Dur',44],['Start',78],['Finish',78],['Float',42]];
+  const cols=[['#',30],['Task name',Math.min(300,Math.round(W*0.22))],['Trade',Math.min(110,Math.round(W*0.08))],['Dur',44],['Start',78],['Finish',78],['Float',42]];
   const tw=cols.reduce((a,c)=>a+c[1],0),gw=W-tw;
   let a=Infinity,b=-Infinity;for(const t of P.tasks){if(t._sd==null)continue;a=Math.min(a,t._sd);b=Math.max(b,t._fd);if(t.bs){a=Math.min(a,dn(t.bs));b=Math.max(b,dn(t.bf));}}
   if(!isFinite(a)){a=dn(P.start);b=a+30;}
   if(P.status)b=Math.max(b,dn(P.status));
-  a-=2;b+=4;const ppd=gw/(b-a);
+  a-=2;b+=4;
+  const la=laWin();if(la){a=la[0];b=la[1]+1;}
+  const ppd=gw/(b-a),fl=filterLabel();
   const zt=ppd>=2.5?'month':'year',zb=ppd>=14?'day':ppd>=2.5?'week':'month';
   const clip=(s,w)=>{const n=Math.floor(w/5.6);return s.length>n?s.slice(0,n-1)+'…':s;};
   let html='';
@@ -1026,20 +1288,21 @@ function doPrint(paper){
     const rs=rows.slice(p*per,(p+1)*per),bh=rs.length*rh;
     let s=`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-size="10">`;
     s+=`<text x="0" y="16" font-size="15" font-weight="700" fill="var(--text)">${esc(P.name)}</text>`;
-    s+=`<text x="0" y="32" class="ht">${fmtD(S.start)} – ${fmtD(S.finish)} · ${S.days} workdays${P.status?' · Status date '+fmtD(dn(P.status)):''} · Printed ${fmtD(todayDn())}</text>`;
+    s+=`<text x="0" y="32" class="ht">${fmtD(S.start)} – ${fmtD(S.finish)} · ${S.days} workdays${P.status?' · Status date '+fmtD(dn(P.status)):''} · Printed ${fmtD(todayDn())}${fl?' · '+esc(fl):''}</text>`;
     s+=`<text x="${W}" y="16" text-anchor="end" class="ht">Page ${p+1} of ${pages}</text>`;
     let x=0;s+=`<g transform="translate(0,${top})">`;
     for(const [h,w] of cols){s+=`<text x="${x+4}" y="${2*th-5}" class="ht" font-weight="600">${h}</text>`;x+=w;}
     s+=`<line class="hl" x1="0" x2="${W}" y1="${2*th}" y2="${2*th}"/>`;
     rs.forEach((t,i)=>{const y=2*th+i*rh+rh/2+3.5;let x=0;
-      const v=[String(t._row),'  '.repeat(t.level)+t.name,(t._sum?t._sdur:t.dur)+'d',fmtD(t._sd),fmtD(t._fd),t._sum||t._done?'':t._tf+'d'];
-      v.forEach((c,k)=>{const w=cols[k][1];const right=k===2||k===5;
-        s+=`<text x="${right?x+w-4:x+4+(k===1?t.level*8:0)}" y="${y}" ${right?'text-anchor="end"':''} fill="${t._crit&&k===1?'var(--crit)':'var(--text)'}" ${t._sum?'font-weight="700"':''}>${esc(k===1?clip(t.name,w-8-t.level*8):c)}</text>`;x+=w;});
+      const v=[String(t._row),t.name,t._sum?'':t.trade||'',(t._sum?t._sdur:t.dur)+'d',fmtD(t._sd),fmtD(t._fd),t._sum||t._done?'':t._tf+'d'];
+      v.forEach((c,k)=>{const w=cols[k][1];const right=k===3||k===6;
+        s+=`<text x="${right?x+w-4:x+4+(k===1?t.level*8:0)}" y="${y}" ${right?'text-anchor="end"':''} fill="${t._crit&&k===1?'var(--crit)':'var(--text)'}" ${t._sum?'font-weight="700"':''}>${esc(k===1?clip(c,w-8-t.level*8):clip(c,w-8))}</text>`;x+=w;});
       s+=`<line class="gl" x1="0" x2="${W}" y1="${2*th+(i+1)*rh}" y2="${2*th+(i+1)*rh}"/>`;
     });
     s+=`<line class="hl" x1="${tw}" x2="${tw}" y1="0" y2="${2*th+bh}"/>`;
-    s+=`<g transform="translate(${tw},0)">${headSVG(a,b,ppd,zt,zb,th)}<g transform="translate(0,${2*th})">${bodySVG(rs,{x0:a,x1:b,ppd,rh,h:bh,names:false,id:'p'+p,nonwork:ppd>=8,gridUnit:ppd>=2.5?'month':'year',print:true})}</g></g>`;
-    s+=`</g><text x="0" y="${H-6}" class="ht">Red = critical (total float ≤ 0) · Gray = baseline · Dashed line = status date</text></svg>`;
+    s+=`<g transform="translate(${tw},0)">${headSVG(a,b,ppd,zt,zb,th)}<clipPath id="pc${p}"><rect x="0" y="0" width="${gw}" height="${bh}"/></clipPath><g transform="translate(0,${2*th})" clip-path="url(#pc${p})">${bodySVG(rs,{x0:a,x1:b,ppd,rh,h:bh,names:false,id:'p'+p,nonwork:ppd>=8,gridUnit:ppd>=2.5?'month':'year',print:true})}</g></g>`;
+    let lg=0;const leg=(prefs.color==='trade'?tradeList():[]).map(x=>{const q=`<rect x="${lg}" y="${H-24}" width="9" height="9" rx="2" fill="${tradeColor(x)}"/><text x="${lg+13}" y="${H-16}" class="ht">${esc(x)}</text>`;lg+=26+x.length*6;return q;}).join('');
+    s+=`</g>${leg}<text x="0" y="${H-4}" class="ht">${prefs.color==='trade'?'Bar color = trade · red outline = critical':'Red = critical (total float ≤ 0)'} · Gray = baseline · Dashed line = status date</text></svg>`;
     html+=`<div class="pg">${s}</div>`;
   }
   $('#print').innerHTML=html;
@@ -1059,8 +1322,8 @@ $('#fileIn').addEventListener('change',async e=>{
 });
 
 /* ===== Pane resize ===== */
-function setTW(w){w=Math.max(200,Math.min(804,w));tpane.style.width=w+'px';prefs.tw=w;}
-setTW(prefs.tw||804);
+function setTW(w){w=Math.max(200,Math.min(924,w));tpane.style.width=w+'px';prefs.tw=w;}
+setTW(prefs.tw&&prefs.tw!==804?prefs.tw:924);
 $('#resizer').addEventListener('mousedown',e=>{e.preventDefault();const x=e.clientX,w=tpane.offsetWidth;
   const mv=ev=>setTW(w+ev.clientX-x),up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);savePrefs();};
   window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);});
