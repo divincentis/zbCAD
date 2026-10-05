@@ -737,9 +737,10 @@ function commitCell(uid,col,val){
       if(!val.trim()){commit(()=>{t.cons=null;});toast('Constraint cleared.');break;}
       const d=parseDate(val,ymd(t._sd)[0]);if(d==null)return bad('Date not understood — try 10/12/26.');
       const cur=col==='start'?t._sd:t._fd;if(d===cur&&!t.cons){render();break;}
-      const type=col==='start'?'SNET':'FNET';
-      commit(()=>{t.cons={type,date:isoOf(d)};});
-      toast(`Set “${CT_LABEL[type]} ${fmtD(d)}”. Clear the date to remove it.`);break;}
+      if(col==='start'){setStart(t,d);break;}
+      if(t.af){commit(()=>{t.af=isoOf(d);});toast(`Actual finish set to ${fmtD(d)}.`);break;}
+      commit(()=>{t.cons={type:'FNET',date:isoOf(d)};});
+      afterMove(t,d,'finish');break;}
     case 'pred':{
       const r=parsePreds(val,t);if(r.err)return bad(r.err);
       const old=t.preds;t.preds=r.preds;const cyc=hasCycle();t.preds=old;
@@ -750,6 +751,25 @@ function commitCell(uid,col,val){
       const v=Math.max(0,Math.min(100,Math.round(n)));
       if(v!==t.pct)commit(()=>setPct(t,v));else render();break;}
   }
+}
+/* Move a task's start. Actual start wins if present; dates before the project
+   start move the project start; otherwise a start-no-earlier-than is set. */
+function setStart(t,d){
+  while(!cal.isW(d))d++;
+  if(t.as){commit(()=>{t.as=isoOf(d);if(t.af&&dn(t.af)<d)t.af=null;});return toast(`Actual start set to ${fmtD(d)}.`);}
+  const ps=dn(P.start);
+  if(d<ps&&!t._preds.length){
+    commit(()=>{P.start=isoOf(d);if(t.cons&&(t.cons.type==='SNET'||t.cons.type==='FNET'))t.cons=null;});
+    return toast(`Moved the project start to ${fmtD(d)} so this task can start then.`);
+  }
+  commit(()=>{t.cons={type:'SNET',date:isoOf(d)};});
+  afterMove(t,d,'start');
+}
+function afterMove(t,d,which){
+  const got=which==='start'?t._sd:t._fd;
+  if(got===d)return toast(`Set “${CT_LABEL[which==='start'?'SNET':'FNET']} ${fmtD(d)}”. Clear the date to remove it.`);
+  const why=t._preds.length?'its predecessors':'the project start (change it in Settings)';
+  toast(`Can't go earlier than ${fmtD(got)} — held by ${why}.`);
 }
 function setPct(t,v){
   const sd=t._sd,fd=t._fd;t.pct=v;
@@ -819,8 +839,7 @@ window.addEventListener('mouseup',e=>{
   if(!drag)return;const d=drag;drag=null;$('#drag').style.display='none';
   if(d.mode==='move'){
     const days=Math.round((e.clientX-d.x)/ZOOMS[zoom].ppd);d.g.removeAttribute('transform');
-    if(days){let nd=d.t._sd+days;while(!cal.isW(nd))nd+=days>0?1:-1;
-      const t=d.t;commit(()=>{t.cons={type:'SNET',date:isoOf(nd)};});toast(`Set “Start no earlier than ${fmtD(nd)}”.`);}
+    if(days){let nd=d.t._sd+days;while(!cal.isW(nd))nd+=days>0?1:-1;setStart(d.t,nd);}
   }else if(d.mode==='link'){
     const r=gbody.getBoundingClientRect(),k=Math.floor((e.clientY-r.top)/ROW),t=visRows[k];
     if(!t||t===d.t)return;if(t._sum)return toast('Link to a task inside the summary instead.');
@@ -948,8 +967,9 @@ function openInfo(uid){
     if(f.ct.value&&!f.cd.value)return toast('Pick a constraint date. Nothing was changed.');
     commit(()=>{t.name=f.name.value;t.dur=d;t.preds=r.preds;t.notes=f.notes.value;
       t.cons=f.ct.value?{type:f.ct.value,date:f.cd.value}:null;
-      t.as=f.as.value||null;t.af=f.af.value||null;
-      let p=Math.max(0,Math.min(100,Math.round(+f.pct.value||0)));if(t.af)p=100;else if(p===100)p=99;if(!t.as&&p>0){t.as=isoOf(t._sd);}
+      const hadAs=!!t.as;t.as=f.as.value||null;t.af=f.af.value||null;
+      let p=Math.max(0,Math.min(100,Math.round(+f.pct.value||0)));if(t.af)p=100;else if(p===100)p=99;
+      if(hadAs&&!t.as&&!t.af)p=0;else if(!t.as&&p>0){t.as=isoOf(t._sd);}
       t.pct=p;});
   };
   dlg.returnValue='';dlg.showModal();
