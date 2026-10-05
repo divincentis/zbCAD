@@ -1,0 +1,1168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sheet Metal Layout</title>
+<meta name="description" content="Flat pattern development for sheet metal fittings: rectangle to round, transitions, cones, offset reducers, elbows and branches. Export DXF and SVG.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d9480f' stroke-width='2.2' stroke-linecap='round'%3E%3Cellipse cx='12' cy='6' rx='5' ry='2'/%3E%3Cpath d='M3 19h18M7 6L3 19M17 6l4 13'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f3f1ec; --panel:#ffffff; --ink:#1c2228; --muted:#6a737d; --line:#dcd8cf; --soft:#ece9e2;
+  --accent:#d9480f; --accent-ink:#fff; --cut:#1c2228; --bend:#c92a2a; --form:#8d97a2; --grid:#e4e0d7; --sheet:#faf9f6;
+  --warn-bg:#fff4e6; --warn-ink:#8a3b00; --err-bg:#ffe3e3; --err-ink:#9b1c1c;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14171a; --panel:#1c2024; --ink:#e5e8eb; --muted:#97a0aa; --line:#2e343a; --soft:#252a2f;
+    --accent:#ff7a3d; --accent-ink:#1a0d05; --cut:#e5e8eb; --bend:#ff6b6b; --form:#6f7a85; --grid:#22272c; --sheet:#181b1f;
+    --warn-bg:#3a2a12; --warn-ink:#ffc078; --err-bg:#3d1818; --err-ink:#ffa8a8;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+button,input,select{font:inherit;color:inherit}
+.top{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:650;letter-spacing:.2px}
+.brand svg{width:24px;height:24px;stroke:var(--accent)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:6px 12px;cursor:pointer;color:var(--muted)}
+.seg button.on{background:var(--ink);color:var(--panel)}
+.app{display:grid;grid-template-columns:340px 1fr;height:calc(100vh - 52px)}
+.side{border-right:1px solid var(--line);background:var(--panel);overflow:auto;padding:14px 16px 28px}
+.tools{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px}
+.tool{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--line);border-radius:8px;background:transparent;cursor:pointer;text-align:left;font-size:12.5px;line-height:1.2}
+.tool svg{flex:none;width:22px;height:22px;stroke:var(--muted);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.tool.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.tool.on svg{stroke:var(--accent)}
+.sec{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:16px 0 6px;font-weight:600}
+.field{display:grid;grid-template-columns:1fr 120px;align-items:center;gap:8px;padding:5px 0}
+.field label{font-size:13px}
+.field input,.field select{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--sheet);font-variant-numeric:tabular-nums}
+.field input:focus,.field select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.field input.bad{border-color:var(--bend);background:var(--err-bg)}
+.field .help{grid-column:1/-1;font-size:11.5px;color:var(--muted);margin-top:-2px}
+.field.hide{display:none}
+.msgs div{margin-top:10px;padding:8px 10px;border-radius:6px;font-size:12.5px}
+.msgs .w{background:var(--warn-bg);color:var(--warn-ink)}
+.msgs .e{background:var(--err-bg);color:var(--err-ink)}
+.foot{margin-top:18px;font-size:11.5px;color:var(--muted)}
+.work{display:flex;flex-direction:column;min-width:0;overflow:auto}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.bar .title{font-weight:600}
+.bar .title small{font-weight:400;color:var(--muted);margin-left:6px}
+.actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:6px 11px;cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.chk{display:flex;gap:5px;align-items:center;font-size:13px;color:var(--muted);margin-right:4px;cursor:pointer}
+.view{position:relative;flex:1 1 auto;min-height:420px;background:var(--sheet);border-bottom:1px solid var(--line);touch-action:none;overflow:hidden}
+.view svg{position:absolute;inset:0;width:100%;height:100%;cursor:grab;user-select:none}
+.view svg:active{cursor:grabbing}
+.legend{position:absolute;left:10px;bottom:8px;display:flex;gap:12px;font-size:11.5px;color:var(--muted);background:color-mix(in srgb,var(--sheet) 85%,transparent);padding:4px 8px;border-radius:6px;pointer-events:none;flex-wrap:wrap}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid;vertical-align:middle;margin-right:5px}
+.lower{display:grid;grid-template-columns:minmax(260px,1fr) 1.4fr;gap:14px;padding:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;min-width:0}
+.ch{padding:9px 12px;border-bottom:1px solid var(--line);font-weight:600;font-size:13px;display:flex;justify-content:space-between}
+.ch span{font-weight:400;color:var(--muted);font-size:12px}
+#c3{display:block;width:100%;height:280px;touch-action:none;cursor:grab}
+.tw{max-height:360px;overflow:auto}
+table{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
+th,td{padding:5px 10px;border-bottom:1px solid var(--soft);text-align:right;white-space:nowrap}
+th{position:sticky;top:0;background:var(--panel);color:var(--muted);font-weight:600;font-size:11.5px}
+td:first-child,th:first-child{text-align:left}
+td .fr{color:var(--muted);margin-left:6px}
+tr.grp td{background:var(--soft);font-weight:600;text-align:left}
+#notes{margin:0;padding:8px 12px 12px 28px;font-size:12px;color:var(--muted)}
+#notes li{margin:3px 0}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr;height:auto}
+  .side{border-right:0;border-bottom:1px solid var(--line)}
+  .view{min-height:62vh}
+  .lower{grid-template-columns:1fr}
+  .work{overflow:visible}
+}
+dialog#pdlg{border:0;padding:0;border-radius:12px;background:var(--panel);color:var(--ink);width:min(560px,calc(100vw - 20px));max-height:calc(100vh - 20px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog#pdlg::backdrop{background:rgba(0,0,0,.45)}
+.dlg{display:flex;flex-direction:column;max-height:calc(100vh - 20px)}
+.dh{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
+.dh .x{border:0;background:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted)}
+.dbody{padding:6px 16px 12px;overflow:auto}
+.dbody .field{grid-template-columns:1fr 210px}
+.checks{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin:10px 0;font-size:13px}
+.checks label{display:flex;gap:6px;align-items:center}
+#pprev{width:100%;height:220px;background:var(--sheet);border:1px solid var(--line);border-radius:8px;--tile:color-mix(in srgb,var(--match) 8%,transparent)}
+:root{--match:#1c63d6}
+@media (prefers-color-scheme: dark){:root{--match:#6ea8ff}}
+#psum{font-size:12.5px;color:var(--muted);margin-top:8px}
+#psum .bad{color:var(--bend)}
+.dfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.hide{display:none!important}
+@media (max-width:480px){.checks{grid-template-columns:1fr}.dbody .field{grid-template-columns:1fr 150px}}
+@media print{
+  .top,.side,.actions,.legend,.lower .card:first-child{display:none!important}
+  .app{display:block;height:auto}
+  .view{height:60vh;border:1px solid #999}
+  .lower{display:block}
+  .tw{max-height:none}
+  body{background:#fff;color:#000}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="6" rx="5" ry="2"/><path d="M3 19h18M7 6L3 19M17 6l4 13"/></svg>
+    <span>Sheet Metal Layout</span>
+  </div>
+  <div class="seg" id="units"><button data-u="in">in</button><button data-u="mm">mm</button></div>
+</header>
+<main class="app">
+  <aside class="side">
+    <div class="tools" id="tools"></div>
+    <form id="form" autocomplete="off" onsubmit="return false"></form>
+    <div class="msgs" id="msgs"></div>
+    <div class="foot">Inches accept fractions: <code>12 1/2</code> or <code>12-1/2</code>. The link in your address bar saves the current fitting.</div>
+  </aside>
+  <section class="work">
+    <div class="bar">
+      <div class="title" id="ptitle"></div>
+      <div class="actions">
+        <label class="chk"><input type="checkbox" id="lbl"> Point labels</label>
+        <button class="btn" id="fit">Fit</button>
+        <button class="btn pri" id="dxf">DXF</button>
+        <button class="btn" id="svgx">SVG</button>
+        <button class="btn" id="csv">CSV</button>
+        <button class="btn" id="prt">Print full size</button>
+      </div>
+    </div>
+    <div class="view" id="view">
+      <svg id="flat" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="legend"><span><i style="border-color:var(--cut)"></i>Cut</span><span><i style="border-color:var(--bend);border-top-style:dashed"></i>Bend / break</span><span><i style="border-color:var(--form);border-top-style:dotted"></i>Layout / roll lines</span><span id="gridlbl"></span></div>
+    </div>
+    <div class="lower">
+      <div class="card"><div class="ch">3D check <span>drag to rotate</span></div><canvas id="c3"></canvas></div>
+      <div class="card"><div class="ch" id="ttitle">Layout data</div><div class="tw" id="table"></div><ul id="notes"></ul></div>
+    </div>
+  </section>
+</main>
+<dialog id="pdlg">
+  <div class="dlg">
+    <div class="dh"><b>Full-size print (PDF)</b><button class="x" id="pclose" aria-label="Close">×</button></div>
+    <div class="dbody">
+      <div class="field"><label for="p_paper">Paper</label><select id="p_paper"></select></div>
+      <div class="field custom"><label for="p_cw">Paper width <span class="u"></span></label><input id="p_cw"></div>
+      <div class="field custom"><label for="p_ch">Paper length <span class="u"></span></label><input id="p_ch"><div class="help">For a roll plotter, set the roll width and the longest sheet you want.</div></div>
+      <div class="field"><label for="p_orient">Orientation</label><select id="p_orient"><option value="auto">Auto (fewest sheets)</option><option value="p">Portrait</option><option value="l">Landscape</option></select></div>
+      <div class="field"><label for="p_margin">Printer margin <span class="u"></span></label><input id="p_margin"><div class="help">Unprintable edge of your printer. 1/4 in is safe for most.</div></div>
+      <div class="field"><label for="p_ovl">Overlap <span class="u"></span></label><input id="p_ovl"><div class="help">Shaded band repeated on the next sheet for lapping and taping.</div></div>
+      <div class="checks">
+        <label><input type="checkbox" id="p_rotate"> Rotate pieces to save paper</label>
+        <label><input type="checkbox" id="p_skip"> Skip blank sheets</label>
+        <label><input type="checkbox" id="p_labels"> Point labels</label>
+        <label><input type="checkbox" id="p_cover"> Cover sheet with sheet map</label>
+        <label><input type="checkbox" id="p_table"> Layout data table</label>
+      </div>
+      <svg id="pprev" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="psum"></div>
+    </div>
+    <div class="dfoot"><span>Print at 100% / Actual size.</span><button class="btn pri" id="pgo">Download PDF</button></div>
+  </div>
+</dialog>
+<script>
+"use strict";
+/* ============================================================
+   Geometry core
+   ============================================================ */
+const TAU = Math.PI * 2, D2R = Math.PI / 180;
+const d3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+const V = (id, p, name) => ({ id, p, name: name ?? id });
+const R = (b, t, kind) => ({ b, t, kind });
+const adj = p => p.ref === 'inside' ? p.t : p.ref === 'outside' ? -p.t : 0; // full-dimension change to reach mean line
+
+/* Place a new flat point Q from two circle constraints, keeping strip orientation consistent. */
+function place(S, O, rs, ro, mode) {
+  const dx = O[0] - S[0], dy = O[1] - S[1], d = Math.hypot(dx, dy);
+  if (d < 1e-12) return [S[0] + rs, S[1]];
+  const a = (rs * rs - ro * ro + d * d) / (2 * d), h = Math.sqrt(Math.max(0, rs * rs - a * a));
+  const ux = dx / d, uy = dy / d, mx = S[0] + a * ux, my = S[1] + a * uy;
+  const c = [[mx - h * uy, my + h * ux], [mx + h * uy, my - h * ux]];
+  const score = q => mode === 'b'
+    ? (q[0] - O[0]) * (S[1] - O[1]) - (q[1] - O[1]) * (S[0] - O[0])   // cross(Q-oldB, T-oldB)
+    : (q[0] - S[0]) * (O[1] - S[1]) - (q[1] - S[1]) * (O[0] - S[0]);  // cross(Q-B, oldT-B)
+  return score(c[0]) >= score(c[1]) ? c[0] : c[1];
+}
+
+/* Develop a triangulated strip. Rungs connect a "bottom" vertex to a "top" vertex;
+   consecutive rungs change exactly one end. Returns flat outline and interior lines. */
+function unfold(rungs) {
+  const r0 = rungs[0];
+  let cb = r0.b, ct = r0.t, b2 = [0, 0], t2 = [0, d3(cb.p, ct.p)];
+  const B = [{ p: b2, n: cb.name }], T = [{ p: t2, n: ct.name }], lines = [{ a: b2, c: t2, kind: r0.kind }];
+  for (let i = 1; i < rungs.length; i++) {
+    const r = rungs[i], bc = r.b.id !== cb.id, tc = r.t.id !== ct.id;
+    if (!bc && !tc) continue;
+    if (bc && tc) throw new Error('strip step changes both ends');
+    if (bc) { b2 = place(t2, b2, d3(ct.p, r.b.p), d3(cb.p, r.b.p), 'b'); cb = r.b; B.push({ p: b2, n: cb.name }); }
+    else { t2 = place(b2, t2, d3(cb.p, r.t.p), d3(ct.p, r.t.p), 't'); ct = r.t; T.push({ p: t2, n: ct.name }); }
+    lines.push({ a: b2, c: t2, kind: r.kind });
+  }
+  return { B, T, lines };
+}
+
+function stripPiece(rungs, name, qty = 1) {
+  const u = unfold(rungs);
+  const outline = [...u.B.map(o => o.p), ...u.T.slice().reverse().map(o => o.p), u.B[0].p];
+  const bend = [], form = [];
+  u.lines.forEach((l, i) => {
+    if (i === 0 || i === u.lines.length - 1) return;
+    if (l.kind === 'break') bend.push([l.a, l.c]);
+    else if (l.kind === 'form') form.push([l.a, l.c]);
+  });
+  const labels = [...u.B, ...u.T].map(o => ({ p: o.p, t: o.n }));
+  return { name, qty, cut: [outline], bend, form, labels };
+}
+
+function sliceLoop(loop, a, b) {
+  const out = []; let i = a;
+  do { out.push(loop[i]); i = (i + 1) % loop.length; } while (i !== b);
+  out.push(loop[b]);
+  return out;
+}
+
+function piecesFromLoop(loop, seamIdx, label) {
+  const n = seamIdx.length;
+  return seamIdx.map((a, i) => stripPiece(sliceLoop(loop, a, seamIdx[(i + 1) % n]), n === 1 ? label : `${label} · piece ${i + 1} of ${n}`));
+}
+
+function ring3(c, r, axisU, axisV, seg = 72) {
+  const pts = [];
+  for (let i = 0; i <= seg; i++) {
+    const a = TAU * i / seg, ca = Math.cos(a) * r, sa = Math.sin(a) * r;
+    pts.push([c[0] + ca * axisU[0] + sa * axisV[0], c[1] + ca * axisU[1] + sa * axisV[1], c[2] + ca * axisU[2] + sa * axisV[2]]);
+  }
+  return pts;
+}
+const polyLines = (pts, kind) => pts.slice(1).map((p, i) => ({ a: pts[i], b: p, kind }));
+
+/* ---------- Tool: rectangle to round ---------- */
+function rtr(p) {
+  const a = adj(p), W = p.w + a, D = p.d + a, r = (p.dia + a) / 2, H = p.h, k = p.k, n = 4 * k;
+  const warn = [];
+  if (Math.abs(p.ox) + r > W / 2 + 1e-9 || Math.abs(p.oy) + r > D / 2 + 1e-9) warn.push('The round overhangs the rectangle in plan. The pattern is still valid, but double-check the shape in the 3D view.');
+  const P = []; for (let j = 0; j < n; j++) { const th = -Math.PI / 2 + j * TAU / n; P.push(V('P' + j, [p.ox + r * Math.cos(th), p.oy + r * Math.sin(th), H], String(j + 1))); }
+  const C = [V('C1', [W / 2, -D / 2, 0]), V('C2', [W / 2, D / 2, 0]), V('C3', [-W / 2, D / 2, 0]), V('C4', [-W / 2, -D / 2, 0])];
+  const M = [V('M1', [0, -D / 2, 0]), V('M2', [W / 2, 0, 0]), V('M3', [0, D / 2, 0]), V('M4', [-W / 2, 0, 0])];
+  const loop = [], mi = [];
+  for (let s = 0; s < 4; s++) {
+    mi[s] = loop.length; loop.push(R(M[s], P[s * k], 'seam'));
+    for (let j = s * k; j <= (s + 1) * k; j++) loop.push(R(C[s], P[j % n], (j === s * k || j === (s + 1) * k) ? 'break' : 'form'));
+  }
+  const pc = +p.pc, sd = +p.seam;
+  const seams = pc === 1 ? [mi[sd]] : pc === 2 ? [mi[sd], mi[(sd + 2) % 4]] : mi.slice();
+  const pieces = piecesFromLoop(loop, seams, 'Rectangle to round');
+  const rows = [];
+  rows.push({ grp: 'True lengths (corner → round point)' });
+  loop.forEach(l => rows.push([`${l.b.name} – ${l.t.name}`, { len: d3(l.b.p, l.t.p) }]));
+  rows.push({ grp: 'Edge spacing' });
+  rows.push(['Round division (chord)', { len: 2 * r * Math.sin(Math.PI / n) }]);
+  rows.push(['Rectangle half-width (C – M on front/back)', { len: W / 2 }]);
+  rows.push(['Rectangle half-depth (C – M on sides)', { len: D / 2 }]);
+  const m3 = [];
+  m3.push(...polyLines([...C, C[0]].map(v => v.p), 'edge'));
+  m3.push(...polyLines([...P, P[0]].map(v => v.p), 'edge'));
+  loop.forEach(l => { if (l.kind !== 'seam') m3.push({ a: l.b.p, b: l.t.p, kind: l.kind }); });
+  seams.forEach(i => m3.push({ a: loop[i].b.p, b: loop[i].t.p, kind: 'edge' }));
+  return {
+    pieces, model: m3, table: { cols: ['Line', 'True length'], rows }, warn,
+    notes: ['C = rectangle corners (C1 front-right, counter-clockwise), M = side midpoints, 1… = round division points starting at the front.',
+      'Dashed lines are the main breaks; dotted lines are light bends/roll lines.',
+      'Developed on the mean line. Add seam/lock allowances to the seam edges as your shop requires.']
+  };
+}
+
+/* ---------- Tool: rectangle to rectangle ---------- */
+function rect2(p) {
+  const a = adj(p), W1 = p.w1 + a, D1 = p.d1 + a, W2 = p.w2 + a, D2 = p.d2 + a, H = p.h, ox = p.ox, oy = p.oy;
+  const cb = [[W1 / 2, -D1 / 2], [W1 / 2, D1 / 2], [-W1 / 2, D1 / 2], [-W1 / 2, -D1 / 2]];
+  const ct = [[W2 / 2, -D2 / 2], [W2 / 2, D2 / 2], [-W2 / 2, D2 / 2], [-W2 / 2, -D2 / 2]];
+  const mb = [[0, -D1 / 2], [W1 / 2, 0], [0, D1 / 2], [-W1 / 2, 0]], mt = [[0, -D2 / 2], [W2 / 2, 0], [0, D2 / 2], [-W2 / 2, 0]];
+  const CB = cb.map((q, i) => V('CB' + i, [q[0], q[1], 0], 'C' + (i + 1)));
+  const CT = ct.map((q, i) => V('CT' + i, [q[0] + ox, q[1] + oy, H], 'C' + (i + 1) + '′'));
+  const MB = mb.map((q, i) => V('MB' + i, [q[0], q[1], 0], 'M' + (i + 1)));
+  const MT = mt.map((q, i) => V('MT' + i, [q[0] + ox, q[1] + oy, H], 'M' + (i + 1) + '′'));
+  const loop = [], mi = [];
+  for (let s = 0; s < 4; s++) {
+    mi[s] = loop.length;
+    loop.push(R(MB[s], MT[s], 'seam'));
+    loop.push(R(CB[s], MT[s], 'diag'));
+    loop.push(R(CB[s], CT[s], 'break'));
+    loop.push(R(MB[(s + 1) % 4], CT[s], 'diag'));
+  }
+  const pc = +p.pc, sd = +p.seam;
+  const seams = pc === 1 ? [mi[sd]] : pc === 2 ? [mi[sd], mi[(sd + 2) % 4]] : mi.slice();
+  const pieces = piecesFromLoop(loop, seams, 'Rectangle transition');
+  const rows = [{ grp: 'True lengths' }];
+  loop.forEach(l => rows.push([`${l.b.name} – ${l.t.name}${l.kind === 'diag' ? ' (diagonal)' : ''}`, { len: d3(l.b.p, l.t.p) }]));
+  rows.push({ grp: 'Edges' });
+  rows.push(['Bottom half-width / half-depth', { len: W1 / 2 }, { len: D1 / 2 }]);
+  rows.push(['Top half-width / half-depth', { len: W2 / 2 }, { len: D2 / 2 }]);
+  const m3 = [];
+  m3.push(...polyLines([...CB, CB[0]].map(v => v.p), 'edge'), ...polyLines([...CT, CT[0]].map(v => v.p), 'edge'));
+  for (let i = 0; i < 4; i++) m3.push({ a: CB[i].p, b: CT[i].p, kind: 'break' });
+  return {
+    pieces, model: m3, table: { cols: ['Line', 'True length', ''], rows }, warn: [],
+    notes: ['Each face is flat; diagonals are only used for layout by triangulation.',
+      'Primed points (′) are on the top rectangle.', 'Add seam/lock allowances as required.']
+  };
+}
+
+/* ---------- Tool: concentric cone / reducer (radial line, exact) ---------- */
+function cone(p) {
+  const a = adj(p); let r1 = (p.d1 + a) / 2, r2 = p.d2 > 0 ? (p.d2 + a) / 2 : 0;
+  if (r2 > r1) [r1, r2] = [r2, r1];
+  const H = p.h, pc = Math.max(1, p.pc | 0), k = Math.max(1, p.k | 0), warn = [], rows = [], pieces = [];
+  const m3 = [...polyLines(ring3([0, 0, 0], r1, [1, 0, 0], [0, 1, 0]), 'edge')];
+  if (r2 > 0) m3.push(...polyLines(ring3([0, 0, H], r2, [1, 0, 0], [0, 1, 0]), 'edge'));
+  const gens = k * pc;
+  for (let i = 0; i < gens; i++) { const t = TAU * i / gens; m3.push({ a: [r1 * Math.cos(t), r1 * Math.sin(t), 0], b: [r2 * Math.cos(t), r2 * Math.sin(t), H], kind: 'form' }); }
+  if (Math.abs(r1 - r2) < 1e-9) {
+    const Cw = TAU * r1 / pc;
+    for (let i = 0; i < pc; i++) {
+      const form = []; for (let j = 1; j < k; j++) form.push([[Cw * j / k, 0], [Cw * j / k, H]]);
+      pieces.push({ name: pc > 1 ? `Cylinder · piece ${i + 1} of ${pc}` : 'Cylinder', qty: 1, cut: [[[0, 0], [Cw, 0], [Cw, H], [0, H], [0, 0]]], bend: [], form, labels: [] });
+    }
+    rows.push(['Stretch-out per piece', { len: Cw }], ['Height', { len: H }]);
+    return { pieces, model: m3, table: { cols: ['Item', 'Value'], rows }, warn: ['Diameters are equal, so this is a straight cylinder.'], notes: [] };
+  }
+  const s = Math.hypot(H, r1 - r2), Ro = r1 * s / (r1 - r2), Ri = Ro - s, tot = TAU * r1 / Ro, per = tot / pc;
+  const seg = Math.max(48, Math.ceil(per / D2R * 2));
+  for (let i = 0; i < pc; i++) {
+    const outl = [], a0 = -Math.PI / 2 - per / 2;
+    for (let j = 0; j <= seg; j++) { const t = a0 + per * j / seg; outl.push([Ro * Math.cos(t), Ro * Math.sin(t)]); }
+    if (Ri > 1e-9) for (let j = seg; j >= 0; j--) { const t = a0 + per * j / seg; outl.push([Ri * Math.cos(t), Ri * Math.sin(t)]); }
+    else outl.push([0, 0]);
+    outl.push(outl[0]);
+    const form = []; for (let j = 1; j < k; j++) { const t = a0 + per * j / k; form.push([[Ri * Math.cos(t), Ri * Math.sin(t)], [Ro * Math.cos(t), Ro * Math.sin(t)]]); }
+    pieces.push({ name: pc > 1 ? `Cone · piece ${i + 1} of ${pc}` : 'Cone', qty: 1, cut: [outl], bend: [], form, labels: [] });
+  }
+  rows.push({ grp: 'Radial-line layout (swing from apex)' });
+  rows.push(['Slant height', { len: s }]);
+  rows.push(['Outer radius (large end)', { len: Ro }]);
+  rows.push(['Inner radius (small end)', { len: Ri }]);
+  rows.push(['Total included angle', { ang: tot / D2R }]);
+  rows.push(['Angle per piece', { ang: per / D2R }]);
+  rows.push(['Outer arc per piece', { len: Ro * per }]);
+  rows.push(['Inner arc per piece', { len: Ri * per }]);
+  if (per < Math.PI) {
+    rows.push(['Outer chord per piece', { len: 2 * Ro * Math.sin(per / 2) }]);
+    rows.push(['Inner chord per piece', { len: 2 * Ri * Math.sin(per / 2) }]);
+  }
+  rows.push(['Mean diameters used', { len: 2 * r1 }, { len: 2 * r2 }]);
+  if (Ro > 2000 * Math.max(1, r1 / 10)) warn.push('Very shallow taper — the apex is far away. Consider laying out by the chord dimensions.');
+  return {
+    pieces, model: m3, table: { cols: ['Item', 'Value', ''], rows }, warn,
+    notes: ['Exact radial-line development: swing both arcs from a common apex.', 'Dotted lines are roll lines.']
+  };
+}
+
+/* ---------- Tool: offset round to round (triangulation) ---------- */
+function ecc(p) {
+  const a = adj(p), r1 = (p.d1 + a) / 2, r2 = (p.d2 + a) / 2, H = p.h, k = p.k, n = 4 * k;
+  const off = Math.hypot(p.ox, p.oy), phi = off > 1e-9 ? Math.atan2(p.oy, p.ox) : -Math.PI / 2;
+  const P = [], Q = [];
+  for (let j = 0; j < n; j++) {
+    const t = phi + TAU * j / n, c = Math.cos(t), s = Math.sin(t);
+    P.push(V('P' + j, [r1 * c, r1 * s, 0], String(j + 1)));
+    Q.push(V('Q' + j, [p.ox + r2 * c, p.oy + r2 * s, H], (j + 1) + '′'));
+  }
+  const loop = [], ei = [];
+  for (let j = 0; j < n; j++) {
+    const j1 = (j + 1) % n;
+    ei[j] = loop.length; loop.push(R(P[j], Q[j], 'form'));
+    if (d3(P[j1].p, Q[j].p) <= d3(P[j].p, Q[j1].p)) loop.push(R(P[j1], Q[j], 'diag')); else loop.push(R(P[j], Q[j1], 'diag'));
+  }
+  const L0 = d3(P[0].p, Q[0].p), Lh = d3(P[n / 2].p, Q[n / 2].p);
+  const shortI = L0 <= Lh ? 0 : n / 2, longI = (shortI + n / 2) % n;
+  const s0 = p.seam === 'short' ? shortI : longI;
+  const seams = +p.pc === 2 ? [ei[s0], ei[(s0 + n / 2) % n]] : [ei[s0]];
+  const pieces = piecesFromLoop(loop, seams, 'Offset round to round');
+  const rows = [{ grp: 'True lengths' }];
+  loop.forEach(l => rows.push([`${l.b.name} – ${l.t.name}${l.kind === 'diag' ? ' (diagonal)' : ''}`, { len: d3(l.b.p, l.t.p) }]));
+  rows.push({ grp: 'Edge spacing (chords)' });
+  rows.push(['Bottom division', { len: 2 * r1 * Math.sin(Math.PI / n) }]);
+  rows.push(['Top division', { len: 2 * r2 * Math.sin(Math.PI / n) }]);
+  const m3 = [...polyLines([...P, P[0]].map(v => v.p), 'edge'), ...polyLines([...Q, Q[0]].map(v => v.p), 'edge')];
+  for (let j = 0; j < n; j++) m3.push({ a: P[j].p, b: Q[j].p, kind: 'form' });
+  return {
+    pieces, model: m3, table: { cols: ['Line', 'True length'], rows }, warn: [],
+    notes: ['Point 1 is in the direction of the offset. Unprimed = bottom (diameter 1), primed = top (diameter 2).',
+      'Triangulated development — use more divisions for a closer fit on large fittings.', 'Add seam allowances as required.']
+  };
+}
+
+/* ---------- Tool: segmented elbow / miter (parallel line) ---------- */
+function elbow(p) {
+  const a = adj(p), r = (p.dia + a) / 2, A = p.ang * D2R, N = Math.max(2, p.n | 0), Rc = N > 2 ? p.r : 0, L = p.l, k = p.k, m = 4 * k;
+  const warn = [];
+  if (!(A > 0 && A < Math.PI)) warn.push('Bend angle should be between 0° and 180°.');
+  const al = A / (2 * (N - 1)), ta = Math.tan(al), C = TAU * r;
+  const th0 = p.seam === 'heel' ? 0 : p.seam === 'throat' ? Math.PI : Math.PI / 2;
+  const Lend = L + Rc * ta, Lg = 2 * Rc * ta;
+  if (Lend - r * ta < -1e-9) warn.push(`Straight length is too short — the throat of the end piece goes negative. Use at least ${fmtPlain(r * ta - Rc * ta)}.`);
+  if (N > 2 && Rc < r) warn.push('Centerline radius is smaller than the pipe radius — gore throats overlap.');
+  const S = Math.max(144, m * 8);
+  const endTop = th => Lend + r * Math.cos(th) * ta, goreTop = th => Lg / 2 + r * Math.cos(th) * ta;
+  const mk = (topF, botF, name, qty) => {
+    const top = [], bot = [];
+    for (let i = 0; i <= S; i++) { const x = C * i / S, th = th0 + TAU * i / S; top.push([x, topF(th)]); bot.push([x, botF(th)]); }
+    const outl = [...bot, ...top.reverse(), bot[0]];
+    const form = []; for (let j = 1; j < m; j++) { const x = C * j / m, th = th0 + TAU * j / m; form.push([[x, botF(th)], [x, topF(th)]]); }
+    const labels = []; for (let j = 0; j <= m; j += Math.max(1, k / 2 | 0)) { const th = th0 + TAU * j / m; labels.push({ p: [C * j / m, topF(th)], t: String(j % m + 1) }); }
+    return { name, qty, cut: [outl], bend: [], form, labels };
+  };
+  const pieces = [mk(endTop, () => 0, 'End piece', 2)];
+  if (N > 2) pieces.push(mk(goreTop, th => -goreTop(th), 'Gore', N - 2));
+  const rows = [{ grp: `Element heights (stretch-out ${fmtPlain(C)}, ${m} divisions)` }];
+  for (let j = 0; j <= m; j++) {
+    const th = th0 + TAU * j / m, row = [`${j % m + 1}  (${Math.round(((th % TAU) + TAU) % TAU / D2R)}° from heel)`, { len: C * j / m }, { len: endTop(th) }];
+    if (N > 2) row.push({ len: 2 * goreTop(th) });
+    rows.push(row);
+  }
+  rows.push({ grp: 'Summary' });
+  rows.push(['Cut angle at each joint', { ang: al / D2R }]);
+  rows.push(['End piece: heel / throat', { len: Lend + r * ta }, { len: Lend - r * ta }]);
+  if (N > 2) rows.push(['Gore: heel / throat', { len: Lg + 2 * r * ta }, { len: Lg - 2 * r * ta }]);
+  /* 3D */
+  const m3 = [], b = [0, 1, 0];
+  const dir = f => [Math.cos(f), 0, Math.sin(f)], nrm = f => [Math.sin(f), 0, -Math.cos(f)];
+  const curve = (J, f, sg, ofs) => { const d = dir(f), nn = nrm(f), pts = []; for (let i = 0; i <= 64; i++) { const t = TAU * i / 64, ct = Math.cos(t), st = Math.sin(t), e = sg * r * ct * ofs; pts.push([0, 1, 2].map(q => J[q] + r * (ct * nn[q] + st * b[q]) + d[q] * e)); } return pts; };
+  let J = [0, 0, 0]; const segs = [];
+  for (let i = 0; i < N; i++) {
+    const f = i * 2 * al, len = (i === 0 || i === N - 1) ? Lend : Lg, d = dir(f), J2 = J.map((v, q) => v + d[q] * len);
+    segs.push({ J, J2, f, s0: i === 0 ? 0 : -1, s1: i === N - 1 ? 0 : 1 }); J = J2;
+  }
+  segs.forEach(sg => {
+    const c0 = curve(sg.J, sg.f, sg.s0, ta), c1 = curve(sg.J2, sg.f, sg.s1, ta);
+    m3.push(...polyLines(c0, 'edge'), ...polyLines(c1, 'edge'));
+    for (let i = 0; i < 64; i += 8) m3.push({ a: c0[i], b: c1[i], kind: 'form' });
+  });
+  return {
+    pieces, model: m3, table: { cols: N > 2 ? ['Element', 'Position', 'End piece', 'Gore'] : ['Element', 'Position', 'Piece height'], rows }, warn,
+    notes: [N > 2 ? `Cut 2 end pieces and ${N - 2} gores. Gores can be nested heel-to-throat on one strip; turn alternate gores 180° to stagger seams.` : 'Two-piece miter: cut 2 identical pieces.',
+      'For a 2-piece miter the straight length is the centerline distance from the square end to the miter point.',
+      'Element 1 is at the seam. Heights are measured from the square end (end piece) or full length (gore).']
+  };
+}
+
+/* ---------- Tool: branch / tee / lateral ---------- */
+function branch(p) {
+  const a = adj(p), Rm = (p.dm + a) / 2, r = (p.db + a) / 2, be = p.beta * D2R, L = p.l, Lm = p.lm, k = p.k, m = 4 * k, warn = [];
+  if (r > Rm + 1e-9) return { pieces: [], model: [], table: { cols: [], rows: [] }, warn: [], err: 'Branch diameter must not exceed the main diameter.', notes: [] };
+  if (!(be > 5 * D2R && be <= Math.PI / 2 + 1e-9)) return { pieces: [], model: [], table: { cols: [], rows: [] }, warn: [], err: 'Branch angle must be between 5° and 90°.', notes: [] };
+  const sb = Math.sin(be), cb = Math.cos(be);
+  const t = th => (Math.sqrt(Math.max(0, Rm * Rm - r * r * Math.sin(th) ** 2)) - r * Math.cos(th) * cb) / sb;
+  let tmax = -Infinity, tmin = Infinity, thMax = 0, thMin = 0;
+  for (let i = 0; i < 720; i++) { const th = TAU * i / 720, v = t(th); if (v > tmax) { tmax = v; thMax = th; } if (v < tmin) { tmin = v; thMin = th; } }
+  if (L < tmax) warn.push(`Branch length is shorter than the intersection — needs at least ${fmtPlain(tmax)}.`);
+  const th0 = p.seam === 'short' ? thMax : p.seam === 'long' ? thMin : Math.PI / 2;
+  const C = TAU * r, S = Math.max(180, m * 8);
+  const bot = [], top = [];
+  for (let i = 0; i <= S; i++) { const x = C * i / S, th = th0 + TAU * i / S; bot.push([x, t(th)]); top.push([x, L]); }
+  const form = []; for (let j = 1; j < m; j++) { const th = th0 + TAU * j / m; form.push([[C * j / m, t(th)], [C * j / m, L]]); }
+  const labels = []; for (let j = 0; j <= m; j += Math.max(1, k / 2 | 0)) labels.push({ p: [C * j / m, t(th0 + TAU * j / m)], t: String(j % m + 1) });
+  const pieces = [{ name: 'Branch', qty: 1, cut: [[...bot, ...top.reverse(), bot[0]]], bend: [], form, labels }];
+  /* hole in main */
+  const hole = [];
+  for (let i = 0; i <= S; i++) { const th = TAU * i / S, tt = t(th); hole.push([tt * cb - r * Math.cos(th) * sb, Rm * Math.asin(Math.max(-1, Math.min(1, r * Math.sin(th) / Rm)))]); }
+  const hx = hole.map(q => q[0]), hMin = Math.min(...hx), hMax = Math.max(...hx);
+  const Cm = TAU * Rm, x0 = -Lm / 2, x1 = Lm / 2;
+  if (hMin < x0 || hMax > x1) warn.push('Main length is too short to contain the branch opening.');
+  pieces.push({ name: 'Main (opening template)', qty: 1, cut: [[[x0, -Cm / 2], [x1, -Cm / 2], [x1, Cm / 2], [x0, Cm / 2], [x0, -Cm / 2]], hole], bend: [], form: [[[x0, 0], [x1, 0]], [[0, -Cm / 2], [0, Cm / 2]]], labels: [] });
+  const rows = [{ grp: `Branch element lengths (stretch-out ${fmtPlain(C)})` }];
+  for (let j = 0; j <= m; j++) { const th = th0 + TAU * j / m; rows.push([String(j % m + 1), { len: C * j / m }, { len: L - t(th) }]); }
+  rows.push({ grp: 'Main opening (from branch axis, around from top)' });
+  for (let j = 0; j < m; j++) { const th = TAU * j / m, tt = t(th); rows.push([`θ ${Math.round(th / D2R)}°`, { len: tt * cb - r * Math.cos(th) * sb }, { len: Rm * Math.asin(Math.max(-1, Math.min(1, r * Math.sin(th) / Rm))) }]); }
+  /* 3D */
+  const ax = [cb, 0, sb], u = [-sb, 0, cb], v = [0, 1, 0];
+  const bp = (th, tt) => [0, 1, 2].map(q => tt * ax[q] + r * (Math.cos(th) * u[q] + Math.sin(th) * v[q]));
+  const m3 = [];
+  m3.push(...polyLines(ring3([x0, 0, 0], Rm, [0, 1, 0], [0, 0, 1]), 'edge'), ...polyLines(ring3([x1, 0, 0], Rm, [0, 1, 0], [0, 0, 1]), 'edge'));
+  for (let i = 0; i < 12; i++) { const q = TAU * i / 12; m3.push({ a: [x0, Rm * Math.cos(q), Rm * Math.sin(q)], b: [x1, Rm * Math.cos(q), Rm * Math.sin(q)], kind: 'form' }); }
+  const ic = [], ec = []; for (let i = 0; i <= 96; i++) { const th = TAU * i / 96; ic.push(bp(th, t(th))); ec.push(bp(th, L)); }
+  m3.push(...polyLines(ic, 'break'), ...polyLines(ec, 'edge'));
+  for (let i = 0; i < 96; i += 8) m3.push({ a: ic[i], b: ec[i], kind: 'form' });
+  return {
+    pieces, model: m3, table: { cols: ['Element', 'Position', 'Length'], rows }, warn,
+    notes: ['Branch length is measured along the branch axis from where it crosses the main centerline.',
+      'Opening template: X is along the main pipe from the branch axis, the other value is the distance around the main from its top centerline.',
+      'Developed on mean diameters. For heavy wall, develop the branch on its inside diameter against the main outside diameter.']
+  };
+}
+
+/* ============================================================
+   Tool definitions
+   ============================================================ */
+const COMMON = [
+  { k: 't', label: 'Material thickness', type: 'len', def: 0, help: 'Patterns are developed on the mean line (mid-thickness).' },
+  { k: 'ref', label: 'Dimensions given as', type: 'select', def: 'inside', opts: [['inside', 'Inside'], ['mean', 'Mean'], ['outside', 'Outside']] },
+];
+const SEAM4 = [['0', 'Front (−Y)'], ['1', 'Right (+X)'], ['2', 'Back (+Y)'], ['3', 'Left (−X)']];
+const TOOLS = [
+  { id: 'rtr', name: 'Rectangle to round', icon: '<ellipse cx="12" cy="6" rx="5" ry="2"/><path d="M3 19h18M7 6L3 19M17 6l4 13"/>', run: rtr, fields: [
+    { sec: 'Shape' },
+    { k: 'w', label: 'Rectangle width (X)', type: 'len', def: 24 },
+    { k: 'd', label: 'Rectangle depth (Y)', type: 'len', def: 16 },
+    { k: 'dia', label: 'Round diameter', type: 'len', def: 12 },
+    { k: 'h', label: 'Height', type: 'len', def: 12 },
+    { k: 'ox', label: 'Round offset X', type: 'len', def: 0 },
+    { k: 'oy', label: 'Round offset Y', type: 'len', def: 0, help: 'Offsets move the round center relative to the rectangle center.' },
+    { sec: 'Layout' },
+    { k: 'k', label: 'Divisions per quarter', type: 'int', def: 6, min: 2, max: 48 },
+    { k: 'pc', label: 'Pieces', type: 'select', def: '1', opts: [['1', '1 (one seam)'], ['2', '2 halves'], ['4', '4 quarters']] },
+    { k: 'seam', label: 'Seam on side', type: 'select', def: '0', opts: SEAM4, show: p => p.pc !== '4' },
+  ] },
+  { id: 'rect', name: 'Rectangle transition', icon: '<path d="M8 5h8M3 19h18M8 5L3 19M16 5l5 14"/>', run: rect2, fields: [
+    { sec: 'Shape' },
+    { k: 'w1', label: 'Bottom width (X)', type: 'len', def: 24 },
+    { k: 'd1', label: 'Bottom depth (Y)', type: 'len', def: 16 },
+    { k: 'w2', label: 'Top width (X)', type: 'len', def: 12 },
+    { k: 'd2', label: 'Top depth (Y)', type: 'len', def: 10 },
+    { k: 'h', label: 'Height', type: 'len', def: 12 },
+    { k: 'ox', label: 'Top offset X', type: 'len', def: 0 },
+    { k: 'oy', label: 'Top offset Y', type: 'len', def: 0 },
+    { sec: 'Layout' },
+    { k: 'pc', label: 'Pieces', type: 'select', def: '2', opts: [['1', '1 (one seam)'], ['2', '2 halves'], ['4', '4 sides']] },
+    { k: 'seam', label: 'Seam on side', type: 'select', def: '1', opts: SEAM4, show: p => p.pc !== '4' },
+  ] },
+  { id: 'cone', name: 'Cone / reducer', icon: '<ellipse cx="12" cy="5" rx="4" ry="1.6"/><ellipse cx="12" cy="19" rx="8" ry="2.4"/><path d="M8 5L4 19M16 5l4 14"/>', run: cone, fields: [
+    { sec: 'Shape' },
+    { k: 'd1', label: 'Large diameter', type: 'len', def: 18 },
+    { k: 'd2', label: 'Small diameter', type: 'len', def: 10, help: 'Use 0 for a full cone to a point.' },
+    { k: 'h', label: 'Height', type: 'len', def: 10 },
+    { sec: 'Layout' },
+    { k: 'pc', label: 'Pieces', type: 'int', def: 1, min: 1, max: 12 },
+    { k: 'k', label: 'Roll lines per piece', type: 'int', def: 12, min: 1, max: 96 },
+  ] },
+  { id: 'ecc', name: 'Offset round to round', icon: '<ellipse cx="8" cy="5" rx="4" ry="1.6"/><ellipse cx="12" cy="19" rx="8" ry="2.4"/><path d="M4 5v14M12 5l8 14"/>', run: ecc, fields: [
+    { sec: 'Shape' },
+    { k: 'd1', label: 'Bottom diameter', type: 'len', def: 18 },
+    { k: 'd2', label: 'Top diameter', type: 'len', def: 10 },
+    { k: 'h', label: 'Height', type: 'len', def: 12 },
+    { k: 'ox', label: 'Top offset X', type: 'len', def: 4 },
+    { k: 'oy', label: 'Top offset Y', type: 'len', def: 0, help: 'Offset = (D1 − D2) / 2 gives a flat-on-one-side eccentric reducer.' },
+    { sec: 'Layout' },
+    { k: 'k', label: 'Divisions per quarter', type: 'int', def: 6, min: 2, max: 48 },
+    { k: 'pc', label: 'Pieces', type: 'select', def: '1', opts: [['1', '1 (one seam)'], ['2', '2 halves']] },
+    { k: 'seam', label: 'Seam at', type: 'select', def: 'short', opts: [['short', 'Shortest side'], ['long', 'Longest side']] },
+  ] },
+  { id: 'elbow', name: 'Elbow / miter', icon: '<path d="M4 21V13a9 9 0 0 1 9-9h7M10 21v-8a3 3 0 0 1 3-3h7M4 15h6M7 7l4 4M13 4v6"/>', run: elbow, fields: [
+    { sec: 'Shape' },
+    { k: 'dia', label: 'Pipe diameter', type: 'len', def: 8 },
+    { k: 'ang', label: 'Bend angle (°)', type: 'num', def: 90 },
+    { k: 'n', label: 'Number of pieces', type: 'int', def: 5, min: 2, max: 24, help: '2 = simple miter. 5-piece 90° is typical.' },
+    { k: 'r', label: 'Centerline radius', type: 'len', def: 12, show: p => p.n > 2 },
+    { k: 'l', label: 'Straight length on ends', type: 'len', def: 2, help: '2-piece: centerline length from the square end to the miter point.' },
+    { sec: 'Layout' },
+    { k: 'k', label: 'Divisions per quarter', type: 'int', def: 4, min: 2, max: 48 },
+    { k: 'seam', label: 'Seam at', type: 'select', def: 'throat', opts: [['throat', 'Throat (inside)'], ['heel', 'Heel (outside)'], ['side', 'Side']] },
+  ] },
+  { id: 'branch', name: 'Branch / tee / lateral', icon: '<path d="M2 14h20M2 21h20M9 14L5 3M15 14L11 3"/>', run: branch, fields: [
+    { sec: 'Shape' },
+    { k: 'dm', label: 'Main diameter', type: 'len', def: 12 },
+    { k: 'db', label: 'Branch diameter', type: 'len', def: 8 },
+    { k: 'beta', label: 'Branch angle (°)', type: 'num', def: 90, help: '90 = tee. Smaller = lateral.' },
+    { k: 'l', label: 'Branch length', type: 'len', def: 14, help: 'Along the branch axis, from the main centerline to the branch end.' },
+    { k: 'lm', label: 'Main length (template)', type: 'len', def: 24 },
+    { sec: 'Layout' },
+    { k: 'k', label: 'Divisions per quarter', type: 'int', def: 4, min: 2, max: 48 },
+    { k: 'seam', label: 'Branch seam at', type: 'select', def: 'short', opts: [['short', 'Shortest element'], ['long', 'Longest element'], ['side', 'Side']] },
+  ] },
+];
+TOOLS.forEach(t => t.fields.push({ sec: 'Material' }, ...COMMON));
+
+/* ============================================================
+   Units, parsing, formatting
+   ============================================================ */
+let S = { tool: 'rtr', u: 'in', vals: {}, labels: false };
+const toolDef = () => TOOLS.find(t => t.id === S.tool) || TOOLS[0];
+
+function parseNum(s) {
+  s = String(s).trim().replace(/\s*(in|mm|″|"|°)\s*$/i, '');
+  if (s === '') return NaN;
+  const m = s.match(/^(-)?\s*(?:(\d*\.?\d+)(?:[\s-]+(\d+)\/(\d+))?|(\d+)\/(\d+))$/);
+  if (!m) return NaN;
+  let v = m[2] !== undefined ? parseFloat(m[2]) + (m[3] ? m[3] / m[4] : 0) : m[5] / m[6];
+  return m[1] ? -v : v;
+}
+function frac(v, den = 16) {
+  const neg = v < 0; v = Math.abs(v);
+  const n = Math.round(v * den), w = Math.floor(n / den); let r = n % den, d = den;
+  while (r && r % 2 === 0) { r /= 2; d /= 2; }
+  return (neg && n ? '-' : '') + (r ? (w ? w + ' ' : '') + r + '/' + d : String(w));
+}
+function fmtPlain(v) { return S.u === 'in' ? `${v.toFixed(3)}″` : `${v.toFixed(1)} mm`; }
+function fmtCell(c) {
+  if (c == null) return '';
+  if (typeof c === 'string') return esc(c);
+  if (c.ang !== undefined) return `${c.ang.toFixed(3)}°`;
+  if (S.u === 'in') return `${c.len.toFixed(3)}<span class="fr">${frac(c.len)}</span>`;
+  return c.len.toFixed(1);
+}
+const csvCell = c => c == null ? '' : typeof c === 'string' ? c : c.ang !== undefined ? c.ang.toFixed(4) : c.len.toFixed(S.u === 'in' ? 4 : 2);
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+function defaults(t, u) {
+  const o = {};
+  t.fields.forEach(f => { if (!f.k) return; let v = f.def; if (f.type === 'len' && u === 'mm') v = Math.round(v * 25.4); o[f.k] = String(v); });
+  return o;
+}
+function vals() { return S.vals[S.tool] || (S.vals[S.tool] = defaults(toolDef(), S.u)); }
+function parsed() {
+  const t = toolDef(), v = vals(), p = {}, bad = [];
+  t.fields.forEach(f => {
+    if (!f.k) return;
+    if (f.type === 'select') { p[f.k] = v[f.k]; return; }
+    let x = parseNum(v[f.k]);
+    if (f.type === 'int') { x = Math.round(x); if (isFinite(x)) x = Math.min(f.max ?? 1e9, Math.max(f.min ?? 1, x)); }
+    if (!isFinite(x)) bad.push(f.k);
+    p[f.k] = x;
+  });
+  return { p, bad };
+}
+
+/* ============================================================
+   UI
+   ============================================================ */
+if (typeof document !== 'undefined') (function () {
+  const $ = id => document.getElementById(id);
+  const form = $('form'), svg = $('flat'), view = $('view'), c3 = $('c3');
+  let res = null, layout = null, vb = null, autoFit = true;
+
+  /* ---- state <-> URL hash ---- */
+  function loadHash() {
+    const h = new URLSearchParams(location.hash.slice(1));
+    if (h.get('u') === 'mm') S.u = 'mm';
+    if (TOOLS.some(t => t.id === h.get('tool'))) S.tool = h.get('tool');
+    S.labels = h.get('lb') === '1';
+    const v = defaults(toolDef(), S.u);
+    toolDef().fields.forEach(f => { if (f.k && h.has(f.k)) v[f.k] = h.get(f.k); });
+    S.vals[S.tool] = v;
+  }
+  function saveHash() {
+    const h = new URLSearchParams({ tool: S.tool, u: S.u, ...vals() });
+    if (S.labels) h.set('lb', '1');
+    history.replaceState(null, '', '#' + h.toString());
+  }
+
+  /* ---- build controls ---- */
+  $('tools').innerHTML = TOOLS.map(t => `<button class="tool" data-t="${t.id}"><svg viewBox="0 0 24 24">${t.icon}</svg><span>${t.name}</span></button>`).join('');
+  $('tools').addEventListener('click', e => { const b = e.target.closest('.tool'); if (!b) return; S.tool = b.dataset.t; autoFit = true; buildForm(); update(); });
+  $('units').addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.u !== S.u) setUnits(b.dataset.u); });
+
+  function setUnits(u) {
+    const f = u === 'mm' ? 25.4 : 1 / 25.4;
+    for (const id in S.vals) {
+      const t = TOOLS.find(x => x.id === id), v = S.vals[id];
+      t.fields.forEach(fd => { if (fd.type !== 'len') return; const x = parseNum(v[fd.k]); if (isFinite(x)) v[fd.k] = String(u === 'mm' ? Math.round(x * f * 10) / 10 : Math.round(x * f * 1000) / 1000); });
+    }
+    S.u = u; autoFit = true; buildForm(); update();
+  }
+
+  function buildForm() {
+    document.querySelectorAll('.tool').forEach(b => b.classList.toggle('on', b.dataset.t === S.tool));
+    document.querySelectorAll('#units button').forEach(b => b.classList.toggle('on', b.dataset.u === S.u));
+    const t = toolDef(), v = vals();
+    form.innerHTML = t.fields.map(f => {
+      if (f.sec) return `<div class="sec">${f.sec}</div>`;
+      const unit = f.type === 'len' ? ` <span style="color:var(--muted)">(${S.u})</span>` : '';
+      const ctl = f.type === 'select'
+        ? `<select id="f_${f.k}">${f.opts.map(o => `<option value="${o[0]}"${o[0] === v[f.k] ? ' selected' : ''}>${o[1]}</option>`).join('')}</select>`
+        : `<input id="f_${f.k}" value="${esc(v[f.k])}" inputmode="${f.type === 'int' ? 'numeric' : 'text'}" spellcheck="false">`;
+      return `<div class="field" data-k="${f.k}"><label for="f_${f.k}">${f.label}${unit}</label>${ctl}${f.help ? `<div class="help">${f.help}</div>` : ''}</div>`;
+    }).join('');
+    $('lbl').checked = S.labels;
+  }
+  form.addEventListener('input', e => { const k = e.target.id.slice(2); vals()[k] = e.target.value; update(); });
+  form.addEventListener('change', e => { const k = e.target.id.slice(2); vals()[k] = e.target.value; update(); });
+  $('lbl').addEventListener('change', e => { S.labels = e.target.checked; renderFlat(); saveHash(); });
+
+  /* ---- compute + render ---- */
+  function update() {
+    const t = toolDef(), { p, bad } = parsed();
+    t.fields.forEach(f => {
+      if (!f.k) return;
+      const el = form.querySelector(`.field[data-k="${f.k}"]`);
+      if (el) { el.classList.toggle('hide', !!(f.show && !f.show(p))); el.querySelector('input')?.classList.toggle('bad', bad.includes(f.k)); }
+    });
+    saveHash();
+    const msgs = [];
+    if (bad.length) { $('msgs').innerHTML = '<div class="e">Check the highlighted values.</div>'; return; }
+    try { res = t.run(p); } catch (err) { res = null; $('msgs').innerHTML = `<div class="e">Couldn't develop this shape: ${esc(err.message)}</div>`; return; }
+    if (res.err) msgs.push(`<div class="e">${esc(res.err)}</div>`);
+    (res.warn || []).forEach(w => msgs.push(`<div class="w">${esc(w)}</div>`));
+    $('msgs').innerHTML = msgs.join('');
+    doLayout();
+    renderFlat(); if (autoFit) fit();
+    render3d(); renderTable();
+    const total = res.pieces.reduce((s, pc) => s + pc.qty, 0);
+    $('ptitle').innerHTML = `${esc(t.name)}<small>${res.pieces.length} pattern${res.pieces.length === 1 ? '' : 's'}${total !== res.pieces.length ? `, ${total} pieces total` : ''}</small>`;
+  }
+
+  function bbox(pts) { let a = [Infinity, Infinity, -Infinity, -Infinity]; for (const q of pts) { a[0] = Math.min(a[0], q[0]); a[1] = Math.min(a[1], q[1]); a[2] = Math.max(a[2], q[0]); a[3] = Math.max(a[3], q[1]); } return a; }
+
+  function doLayout() {
+    const ps = res.pieces.map(pc => ({ ...pc, bb: bbox(pc.cut.flat()) }));
+    const md = Math.max(1e-6, ...ps.map(q => Math.max(q.bb[2] - q.bb[0], q.bb[3] - q.bb[1])));
+    const gap = md * 0.18; let x = 0;
+    const tr = (dx, dy) => q => [q[0] + dx, q[1] + dy];
+    const out = ps.map(pc => {
+      const dx = x - pc.bb[0], dy = -pc.bb[1], f = tr(dx, dy);
+      x += pc.bb[2] - pc.bb[0] + gap;
+      return {
+        name: pc.name, qty: pc.qty, cut: pc.cut.map(l => l.map(f)), bend: pc.bend.map(l => l.map(f)), form: pc.form.map(l => l.map(f)),
+        labels: pc.labels.map(l => ({ p: f(l.p), t: l.t })), w: pc.bb[2] - pc.bb[0], h: pc.bb[3] - pc.bb[1],
+        bb: [pc.bb[0] + dx, 0, pc.bb[2] + dx, pc.bb[3] - pc.bb[1]]
+      };
+    });
+    const all = bbox(out.flatMap(o => [[o.bb[0], o.bb[1]], [o.bb[2], o.bb[3]]]));
+    layout = { pieces: out, bb: all, md, fs: md * 0.035 };
+  }
+
+  const pathOf = l => 'M' + l.map(q => `${q[0].toFixed(4)} ${(-q[1]).toFixed(4)}`).join('L');
+  function niceStep(x) { const e = Math.pow(10, Math.floor(Math.log10(x))), m = x / e; return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * e; }
+
+  function svgBody(forExport) {
+    if (!layout) return '';
+    const L = layout, fs = L.fs, sw = forExport ? `stroke-width="${(L.md * 0.002).toFixed(4)}"` : 'stroke-width="1.6" vector-effect="non-scaling-stroke"';
+    const swt = forExport ? `stroke-width="${(L.md * 0.0012).toFixed(4)}"` : 'stroke-width="1.1" vector-effect="non-scaling-stroke"';
+    const col = forExport ? { cut: '#000', bend: '#d00', form: '#888', txt: '#333' } : { cut: 'var(--cut)', bend: 'var(--bend)', form: 'var(--form)', txt: 'var(--muted)' };
+    let s = '';
+    for (const pc of L.pieces) {
+      pc.form.forEach(l => s += `<path d="${pathOf(l)}" fill="none" stroke="${col.form}" ${swt} stroke-dasharray="${forExport ? (fs * .25).toFixed(4) + ' ' + (fs * .25).toFixed(4) : '2 3'}"/>`);
+      pc.bend.forEach(l => s += `<path d="${pathOf(l)}" fill="none" stroke="${col.bend}" ${sw} stroke-dasharray="${forExport ? (fs * .8).toFixed(4) + ' ' + (fs * .4).toFixed(4) : '8 5'}"/>`);
+      pc.cut.forEach(l => s += `<path d="${pathOf(l)}" fill="none" stroke="${col.cut}" ${sw} stroke-linejoin="round"/>`);
+      const ttl = `${pc.name}${pc.qty > 1 ? ` — cut ${pc.qty}` : ''}`;
+      s += `<text x="${pc.bb[0]}" y="${-pc.bb[3] - fs * 0.9}" font-size="${fs}" font-family="system-ui,sans-serif" font-weight="600" fill="${col.cut}">${esc(ttl)}</text>`;
+      s += `<text x="${pc.bb[0]}" y="${fs * 1.7}" font-size="${fs * .8}" font-family="system-ui,sans-serif" fill="${col.txt}">${esc(fmtPlain(pc.w) + ' × ' + fmtPlain(pc.h))} overall</text>`;
+      if (S.labels) pc.labels.forEach(l => s += `<text x="${l.p[0]}" y="${-l.p[1]}" font-size="${fs * .55}" font-family="system-ui,sans-serif" fill="${col.txt}" text-anchor="middle" dy="-0.35em">${esc(l.t)}</text>`);
+    }
+    return s;
+  }
+
+  function renderFlat() {
+    if (!layout) { svg.innerHTML = ''; return; }
+    const step = niceStep(layout.md / 12);
+    $('gridlbl').textContent = `Grid ${S.u === 'in' ? frac(step) + '″' : step + ' mm'}`;
+    svg.innerHTML = `<defs><pattern id="gp" width="${step}" height="${step}" patternUnits="userSpaceOnUse"><path d="M${step} 0H0V${step}" fill="none" stroke="var(--grid)" stroke-width="1" vector-effect="non-scaling-stroke"/></pattern></defs>
+      <rect x="-1e6" y="-1e6" width="2e6" height="2e6" fill="url(#gp)"/>` + svgBody(false);
+    applyVB();
+  }
+
+  function fit() {
+    if (!layout) return;
+    const b = layout.bb, fs = layout.fs, r = view.getBoundingClientRect();
+    let x = b[0] - fs * 2, y = -b[3] - fs * 3, w = b[2] - b[0] + fs * 4, h = b[3] - b[1] + fs * 6;
+    const ar = r.width / Math.max(1, r.height);
+    if (w / h > ar) { const nh = w / ar; y -= (nh - h) / 2; h = nh; } else { const nw = h * ar; x -= (nw - w) / 2; w = nw; }
+    vb = { x, y, w, h }; applyVB();
+  }
+  const applyVB = () => vb && svg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  $('fit').onclick = () => { autoFit = true; fit(); };
+
+  /* pan / zoom / pinch */
+  const ptrs = new Map(); let pinch0 = null;
+  const toModel = (cx, cy) => { const r = svg.getBoundingClientRect(); return [vb.x + (cx - r.left) / r.width * vb.w, vb.y + (cy - r.top) / r.height * vb.h]; };
+  function zoomAt(cx, cy, f) { const [mx, my] = toModel(cx, cy); vb.x = mx - (mx - vb.x) * f; vb.y = my - (my - vb.y) * f; vb.w *= f; vb.h *= f; applyVB(); }
+  svg.addEventListener('wheel', e => { if (!vb) return; e.preventDefault(); autoFit = false; zoomAt(e.clientX, e.clientY, Math.exp(e.deltaY * 0.0015)); }, { passive: false });
+  svg.addEventListener('pointerdown', e => { svg.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); pinch0 = null; });
+  svg.addEventListener('pointermove', e => {
+    if (!ptrs.has(e.pointerId) || !vb) return;
+    const prev = ptrs.get(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); autoFit = false;
+    const r = svg.getBoundingClientRect();
+    if (ptrs.size === 1) { vb.x -= (e.clientX - prev[0]) / r.width * vb.w; vb.y -= (e.clientY - prev[1]) / r.height * vb.h; applyVB(); }
+    else if (ptrs.size === 2) {
+      const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      if (pinch0) zoomAt((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, pinch0 / d);
+      pinch0 = d;
+    }
+  });
+  const up = e => { ptrs.delete(e.pointerId); pinch0 = null; };
+  svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
+  svg.addEventListener('dblclick', () => { autoFit = true; fit(); });
+
+  /* ---- 3D preview ---- */
+  let yaw = -0.6, pitch = 0.45;
+  function render3d() {
+    const dpr = window.devicePixelRatio || 1, w = c3.clientWidth, h = c3.clientHeight;
+    c3.width = w * dpr; c3.height = h * dpr;
+    const g = c3.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+    if (!res || !res.model.length) return;
+    const pts = res.model.flatMap(l => [l.a, l.b]);
+    const c = [0, 1, 2].map(i => (Math.min(...pts.map(p => p[i])) + Math.max(...pts.map(p => p[i]))) / 2);
+    const rad = Math.max(...pts.map(p => d3(p, c))) || 1, sc = Math.min(w, h) * 0.44 / rad;
+    const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const pr = p => { const x = p[0] - c[0], y = p[1] - c[1], z = p[2] - c[2]; const x1 = x * cy - y * sy, y1 = x * sy + y * cy; return [w / 2 + x1 * sc, h / 2 - (z * cp + y1 * sp) * sc]; };
+    const cs = getComputedStyle(document.documentElement);
+    const colr = { edge: cs.getPropertyValue('--cut'), break: cs.getPropertyValue('--accent'), form: cs.getPropertyValue('--form') };
+    for (const kind of ['form', 'break', 'edge']) {
+      g.strokeStyle = colr[kind]; g.lineWidth = kind === 'form' ? 0.8 : 1.4; g.globalAlpha = kind === 'form' ? 0.7 : 1;
+      g.beginPath();
+      res.model.forEach(l => { if ((l.kind === kind) || (kind === 'edge' && !colr[l.kind])) { const a = pr(l.a), b = pr(l.b); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); } });
+      g.stroke();
+    }
+    g.globalAlpha = 1;
+  }
+  let drag3 = null;
+  c3.addEventListener('pointerdown', e => { c3.setPointerCapture(e.pointerId); drag3 = [e.clientX, e.clientY]; });
+  c3.addEventListener('pointermove', e => { if (!drag3) return; yaw += (e.clientX - drag3[0]) * 0.01; pitch = Math.max(-1.5, Math.min(1.5, pitch + (e.clientY - drag3[1]) * 0.01)); drag3 = [e.clientX, e.clientY]; render3d(); });
+  c3.addEventListener('pointerup', () => drag3 = null); c3.addEventListener('pointercancel', () => drag3 = null);
+
+  /* ---- table ---- */
+  function renderTable() {
+    const tb = res.table;
+    $('ttitle').textContent = `Layout data (${S.u})`;
+    if (!tb.rows.length) { $('table').innerHTML = ''; $('notes').innerHTML = ''; return; }
+    const nc = tb.cols.length;
+    $('table').innerHTML = `<table><thead><tr>${tb.cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${tb.rows.map(r => r.grp ? `<tr class="grp"><td colspan="${nc}">${esc(r.grp)}</td></tr>` : `<tr>${Array.from({ length: nc }, (_, i) => `<td>${fmtCell(r[i])}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    $('notes').innerHTML = (res.notes || []).map(n => `<li>${esc(n)}</li>`).join('');
+  }
+
+  /* ---- exports ---- */
+  function download(name, text, type) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+  const fname = ext => `${S.tool}-pattern.${ext}`;
+  $('dxf').onclick = () => {
+    if (!layout) return;
+    const o = [], n = v => v.toFixed(6), add = (...a) => o.push(...a);
+    add('0', 'SECTION', '2', 'HEADER', '9', '$ACADVER', '1', 'AC1009', '9', '$INSUNITS', '70', S.u === 'in' ? '1' : '4', '0', 'ENDSEC');
+    add('0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '70', '4');
+    [['CUT', 7], ['BEND', 1], ['FORM', 8], ['TEXT', 3]].forEach(([nm, c]) => add('0', 'LAYER', '2', nm, '70', '0', '62', String(c), '6', 'CONTINUOUS'));
+    add('0', 'ENDTAB', '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES');
+    const line = (ly, a, b) => add('0', 'LINE', '8', ly, '10', n(a[0]), '20', n(a[1]), '30', '0', '11', n(b[0]), '21', n(b[1]), '31', '0');
+    const poly = (ly, l) => { for (let i = 1; i < l.length; i++) if (Math.hypot(l[i][0] - l[i - 1][0], l[i][1] - l[i - 1][1]) > 1e-9) line(ly, l[i - 1], l[i]); };
+    const text = (ly, p, h, s) => add('0', 'TEXT', '8', ly, '10', n(p[0]), '20', n(p[1]), '30', '0', '40', n(h), '1', s);
+    for (const pc of layout.pieces) {
+      pc.cut.forEach(l => poly('CUT', l)); pc.bend.forEach(l => poly('BEND', l)); pc.form.forEach(l => poly('FORM', l));
+      text('TEXT', [pc.bb[0], pc.bb[3] + layout.fs * 0.6], layout.fs * 0.8, `${pc.name}${pc.qty > 1 ? ' - CUT ' + pc.qty : ''}`);
+      if (S.labels) pc.labels.forEach(l => text('TEXT', l.p, layout.fs * 0.45, l.t.replace('′', "'")));
+    }
+    add('0', 'ENDSEC', '0', 'EOF');
+    download(fname('dxf'), o.join('\r\n'), 'application/dxf');
+  };
+  $('svgx').onclick = () => {
+    if (!layout) return;
+    const b = layout.bb, m = layout.fs * 3, x = b[0] - m, y = -b[3] - m, w = b[2] - b[0] + 2 * m, h = b[3] - b[1] + 2 * m;
+    download(fname('svg'), `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(4)}${S.u}" height="${h.toFixed(4)}${S.u}" viewBox="${x} ${y} ${w} ${h}">${svgBody(true)}</svg>`, 'image/svg+xml');
+  };
+  $('csv').onclick = () => {
+    if (!res) return;
+    const q = s => /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s, tb = res.table;
+    const lines = [tb.cols.map(q).join(','), ...tb.rows.map(r => r.grp ? q(r.grp) : tb.cols.map((_, i) => q(csvCell(r[i]))).join(','))];
+    download(fname('csv'), lines.join('\n'), 'text/csv');
+  };
+  /* ============================================================
+     Full-scale tiled PDF (vector, true size, match lines)
+     ============================================================ */
+  const MM = 72 / 25.4, FOOT = 34, PAD = 9;
+  const PAPERS = [
+    ['letter', 'Letter 8.5 × 11 in', 8.5 * 72, 11 * 72], ['legal', 'Legal 8.5 × 14 in', 8.5 * 72, 14 * 72],
+    ['tabloid', 'Tabloid 11 × 17 in', 11 * 72, 17 * 72], ['archc', 'ARCH C 18 × 24 in', 18 * 72, 24 * 72],
+    ['archd', 'ARCH D 24 × 36 in', 24 * 72, 36 * 72], ['a4', 'A4 210 × 297 mm', 210 * MM, 297 * MM],
+    ['a3', 'A3 297 × 420 mm', 297 * MM, 420 * MM], ['a1', 'A1 594 × 841 mm', 594 * MM, 841 * MM],
+    ['custom', 'Custom / plotter roll', 0, 0]];
+  const PO = { paper: null, orient: 'auto', margin: 18, ovl: 36, cw: 24 * 72, ch: 36 * 72, rotate: true, skip: true, cover: true, table: true, labels: true };
+  const k2pt = () => S.u === 'in' ? 72 : MM;
+  const rowName = r => r < 26 ? String.fromCharCode(65 + r) : String.fromCharCode(64 + Math.floor(r / 26)) + String.fromCharCode(65 + r % 26);
+  function paperDims() { if (PO.paper === 'custom') return [PO.cw, PO.ch]; const p = PAPERS.find(q => q[0] === PO.paper); return [p[2], p[3]]; }
+
+  function xformPiece(pc, rot, k) {
+    const f = rot ? (q => [-q[1] * k, q[0] * k]) : (q => [q[0] * k, q[1] * k]);
+    return { name: pc.name, qty: pc.qty, cut: pc.cut.map(l => l.map(f)), bend: pc.bend.map(l => l.map(f)), form: pc.form.map(l => l.map(f)), labels: pc.labels.map(l => ({ p: f(l.p), t: l.t })) };
+  }
+  function segHits(a, b, r) { // Liang–Barsky segment vs rect [x0,y0,x1,y1]
+    let t0 = 0, t1 = 1; const dx = b[0] - a[0], dy = b[1] - a[1];
+    for (const [p, q] of [[-dx, a[0] - r[0]], [dx, r[2] - a[0]], [-dy, a[1] - r[1]], [dy, r[3] - a[1]]]) {
+      if (Math.abs(p) < 1e-12) { if (q < 0) return false; }
+      else { const t = q / p; if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; } else { if (t < t0) return false; if (t < t1) t1 = t; } }
+    }
+    return true;
+  }
+  function planPiece(pc, prefix) {
+    const k = k2pt(), [W, H] = paperDims(), m = PO.margin, ov = PO.ovl; let best = null;
+    for (const rot of PO.rotate ? [0, 1] : [0]) for (const o of PO.orient === 'auto' ? ['p', 'l'] : [PO.orient]) {
+      const pw = o === 'p' ? Math.min(W, H) : Math.max(W, H), ph = o === 'p' ? Math.max(W, H) : Math.min(W, H);
+      const cw = pw - 2 * m - ov, ch = ph - 2 * m - FOOT - ov;
+      if (cw < 72 || ch < 72) continue;
+      const g = xformPiece(pc, rot, k), bb = bbox(g.cut.flat());
+      const bw = bb[2] - bb[0] + 2 * PAD, bh = bb[3] - bb[1] + 2 * PAD;
+      const cols = Math.max(1, Math.ceil(bw / cw - 1e-9)), rows = Math.max(1, Math.ceil(bh / ch - 1e-9));
+      const x0 = bb[0] - PAD - (cols * cw - bw) / 2, yT = bb[3] + PAD + (rows * ch - bh) / 2;
+      const segs = []; for (const set of [g.cut, g.bend, g.form]) for (const l of set) for (let i = 1; i < l.length; i++) segs.push([l[i - 1], l[i]]);
+      const tiles = [];
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        const cx0 = x0 + c * cw, cyT = yT - r * ch;
+        const reg = [cx0, cyT - ch - (r < rows - 1 ? ov : 0), cx0 + cw + (c < cols - 1 ? ov : 0), cyT];
+        tiles.push({ r, c, cx0, cyT, reg, blank: !segs.some(s => segHits(s[0], s[1], reg)), id: prefix + rowName(r) + (c + 1) });
+      }
+      const n = tiles.filter(t => !(PO.skip && t.blank)).length;
+      const cand = { g, rot, o, pw, ph, cw, ch, cols, rows, tiles, n, x0, yT };
+      if (!best || n < best.n || (n === best.n && rows * cols < best.rows * best.cols)) best = cand;
+    }
+    return best;
+  }
+  const printed = (pl, r, c) => { const t = pl.tiles.find(q => q.r === r && q.c === c); return t && !(PO.skip && t.blank) ? t : null; };
+
+  /* ---- minimal PDF writer ---- */
+  const PMAP = { '′': "'", '″': '"', '→': '->', '–': '\x96', '—': '\x97', '·': '\xb7', '×': '\xd7', '°': '\xb0', '≈': '~', 'θ': 'theta ', '−': '-' };
+  function pdfEsc(s) {
+    let o = '';
+    for (const ch of String(s)) for (const cc of (PMAP[ch] ?? ch)) {
+      const code = cc.charCodeAt(0);
+      if (cc === '(' || cc === ')' || cc === '\\') o += '\\' + cc;
+      else if (code < 32) continue;
+      else if (code < 127) o += cc;
+      else if (code < 256) o += '\\' + code.toString(8).padStart(3, '0');
+      else o += '?';
+    }
+    return o;
+  }
+  const tw = (s, sz, b) => String(s).length * sz * (b ? 0.58 : 0.52);
+  function Ops() {
+    const a = [], n = v => (+v).toFixed(2);
+    return {
+      a, raw: s => a.push(s),
+      stroke(rgb, w, dash) { a.push(`${rgb.map(n).join(' ')} RG ${n(w)} w ${dash ? `[${dash.join(' ')}] 0 d` : '[] 0 d'} 1 J 1 j`); },
+      fill(rgb) { a.push(`${rgb.map(n).join(' ')} rg`); },
+      poly(pts, tx, ty) { if (pts.length > 1) a.push(pts.map((q, i) => `${n(q[0] + tx)} ${n(q[1] + ty)} ${i ? 'l' : 'm'}`).join(' ') + ' S'); },
+      line(x1, y1, x2, y2) { a.push(`${n(x1)} ${n(y1)} m ${n(x2)} ${n(y2)} l S`); },
+      rect(x, y, w, h, op) { a.push(`${n(x)} ${n(y)} ${n(w)} ${n(h)} re ${op}`); },
+      text(x, y, sz, s, { bold = false, rot = 0, align = 'l' } = {}) {
+        const w = tw(s, sz, bold), d = align === 'c' ? -w / 2 : align === 'r' ? -w : 0, f = bold ? 'F2' : 'F1';
+        a.push(rot ? `BT /${f} ${n(sz)} Tf 0 1 -1 0 ${n(x)} ${n(y + d)} Tm (${pdfEsc(s)}) Tj ET`
+          : `BT /${f} ${n(sz)} Tf 1 0 0 1 ${n(x + d)} ${n(y)} Tm (${pdfEsc(s)}) Tj ET`);
+      }
+    };
+  }
+  function buildPDF(pages) {
+    const objs = [], add = s => (objs.push(s), objs.length);
+    const cat = add(''), pg = add('');
+    const f1 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+    const f2 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+    const kids = pages.map(p => {
+      const body = p.ops.join('\n'), cs = add(`<< /Length ${body.length} >>\nstream\n${body}\nendstream`);
+      return add(`<< /Type /Page /Parent ${pg} 0 R /MediaBox [0 0 ${p.w.toFixed(2)} ${p.h.toFixed(2)}] /Resources << /Font << /F1 ${f1} 0 R /F2 ${f2} 0 R >> >> /Contents ${cs} 0 R >>`);
+    });
+    objs[cat - 1] = `<< /Type /Catalog /Pages ${pg} 0 R /ViewerPreferences << /PrintScaling /None >> >>`;
+    objs[pg - 1] = `<< /Type /Pages /Kids [${kids.map(k => k + ' 0 R').join(' ')}] /Count ${kids.length} >>`;
+    let out = '%PDF-1.6\n%\xe2\xe3\xcf\xd3\n'; const offs = [];
+    objs.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+    const xr = out.length;
+    out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('') +
+      `trailer\n<< /Size ${objs.length + 1} /Root ${cat} 0 R >>\nstartxref\n${xr}\n%%EOF\n`;
+    const b = new Uint8Array(out.length); for (let i = 0; i < out.length; i++) b[i] = out.charCodeAt(i) & 255;
+    return b;
+  }
+
+  /* ---- page drawing ---- */
+  function scaleBar(o, xr, y, aw) {
+    const isIn = S.u === 'in', len = isIn ? (aw >= 700 ? 6 : aw >= 480 ? 3 : 2) * 72 : (aw >= 700 ? 150 : aw >= 480 ? 75 : 50) * MM;
+    const step = isIn ? 72 : 10 * MM, x0 = xr - len;
+    o.stroke([0, 0, 0], 0.8); o.line(x0, y, xr, y);
+    for (let x = x0, i = 0; x <= xr + 0.01; x += step, i++) o.line(x, y, x, y + (i === 0 || x > xr - 0.5 ? 7 : 4));
+    if (isIn) { o.stroke([0, 0, 0], 0.4); for (let x = x0 + 36; x < xr; x += 72) o.line(x, y, x, y + 2.5); }
+    o.fill([0, 0, 0]);
+    o.text(xr, y + 9, 7.5, `SCALE CHECK: bar = ${isIn ? Math.round(len / 72) + ' in' : Math.round(len / MM) + ' mm'} — measure before cutting`, { align: 'r', bold: true });
+  }
+
+  function tilePage(pl, t, title, pageNo, total) {
+    const { pw, ph, cw, ch, cols, rows } = pl, m = PO.margin, ov = PO.ovl, o = Ops(), g = pl.g;
+    const tx = m - t.cx0, ty = (ph - m) - t.cyT;
+    const R = [t.reg[0] + tx, t.reg[1] + ty, t.reg[2] + tx, t.reg[3] + ty];
+    const xL = m, xR = m + cw, yT = ph - m, yB = ph - m - ch;
+    const nR = t.c < cols - 1 && printed(pl, t.r, t.c + 1), nL = t.c > 0 && printed(pl, t.r, t.c - 1);
+    const nT = t.r > 0 && printed(pl, t.r - 1, t.c), nB = t.r < rows - 1 && printed(pl, t.r + 1, t.c);
+    o.fill([0.9, 0.93, 0.98]);
+    if (nR) o.rect(xR, R[1], ov, R[3] - R[1], 'f');
+    if (nB) o.rect(R[0], R[1], R[2] - R[0], ov, 'f');
+    o.raw('q'); o.rect(R[0], R[1], R[2] - R[0], R[3] - R[1], 'W n');
+    o.stroke([0.5, 0.53, 0.57], 0.4, [1.5, 2]); g.form.forEach(l => o.poly(l, tx, ty));
+    o.stroke([0.8, 0.1, 0.1], 0.7, [6, 3]); g.bend.forEach(l => o.poly(l, tx, ty));
+    o.stroke([0, 0, 0], 0.9); g.cut.forEach(l => o.poly(l, tx, ty));
+    if (PO.labels) { o.fill([0.2, 0.2, 0.2]); g.labels.forEach(l => o.text(l.p[0] + tx, l.p[1] + ty + 3, 7, l.t, { align: 'c' })); }
+    o.raw('Q');
+    const blue = [0, 0.35, 0.85], md = [10, 3, 2, 3];
+    if (nR) { o.stroke(blue, 0.8, md); o.line(xR, R[1], xR, R[3]); o.fill(blue); o.text(xR - 4, (R[1] + R[3]) / 2, 8, `MATCH LINE — sheet ${nR.id} laps here`, { rot: 1, align: 'c', bold: true }); }
+    if (nL) { o.stroke(blue, 0.8, md); o.line(xL, R[1], xL, R[3]); o.fill(blue); o.text(xL + 11, (R[1] + R[3]) / 2, 8, `TRIM & MATCH to sheet ${nL.id}`, { rot: 1, align: 'c', bold: true }); }
+    if (nT) { o.stroke(blue, 0.8, md); o.line(R[0], yT, R[2], yT); o.fill(blue); o.text((xL + xR) / 2, yT - 11, 8, `TRIM & MATCH to sheet ${nT.id}`, { align: 'c', bold: true }); }
+    if (nB) { o.stroke(blue, 0.8, md); o.line(R[0], yB, R[2], yB); o.fill(blue); o.text((xL + xR) / 2, yB + 4, 8, `MATCH LINE — sheet ${nB.id} laps here`, { align: 'c', bold: true }); }
+    o.stroke([0, 0, 0], 0.5);
+    for (const [x, y] of [[xL, yT], [xR, yT], [xL, yB], [xR, yB]]) {
+      if (x > R[2] + 0.5 || y < R[1] - 0.5) continue;
+      o.line(x - 9, y, x + 9, y); o.line(x, y - 9, x, y + 9);
+      { const r = 4, q = r * 0.5523, f = v => v.toFixed(2); o.raw(`${f(x + r)} ${f(y)} m ${f(x + r)} ${f(y + q)} ${f(x + q)} ${f(y + r)} ${f(x)} ${f(y + r)} c ${f(x - q)} ${f(y + r)} ${f(x - r)} ${f(y + q)} ${f(x - r)} ${f(y)} c ${f(x - r)} ${f(y - q)} ${f(x - q)} ${f(y - r)} ${f(x)} ${f(y - r)} c ${f(x + q)} ${f(y - r)} ${f(x + r)} ${f(y - q)} ${f(x + r)} ${f(y)} c S`); }
+    }
+    const tagW = tw(t.id, 13, true) + 12;
+    o.fill([1, 1, 1]); o.rect(xL + 16, yT - 30, tagW, 19, 'f');
+    o.stroke([0, 0, 0], 0.8); o.rect(xL + 16, yT - 30, tagW, 19, 'S');
+    o.fill([0, 0, 0]); o.text(xL + 22, yT - 25, 13, t.id, { bold: true });
+    o.stroke([0.6, 0.6, 0.6], 0.4); o.line(m, m + FOOT - 6, pw - m, m + FOOT - 6);
+    o.fill([0, 0, 0]);
+    o.text(m, m + 15, 8.5, `${g.name.startsWith(title) ? g.name : title + ' — ' + g.name}${g.qty > 1 ? `  (cut ${g.qty})` : ''}`, { bold: true });
+    o.text(m, m + 3, 7.5, `Sheet ${t.id} · row ${rowName(t.r)} of ${rows}, col ${t.c + 1} of ${cols}${pl.rot ? ' · rotated 90°' : ''} · page ${pageNo} of ${total}`);
+    scaleBar(o, pw - m, m + 3, pw - 2 * m);
+    return { w: pw, h: ph, ops: o.a };
+  }
+
+  function coverPage(plans, title, total) {
+    const [W, H] = paperDims(), pw = Math.max(W, H), ph = Math.min(W, H), m = Math.max(PO.margin, 18), o = Ops();
+    o.fill([0, 0, 0]);
+    o.text(m, ph - m - 16, 16, `${title} — full-scale layout`, { bold: true });
+    o.text(m, ph - m - 30, 8.5, `${new Date().toLocaleDateString()} · units: ${S.u === 'in' ? 'inches' : 'millimetres'} · ${PAPERS.find(p => p[0] === PO.paper)[1]} · ${total} pages`);
+    const colW = Math.min(250, (pw - 2 * m) * 0.36); let y = ph - m - 54;
+    const line = (s, sz = 8, bold = false) => { o.text(m, y, sz, s, { bold }); y -= sz + 4; };
+    line('PRINT AT 100% / "ACTUAL SIZE"', 9, true);
+    ['Turn off "Fit to page" / "Shrink oversized pages".', 'Measure the scale-check bar on a sheet before', 'assembling. It must measure exactly.', ''].forEach(s => line(s));
+    line('ASSEMBLY', 9, true);
+    ['Lay sheets out by row (A, B, ...) and column (1, 2, ...).', 'Trim each sheet along its TRIM & MATCH edges', '(top and left), then lap it over the shaded band of', 'its neighbor so the trimmed edge sits on the blue', 'match line. Line up the crosshairs and tape.', ''].forEach(s => line(s));
+    line('INPUTS', 9, true);
+    const { p } = parsed();
+    toolDef().fields.forEach(f => {
+      if (!f.k || (f.show && !f.show(p))) return;
+      const v = vals()[f.k], disp = f.type === 'select' ? (f.opts.find(q => q[0] === v) || [, v])[1] : v + (f.type === 'len' ? (S.u === 'in' ? ' in' : ' mm') : '');
+      o.text(m, y, 8, f.label); o.text(m + colW, y, 8, disp, { align: 'r' }); y -= 11;
+    });
+    y -= 6; line('PIECES', 9, true);
+    plans.forEach((pl, i) => {
+      const bb = bbox(pl.g.cut.flat()), k = k2pt();
+      line(`${i + 1}. ${pl.g.name}${pl.g.qty > 1 ? ` — cut ${pl.g.qty}` : ''}`, 8, true);
+      line(`   ${fmtPlain((bb[2] - bb[0]) / k)} × ${fmtPlain((bb[3] - bb[1]) / k)} · ${pl.n} sheet${pl.n === 1 ? '' : 's'} (${pl.cols}×${pl.rows})${pl.rot ? ' · rotated' : ''}`);
+    });
+    // tile map
+    const ax0 = m + colW + 24, ax1 = pw - m, ay0 = m, ay1 = ph - m - 44;
+    const boxes = plans.map(pl => [pl.x0, pl.yT - pl.rows * pl.ch, pl.x0 + pl.cols * pl.cw, pl.yT]);
+    const gap = Math.max(...boxes.map(b => b[2] - b[0])) * 0.12;
+    const totW = boxes.reduce((s, b) => s + b[2] - b[0], 0) + gap * (boxes.length - 1), totH = Math.max(...boxes.map(b => b[3] - b[1]));
+    const s = Math.min((ax1 - ax0) / totW, (ay1 - ay0 - 14) / totH);
+    let cx = ax0 + ((ax1 - ax0) - totW * s) / 2;
+    plans.forEach((pl, i) => {
+      const b = boxes[i], ox = cx - b[0] * s, oy = ay0 + ((ay1 - ay0 - 14) - (b[3] - b[1]) * s) / 2 - b[1] * s;
+      const sc = pts => pts.map(q => [q[0] * s, q[1] * s]);
+      pl.tiles.forEach(t => {
+        const skip = PO.skip && t.blank, x = t.cx0 * s + ox, yb = (t.cyT - pl.ch) * s + oy;
+        o.stroke(skip ? [0.75, 0.75, 0.75] : [0, 0.35, 0.85], skip ? 0.4 : 0.7, skip ? [2, 2] : null);
+        o.rect(x, yb, pl.cw * s, pl.ch * s, 'S');
+        if (!skip) { o.fill([0, 0.35, 0.85]); o.text(x + pl.cw * s / 2, yb + pl.ch * s / 2 - 4, Math.max(6, Math.min(14, pl.cw * s * 0.18)), t.id, { align: 'c', bold: true }); }
+      });
+      o.stroke([0, 0, 0], 0.7); pl.g.cut.forEach(l => o.poly(sc(l), ox, oy));
+      o.fill([0, 0, 0]); o.text(cx, oy + b[3] * s + 6, 8, `${i + 1}. ${pl.g.name}`, { bold: true });
+      cx += (b[2] - b[0]) * s + gap * s;
+    });
+    return { w: pw, h: ph, ops: o.a };
+  }
+
+  const cellPlain = c => c == null ? '' : typeof c === 'string' ? c : c.ang !== undefined ? `${c.ang.toFixed(3)}°`
+    : S.u === 'in' ? `${c.len.toFixed(3)}"  (${frac(c.len)})` : c.len.toFixed(1);
+  function tablePages(title) {
+    const tb = res.table; if (!tb || !tb.rows.length) return [];
+    const [W, H] = paperDims(), pw = Math.min(W, H), ph = Math.max(W, H), m = Math.max(PO.margin, 24), aw = pw - 2 * m;
+    const nc = tb.cols.length, c0 = aw * (nc > 2 ? 0.4 : 0.6), cwid = (aw - c0) / Math.max(1, nc - 1), rh = 12;
+    const pages = []; let o = null, y = 0;
+    const head = () => {
+      o = Ops(); pages.push(o); y = ph - m - 14;
+      o.fill([0, 0, 0]); o.text(m, y, 12, `${title} — layout data (${S.u})`, { bold: true }); y -= 22;
+      o.fill([0.35, 0.35, 0.35]); tb.cols.forEach((c, i) => o.text(i ? m + c0 + cwid * i : m, y, 8, c, { bold: true, align: i ? 'r' : 'l' }));
+      y -= 6; o.stroke([0.5, 0.5, 0.5], 0.5); o.line(m, y, pw - m, y); y -= rh;
+    };
+    head();
+    tb.rows.forEach(r => {
+      if (y < m + 20) head();
+      if (r.grp) { o.fill([0.92, 0.92, 0.92]); o.rect(m, y - 3.5, aw, rh, 'f'); o.fill([0, 0, 0]); o.text(m + 3, y, 8, r.grp, { bold: true }); }
+      else { o.fill([0, 0, 0]); for (let i = 0; i < nc; i++) o.text(i ? m + c0 + cwid * i : m, y, 8, cellPlain(r[i]), { align: i ? 'r' : 'l' }); }
+      y -= rh;
+    });
+    (res.notes || []).forEach(n => { if (y < m + 20) head(); o.fill([0.35, 0.35, 0.35]); o.text(m, y - 4, 7.5, '• ' + n); y -= 11; });
+    return pages.map(p => ({ w: pw, h: ph, ops: p.a }));
+  }
+
+  function planAll() {
+    if (!res || !res.pieces.length) return null;
+    const multi = res.pieces.length > 1, plans = res.pieces.map((pc, i) => planPiece(pc, multi ? `${i + 1}-` : ''));
+    return plans.some(p => !p) ? null : plans;
+  }
+
+  function makePDF() {
+    const plans = planAll(); if (!plans) return null;
+    const title = toolDef().name;
+    const specs = []; plans.forEach(pl => pl.tiles.forEach(t => { if (!(PO.skip && t.blank)) specs.push({ pl, t }); }));
+    const tbl = PO.table ? tablePages(title) : [];
+    const total = (PO.cover ? 1 : 0) + specs.length + tbl.length;
+    const pages = [];
+    if (PO.cover) pages.push(coverPage(plans, title, total));
+    specs.forEach(sp => pages.push(tilePage(sp.pl, sp.t, title, pages.length + 1, total)));
+    pages.push(...tbl);
+    return buildPDF(pages);
+  }
+
+  /* ---- dialog ---- */
+  const dlg = $('pdlg'), pf = id => $('p_' + id);
+  pf('paper').innerHTML = PAPERS.map(p => `<option value="${p[0]}">${p[1]}</option>`).join('');
+  const uLbl = () => S.u === 'in' ? 'in' : 'mm';
+  const showLen = pt => { const v = pt / k2pt(); return String(S.u === 'in' ? Math.round(v * 1000) / 1000 : Math.round(v * 10) / 10); };
+  function openPrint() {
+    if (!PO.paper) { PO.paper = S.u === 'mm' ? 'a4' : 'letter'; if (S.u === 'mm') { PO.margin = 6 * MM; PO.ovl = 12 * MM; } }
+    pf('paper').value = PO.paper; pf('orient').value = PO.orient;
+    ['margin', 'ovl', 'cw', 'ch'].forEach(k => pf(k).value = showLen(PO[k]));
+    ['rotate', 'skip', 'cover', 'table', 'labels'].forEach(k => pf(k).checked = PO[k]);
+    dlg.querySelectorAll('.u').forEach(e => e.textContent = `(${uLbl()})`);
+    refreshPrint(); dlg.showModal();
+  }
+  function readPrint() {
+    PO.paper = pf('paper').value; PO.orient = pf('orient').value;
+    ['margin', 'ovl', 'cw', 'ch'].forEach(k => { const v = parseNum(pf(k).value); pf(k).classList.toggle('bad', !isFinite(v) || v < 0); if (isFinite(v) && v >= 0) PO[k] = v * k2pt(); });
+    ['rotate', 'skip', 'cover', 'table', 'labels'].forEach(k => PO[k] = pf(k).checked);
+  }
+  function refreshPrint() {
+    readPrint();
+    dlg.querySelectorAll('.custom').forEach(e => e.classList.toggle('hide', PO.paper !== 'custom'));
+    const plans = planAll(), prev = $('pprev');
+    if (!plans) { prev.innerHTML = ''; $('psum').innerHTML = '<span class="bad">Paper is too small for these margins and overlap.</span>'; $('pgo').disabled = true; return; }
+    $('pgo').disabled = false;
+    const sheets = plans.reduce((s, p) => s + p.n, 0), tbl = PO.table ? tablePages('x').length : 0;
+    $('psum').innerHTML = `<b>${sheets} sheet${sheets === 1 ? '' : 's'}</b> of pattern${PO.cover ? ' + cover' : ''}${tbl ? ` + ${tbl} data page${tbl > 1 ? 's' : ''}` : ''}. ` +
+      plans.map((p, i) => `${plans.length > 1 ? `Piece ${i + 1}: ` : ''}${p.cols}×${p.rows} grid, ${p.o === 'p' ? 'portrait' : 'landscape'}${p.rot ? ', rotated 90°' : ''}`).join('; ') + '.';
+    // preview
+    const boxes = plans.map(pl => [pl.x0, pl.yT - pl.rows * pl.ch, pl.x0 + pl.cols * pl.cw, pl.yT]);
+    const gap = Math.max(...boxes.map(b => b[2] - b[0])) * 0.12; let cx = 0, svgS = '';
+    const fsz = Math.max(...boxes.map(b => Math.max(b[2] - b[0], b[3] - b[1]))) * 0.045;
+    plans.forEach((pl, i) => {
+      const b = boxes[i], dx = cx - b[0];
+      pl.tiles.forEach(t => {
+        const skip = PO.skip && t.blank;
+        svgS += `<rect x="${t.cx0 + dx}" y="${-t.cyT}" width="${pl.cw}" height="${pl.ch}" fill="${skip ? 'none' : 'var(--tile)'}" stroke="${skip ? 'var(--line)' : 'var(--match)'}" stroke-width="1" vector-effect="non-scaling-stroke"${skip ? ' stroke-dasharray="3 3"' : ''}/>`;
+        if (!skip) svgS += `<text x="${t.cx0 + dx + pl.cw / 2}" y="${-t.cyT + pl.ch / 2}" font-size="${Math.min(fsz, pl.cw * 0.2)}" text-anchor="middle" dominant-baseline="middle" fill="var(--match)" font-weight="700">${t.id}</text>`;
+      });
+      pl.g.cut.forEach(l => svgS += `<path d="${'M' + l.map(q => `${(q[0] + dx).toFixed(1)} ${(-q[1]).toFixed(1)}`).join('L')}" fill="none" stroke="var(--cut)" stroke-width="1.4" vector-effect="non-scaling-stroke"/>`);
+      cx += b[2] - b[0] + gap;
+    });
+    const all = [0, -Math.max(...boxes.map(b => b[3])), cx - gap, Math.max(...boxes.map(b => b[3])) - Math.min(...boxes.map(b => b[1]))];
+    const pad = fsz;
+    prev.setAttribute('viewBox', `${all[0] - pad} ${all[1] - pad} ${all[2] + 2 * pad} ${all[3] + 2 * pad}`);
+    prev.innerHTML = svgS;
+  }
+  dlg.addEventListener('input', refreshPrint); dlg.addEventListener('change', refreshPrint);
+  $('pclose').onclick = () => dlg.close();
+  $('pgo').onclick = () => { readPrint(); const b = makePDF(); if (b) download(`${S.tool}-full-scale-${PO.paper}.pdf`, b, 'application/pdf'); };
+  $('prt').onclick = openPrint;
+
+  let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (autoFit) fit(); render3d(); }, 100); });
+
+  loadHash(); buildForm(); update();
+})();
+</script>
+</body>
+</html>

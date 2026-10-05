@@ -1,0 +1,1935 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Taper Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: drafting-table workspace. Header strip, inputs on the left, plan sheet on the right with KPIs on top. */
+:root {
+  --bg: #e9eded;
+  --panel: #f6f8f7;
+  --sheet: #fbfcfb;
+  --ink: #17242a;
+  --muted: #5a696e;
+  --line: #c6d0d1;
+  --accent: #1d5f86;
+  --accent-ink: #ffffff;
+  --crk: #b8741a;
+  --bad: #b3261e;
+  --good: #2c7448;
+  --cell: #fdfefd;
+  --crk-fill: #f4e2c3;
+  --bad-fill: #f7d5d1;
+  --grid: #a3b2b5;
+  --heat: #1d5f86;
+  --sel: #d5e5ef;
+  --f-ui: 'Archivo', 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif;
+  --f-mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1619; --panel: #151f23; --sheet: #121b1e; --ink: #e2e9eb; --muted: #91a1a6; --line: #2a383d;
+  --accent: #6fb2dc; --accent-ink: #0b1a22; --crk: #e3a64f; --bad: #f07b70; --good: #6cc08b;
+  --cell: #172226; --crk-fill: #3b2e19; --bad-fill: #47211e; --grid: #3c4f55; --heat: #6fb2dc; --sel: #1f3846; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f1619; --panel: #151f23; --sheet: #121b1e; --ink: #e2e9eb; --muted: #91a1a6; --line: #2a383d;
+  --accent: #6fb2dc; --accent-ink: #0b1a22; --crk: #e3a64f; --bad: #f07b70; --good: #6cc08b;
+  --cell: #172226; --crk-fill: #3b2e19; --bad-fill: #47211e; --grid: #3c4f55; --heat: #6fb2dc; --sel: #1f3846; color-scheme: dark; }
+
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-ui); font-size: 14px; line-height: 1.4; }
+* { box-sizing: border-box; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app { display: grid; grid-template-rows: auto 1fr; grid-template-columns: minmax(0, 1fr); height: 100%; }
+header.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand b { font-weight: 800; font-stretch: 72%; font-size: 21px; letter-spacing: .02em; text-transform: uppercase; }
+.brand span { font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+#projName { flex: 1 1 220px; min-width: 0; background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 5px 8px; font-weight: 600; font-size: 15px; }
+#projName:hover, #projName:focus { border-color: var(--line); background: var(--sheet); }
+.exports { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.exports .lbl { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-stretch: 80%; margin-right: 2px; }
+.btn, .exports button, .exports label.btn { border: 1px solid var(--line); background: var(--sheet); border-radius: 4px; padding: 5px 10px; cursor: pointer; font-weight: 600; font-size: 13px; }
+.btn:hover, .exports button:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.vis { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+.work { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; min-height: 0; }
+#side { border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.tabs { display: flex; gap: 2px; padding: 8px 10px 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tabs button { border: 0; background: none; padding: 8px 10px 9px; cursor: pointer; font-weight: 600; font-stretch: 85%; letter-spacing: .03em; text-transform: uppercase; font-size: 12.5px; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.panes { overflow-y: auto; padding: 4px 16px 24px; min-height: 0; }
+.grp { padding-block: 14px; border-bottom: 1px dashed var(--line); display: grid; gap: 10px; }
+.grp:last-child { border-bottom: 0; }
+h3 { margin: 0; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; font-stretch: 80%; font-weight: 700; color: var(--muted); }
+h4 { margin: 6px 0 0; font-size: 13px; font-weight: 700; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); font-weight: 500; }
+label.full { display: grid; }
+label.cb { display: flex; align-items: center; gap: 7px; color: var(--ink); font-size: 13px; }
+.row label { flex: 1 1 90px; min-width: 0; }
+.row label.grow, .grow { flex: 3 1 160px; }
+input, select { border: 1px solid var(--line); background: var(--sheet); border-radius: 4px; padding: 5px 7px; width: 100%; min-width: 0; color: var(--ink); font-size: 13.5px; }
+input[data-type="num"], .mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--accent); }
+input.invalid { border-color: var(--bad); }
+.row > button, .grp > .row button { border: 1px solid var(--line); background: var(--sheet); border-radius: 4px; padding: 6px 10px; cursor: pointer; font-weight: 600; font-size: 13px; white-space: nowrap; }
+.row > button:hover { border-color: var(--accent); }
+.hint-s { margin: 0; font-size: 12.5px; color: var(--muted); max-width: 62ch; }
+.empty { margin: 0; font-size: 13px; color: var(--muted); }
+.dim-off { opacity: .45; }
+.tblwrap { overflow-x: auto; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl th { text-align: left; font-weight: 600; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 4px 4px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.tbl td { padding: 3px 4px; border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); vertical-align: middle; }
+.tbl td input { padding: 4px 5px; min-width: 52px; }
+.tbl tr.sel td { background: var(--sel); }
+.tbl .w-name { min-width: 100px; }
+.tbl .w-code { min-width: 44px; font-weight: 700; }
+.tbl .warn { color: var(--bad); }
+.x { border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 18px; line-height: 1; padding: 2px 6px; border-radius: 3px; }
+.x:hover { color: var(--bad); background: var(--bad-fill); }
+.seg { display: grid; gap: 6px; }
+.seg label { display: flex; gap: 9px; align-items: flex-start; border: 1px solid var(--line); border-radius: 5px; padding: 8px 10px; cursor: pointer; background: var(--sheet); color: var(--ink); font-size: 12.5px; }
+.seg label:has(input:checked) { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.seg b { display: block; font-size: 13.5px; }
+.seg input { margin-top: 3px; }
+.series { border: 1px solid var(--line); border-radius: 6px; padding: 10px; display: grid; gap: 8px; background: var(--sheet); }
+.series .sname { font-weight: 700; }
+.prog { margin: 0; font-size: 12.5px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 5px; }
+.prog span { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+.prog b { font-family: var(--f-mono); font-weight: 600; }
+.prog b.warn { color: var(--bad); }
+.prog i { color: var(--muted); font-style: normal; }
+
+.to td small { display: block; color: var(--muted); font-size: 11.5px; }
+.to .num, .tbl th.num { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.to tr.gh th { padding-top: 12px; color: var(--accent); }
+.to tfoot td { font-weight: 700; border-top: 1px solid var(--line); padding-top: 6px; }
+.warns { margin: 0; padding: 10px 12px 10px 28px; border: 1px solid var(--bad); background: var(--bad-fill); border-radius: 5px; font-size: 13px; display: grid; gap: 4px; }
+.okline { margin: 0; padding: 8px 12px; border-left: 3px solid var(--good); font-size: 13px; }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; margin: 0; }
+.facts div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted var(--line); padding-block: 3px; font-size: 12.5px; }
+.facts dt { color: var(--muted); } .facts dd { margin: 0; font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.rgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.rgrid > div { border: 1px solid var(--line); border-radius: 5px; padding: 8px 10px; background: var(--sheet); display: grid; gap: 3px; align-content: start; }
+.rgrid span { font-size: 11.5px; color: var(--muted); }
+.rgrid b { font-size: 21px; font-stretch: 80%; font-weight: 800; font-variant-numeric: tabular-nums; }
+.rgrid em { font-style: normal; font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); }
+.hist { width: 100%; max-width: 420px; }
+.hist rect { fill: var(--accent); }
+.hist .ax { fill: var(--muted); font-size: 9px; text-anchor: middle; font-family: var(--f-mono); }
+.hist .vl { fill: var(--ink); font-size: 9px; text-anchor: middle; font-family: var(--f-mono); }
+.hist .base { stroke: var(--line); }
+.chip { display: inline-block; justify-self: start; font-size: 11px; font-weight: 700; letter-spacing: .03em; padding: 1px 7px; border-radius: 999px; font-style: normal; }
+.chip.ok { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.chip.no { color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+
+/* stage */
+.stage { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 1fr auto; min-height: 0; min-width: 0; }
+#kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-bottom: 1px solid var(--line); background: var(--panel); }
+.kpi { display: grid; gap: 1px; padding: 9px 14px; border-right: 1px solid var(--line); text-align: left; min-width: 0; }
+.kpi:last-child { border-right: 0; }
+.kpi span { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-stretch: 80%; font-weight: 600; }
+.kpi b { font-size: 19px; font-weight: 800; font-stretch: 78%; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi em { font-style: normal; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+button.kpi { border: 0; background: none; cursor: pointer; font: inherit; color: inherit; }
+button.kpi.has b { color: var(--bad); }
+button.kpi:hover { background: var(--sel); }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 7px 12px; border-bottom: 1px solid var(--line); background: var(--sheet); }
+.tools { display: flex; flex-wrap: wrap; max-width: 100%; gap: 2px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 2px; }
+.tools button { border: 0; background: none; border-radius: 4px; padding: 5px 9px; cursor: pointer; font-weight: 600; font-size: 12.5px; display: flex; align-items: center; gap: 5px; }
+.tools button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.tools button kbd { font-family: var(--f-mono); font-size: 10px; opacity: .6; }
+.tools svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+.views { display: flex; gap: 10px; flex-wrap: wrap; }
+.views label { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink); }
+.zoom { display: flex; gap: 4px; margin-left: auto; }
+.zoom button { border: 1px solid var(--line); background: var(--sheet); border-radius: 4px; min-width: 30px; padding: 4px 8px; cursor: pointer; font-weight: 700; }
+.canvaswrap { position: relative; min-height: 0; background:
+  linear-gradient(var(--sheet), var(--sheet)); overflow: hidden; }
+#plan { width: 100%; height: 100%; display: block; touch-action: none; user-select: none; cursor: grab; }
+#plan[data-tool="roof"], #plan[data-tool="drain"], #plan[data-tool="scupper"], #plan[data-tool="curb"], #plan[data-tool="edge"] { cursor: crosshair; }
+#plan text { font-family: var(--f-ui); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+#plan * { vector-effect: non-scaling-stroke; }
+.cell { fill: var(--cell); stroke: var(--grid); stroke-width: .6; }
+.cell.crk { fill: var(--crk-fill); }
+.cell.bad { fill: var(--bad-fill); }
+.miter { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; }
+.roof { fill: none; stroke: var(--ink); stroke-width: 2.4; }
+.gutter { stroke: var(--accent); stroke-width: 6; stroke-linecap: round; opacity: .85; }
+.cband { fill: var(--crk-fill); stroke: color-mix(in srgb, var(--crk) 45%, var(--grid)); stroke-width: .6; }
+.cband.bad { fill: var(--bad-fill); }
+.valley { stroke: var(--crk); stroke-width: 2.2; stroke-linecap: round; }
+.ridge { stroke: var(--crk); stroke-width: 1.1; stroke-dasharray: 6 4; }
+.arw.ck { stroke: var(--crk); }
+#plan .pl.ck { fill: var(--ink); }
+.ratio { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.ratio label { flex: 0 1 150px; }
+.ratio-in { display: flex; align-items: center; gap: 6px; }
+.ratio-in b { color: var(--ink); font-family: var(--f-mono); font-weight: 600; white-space: nowrap; }
+.ratio-fig { flex: 1 1 150px; max-width: 220px; }
+.ratio-fig .rf-drain { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 3 3; }
+.ratio-fig .rf-c { fill: var(--crk-fill); stroke: var(--crk); stroke-width: 1.6; }
+.ratio-fig .rf-r { stroke: var(--crk); stroke-width: .8; stroke-dasharray: 4 3; }
+.ratio-fig .rf-d { fill: var(--sheet); stroke: var(--bad); stroke-width: 1.4; }
+.ratio-fig text { fill: var(--muted); font-size: 9px; text-anchor: middle; font-family: var(--f-ui); }
+.ratio-fig text.l { text-anchor: start; }
+.curb { fill: url(#hatch); stroke: var(--ink); stroke-width: 1.5; }
+.curb.sel, .drn.sel { stroke: var(--accent); stroke-width: 3; }
+.drn { fill: var(--sheet); stroke: var(--bad); stroke-width: 1.8; }
+.drnx { stroke: var(--bad); stroke-width: 1.2; }
+#plan .pl { fill: var(--ink); font-weight: 700; }
+#plan .pl.bad { fill: var(--bad); }
+#plan .pf { fill: var(--muted); font-family: var(--f-mono); }
+#plan .cl { fill: var(--ink); font-weight: 700; font-stretch: 80%; }
+#plan .dl { fill: var(--bad); font-weight: 700; text-anchor: start; }
+.arw { fill: none; stroke: var(--accent); stroke-width: 1.2; }
+.dim path { fill: none; stroke: var(--muted); stroke-width: .9; }
+#plan .dim text { fill: var(--muted); font-family: var(--f-mono); }
+#plan.lod-lo .pf, #plan.lod-lo .arw { display: none; }
+#plan.lod-min .pl, #plan.lod-min .dl { display: none; }
+.vh { fill: var(--sheet); stroke: var(--accent); stroke-width: 1.5; }
+.vh.sel { fill: var(--accent); }
+.draft { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 4; }
+.draftpt { fill: var(--sheet); stroke: var(--accent); stroke-width: 1.5; }
+.draftpt.first { fill: var(--accent); }
+.draftrect { fill: color-mix(in srgb, var(--accent) 15%, transparent); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.edgehl { stroke: var(--accent); stroke-width: 9; opacity: .4; stroke-linecap: round; }
+.legend { position: absolute; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px 14px; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 5px; padding: 6px 10px; font-size: 11.5px; max-width: calc(100% - 24px); pointer-events: none; }
+.legend i { display: inline-block; width: 14px; height: 10px; vertical-align: -1px; margin-right: 5px; border: 1px solid var(--grid); }
+.statusbar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 6px 12px; border-top: 1px solid var(--line); background: var(--panel); font-size: 12px; color: var(--muted); }
+#cursor { font-family: var(--f-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.statusbar > span { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 5px; font-size: 13px; font-weight: 600; z-index: 10; max-width: calc(100% - 32px); }
+
+@media (max-width: 1180px) { #kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } .kpi:nth-child(3) { border-right: 0; } .kpi:nth-child(-n+3) { border-bottom: 1px solid var(--line); } }
+@media (max-width: 860px) {
+  html, body { height: auto; }
+  .app { height: auto; }
+  .work { grid-template-columns: minmax(0, 1fr); }
+  .stage { order: 1; grid-template-rows: auto auto 64vh auto; }
+  #side { order: 2; border-right: 0; border-top: 1px solid var(--line); }
+  .panes { overflow: visible; }
+  .tools button kbd { display: none; }
+  .zoom { margin-left: 0; }
+}
+@media (max-width: 520px) { #kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kpi { border-bottom: 1px solid var(--line); } .kpi:nth-child(odd) { border-right: 1px solid var(--line) !important; } .kpi:nth-child(even) { border-right: 0; } .rgrid, .facts { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand"><b>Taper Studio</b><span>tapered insulation layout</span></div>
+    <input id="projName" aria-label="Project name" value="">
+    <div class="exports">
+      <span class="lbl">Export</span>
+      <button type="button" id="exSVG" title="Shop drawing with title block, panel key and legend">Plan SVG</button>
+      <button type="button" id="exDXF" title="Layered DXF for CAD">DXF</button>
+      <button type="button" id="exXLSX" title="Takeoff, panel schedule, R-value and inputs">Excel</button>
+      <button type="button" id="exCSV">CSV</button>
+      <span class="lbl" style="margin-left:8px">Project</span>
+      <button type="button" id="exJSON">Save</button>
+      <label class="btn" for="openJSON">Open</label><input type="file" id="openJSON" accept=".json,application/json" class="vis">
+      <button type="button" id="newBlank">New</button>
+      <button type="button" id="resetSample">Sample</button>
+    </div>
+  </header>
+
+  <div class="work">
+    <aside id="side">
+      <nav class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="roof">Roof</button>
+        <button type="button" role="tab" data-tab="taper">Taper</button>
+        <button type="button" role="tab" data-tab="panels">Panels</button>
+        <button type="button" role="tab" data-tab="rvalue">R-value</button>
+        <button type="button" role="tab" data-tab="takeoff">Takeoff</button>
+      </nav>
+      <div class="panes">
+        <div class="tabpane" id="tab-roof"></div>
+        <div class="tabpane" id="tab-taper" hidden></div>
+        <div class="tabpane" id="tab-panels" hidden></div>
+        <div class="tabpane" id="tab-rvalue" hidden></div>
+        <div class="tabpane" id="tab-takeoff" hidden></div>
+      </div>
+    </aside>
+
+    <main class="stage">
+      <div id="kpis"></div>
+      <div class="toolbar">
+        <div class="tools" role="toolbar" aria-label="Plan tools">
+          <button type="button" data-tool="select" title="Select & move (V)"><svg viewBox="0 0 16 16"><path d="M3 2l9 5-4 1-1 4z"/></svg>Select<kbd>V</kbd></button>
+          <button type="button" data-tool="roof" title="Draw roof outline (R)"><svg viewBox="0 0 16 16"><path d="M2 13V5l6-3 6 3v8z"/></svg>Roof<kbd>R</kbd></button>
+          <button type="button" data-tool="drain" title="Place drain (D)"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5"/><path d="M5 8h6M8 5v6"/></svg>Drain<kbd>D</kbd></button>
+          <button type="button" data-tool="scupper" title="Place scupper on an edge (S)"><svg viewBox="0 0 16 16"><path d="M2 3v10M2 6h7v4H2"/></svg>Scupper<kbd>S</kbd></button>
+          <button type="button" data-tool="curb" title="Add curb (C)"><svg viewBox="0 0 16 16"><rect x="3" y="4" width="10" height="8"/><path d="M3 12l10-8"/></svg>Curb<kbd>C</kbd></button>
+          <button type="button" data-tool="edge" title="Toggle edge drain (E)"><svg viewBox="0 0 16 16"><path d="M2 12h12" stroke-width="3"/><path d="M5 4l3 5 3-5"/></svg>Edge<kbd>E</kbd></button>
+          <button type="button" data-tool="pan" title="Pan (H)"><svg viewBox="0 0 16 16"><path d="M8 1v14M1 8h14M8 1l-2 2M8 1l2 2M8 15l-2-2M8 15l2-2M1 8l2-2M1 8l2 2M15 8l-2-2M15 8l-2 2"/></svg>Pan<kbd>H</kbd></button>
+        </div>
+        <div class="views">
+          <label><input type="checkbox" id="v-labels"> Panel codes</label>
+          <label><input type="checkbox" id="v-arrows"> Slope arrows</label>
+          <label><input type="checkbox" id="v-heat"> Thickness map</label>
+        </div>
+        <div class="zoom">
+          <button type="button" id="undo" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+          <button type="button" id="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
+          <button type="button" id="zout" aria-label="Zoom out">−</button>
+          <button type="button" id="zin" aria-label="Zoom in">+</button>
+          <button type="button" id="zfit" title="Fit roof (F)">Fit</button>
+        </div>
+      </div>
+      <div class="canvaswrap">
+        <svg id="plan" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Roof plan with tapered panel layout">
+          <defs><pattern id="hatch" width="1" height="1" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="1" style="stroke:var(--muted);stroke-width:.18"/></pattern></defs>
+          <g id="planContent"></g><g id="overlay"></g>
+        </svg>
+        <div class="legend" aria-hidden="true">
+          <span><i style="background:var(--cell)"></i>Field panels</span>
+          <span><i style="background:var(--crk-fill)"></i>Cricket panels (over field)</span>
+          <span><i style="background:none;border:0;border-top:2px solid var(--crk);height:0;vertical-align:3px"></i>Valley</span>
+          <span><i style="background:var(--bad-fill)"></i>No panel match</span>
+          <span id="legendHeat" hidden><i style="background:var(--heat)"></i>Darker = thicker</span>
+        </div>
+      </div>
+      <div class="statusbar"><span id="hint"></span><span id="cursor">—</span></div>
+    </main>
+  </div>
+</div>
+<div id="toast" role="status" hidden></div>
+
+<script>
+/* Tapered insulation design engine
+ * Coordinates in feet, plan view, y increases downward (south).
+ * Thickness in inches. Slopes in inches per foot.
+ */
+const TaperEngine = (() => {
+  const r16 = v => Math.round(v * 16) / 16;
+
+  /* ---------- geometry ---------- */
+  function polyArea(pts) {
+    let a = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i], q = pts[(i + 1) % pts.length];
+      a += p.x * q.y - q.x * p.y;
+    }
+    return a / 2;
+  }
+  function polyPerimeter(pts) {
+    let s = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i], q = pts[(i + 1) % pts.length];
+      s += Math.hypot(q.x - p.x, q.y - p.y);
+    }
+    return s;
+  }
+  function pointInPoly(x, y, pts) {
+    let c = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const a = pts[i], b = pts[j];
+      if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) c = !c;
+    }
+    return c;
+  }
+  function clipPolyRect(pts, x0, y0, x1, y1) {
+    let out = pts.slice();
+    const clip = (inside, inter) => {
+      const inp = out; out = [];
+      for (let i = 0; i < inp.length; i++) {
+        const cur = inp[i], prev = inp[(i + inp.length - 1) % inp.length];
+        const ci = inside(cur), pi = inside(prev);
+        if (ci) { if (!pi) out.push(inter(prev, cur)); out.push(cur); }
+        else if (pi) out.push(inter(prev, cur));
+      }
+    };
+    const ix = X => (a, b) => ({ x: X, y: a.y + (X - a.x) / (b.x - a.x) * (b.y - a.y) });
+    const iy = Y => (a, b) => ({ x: a.x + (Y - a.y) / (b.y - a.y) * (b.x - a.x), y: Y });
+    clip(p => p.x >= x0, ix(x0)); if (!out.length) return out;
+    clip(p => p.x <= x1, ix(x1)); if (!out.length) return out;
+    clip(p => p.y >= y0, iy(y0)); if (!out.length) return out;
+    clip(p => p.y <= y1, iy(y1));
+    return out;
+  }
+  // keep the side of line (a->b) where dot(p - a, n) >= 0
+  function clipHalfPlane(poly, a, b, n) {
+    const side = p => (p.x - a.x) * n.x + (p.y - a.y) * n.y;
+    const out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const cur = poly[i], prev = poly[(i + poly.length - 1) % poly.length];
+      const sc = side(cur), sp = side(prev);
+      const lerp = () => { const t = sp / (sp - sc); return { x: prev.x + t * (cur.x - prev.x), y: prev.y + t * (cur.y - prev.y) }; };
+      if (sc >= -1e-9) { if (sp < -1e-9) out.push(lerp()); out.push(cur); }
+      else if (sp >= -1e-9) out.push(lerp());
+    }
+    return out;
+  }
+  function rectOverlap(ax0, ay0, ax1, ay1, bx0, by0, bx1, by1) {
+    const w = Math.min(ax1, bx1) - Math.max(ax0, bx0);
+    const h = Math.min(ay1, by1) - Math.max(ay0, by0);
+    return w > 0 && h > 0 ? w * h : 0;
+  }
+  function distSeg(px, py, a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const L2 = dx * dx + dy * dy;
+    let t = L2 ? ((px - a.x) * dx + (py - a.y) * dy) / L2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (a.x + t * dx), py - (a.y + t * dy));
+  }
+  function bbox(pts) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    pts.forEach(p => { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); });
+    return { x0, y0, x1, y1 };
+  }
+
+  /* ---------- thickness field ----------
+   * Main taper: field slope toward drain lines (two-way) or straight to each drain (four-way),
+   * plus edge drains. Crickets are a separate layer laid on top of the main taper:
+   * triangular facets, each with a straight valley (toe line) where cricket thickness is the
+   * toe thickness, rising at the cricket slope perpendicular to the valley.
+   */
+  function rayHit(o, dir, roof) {
+    let best = null;
+    for (let i = 0; i < roof.length; i++) {
+      const a = roof[i], b = roof[(i + 1) % roof.length];
+      const ex = b.x - a.x, ey = b.y - a.y;
+      const den = dir.x * ey - dir.y * ex;
+      if (Math.abs(den) < 1e-12) continue;
+      const t = ((a.x - o.x) * ey - (a.y - o.y) * ex) / den;
+      const u = ((a.x - o.x) * dir.y - (a.y - o.y) * dir.x) / den;
+      if (t > 1e-6 && u >= -1e-9 && u <= 1 + 1e-9 && (!best || t < best.t)) best = { t, edge: i };
+    }
+    return best;
+  }
+  function makeFacet(va, vb, q, sc, toe) {
+    const dx = vb.x - va.x, dy = vb.y - va.y, L = Math.hypot(dx, dy) || 1;
+    let n = { x: -dy / L, y: dx / L };
+    if ((q.x - va.x) * n.x + (q.y - va.y) * n.y < 0) n = { x: -n.x, y: -n.y };
+    const tri = [va, vb, q];
+    const bb = bbox(tri);
+    const dmax = Math.max(0, (q.x - va.x) * n.x + (q.y - va.y) * n.y);
+    return { va, vb, q, n, sc, toe, tri, bb, dmax };
+  }
+  function inTri(x, y, t, eps = 1e-7) {
+    const s = (p, a, b) => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+    const p = { x, y };
+    const d1 = s(p, t[0], t[1]), d2 = s(p, t[1], t[2]), d3 = s(p, t[2], t[0]);
+    const neg = d1 < -eps || d2 < -eps || d3 < -eps, pos = d1 > eps || d2 > eps || d3 > eps;
+    return !(neg && pos);
+  }
+
+  function cricketSeries(P) {
+    const sc = +P.design.cricketSlope;
+    let ser = null, bd = Infinity;
+    (P.series || []).forEach(s => { const df = Math.abs(s.slope - sc); if (df < bd && s.panels.length) { bd = df; ser = s; } });
+    if (!ser || bd > Math.max(0.03, 0.2 * sc)) return null;
+    return ser;
+  }
+
+  function buildField(P) {
+    const d = P.design;
+    const sf = +d.fieldSlope, sc = +d.cricketSlope, tmin = +d.tmin;
+    const ratio = Math.max(0.5, +d.cricketRatio || 3);
+    const mode = d.mode, axis = d.axis === 'x' ? 'x' : 'y';
+    const roof = P.roof;
+    const curbs = P.curbs || [];
+    const gutters = (P.gutters || []).filter(i => i < roof.length);
+    const drains = P.drains || [];
+    const cs = cricketSeries(P);
+    const toe = cs ? Math.min(...cs.panels.map(p => +p.lo)) : 0;
+    const notes = [];
+
+    // along-line (u) and cross-line (w) coordinates for two-way layouts
+    const U = p => axis === 'y' ? p.x : p.y, W = p => axis === 'y' ? p.y : p.x;
+    const XY = (u, w) => axis === 'y' ? { x: u, y: w } : { x: w, y: u };
+
+    const sources = [];
+    let lines = [];
+    if (mode === '4way') drains.forEach(dr => sources.push({ t: 'pt', x: dr.x, y: dr.y }));
+    else {
+      const sorted = drains.map((dr, i) => ({ dr, i, w: W(dr), u: U(dr) })).sort((a, b) => a.w - b.w);
+      sorted.forEach(o => {
+        const ln = lines.find(l => Math.abs(l.w - o.w) <= 1.0);
+        if (ln) { ln.items.push(o); ln.w = ln.items.reduce((a, b) => a + b.w, 0) / ln.items.length; }
+        else lines.push({ w: o.w, items: [o] });
+      });
+      lines.forEach(l => { l.items.sort((a, b) => a.u - b.u); sources.push({ t: 'line', w: l.w }); });
+    }
+    gutters.forEach(i => sources.push({ t: 'seg', a: roof[i], b: roof[(i + 1) % roof.length] }));
+
+    function base(x, y) {
+      if (!sources.length) return tmin;
+      let best = Infinity;
+      for (const s of sources) {
+        let r;
+        if (s.t === 'pt') r = sf * Math.max(Math.abs(x - s.x), Math.abs(y - s.y));
+        else if (s.t === 'line') r = sf * Math.abs((axis === 'y' ? y : x) - s.w);
+        else r = sf * distSeg(x, y, s.a, s.b);
+        if (r < best) best = r;
+      }
+      return tmin + best;
+    }
+    const inCurb = (x, y) => curbs.some(c => x > c.x && x < c.x + c.w && y > c.y && y < c.y + c.h);
+
+    const crickets = [];
+    const addCricket = (kind, label, facets, outline, extra) => {
+      const c = { kind, label, facets, outline, ...extra };
+      facets.forEach(f => { f.cricket = c; });
+      crickets.push(c);
+    };
+
+    // drain-line crickets: between drains, and from end drains to walls
+    if (mode !== '4way') {
+      lines.forEach((l, li) => {
+        const it = l.items;
+        for (let k = 0; k + 1 < it.length; k++) {
+          const u1 = it[k].u, u2 = it[k + 1].u, span = u2 - u1;
+          if (span < 1) continue;
+          const a = span / 2, L = span / ratio;
+          const D1 = XY(u1, l.w), D2 = XY(u2, l.w), M = XY(u1 + a, l.w);
+          const Ap = XY(u1 + a, l.w - L), An = XY(u1 + a, l.w + L);
+          const f = [makeFacet(D1, Ap, M, sc, toe), makeFacet(D2, Ap, M, sc, toe), makeFacet(D1, An, M, sc, toe), makeFacet(D2, An, M, sc, toe)];
+          const tag = (i) => (drains[i].type === 'scupper' ? 'SC-' : 'D-') + (i + 1);
+          const shed = sc * a / Math.hypot(a, L);
+          if (shed <= sf + 1e-9) notes.push(`Cricket ${tag(it[k].i)} to ${tag(it[k + 1].i)} won't shed water across the drain line at a ${ratio}:1 ratio — raise the cricket slope or the ratio.`);
+          addCricket('line', `${tag(it[k].i)}–${tag(it[k + 1].i)}`, f, [D1, Ap, D2, An], { width: span, length: L, valleys: [[D1, Ap], [D2, Ap], [D1, An], [D2, An]], ridges: [[Ap, An], [D1, D2]] });
+        }
+        [[it[0], -1], [it[it.length - 1], 1]].forEach(([o, sgn]) => {
+          const D = XY(o.u, l.w);
+          const dir = axis === 'y' ? { x: sgn, y: 0 } : { x: 0, y: sgn };
+          const hit = rayHit(D, dir, roof);
+          if (!hit || hit.t < 1 || gutters.includes(hit.edge)) return;
+          const e = hit.t, L = 2 * e / ratio;
+          const Wp = XY(o.u + sgn * e, l.w), Ap = XY(o.u + sgn * e, l.w - L), An = XY(o.u + sgn * e, l.w + L);
+          const tag = (drains[o.i].type === 'scupper' ? 'SC-' : 'D-') + (o.i + 1);
+          addCricket('end', `${tag} to edge`, [makeFacet(D, Ap, Wp, sc, toe), makeFacet(D, An, Wp, sc, toe)], [D, Ap, An], { width: 2 * L, length: e, valleys: [[D, Ap], [D, An]], ridges: [[D, Wp]] });
+        });
+      });
+    }
+
+    // curb crickets on the high side(s) of each curb
+    if (d.curbCrickets !== false && sf > 0) {
+      curbs.forEach((c, ci) => {
+        const sides = [
+          { name: 'N', c1: { x: c.x, y: c.y }, c2: { x: c.x + c.w, y: c.y }, nx: 0, ny: -1, L: c.w },
+          { name: 'S', c1: { x: c.x, y: c.y + c.h }, c2: { x: c.x + c.w, y: c.y + c.h }, nx: 0, ny: 1, L: c.w },
+          { name: 'W', c1: { x: c.x, y: c.y }, c2: { x: c.x, y: c.y + c.h }, nx: -1, ny: 0, L: c.h },
+          { name: 'E', c1: { x: c.x + c.w, y: c.y }, c2: { x: c.x + c.w, y: c.y + c.h }, nx: 1, ny: 0, L: c.h },
+        ];
+        sides.forEach(s => {
+          const m = { x: (s.c1.x + s.c2.x) / 2, y: (s.c1.y + s.c2.y) / 2 };
+          const tNear = base(m.x + s.nx * 0.5, m.y + s.ny * 0.5), tFar = base(m.x + s.nx * 3, m.y + s.ny * 3);
+          const g = (tFar - tNear) / 2.5;
+          if (g > 0.4 * sf) {
+            const len = s.L / ratio;
+            const ap = { x: m.x + s.nx * len, y: m.y + s.ny * len };
+            addCricket('curb', `${c.name || 'Curb'} ${s.name}`, [makeFacet(s.c1, ap, m, sc, toe), makeFacet(s.c2, ap, m, sc, toe)], [s.c1, ap, s.c2], { width: s.L, length: len, valleys: [[s.c1, ap], [s.c2, ap]], ridges: [[m, ap]] });
+          }
+        });
+      });
+    }
+
+    const facets = crickets.flatMap(c => c.facets);
+    function cricketAt(x, y) {
+      let best = null, bc = -1;
+      for (const f of facets) {
+        if (x < f.bb.x0 - 1e-6 || x > f.bb.x1 + 1e-6 || y < f.bb.y0 - 1e-6 || y > f.bb.y1 + 1e-6) continue;
+        if (!inTri(x, y, f.tri)) continue;
+        const dist = Math.max(0, (x - f.va.x) * f.n.x + (y - f.va.y) * f.n.y);
+        const c = f.toe + f.sc * dist;
+        if (c > bc) { bc = c; best = { f, c, dist }; }
+      }
+      return best;
+    }
+    function T(x, y) {
+      if (inCurb(x, y)) return null;
+      const ck = cricketAt(x, y);
+      return base(x, y) + (ck ? ck.c : 0);
+    }
+    const Tm = (x, y) => inCurb(x, y) ? null : base(x, y);
+    const inRoof = (x, y) => pointInPoly(x, y, roof) && !inCurb(x, y);
+    crickets.forEach(c => {
+      const m = c.facets.reduce((a, f) => Math.max(a, f.dmax), 0);
+      c.ridgeC = toe + sc * m;
+    });
+    return { T, Tm, base, inRoof, inCurb, crickets, facets, cricketAt, sources, lines, toe, cs, notes, ratio };
+  }
+
+  /* ---------- flat fill combos ---------- */
+  function fillCombos(fills, maxLayers) {
+    // every distinct stack of up to maxLayers boards; matching picks among them
+    const list = [...new Set(fills.filter(f => f > 0))].sort((a, b) => b - a);
+    const out = [{ sum: 0, boards: [] }];
+    function rec(start, boards, sum) {
+      if (boards.length) out.push({ sum: r16(sum), boards: boards.slice() });
+      if (boards.length >= maxLayers) return;
+      for (let i = start; i < list.length; i++) { boards.push(list[i]); rec(i, boards, sum + list[i]); boards.pop(); }
+    }
+    rec(0, [], 0);
+    const distinct = b => new Set(b).size;
+    return out.sort((a, b) => a.sum - b.sum || a.boards.length - b.boards.length || distinct(a.boards) - distinct(b.boards) || b.boards[0] - a.boards[0]);
+  }
+
+  /* A series is a repeating profile: its panels run in order from the thinnest, and once
+   * the last panel is reached the cycle starts over on flat fill equal to the cycle's rise
+   * (Carlisle 1/4": X, Y, X+2, Y+2, X+4 ...). */
+  function seriesCycle(series) {
+    const ps = series.panels.slice().sort((a, b) => a.lo - b.lo);
+    const lo0 = ps[0].lo, hiN = Math.max(...ps.map(p => p.hi));
+    return { ps, lo0, rise: Math.max(1e-6, hiN - lo0) };
+  }
+  function bestFill(target, combos, rise) {
+    // Each cycle adds a full rise of flat fill (2" on standard profiles), so stack fill from
+    // boards that are whole multiples of the rise: 4" = 4, 6" = 4+2, never 3+3.
+    const offRise = b => rise ? Math.abs(b / rise - Math.round(b / rise)) > 0.01 : 0;
+    let best = null;
+    for (const c of combos) {
+      const e = target - c.sum;
+      if (e < -0.07) continue;           // never build above the target by more than a hair
+      const score = Math.abs(e) * 100 + c.boards.length + 1.5 * c.boards.filter(offRise).length;
+      if (!best || score < best.score) best = { score, fill: c, err: e };
+    }
+    return best;
+  }
+  function matchPanel(series, Tlow, combos) {
+    if (!series.panels.length) return null;
+    const { ps, lo0, rise } = seriesCycle(series);
+    const tol = 0.07;
+    const k = Math.max(0, Math.floor((Tlow - lo0 + tol) / rise));
+    const r = Tlow - k * rise;                       // position within the cycle
+    let panel = ps[0];
+    for (const p of ps) if (p.lo <= r + tol) panel = p;
+    const fillNeed = Tlow - panel.lo;
+    const m = bestFill(fillNeed, combos, rise);
+    if (!m) return Tlow < lo0 - tol ? { panel, fill: combos[0], err: Tlow - panel.lo, cycle: 0 } : null;
+    return { panel, fill: m.fill, err: m.err, cycle: k };
+  }
+  function matchFlat(T, combos) {
+    let best = null;
+    for (const c of combos) {
+      const e = T - c.sum;
+      const score = Math.abs(e) * 100 + c.boards.length;
+      if (!best || score < best.score) best = { score, fill: c, err: e };
+    }
+    return best;
+  }
+
+  /* ---------- full analysis ---------- */
+  function analyze(P) {
+    const d = P.design;
+    const F = buildField(P);
+    const roof = P.roof;
+    const M = +d.module || 4;
+    const bb = bbox(roof);
+    let ox = +d.gridOx || 0, oy = +d.gridOy || 0;
+    if (d.autoGrid !== false && P.drains && P.drains.length) { ox = P.drains[0].x; oy = P.drains[0].y; }
+    const combos = fillCombos(P.fills || [], +d.maxFillLayers || 3);
+    const series = P.series || [];
+    const warnings = [];
+    if (!(P.drains || []).length && !(P.gutters || []).length) warnings.push('No drains, scuppers, or edge drains defined — roof is flat at minimum thickness.');
+
+    const i0 = Math.floor((bb.x0 - ox) / M), i1 = Math.ceil((bb.x1 - ox) / M);
+    const j0 = Math.floor((bb.y0 - oy) / M), j1 = Math.ceil((bb.y1 - oy) / M);
+    const N = 8, h = 0.02;
+    const cells = [];
+    const unmatched = new Set();
+
+    for (let i = i0; i < i1; i++) for (let j = j0; j < j1; j++) {
+      const x0 = ox + i * M, y0 = oy + j * M, x1 = x0 + M, y1 = y0 + M;
+      const clip = clipPolyRect(roof, x0, y0, x1, y1);
+      if (clip.length < 3) continue;
+      let area = Math.abs(polyArea(clip));
+      (P.curbs || []).forEach(c => { area -= rectOverlap(x0, y0, x1, y1, c.x, c.y, c.x + c.w, c.y + c.h); });
+      if (area < 0.05) continue;
+
+      // sample
+      let samples = [];
+      for (let a = 0; a < N; a++) for (let b = 0; b < N; b++) {
+        const x = x0 + (a + 0.5) * M / N, y = y0 + (b + 0.5) * M / N;
+        const t = F.Tm(x, y);
+        if (t == null) continue;
+        const inside = pointInPoly(x, y, roof);
+        const tx1 = F.Tm(x + h, y), tx0 = F.Tm(x - h, y), ty1 = F.Tm(x, y + h), ty0 = F.Tm(x, y - h);
+        const gx = (tx1 != null && tx0 != null) ? (tx1 - tx0) / (2 * h) : 0;
+        const gy = (ty1 != null && ty0 != null) ? (ty1 - ty0) / (2 * h) : 0;
+        let dir, slope;
+        if (Math.max(Math.abs(gx), Math.abs(gy)) < 0.015) { dir = 'F'; slope = 0; }
+        else if (Math.abs(gx) >= Math.abs(gy)) { dir = gx > 0 ? 'E' : 'W'; slope = Math.abs(gx); }
+        else { dir = gy > 0 ? 'S' : 'N'; slope = Math.abs(gy); }
+        samples.push({ x, y, t, dir, slope, inside });
+      }
+      const ins = samples.filter(s => s.inside);
+      if (ins.length >= 4) samples = ins;
+      if (!samples.length) continue;
+
+      // group by direction + slope bucket
+      const groups = new Map();
+      samples.forEach(s => {
+        const key = s.dir + '|' + (Math.round(s.slope * 32) / 32);
+        if (!groups.has(key)) groups.set(key, { dir: s.dir, slope: 0, items: [] });
+        groups.get(key).items.push(s);
+      });
+      let gl = [...groups.values()].sort((a, b) => b.items.length - a.items.length);
+      const keep = gl.filter((g, k) => k < 2 && g.items.length >= samples.length * 0.1);
+      gl.forEach(g => { if (!keep.includes(g)) keep[0].items.push(...g.items); });
+      gl = keep;
+
+      const parts = gl.map(g => {
+        const slope = g.items.filter(s => s.dir === g.dir).reduce((a, s) => a + s.slope, 0) / Math.max(1, g.items.filter(s => s.dir === g.dir).length);
+        const frac = g.items.length / samples.length;
+        const cx = g.items.reduce((a, s) => a + s.x, 0) / g.items.length;
+        const cy = g.items.reduce((a, s) => a + s.y, 0) / g.items.length;
+        const part = { dir: g.dir, slope, frac, area: area * frac, cx, cy };
+        if (g.dir === 'F') {
+          const tav = g.items.reduce((a, s) => a + s.t, 0) / g.items.length;
+          const m = matchFlat(tav, combos);
+          Object.assign(part, { Tlow: tav, Thigh: tav, panel: null, series: null, fill: m.fill, err: m.err });
+        } else {
+          let Tlow = Infinity;
+          g.items.forEach(s => {
+            const dist = g.dir === 'E' ? s.x - x0 : g.dir === 'W' ? x1 - s.x : g.dir === 'S' ? s.y - y0 : y1 - s.y;
+            Tlow = Math.min(Tlow, s.t - slope * dist);
+          });
+          // A piece that stops short of the module's low edge because a drain line or drain edge
+          // crosses the module would extrapolate below the drain minimum; those pieces start at
+          // their own thinnest point. Pieces notched by a curb or roof corner keep the normal
+          // panel for their place in the cycle.
+          if (Tlow < +d.tmin - 0.07) Tlow = Math.max(Tlow, Math.min(...g.items.filter(s => s.dir === g.dir).map(s => s.t)) - slope * M / N / 2);
+          Tlow = Math.max(0, Tlow);
+          part.Tlow = Tlow; part.Thigh = Tlow + slope * M;
+          let ser = null, bestDiff = Infinity;
+          series.forEach(s => { const df = Math.abs(s.slope - slope); if (df < bestDiff) { bestDiff = df; ser = s; } });
+          if (ser && bestDiff <= Math.max(0.03, 0.2 * slope) && ser.panels.length) {
+            const m = matchPanel(ser, Tlow, combos);
+            if (m) Object.assign(part, { series: ser, panel: m.panel, fill: m.fill, err: m.err });
+            else { Object.assign(part, { series: ser, panel: null, fill: null, err: null, custom: true }); unmatched.add(`No ${ser.name} panel + fill combo reaches ${Tlow.toFixed(2)}" low edge`); }
+          } else {
+            Object.assign(part, { series: null, panel: null, fill: null, err: null, custom: true });
+            unmatched.add(`No panel series at ${(Math.round(slope * 64) / 64).toFixed(3)}"/ft (needed in ${g.dir === 'F' ? 'flat' : 'sloped'} areas)`);
+          }
+        }
+        return part;
+      });
+
+      // split line for mitered cells
+      let split = null;
+      if (parts.length === 2) {
+        const A = parts[0], B = parts[1];
+        const dx = A.cx - B.cx, dy = A.cy - B.cy;
+        const ratio = Math.abs(dx) / Math.max(1e-6, Math.abs(dy));
+        if (ratio > 0.4 && ratio < 2.5) split = dx * dy < 0 ? [x0, y0, x1, y1] : [x1, y0, x0, y1];
+        else if (Math.abs(dx) > Math.abs(dy)) { const xs = dx < 0 ? x0 + A.frac * M : x1 - A.frac * M; split = [xs, y0, xs, y1]; }
+        else { const ys = dy < 0 ? y0 + A.frac * M : y1 - A.frac * M; split = [x0, ys, x1, ys]; }
+      }
+      const avgT = samples.reduce((a, s) => a + s.t, 0) / samples.length;
+      cells.push({ i, j, x0, y0, x1, y1, area, full: area > M * M - 0.05, clip, parts, split, avgT });
+    }
+    // cricket layer: bands of cricket panels parallel to each facet's valley
+    const bands = [];
+    const bbR = bbox(roof);
+    if (F.crickets.length) {
+      const cs = F.cs;
+      if (!cs) warnings.push(`No panel series at the ${(+d.cricketSlope).toFixed(3)}"/ft cricket slope — add one on the Panels tab.`);
+      const Lp = cs ? (+cs.l || 4) : 4;
+      F.facets.forEach((f, fi) => {
+        const nb = Math.max(1, Math.ceil(f.dmax / Lp - 1e-6));
+        const tdir = { x: -f.n.y, y: f.n.x };
+        for (let k = 0; k < nb; k++) {
+          const d0 = k * Lp, d1 = Math.min(f.dmax, (k + 1) * Lp);
+          const p0 = { x: f.va.x + f.n.x * d0, y: f.va.y + f.n.y * d0 }, p1 = { x: f.va.x + f.n.x * d1, y: f.va.y + f.n.y * d1 };
+          let poly = clipHalfPlane(f.tri, p0, { x: p0.x + tdir.x, y: p0.y + tdir.y }, f.n);
+          poly = clipHalfPlane(poly, p1, { x: p1.x + tdir.x, y: p1.y + tdir.y }, { x: -f.n.x, y: -f.n.y });
+          if (poly.length >= 3) poly = clipPolyRect(poly, bbR.x0, bbR.y0, bbR.x1, bbR.y1);
+          if (poly.length < 3) continue;
+          const area = Math.abs(polyArea(poly));
+          if (area < 0.05) continue;
+          const low = f.toe + f.sc * d0;
+          const b = { facet: fi, cricket: f.cricket, k, poly, area, low, high: low + f.sc * (d1 - d0), n: f.n, cx: poly.reduce((a, p) => a + p.x, 0) / poly.length, cy: poly.reduce((a, p) => a + p.y, 0) / poly.length };
+          if (cs) {
+            const m = matchPanel(cs, low, combos);
+            if (m) Object.assign(b, { series: cs, panel: m.panel, fill: m.fill, err: m.err });
+            else { b.custom = true; unmatched.add(`No ${cs.name} panel + fill combo reaches ${low.toFixed(2)}" in a cricket`); }
+          } else b.custom = true;
+          bands.push(b);
+        }
+      });
+    }
+    // drains (or drain lines) that fall between panel-grid lines push every row they feed off the cycle
+    const offGrid = v => { const r = ((v % M) + M) % M; return Math.min(r, M - r) > 0.05; };
+    const tagOf = i => (P.drains[i].type === 'scupper' ? 'SC-' : 'D-') + (i + 1);
+    const bad = [];
+    if (d.mode === '4way') (P.drains || []).forEach((dr, i) => { if (offGrid(dr.x - ox) || offGrid(dr.y - oy)) bad.push(tagOf(i)); });
+    else F.lines.forEach(l => { if (offGrid(l.w - (d.axis === 'x' ? ox : oy))) bad.push(...l.items.map(o => tagOf(o.i))); });
+    if (bad.length) warnings.push(`${bad.join(', ')} ${bad.length > 1 ? 'are' : 'is'} off the ${M}′ panel grid, so the rows ${bad.length > 1 ? 'they feed' : 'it feeds'} land between steps of the panel cycle and need odd fill. Move ${bad.length > 1 ? 'them' : 'it'} in ${M}′ steps from the grid origin, or split the roof into areas.`);
+    F.notes.forEach(n => warnings.push(n));
+    unmatched.forEach(u => warnings.push(u));
+    const errCells = cells.filter(c => c.parts.some(p => p.err != null && Math.abs(p.err) > 0.13)).length + bands.filter(b => b.err != null && Math.abs(b.err) > 0.13).length;
+    if (errCells) warnings.push(`${errCells} module(s) can't hit the target thickness within 1/8" with the fill boards available — add fill sizes or panels.`);
+
+    const R = rvalue(P, F);
+    const takeoff = buildTakeoff(P, cells, R, bands);
+    return { F, cells, bands, M, ox, oy, warnings, R, takeoff, combos };
+  }
+
+  /* ---------- R-value ---------- */
+  function rvalue(P, F) {
+    const rv = P.rvalue;
+    const roof = P.roof;
+    const bb = bbox(roof);
+    const area = Math.abs(polyArea(roof));
+    const step = Math.max(0.25, Math.min(1, Math.sqrt(area / 40000)));
+    const baseR = (rv.layers || []).reduce((a, l) => a + (+l.thk) * (+l.rpi) * (+l.qty || 1), 0);
+    const baseT = (rv.layers || []).reduce((a, l) => a + (+l.thk) * (+l.qty || 1), 0);
+    const otherR = (+rv.coverR || 0) + (+rv.otherR || 0);
+    let n = 0, sumT = 0, sumU = 0, minT = Infinity, maxT = 0, minR = Infinity, maxR = 0;
+    const hist = {};
+    for (let x = bb.x0 + step / 2; x < bb.x1; x += step) for (let y = bb.y0 + step / 2; y < bb.y1; y += step) {
+      if (!F.inRoof(x, y)) continue;
+      const t = F.T(x, y); if (t == null) continue;
+      const Rt = t * rv.rpi + baseR + otherR;
+      n++; sumT += t; sumU += 1 / Rt;
+      minT = Math.min(minT, t); maxT = Math.max(maxT, t);
+      minR = Math.min(minR, Rt); maxR = Math.max(maxR, Rt);
+      const bin = Math.floor(t);
+      hist[bin] = (hist[bin] || 0) + 1;
+    }
+    if (!n) return null;
+    const avgT = sumT / n;
+    const Ravg = avgT * rv.rpi + baseR + otherR;
+    const Ru = n / sumU;
+    return {
+      avgTaper: avgT, minTaper: minT, maxTaper: maxT,
+      avgTotalT: avgT + baseT, minTotalT: minT + baseT, maxTotalT: maxT + baseT,
+      baseR, baseT, otherR, Ravg, Ru, Uavg: 1 / Ru, minR, maxR,
+      target: +rv.target || 0,
+      passThk: Ravg >= (+rv.target || 0), passU: Ru >= (+rv.target || 0),
+      minThkOK: minT + baseT >= (+rv.minTotal || 0),
+      hist, samples: n,
+    };
+  }
+
+  /* ---------- takeoff ---------- */
+  function buildTakeoff(P, cells, R, bands = []) {
+    const waste = (+P.design.waste || 0) / 100;
+    const roofArea = Math.abs(polyArea(P.roof));
+    const curbArea = (P.curbs || []).reduce((a, c) => a + c.w * c.h, 0);
+    const net = cells.reduce((a, c) => a + c.area, 0);
+    const tapered = new Map(), fill = new Map(), cfill = new Map();
+    let customArea = 0;
+    cells.forEach(c => c.parts.forEach(p => {
+      if (p.panel) {
+        const key = p.series.id + '|' + p.panel.code;
+        if (!tapered.has(key)) tapered.set(key, { series: p.series, panel: p.panel, area: 0, modules: 0 });
+        const e = tapered.get(key); e.area += p.area; e.modules += p.frac;
+      } else if (p.custom) customArea += p.area;
+      if (p.fill) p.fill.boards.forEach(b => { fill.set(b, (fill.get(b) || 0) + p.area); });
+    }));
+    const ctap = new Map();
+    let cricketArea = 0;
+    bands.forEach(b => {
+      cricketArea += b.area;
+      if (b.panel) {
+        const key = b.series.id + '|' + b.panel.code;
+        if (!ctap.has(key)) ctap.set(key, { series: b.series, panel: b.panel, area: 0 });
+        ctap.get(key).area += b.area;
+      } else customArea += b.area;
+      if (b.fill) b.fill.boards.forEach(t => { cfill.set(t, (cfill.get(t) || 0) + b.area); });
+    });
+    const rows = [];
+    [...tapered.values()].sort((a, b) => (a.series.name + a.panel.code).localeCompare(b.series.name + b.panel.code)).forEach(e => {
+      const pa = e.series.w * e.series.l;
+      const thkAvg = (e.panel.lo + e.panel.hi) / 2;
+      rows.push({
+        group: 'Tapered', item: `${e.series.name} — Panel ${e.panel.code}`, spec: `${e.panel.lo}"–${e.panel.hi}", ${e.series.w}'×${e.series.l}'`,
+        area: e.area, qty: Math.ceil(e.area * (1 + waste) / pa), unit: 'pcs', bf: e.area * (1 + waste) * thkAvg / 12,
+      });
+    });
+    [...ctap.values()].sort((a, b) => a.panel.code.localeCompare(b.panel.code)).forEach(e => {
+      const pa = e.series.w * e.series.l, thkAvg = (e.panel.lo + e.panel.hi) / 2;
+      rows.push({ group: 'Cricket', item: `${e.series.name} — Panel ${e.panel.code}`, spec: `${e.panel.lo}"–${e.panel.hi}", ${e.series.w}'×${e.series.l}'`, area: e.area, qty: Math.ceil(e.area * (1 + waste) / pa), unit: 'pcs', bf: e.area * (1 + waste) * thkAvg / 12 });
+    });
+    const fb = P.fillBoard || { w: 4, l: 8 };
+    [...cfill.entries()].sort((a, b) => a[0] - b[0]).forEach(([t, a]) => {
+      rows.push({ group: 'Cricket', item: `Cricket fill ${t}"`, spec: `${fb.w}'×${fb.l}'`, area: a, qty: Math.ceil(a * (1 + waste) / (fb.w * fb.l)), unit: 'pcs', bf: a * (1 + waste) * t / 12 });
+    });
+    [...fill.entries()].sort((a, b) => a[0] - b[0]).forEach(([t, a]) => {
+      rows.push({ group: 'Flat fill', item: `Flat fill ${t}"`, spec: `${fb.w}'×${fb.l}'`, area: a, qty: Math.ceil(a * (1 + waste) / (fb.w * fb.l)), unit: 'pcs', bf: a * (1 + waste) * t / 12 });
+    });
+    (P.rvalue.layers || []).forEach(l => {
+      const q = +l.qty || 1;
+      rows.push({ group: 'Base layers', item: `${l.name} ${l.thk}"` + (q > 1 ? ` × ${q} layers` : ''), spec: `${fb.w}'×${fb.l}'`, area: net * q, qty: Math.ceil(net * q * (1 + waste) / (fb.w * fb.l)), unit: 'pcs', bf: net * q * (1 + waste) * l.thk / 12 });
+    });
+    if (P.rvalue.coverName) rows.push({ group: 'Cover board', item: P.rvalue.coverName, spec: `${fb.w}'×${fb.l}'`, area: net, qty: Math.ceil(net * (1 + waste) / (fb.w * fb.l)), unit: 'pcs', bf: 0 });
+    return {
+      rows, roofArea, curbArea, net, squares: net / 100, customArea, waste,
+      perimeter: polyPerimeter(P.roof), drains: (P.drains || []).length,
+      cricketArea, crickets: new Set(bands.map(b => b.cricket)).size, cricketBands: bands.length,
+      modules: cells.length, mitered: cells.filter(c => c.parts.length > 1).length,
+      partial: cells.filter(c => !c.full).length,
+    };
+  }
+
+  /* ---------- exports ---------- */
+  function csv(P, A) {
+    const q = v => `"${String(v).replace(/"/g, '""')}"`;
+    const L = [];
+    L.push(['Project', P.name].map(q).join(','));
+    L.push(['Net insulated area (sf)', A.takeoff.net.toFixed(1)].map(q).join(','));
+    L.push(['Waste %', P.design.waste].map(q).join(','));
+    L.push('');
+    L.push(['Cricket ratio (width:length)', P.design.cricketRatio || 3].map(q).join(','));
+    L.push(['Group', 'Item', 'Spec', 'Area (sf)', 'Qty', 'Unit', 'Board ft'].map(q).join(','));
+    A.takeoff.rows.forEach(r => L.push([r.group, r.item, r.spec, r.area.toFixed(1), r.qty, r.unit, r.bf.toFixed(0)].map(q).join(',')));
+    if (A.R) {
+      L.push('');
+      L.push(['R-value (avg thickness method)', A.R.Ravg.toFixed(1)].map(q).join(','));
+      L.push(['R-value (area-weighted U method)', A.R.Ru.toFixed(1)].map(q).join(','));
+      L.push(['Target R', A.R.target].map(q).join(','));
+    }
+    return L.join('\r\n');
+  }
+
+  function panelLabel(p) {
+    if (p.panel) {
+      const f = p.fill && p.fill.sum > 0 ? '+' + fmtIn(p.fill.sum) : '';
+      return p.panel.code + f;
+    }
+    if (p.dir === 'F' && p.fill) return p.fill.sum > 0 ? 'FF' + fmtIn(p.fill.sum) : '—';
+    return '?';
+  }
+  function fmtIn(v) {
+    const s = v < 0 ? '-' : ''; v = Math.abs(v);
+    let w = Math.floor(v + 1e-9), f = Math.round((v - w) * 8);
+    if (f === 8) { w++; f = 0; }
+    const fr = ['', '⅛', '¼', '⅜', '½', '⅝', '¾', '⅞'];
+    if (!f) return s + w;
+    return s + (w ? w : '') + fr[f];
+  }
+
+  function dxf(P, A) {
+    const out = [];
+    const g = (c, v) => { out.push(String(c)); out.push(String(v)); };
+    const layers = [['ROOF', 7], ['CURBS', 8], ['DRAINS', 1], ['GRID', 9], ['MITER', 5], ['CRICKET', 30], ['VALLEY', 1], ['RIDGE', 5], ['LABELS', 3], ['SLOPE', 4], ['FILL', 6]];
+    const Y = y => -y;
+    g(0, 'SECTION'); g(2, 'HEADER'); g(9, '$ACADVER'); g(1, 'AC1009'); g(9, '$INSUNITS'); g(70, 2); g(0, 'ENDSEC');
+    g(0, 'SECTION'); g(2, 'TABLES'); g(0, 'TABLE'); g(2, 'LAYER'); g(70, layers.length);
+    layers.forEach(([n, c]) => { g(0, 'LAYER'); g(2, n); g(70, 0); g(62, c); g(6, 'CONTINUOUS'); });
+    g(0, 'ENDTAB'); g(0, 'ENDSEC');
+    g(0, 'SECTION'); g(2, 'ENTITIES');
+    const line = (ly, x1, y1, x2, y2) => { g(0, 'LINE'); g(8, ly); g(10, x1.toFixed(4)); g(20, Y(y1).toFixed(4)); g(30, 0); g(11, x2.toFixed(4)); g(21, Y(y2).toFixed(4)); g(31, 0); };
+    const text = (ly, x, y, ht, s, center = true) => {
+      g(0, 'TEXT'); g(8, ly); g(10, x.toFixed(4)); g(20, Y(y).toFixed(4)); g(30, 0); g(40, ht); g(1, s);
+      if (center) { g(72, 1); g(73, 2); g(11, x.toFixed(4)); g(21, Y(y).toFixed(4)); g(31, 0); }
+    };
+    const circle = (ly, x, y, r) => { g(0, 'CIRCLE'); g(8, ly); g(10, x.toFixed(4)); g(20, Y(y).toFixed(4)); g(30, 0); g(40, r); };
+    const poly = (ly, pts, closed = true) => { for (let i = 0; i < pts.length - (closed ? 0 : 1); i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; line(ly, a.x, a.y, b.x, b.y); } };
+    poly('ROOF', P.roof);
+    (P.curbs || []).forEach(c => poly('CURBS', [{ x: c.x, y: c.y }, { x: c.x + c.w, y: c.y }, { x: c.x + c.w, y: c.y + c.h }, { x: c.x, y: c.y + c.h }]));
+    (P.drains || []).forEach((d, k) => { circle('DRAINS', d.x, d.y, 0.5); text('DRAINS', d.x, d.y + 1.2, 0.5, (d.type === 'scupper' ? 'SC-' : 'D-') + (k + 1)); });
+    A.cells.forEach(c => {
+      const cl = c.clip;
+      poly('GRID', cl);
+      if (c.split) line('MITER', ...c.split);
+      c.parts.forEach(p => {
+        const lx = c.parts.length > 1 ? p.cx : (c.x0 + c.x1) / 2;
+        const ly = c.parts.length > 1 ? p.cy : (c.y0 + c.y1) / 2;
+        const lab = panelLabel(p).replace(/[⅛¼⅜½⅝¾⅞]/g, m => ({ '⅛': '-1/8', '¼': '-1/4', '⅜': '-3/8', '½': '-1/2', '⅝': '-5/8', '¾': '-3/4', '⅞': '-7/8' })[m]);
+        text('LABELS', lx, ly, Math.min(0.6, A.M * 0.14), lab);
+        if (p.dir !== 'F') {
+          const v = { E: [-1, 0], W: [1, 0], S: [0, -1], N: [0, 1] }[p.dir];
+          const L = A.M * 0.22, sx = lx - v[0] * L / 2, sy = ly + 0.9 * A.M * 0.14 + 0.25 - v[1] * L / 2;
+          const ex = sx + v[0] * L, ey = sy + v[1] * L;
+          line('SLOPE', sx, sy, ex, ey);
+          const hx = -v[0] * 0.25, hy = -v[1] * 0.25;
+          line('SLOPE', ex, ey, ex + hx - v[1] * 0.15, ey + hy + v[0] * 0.15);
+          line('SLOPE', ex, ey, ex + hx + v[1] * 0.15, ey + hy - v[0] * 0.15);
+        }
+      });
+    });
+    (A.bands || []).forEach(b => {
+      poly('CRICKET', b.poly);
+      const lab = b.panel ? b.panel.code + (b.fill && b.fill.sum > 0 ? '+' + b.fill.sum : '') : '?';
+      if (b.area > 2) text('CRICKET', b.cx, b.cy, Math.min(0.5, A.M * 0.12), lab);
+    });
+    A.F.crickets.forEach(c => {
+      c.valleys.forEach(([a, b]) => line('VALLEY', a.x, a.y, b.x, b.y));
+      c.ridges.forEach(([a, b]) => line('RIDGE', a.x, a.y, b.x, b.y));
+    });
+    const bb = bbox(P.roof);
+    text('LABELS', bb.x0, bb.y1 + 3, 1, `${P.name} - TAPERED INSULATION PLAN`, false);
+    g(0, 'ENDSEC'); g(0, 'EOF');
+    return out.join('\r\n');
+  }
+
+  return { analyze, buildField, inTri, clipHalfPlane, fillCombos, matchPanel, polyArea, pointInPoly, clipPolyRect, bbox, csv, dxf, panelLabel, fmtIn, distSeg };
+})();
+if (typeof module !== 'undefined') module.exports = TaperEngine;
+
+const DEFAULT_PROJECT = {
+  name: 'Sample Building — Roof Area A',
+  roof: [{ x: 0, y: 0 }, { x: 128, y: 0 }, { x: 128, y: 80 }, { x: 0, y: 80 }],
+  drains: [{ x: 16, y: 40, type: 'drain' }, { x: 48, y: 40, type: 'drain' }, { x: 80, y: 40, type: 'drain' }, { x: 112, y: 40, type: 'drain' }],
+  gutters: [],
+  curbs: [{ x: 52, y: 6, w: 8, h: 6, name: 'RTU-1' }],
+  design: {
+    mode: '2way', axis: 'y', fieldSlope: 0.25, cricketSlope: 0.5, tmin: 0.5,
+    module: 4, autoGrid: true, gridOx: 0, gridOy: 0, maxFillLayers: 3, waste: 8, curbCrickets: true, cricketRatio: 3,
+  },
+  series: [
+    { id: 's14', name: '1/4" Series', slope: 0.25, w: 4, l: 4, panels: [{ code: 'X', lo: 0.5, hi: 1.5 }, { code: 'Y', lo: 1.5, hi: 2.5 }] },
+    { id: 's12', name: '1/2" Cricket', slope: 0.5, w: 4, l: 4, panels: [{ code: 'Q', lo: 0.5, hi: 2.5 }] },
+    { id: 's18', name: '1/8" Series', slope: 0.125, w: 4, l: 4, panels: [{ code: 'AA', lo: 0.5, hi: 1 }, { code: 'A', lo: 1, hi: 1.5 }, { code: 'B', lo: 1.5, hi: 2 }, { code: 'C', lo: 2, hi: 2.5 }] },
+  ],
+  fills: [1, 1.5, 2, 2.5, 3, 4],
+  fillBoard: { w: 4, l: 8 },
+  rvalue: {
+    rpi: 5.7, target: 30, minTotal: 0,
+    layers: [{ name: 'Polyiso flat', thk: 2, rpi: 5.7, qty: 2 }],
+    coverName: '1/2" HD cover board', coverR: 2.5, otherR: 0,
+  },
+};
+if (typeof module !== 'undefined') module.exports = DEFAULT_PROJECT;
+
+(() => {
+  const E = TaperEngine;
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const fi = v => E.fmtIn(v) + '"';
+  const n1 = v => (Math.round(v * 10) / 10).toLocaleString();
+  const n0 = v => Math.round(v).toLocaleString();
+  const STORE = 'taper-studio-project-v1';
+  const OLD_SAMPLE = { s14: 'A,B', s12: 'Q,R', s18: 'AA,BB,CC,DD' };   // panel tables from the first sample
+
+  /* ---------- state ---------- */
+  let P = loadLocal() || clone(DEFAULT_PROJECT);
+  let A = null;
+  let tool = 'select', sel = null, draft = null, drag = null, hoverP = null;
+  let view = { x: 0, y: 0, w: 100, h: 60 };   // requested area of the plan
+  let shown = { ...view };                     // what's on screen after fitting to the canvas shape
+  const show = { labels: true, arrows: true, heat: false };
+  let history = [], future = [];
+  let activeTab = 'roof';
+
+  function migrate(p) {
+    const d = clone(DEFAULT_PROJECT);
+    if (Array.isArray(p.series)) p.series = p.series.map(s => {
+      const codes = (s.panels || []).map(q => q.code).join(',');
+      const fresh = DEFAULT_PROJECT.series.find(x => x.id === s.id);
+      return OLD_SAMPLE[s.id] === codes && fresh ? clone(fresh) : s;
+    });
+    return Object.assign(d, p, { design: Object.assign(d.design, p.design || {}), rvalue: Object.assign(d.rvalue, p.rvalue || {}) });
+  }
+  function loadLocal() {
+    try { const s = localStorage.getItem(STORE); if (s) { const p = JSON.parse(s); if (p && p.roof && p.design) return migrate(p); } } catch (e) { }
+    return null;
+  }
+  function saveLocal() { try { localStorage.setItem(STORE, JSON.stringify(P)); } catch (e) { } }
+  function checkpoint() { history.push(JSON.stringify(P)); if (history.length > 120) history.shift(); future = []; }
+  function undo() { if (!history.length) return; future.push(JSON.stringify(P)); P = JSON.parse(history.pop()); sel = null; changed(true); }
+  function redo() { if (!future.length) return; history.push(JSON.stringify(P)); P = JSON.parse(future.pop()); sel = null; changed(true); }
+
+  function parseNum(s) {
+    s = String(s).trim().replace(/["']/g, '');
+    let m = s.match(/^(-?\d+(?:\.\d+)?)[\s-]+(\d+)\/(\d+)$/);
+    if (m) return (+m[1] < 0 ? -1 : 1) * (Math.abs(+m[1]) + (+m[2]) / (+m[3]));
+    m = s.match(/^(-?\d+)\/(\d+)$/);
+    if (m) return (+m[1]) / (+m[2]);
+    const v = parseFloat(s);
+    return isFinite(v) ? v : NaN;
+  }
+  function getPath(o, path) { return path.split('.').reduce((a, k) => a == null ? a : a[k], o); }
+  function setPath(o, path, v) { const ks = path.split('.'); const last = ks.pop(); const t = ks.reduce((a, k) => a[k], o); t[last] = v; }
+
+  /* ---------- analysis scheduling ---------- */
+  let pending = false;
+  function schedule() {
+    if (pending) return; pending = true;
+    requestAnimationFrame(() => { pending = false; recompute(); });
+  }
+  function recompute() {
+    try { A = E.analyze(P); } catch (err) { console.error(err); A = null; }
+    renderPlan(); renderKPIs(); renderResults();
+  }
+  function changed(forms) { saveLocal(); if (forms) renderForms(); schedule(); }
+
+  /* ---------- geometry helpers ---------- */
+  const snapV = v => { const s = +P.design.snap || 1; return Math.round(v / s) * s; };
+  function nearestEdge(p) {
+    let best = null; const R = P.roof;
+    for (let i = 0; i < R.length; i++) {
+      const a = R[i], b = R[(i + 1) % R.length];
+      const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy || 1;
+      let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2; t = Math.max(0, Math.min(1, t));
+      const q = { x: a.x + t * dx, y: a.y + t * dy };
+      const d = Math.hypot(p.x - q.x, p.y - q.y);
+      if (!best || d < best.d) {
+        const L = Math.sqrt(L2), along = Math.max(0, Math.min(L, snapV(t * L)));
+        best = { i, d, pt: { x: +(a.x + dx * along / L).toFixed(3), y: +(a.y + dy * along / L).toFixed(3) } };
+      }
+    }
+    return best;
+  }
+  function polyCentroid(pts) {
+    let a = 0, cx = 0, cy = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i], q = pts[(i + 1) % pts.length], f = p.x * q.y - q.x * p.y;
+      a += f; cx += (p.x + q.x) * f; cy += (p.y + q.y) * f;
+    }
+    if (Math.abs(a) < 1e-9) return { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length };
+    return { x: cx / (3 * a), y: cy / (3 * a) };
+  }
+  function clipHalf(poly, ax, ay, bx, by, sgn) {
+    const side = p => sgn * ((bx - ax) * (p.y - ay) - (by - ay) * (p.x - ax));
+    const out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const cur = poly[i], prev = poly[(i + poly.length - 1) % poly.length];
+      const sc = side(cur), sp = side(prev);
+      if (sc >= 0) {
+        if (sp < 0) { const t = sp / (sp - sc); out.push({ x: prev.x + t * (cur.x - prev.x), y: prev.y + t * (cur.y - prev.y) }); }
+        out.push(cur);
+      } else if (sp >= 0) { const t = sp / (sp - sc); out.push({ x: prev.x + t * (cur.x - prev.x), y: prev.y + t * (cur.y - prev.y) }); }
+    }
+    return out;
+  }
+  function partPolys(c) {
+    if (c.parts.length < 2 || !c.split) return c.parts.map(() => c.clip);
+    const [ax, ay, bx, by] = c.split;
+    const L = clipHalf(c.clip, ax, ay, bx, by, 1), R = clipHalf(c.clip, ax, ay, bx, by, -1);
+    const sideOf = p => (bx - ax) * (p.cy - ay) - (by - ay) * (p.cx - ax);
+    const s0 = sideOf(c.parts[0]);
+    const polys = c.parts.map(p => (sideOf(p) >= 0 ? L : R));
+    if ((sideOf(c.parts[1]) >= 0) === (s0 >= 0)) return [s0 >= 0 ? L : R, s0 >= 0 ? R : L];
+    return polys;
+  }
+  const pts = poly => poly.map(p => `${+p.x.toFixed(3)},${+p.y.toFixed(3)}`).join(' ');
+  function fmtFt(v) {
+    const ft = Math.floor(v + 1e-6), inch = Math.round((v - ft) * 12);
+    return inch === 12 ? `${ft + 1}'-0"` : `${ft}'-${inch}"`;
+  }
+
+  /* ---------- plan markup (shared by editor and sheet export) ---------- */
+  function planMarkup(o = {}) {
+    if (!A) return '';
+    const M = A.M, fs = +P.design.fieldSlope, out = [];
+    const maxT = A.R ? A.R.maxTaper : 1, minT = A.R ? A.R.minTaper : 0;
+    const fsz = M * 0.24, fsz2 = M * 0.16;
+    out.push('<g class="cells">');
+    A.cells.forEach(c => {
+      const polys = partPolys(c);
+      c.parts.forEach((p, k) => {
+        const bad = p.custom || (p.err != null && Math.abs(p.err) > 0.13);
+        const cls = bad ? 'bad' : 'fld';
+        let style = '';
+        if (show.heat && !o.sheet) {
+          const t = (c.avgT - minT) / Math.max(0.01, maxT - minT);
+          style = ` style="fill:var(--heat);fill-opacity:${(0.08 + 0.72 * t).toFixed(3)}"`;
+        }
+        out.push(`<polygon class="cell ${cls}" points="${pts(polys[k])}"${style}/>`);
+      });
+    });
+    A.cells.forEach(c => { if (c.split) out.push(`<line class="miter" x1="${c.split[0]}" y1="${c.split[1]}" x2="${c.split[2]}" y2="${c.split[3]}"/>`); });
+    out.push('</g>');
+
+    // main-taper labels sit under the cricket layer, so they're drawn first
+    const underCricket = (x, y) => A.F.cricketAt(x, y) != null;
+    if (show.labels || o.sheet) out.push(mainLabels(o, underCricket));
+
+    // cricket layer on top of the main taper
+    out.push('<g class="crickets">');
+    (A.bands || []).forEach(b => {
+      const bad = b.custom || (b.err != null && Math.abs(b.err) > 0.13);
+      out.push(`<polygon class="cband${bad ? ' bad' : ''}" points="${pts(b.poly)}"/>`);
+    });
+    A.F.crickets.forEach(c => {
+      c.ridges.forEach(([a, b]) => out.push(`<line class="ridge" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`));
+      c.valleys.forEach(([a, b]) => out.push(`<line class="valley" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`));
+    });
+    if (show.labels || o.sheet) (A.bands || []).forEach(b => {
+      if (b.area < M * M * 0.18) return;
+      const ctr = polyCentroid(b.poly);
+      const bad = b.custom || (b.err != null && Math.abs(b.err) > 0.13);
+      const lab = b.panel ? b.panel.code + (b.fill && b.fill.sum > 0 ? '+' + fi(b.fill.sum) : '') : '?';
+      const big = b.area > M * M * 0.6;
+      out.push(`<text class="pl ck${bad ? ' bad' : ''}" x="${ctr.x.toFixed(2)}" y="${ctr.y.toFixed(2)}" font-size="${(big ? fsz * 0.85 : fsz * 0.65).toFixed(2)}">${esc(lab)}</text>`);
+      if ((show.arrows || o.sheet) && big) {
+        const v = [-b.n.x, -b.n.y], L = M * 0.3, h = M * 0.07;
+        const px = -v[1], py = v[0];
+        const cx = ctr.x + px * M * 0.24, cy = ctr.y + py * M * 0.24;
+        const sx = cx - v[0] * L / 2, sy = cy - v[1] * L / 2, ex = cx + v[0] * L / 2, ey = cy + v[1] * L / 2;
+        out.push(`<path class="arw ck" d="M${sx.toFixed(2)} ${sy.toFixed(2)}L${ex.toFixed(2)} ${ey.toFixed(2)}M${(ex - v[0] * h - v[1] * h * 0.7).toFixed(2)} ${(ey - v[1] * h + v[0] * h * 0.7).toFixed(2)}L${ex.toFixed(2)} ${ey.toFixed(2)}L${(ex - v[0] * h + v[1] * h * 0.7).toFixed(2)} ${(ey - v[1] * h - v[0] * h * 0.7).toFixed(2)}"/>`);
+      }
+    });
+    out.push('</g>');
+
+    // roof, gutters
+    out.push(`<polygon class="roof" points="${pts(P.roof)}"/>`);
+    (P.gutters || []).forEach(i => {
+      const a = P.roof[i], b = P.roof[(i + 1) % P.roof.length]; if (!a || !b) return;
+      out.push(`<line class="gutter" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`);
+    });
+
+    // curbs
+    (P.curbs || []).forEach((c, i) => {
+      out.push(`<rect class="curb${sel && sel.kind === 'curb' && sel.i === i && !o.sheet ? ' sel' : ''}" x="${c.x}" y="${c.y}" width="${c.w}" height="${c.h}"/>`);
+      out.push(`<text class="cl" x="${c.x + c.w / 2}" y="${c.y + c.h / 2}" font-size="${Math.min(c.h * 0.35, M * 0.22).toFixed(2)}">${esc(c.name || 'CURB')}</text>`);
+    });
+
+    // drains
+    const dr = M * 0.22;
+    (P.drains || []).forEach((d, i) => {
+      const isSel = sel && sel.kind === 'drain' && sel.i === i && !o.sheet;
+      const tag = (d.type === 'scupper' ? 'SC-' : 'D-') + (i + 1);
+      if (d.type === 'scupper') out.push(`<rect class="drn${isSel ? ' sel' : ''}" x="${d.x - dr}" y="${d.y - dr}" width="${dr * 2}" height="${dr * 2}"/>`);
+      else out.push(`<circle class="drn${isSel ? ' sel' : ''}" cx="${d.x}" cy="${d.y}" r="${dr}"/><path class="drnx" d="M${d.x - dr * 0.6} ${d.y}H${d.x + dr * 0.6}M${d.x} ${d.y - dr * 0.6}V${d.y + dr * 0.6}"/>`);
+      out.push(`<text class="dl" x="${d.x + dr * 1.4}" y="${d.y - dr * 1.3}" font-size="${(M * 0.2).toFixed(2)}">${tag}</text>`);
+    });
+
+    // overall dims
+    const bb = E.bbox(P.roof), span = Math.max(bb.x1 - bb.x0, bb.y1 - bb.y0);
+    const off = Math.max(2.5, span * 0.035), tk = off * 0.3, dfs = Math.max(1, span * 0.018);
+    out.push(`<g class="dim"><path d="M${bb.x0} ${bb.y0 - off}H${bb.x1}M${bb.x0} ${bb.y0 - off - tk}v${tk * 2}M${bb.x1} ${bb.y0 - off - tk}v${tk * 2}M${bb.x0 - off} ${bb.y0}V${bb.y1}M${bb.x0 - off - tk} ${bb.y0}h${tk * 2}M${bb.x0 - off - tk} ${bb.y1}h${tk * 2}"/>`);
+    out.push(`<text x="${(bb.x0 + bb.x1) / 2}" y="${bb.y0 - off - tk * 1.4}" font-size="${dfs}">${fmtFt(bb.x1 - bb.x0)}</text>`);
+    out.push(`<text x="${bb.x0 - off - tk * 1.4}" y="${(bb.y0 + bb.y1) / 2}" font-size="${dfs}" transform="rotate(-90 ${bb.x0 - off - tk * 1.4} ${(bb.y0 + bb.y1) / 2})">${fmtFt(bb.y1 - bb.y0)}</text></g>`);
+    return out.join('');
+  }
+
+  function mainLabels(o, under) {
+    if (!A) return '';
+    const M = A.M, out = [], fsz = M * 0.24, fsz2 = M * 0.16;
+      out.push('<g class="labels">');
+      A.cells.forEach(c => {
+        const polys = partPolys(c);
+        c.parts.forEach((p, k) => {
+          const share = p.area / (M * M);
+          if (share < 0.12) return;
+          const ctr = polyCentroid(polys[k]);
+          if (under(ctr.x, ctr.y)) return;
+          const lab = p.panel ? p.panel.code : p.dir === 'F' ? 'FF' : '?';
+          const bad = p.custom || (p.err != null && Math.abs(p.err) > 0.13);
+          const fillTxt = p.fill && p.fill.sum > 0 ? '+' + fi(p.fill.sum) : '';
+          const small = c.parts.length > 1;
+          const ty = fillTxt && !small ? ctr.y - fsz2 * 0.25 : ctr.y;
+          out.push(`<text class="pl${bad ? ' bad' : ''}" x="${ctr.x.toFixed(2)}" y="${ty.toFixed(2)}" font-size="${(small ? fsz * 0.8 : fsz).toFixed(2)}">${esc(lab)}</text>`);
+          if (fillTxt && !small) out.push(`<text class="pf" x="${ctr.x.toFixed(2)}" y="${(ty + fsz * 0.85).toFixed(2)}" font-size="${fsz2.toFixed(2)}">${esc(fillTxt)}</text>`);
+          if ((show.arrows || o.sheet) && !small && p.dir !== 'F' && share > 0.3) {
+            const v = { E: [-1, 0], W: [1, 0], S: [0, -1], N: [0, 1] }[p.dir];
+            const L = M * 0.34, h = M * 0.08;
+            let cx = ctr.x, cy = ctr.y;
+            if (v[0] !== 0) cy = ctr.y - M * 0.3; else cx = ctr.x - M * 0.3;
+            const sx = cx - v[0] * L / 2, sy = cy - v[1] * L / 2, ex = cx + v[0] * L / 2, ey = cy + v[1] * L / 2;
+            out.push(`<path class="arw" d="M${sx.toFixed(2)} ${sy.toFixed(2)}L${ex.toFixed(2)} ${ey.toFixed(2)}M${(ex - v[0] * h - v[1] * h * 0.7).toFixed(2)} ${(ey - v[1] * h + v[0] * h * 0.7).toFixed(2)}L${ex.toFixed(2)} ${ey.toFixed(2)}L${(ex - v[0] * h + v[1] * h * 0.7).toFixed(2)} ${(ey - v[1] * h - v[0] * h * 0.7).toFixed(2)}"/>`);
+          }
+        });
+      });
+      out.push('</g>');
+        return out.join('');
+  }
+
+  /* ---------- editor rendering ---------- */
+  const svg = $('#plan');
+  function renderPlan() {
+    $('#planContent').innerHTML = planMarkup();
+    renderOverlay();
+  }
+  function renderOverlay() {
+    const out = [];
+    const px = pxToFt(1);
+    if (tool === 'select' || tool === 'roof') {
+      P.roof.forEach((p, i) => {
+        const s = sel && sel.kind === 'vertex' && sel.i === i;
+        out.push(`<rect class="vh${s ? ' sel' : ''}" x="${p.x - 4 * px}" y="${p.y - 4 * px}" width="${8 * px}" height="${8 * px}"/>`);
+      });
+    }
+    if (draft && draft.length) {
+      const d = hoverP && tool === 'roof' ? draft.concat([{ x: snapV(hoverP.x), y: snapV(hoverP.y) }]) : draft;
+      out.push(`<polyline class="draft" points="${pts(d)}"/>`);
+      draft.forEach((p, i) => out.push(`<circle class="draftpt${i === 0 ? ' first' : ''}" cx="${p.x}" cy="${p.y}" r="${(i === 0 ? 6 : 4) * px}"/>`));
+    }
+    if (drag && drag.kind === 'curb' && drag.cur) {
+      const r = rectFrom(drag.start, drag.cur);
+      out.push(`<rect class="draftrect" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}"/>`);
+    }
+    if (tool === 'edge' && hoverP) {
+      const e = nearestEdge(hoverP);
+      if (e && e.d < 14 * px) { const a = P.roof[e.i], b = P.roof[(e.i + 1) % P.roof.length]; out.push(`<line class="edgehl" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`); }
+    }
+    if (tool === 'scupper' && hoverP) {
+      const e = nearestEdge(hoverP);
+      if (e) out.push(`<circle class="draftpt first" cx="${e.pt.x}" cy="${e.pt.y}" r="${6 * px}"/>`);
+    }
+    $('#overlay').innerHTML = out.join('');
+  }
+  function rectFrom(a, b) { return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) }; }
+  function pxToFt(px) { const r = svg.getBoundingClientRect(); return px * Math.max(shown.w / (r.width || 1), shown.h / (r.height || 1)); }
+
+  function applyView() {
+    // Fit the requested view to the canvas shape without changing it, so layout
+    // resizes (status text wrapping, panels opening) never drift the zoom.
+    const r = svg.getBoundingClientRect();
+    let { x, y, w, h } = view;
+    if (r.width && r.height) {
+      const ar = r.width / r.height;
+      if (w / h > ar) { const nh = w / ar; y -= (nh - h) / 2; h = nh; } else { const nw = h * ar; x -= (nw - w) / 2; w = nw; }
+      const ppf = r.width / w;
+      svg.classList.toggle('lod-lo', ppf < 10);
+      svg.classList.toggle('lod-min', ppf < 5);
+    }
+    shown = { x, y, w, h };
+    svg.setAttribute('viewBox', `${x} ${y} ${w} ${h}`);
+  }
+  function fit() {
+    const bb = E.bbox(P.roof); const pad = Math.max(6, Math.max(bb.x1 - bb.x0, bb.y1 - bb.y0) * 0.09);
+    view = { x: bb.x0 - pad, y: bb.y0 - pad, w: bb.x1 - bb.x0 + 2 * pad, h: bb.y1 - bb.y0 + 2 * pad };
+    applyView(); renderOverlay();
+  }
+  function zoomAt(f, cx, cy) {
+    const v = shown;
+    if (cx == null) { cx = v.x + v.w / 2; cy = v.y + v.h / 2; }
+    view = { x: cx - (cx - v.x) * f, y: cy - (cy - v.y) * f, w: v.w * f, h: v.h * f };
+    applyView(); renderOverlay();
+  }
+  function toPlan(e) {
+    const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+    const m = svg.getScreenCTM(); if (!m) return { x: 0, y: 0 };
+    const q = pt.matrixTransform(m.inverse()); return { x: q.x, y: q.y };
+  }
+
+  /* ---------- canvas interaction ---------- */
+  const pointers = new Map();
+  let spaceDown = false;
+  function hitTest(p) {
+    const tol = pxToFt(9);
+    for (let i = 0; i < P.roof.length; i++) if (Math.hypot(P.roof[i].x - p.x, P.roof[i].y - p.y) < tol) return { kind: 'vertex', i };
+    for (let i = (P.drains || []).length - 1; i >= 0; i--) { const d = P.drains[i]; if (Math.hypot(d.x - p.x, d.y - p.y) < Math.max(tol, A ? A.M * 0.3 : 1)) return { kind: 'drain', i }; }
+    for (let i = (P.curbs || []).length - 1; i >= 0; i--) { const c = P.curbs[i]; if (p.x >= c.x && p.x <= c.x + c.w && p.y >= c.y && p.y <= c.y + c.h) return { kind: 'curb', i }; }
+    return null;
+  }
+  svg.addEventListener('pointerdown', e => {
+    svg.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      drag = { kind: 'pinch', d0: Math.hypot(a.x - b.x, a.y - b.y), v: { ...shown }, mid: toPlan({ clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 }) };
+      return;
+    }
+    const p = toPlan(e);
+    if (tool === 'pan' || e.button === 1 || spaceDown) { drag = { kind: 'pan', sx: e.clientX, sy: e.clientY, v: { ...shown } }; return; }
+    if (tool === 'select') {
+      const hit = hitTest(p);
+      if (hit) {
+        sel = hit; checkpoint();
+        const item = hit.kind === 'vertex' ? P.roof[hit.i] : hit.kind === 'drain' ? P.drains[hit.i] : P.curbs[hit.i];
+        drag = { kind: 'move', hit, start: p, orig: { x: item.x, y: item.y }, moved: false };
+      } else { sel = null; drag = { kind: 'pan', sx: e.clientX, sy: e.clientY, v: { ...shown } }; }
+      renderPlan(); syncSelection();
+    } else if (tool === 'drain') {
+      checkpoint(); P.drains.push({ x: snapV(p.x), y: snapV(p.y), type: 'drain' }); sel = { kind: 'drain', i: P.drains.length - 1 }; changed(true);
+    } else if (tool === 'scupper') {
+      const ed = nearestEdge(p); if (ed) { checkpoint(); P.drains.push({ ...ed.pt, type: 'scupper' }); sel = { kind: 'drain', i: P.drains.length - 1 }; changed(true); }
+    } else if (tool === 'curb') {
+      drag = { kind: 'curb', start: { x: snapV(p.x), y: snapV(p.y) }, cur: null };
+    } else if (tool === 'edge') {
+      const ed = nearestEdge(p);
+      if (ed && ed.d < pxToFt(14)) {
+        checkpoint(); const g = P.gutters || (P.gutters = []);
+        const k = g.indexOf(ed.i); if (k >= 0) g.splice(k, 1); else g.push(ed.i);
+        changed(true); toast(k >= 0 ? 'Edge drain removed' : 'Edge set to drain off the roof');
+      }
+    } else if (tool === 'roof') {
+      const q = { x: snapV(p.x), y: snapV(p.y) };
+      if (!draft) draft = [];
+      if (draft.length >= 3 && Math.hypot(q.x - draft[0].x, q.y - draft[0].y) < pxToFt(12)) finishRoof();
+      else if (!draft.length || q.x !== draft[draft.length - 1].x || q.y !== draft[draft.length - 1].y) draft.push(q);
+      renderOverlay(); setHint();
+    }
+  });
+  svg.addEventListener('pointermove', e => {
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const p = toPlan(e); hoverP = p;
+    updateStatus(p);
+    if (!drag) { if (tool !== 'select' && tool !== 'pan') renderOverlay(); return; }
+    if (drag.kind === 'pinch' && pointers.size === 2) {
+      const [a, b] = [...pointers.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      const f = drag.d0 / d; const m = drag.mid, v = drag.v;
+      view = { x: m.x - (m.x - v.x) * f, y: m.y - (m.y - v.y) * f, w: v.w * f, h: v.h * f }; applyView(); renderOverlay(); return;
+    }
+    if (drag.kind === 'pan') {
+      const r = svg.getBoundingClientRect(); const k = drag.v.w / r.width;
+      view = { ...drag.v, x: drag.v.x - (e.clientX - drag.sx) * k, y: drag.v.y - (e.clientY - drag.sy) * k };
+      applyView(); return;
+    }
+    if (drag.kind === 'move') {
+      const h = drag.hit; const nx = snapV(drag.orig.x + p.x - drag.start.x), ny = snapV(drag.orig.y + p.y - drag.start.y);
+      const item = h.kind === 'vertex' ? P.roof[h.i] : h.kind === 'drain' ? P.drains[h.i] : P.curbs[h.i];
+      if (item.x !== nx || item.y !== ny) {
+        if (h.kind === 'drain' && item.type === 'scupper') { const ed = nearestEdge(p); if (ed) { item.x = ed.pt.x; item.y = ed.pt.y; } }
+        else { item.x = nx; item.y = ny; }
+        drag.moved = true; schedule();
+      }
+      return;
+    }
+    if (drag.kind === 'curb') { drag.cur = { x: snapV(p.x), y: snapV(p.y) }; renderOverlay(); }
+  });
+  function endPointer(e) {
+    pointers.delete(e.pointerId);
+    if (!drag) return;
+    if (drag.kind === 'curb' && drag.cur) {
+      const r = rectFrom(drag.start, drag.cur);
+      if (r.w >= 1 && r.h >= 1) { checkpoint(); P.curbs.push({ ...r, name: 'CURB-' + (P.curbs.length + 1) }); sel = { kind: 'curb', i: P.curbs.length - 1 }; changed(true); }
+    }
+    if (drag.kind === 'move') { if (drag.moved) changed(true); else history.pop(); }
+    if (drag.kind === 'pinch' && pointers.size) { drag = null; return; }
+    drag = null; renderOverlay();
+  }
+  svg.addEventListener('pointerup', endPointer);
+  svg.addEventListener('pointercancel', endPointer);
+  svg.addEventListener('pointerleave', () => { hoverP = null; $('#cursor').textContent = '—'; if (tool !== 'select') renderOverlay(); });
+  svg.addEventListener('dblclick', () => { if (tool === 'roof' && draft && draft.length >= 3) finishRoof(); });
+  svg.addEventListener('wheel', e => { e.preventDefault(); const p = toPlan(e); zoomAt(Math.exp(e.deltaY * 0.0015), p.x, p.y); }, { passive: false });
+
+  function finishRoof() {
+    if (!draft || draft.length < 3) return;
+    checkpoint(); P.roof = draft; P.gutters = []; draft = null; setTool('select'); changed(true); fit(); toast('Roof outline set');
+  }
+  function deleteSel() {
+    if (!sel) return;
+    checkpoint();
+    if (sel.kind === 'drain') P.drains.splice(sel.i, 1);
+    else if (sel.kind === 'curb') P.curbs.splice(sel.i, 1);
+    else if (sel.kind === 'vertex') { if (P.roof.length <= 3) { history.pop(); toast('A roof needs at least 3 corners'); return; } delVertex(sel.i); }
+    sel = null; changed(true);
+  }
+  function delVertex(i) {
+    P.roof.splice(i, 1);
+    P.gutters = (P.gutters || []).filter(g => g !== i).map(g => g > i ? g - 1 : g).filter(g => g < P.roof.length);
+  }
+
+  document.addEventListener('keydown', e => {
+    const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName);
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { if (typing) return; e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+    if (typing) return;
+    if (e.key === ' ') { spaceDown = true; e.preventDefault(); }
+    if (e.key === 'Delete' || e.key === 'Backspace') { deleteSel(); e.preventDefault(); }
+    if (e.key === 'Escape') { draft = null; drag = null; sel = null; renderPlan(); setHint(); }
+    if (e.key === 'Enter' && tool === 'roof') finishRoof();
+    const map = { v: 'select', r: 'roof', d: 'drain', s: 'scupper', c: 'curb', e: 'edge', h: 'pan' };
+    if (!e.ctrlKey && !e.metaKey && map[e.key.toLowerCase()]) setTool(map[e.key.toLowerCase()]);
+    if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey) fit();
+  });
+  document.addEventListener('keyup', e => { if (e.key === ' ') spaceDown = false; });
+
+  const HINTS = {
+    select: 'Drag drains, curbs or roof corners to move them. Drag empty space to pan. Delete removes the selection.',
+    roof: 'Click each roof corner. Click the first corner, double-click, or press Enter to close the outline.',
+    drain: 'Click to place a roof drain. Taper falls to it at the minimum thickness.',
+    scupper: 'Click near a roof edge to place a scupper on it.',
+    curb: 'Drag a rectangle to add a curb or penetration. Crickets are added on its high side.',
+    edge: 'Click a roof edge to make it drain off the roof (gutter or edge drain). Click again to undo.',
+    pan: 'Drag to pan. Scroll or pinch to zoom.',
+  };
+  function setTool(t) {
+    tool = t; if (t !== 'roof') draft = null;
+    document.querySelectorAll('[data-tool]').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t));
+    svg.dataset.tool = t; setHint(); renderOverlay();
+  }
+  function setHint() {
+    let h = HINTS[tool];
+    if (tool === 'roof' && draft && draft.length) h = `${draft.length} corner${draft.length > 1 ? 's' : ''} placed. ` + (draft.length >= 3 ? 'Click the first corner or press Enter to close.' : 'Keep clicking corners.');
+    $('#hint').textContent = h;
+  }
+  document.querySelectorAll('[data-tool]').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+
+  function updateStatus(p) {
+    if (!A) return;
+    const t = A.F.inRoof(p.x, p.y) ? A.F.T(p.x, p.y) : null;
+    let s = `${p.x.toFixed(1)}', ${p.y.toFixed(1)}'`;
+    if (t != null) {
+      s += `  ·  taper ${t.toFixed(2)}"  ·  total ${(t + (A.R ? A.R.baseT : 0)).toFixed(2)}"`;
+      const ck = A.F.cricketAt(p.x, p.y);
+      const band = ck && (A.bands || []).find(b => b.facet === A.F.facets.indexOf(ck.f) && E.pointInPoly(p.x, p.y, b.poly));
+      const c = A.cells.find(c => p.x >= c.x0 && p.x < c.x1 && p.y >= c.y0 && p.y < c.y1);
+      if (ck) s += `  ·  cricket ${ck.f.cricket.label}: +${ck.c.toFixed(2)}"` + (band && band.panel ? ` (${band.panel.code}${band.fill && band.fill.sum ? ' on ' + band.fill.boards.map(b => b + '"').join(' + ') : ''})` : '');
+      if (c) {
+        const part = c.parts.length === 1 ? c.parts[0] : c.parts.reduce((b, q) => Math.hypot(q.cx - p.x, q.cy - p.y) < Math.hypot(b.cx - p.x, b.cy - p.y) ? q : b);
+        if (part.panel) s += `  ·  ${part.series.name} ${part.panel.code} (${part.panel.lo}–${part.panel.hi}")` + (part.fill && part.fill.sum ? ` on ${part.fill.boards.map(b => b + '"').join(' + ')} fill` : '');
+        else if (part.dir === 'F') s += '  ·  flat fill only';
+        else s += '  ·  no matching panel';
+      }
+    }
+    $('#cursor').textContent = s;
+  }
+
+  /* ---------- KPIs ---------- */
+  function chip(ok, yes, no) { return `<span class="chip ${ok ? 'ok' : 'no'}">${ok ? yes : no}</span>`; }
+  function renderKPIs() {
+    if (!A) { $('#kpis').innerHTML = '<div class="kpi"><b>Analysis failed</b><span>Check the roof outline</span></div>'; return; }
+    const T = A.takeoff, R = A.R;
+    const w = A.warnings.length;
+    $('#kpis').innerHTML = `
+      <div class="kpi"><span>Net area</span><b>${n0(T.net)} sf</b><em>${n1(T.squares)} sq</em></div>
+      <div class="kpi"><span>High point</span><b>${R ? R.maxTotalT.toFixed(2) + '"' : '—'}</b><em>taper ${R ? R.maxTaper.toFixed(2) : '—'}" + base ${R ? R.baseT : 0}"</em></div>
+      <div class="kpi"><span>Avg-thickness R</span><b>R-${R ? R.Ravg.toFixed(1) : '—'}</b><em>${R ? chip(R.passThk, 'meets R-' + R.target, 'below R-' + R.target) : ''}</em></div>
+      <div class="kpi"><span>U-factor R</span><b>R-${R ? R.Ru.toFixed(1) : '—'}</b><em>${R ? chip(R.passU, 'meets R-' + R.target, 'below R-' + R.target) : ''}</em></div>
+      <div class="kpi"><span>Modules</span><b>${T.modules}</b><em>${T.crickets} crickets · ${T.mitered} mitered</em></div>
+      <button class="kpi warnk ${w ? 'has' : ''}" id="warnBtn" type="button"><span>Checks</span><b>${w ? w + ' issue' + (w > 1 ? 's' : '') : 'All clear'}</b><em>${w ? 'Open takeoff' : 'Every module matched'}</em></button>`;
+    $('#warnBtn').onclick = () => showTab('takeoff');
+  }
+
+  /* ---------- forms ---------- */
+  const PRESETS = {
+    q18: { name: '1/8" Series', slope: 0.125, w: 4, l: 4, panels: [['AA', 0.5, 1], ['A', 1, 1.5], ['B', 1.5, 2], ['C', 2, 2.5]] },
+    q14: { name: '1/4" Series', slope: 0.25, w: 4, l: 4, panels: [['X', 0.5, 1.5], ['Y', 1.5, 2.5]] },
+    q12: { name: '1/2" Cricket', slope: 0.5, w: 4, l: 4, panels: [['Q', 0.5, 2.5]] },
+  };
+  const numIn = (path, v, attrs = '') => `<input inputmode="decimal" data-bind="${path}" data-type="num" value="${esc(v)}" ${attrs}>`;
+
+  function renderForms() {
+    const d = P.design;
+    // ROOF
+    const bb = E.bbox(P.roof);
+    $('#tab-roof').innerHTML = `
+      <section class="grp">
+        <h3>Roof outline</h3>
+        <div class="row">
+          <label>Width E–W, ft<input id="rectW" inputmode="decimal" value="${n1(bb.x1 - bb.x0)}"></label>
+          <label>Length N–S, ft<input id="rectL" inputmode="decimal" value="${n1(bb.y1 - bb.y0)}"></label>
+          <button type="button" data-act="rect">Make rectangle</button>
+        </div>
+        <p class="hint-s">For other shapes, pick <b>Roof</b> in the plan toolbar and click the corners, or edit corners below. Measurements are in feet; fractions like 3 1/2 work.</p>
+        <div class="tblwrap"><table class="tbl">
+          <thead><tr><th>Corner</th><th>X ft</th><th>Y ft</th><th title="Edge from this corner to the next drains off the roof">Edge drain →</th><th></th></tr></thead>
+          <tbody>${P.roof.map((p, i) => `<tr class="${sel && sel.kind === 'vertex' && sel.i === i ? 'sel' : ''}"><td class="mono">${i + 1}</td><td>${numIn(`roof.${i}.x`, p.x)}</td><td>${numIn(`roof.${i}.y`, p.y)}</td>
+            <td><label class="cb"><input type="checkbox" data-act="gutter" data-i="${i}" ${(P.gutters || []).includes(i) ? 'checked' : ''}> ${i + 1}–${(i + 1) % P.roof.length + 1}</label></td>
+            <td><button type="button" class="x" data-act="delvtx" data-i="${i}" aria-label="Remove corner ${i + 1}">×</button></td></tr>`).join('')}</tbody>
+        </table></div>
+      </section>
+      <section class="grp">
+        <h3>Drains &amp; scuppers</h3>
+        ${(P.drains || []).length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Tag</th><th>Type</th><th>X ft</th><th>Y ft</th><th></th></tr></thead><tbody>
+          ${P.drains.map((dr, i) => `<tr class="${sel && sel.kind === 'drain' && sel.i === i ? 'sel' : ''}"><td class="mono">${dr.type === 'scupper' ? 'SC' : 'D'}-${i + 1}</td>
+          <td><select data-bind="drains.${i}.type"><option value="drain" ${dr.type !== 'scupper' ? 'selected' : ''}>Drain</option><option value="scupper" ${dr.type === 'scupper' ? 'selected' : ''}>Scupper</option></select></td>
+          <td>${numIn(`drains.${i}.x`, dr.x)}</td><td>${numIn(`drains.${i}.y`, dr.y)}</td>
+          <td><button type="button" class="x" data-act="deldrain" data-i="${i}" aria-label="Remove drain">×</button></td></tr>`).join('')}
+        </tbody></table></div>` : '<p class="empty">No drains yet. Pick <b>Drain</b> in the toolbar and click the plan, or add one here.</p>'}
+        <div class="row"><button type="button" data-act="adddrain">Add drain</button></div>
+      </section>
+      <section class="grp">
+        <h3>Curbs &amp; penetrations</h3>
+        ${(P.curbs || []).length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Name</th><th>X</th><th>Y</th><th>W</th><th>L</th><th></th></tr></thead><tbody>
+          ${P.curbs.map((c, i) => `<tr class="${sel && sel.kind === 'curb' && sel.i === i ? 'sel' : ''}"><td><input data-bind="curbs.${i}.name" value="${esc(c.name)}" class="w-name"></td>
+          <td>${numIn(`curbs.${i}.x`, c.x)}</td><td>${numIn(`curbs.${i}.y`, c.y)}</td><td>${numIn(`curbs.${i}.w`, c.w)}</td><td>${numIn(`curbs.${i}.h`, c.h)}</td>
+          <td><button type="button" class="x" data-act="delcurb" data-i="${i}" aria-label="Remove curb">×</button></td></tr>`).join('')}
+        </tbody></table></div>` : '<p class="empty">No curbs. Drag a rectangle with the <b>Curb</b> tool to add one.</p>'}
+        <div class="row"><button type="button" data-act="addcurb">Add curb</button><label>Snap, ft<input id="snap" data-bind="design.snap" data-type="num" inputmode="decimal" value="${esc(d.snap ?? 1)}"></label></div>
+      </section>`;
+
+    // TAPER
+    $('#tab-taper').innerHTML = `
+      <section class="grp">
+        <h3>Drainage layout</h3>
+        <div class="seg" role="radiogroup" aria-label="Layout">
+          <label><input type="radio" name="mode" data-bind="design.mode" value="4way" ${d.mode === '4way' ? 'checked' : ''}><span><b>Four-way</b> Field slopes straight to each drain, hips and valleys mitered</span></label>
+          <label><input type="radio" name="mode" data-bind="design.mode" value="2way" ${d.mode !== '4way' ? 'checked' : ''}><span><b>Two-way + crickets</b> Field slopes to a line through the drains, crickets between drains and at the ends</span></label>
+        </div>
+        <label class="full ${d.mode === '4way' ? 'dim-off' : ''}">Field slope runs
+          <select data-bind="design.axis"><option value="y" ${d.axis === 'y' ? 'selected' : ''}>North–South (drain lines run E–W)</option><option value="x" ${d.axis === 'x' ? 'selected' : ''}>East–West (drain lines run N–S)</option></select></label>
+      </section>
+      <section class="grp">
+        <h3>Slopes &amp; thickness</h3>
+        <div class="row">
+          <label>Field slope, in/ft${numIn('design.fieldSlope', d.fieldSlope)}</label>
+          <label>Cricket slope, in/ft${numIn('design.cricketSlope', d.cricketSlope)}</label>
+          <label>Min. at drain, in${numIn('design.tmin', d.tmin)}</label>
+        </div>
+        <p class="hint-s">Panels are matched to these slopes from your series table.</p>
+      </section>
+      <section class="grp">
+        <h3>Crickets</h3>
+        <div class="ratio">
+          <label>Cricket ratio, width : length
+            <span class="ratio-in">${numIn('design.cricketRatio', d.cricketRatio ?? 3)}<b>: 1</b></span></label>
+          <svg viewBox="0 0 150 64" class="ratio-fig" aria-hidden="true">
+            ${(() => { const r = Math.max(0.5, +d.cricketRatio || 3), Wd = 120, L = Math.min(28, Wd / r); return `<line class="rf-drain" x1="6" y1="34" x2="144" y2="34"/><polygon class="rf-c" points="15,34 75,${34 - L} 135,34 75,${34 + L}"/><line class="rf-r" x1="75" y1="${34 - L}" x2="75" y2="${34 + L}"/><line class="rf-r" x1="15" y1="34" x2="135" y2="34"/><circle class="rf-d" cx="15" cy="34" r="3.5"/><circle class="rf-d" cx="135" cy="34" r="3.5"/><text x="75" y="61">width (drain to drain)</text><text x="${80}" y="${Math.max(8, 34 - L / 2)}" class="l">length</text>`; })()}
+          </svg>
+        </div>
+        <p class="hint-s">Crickets are laid on top of the main taper. For every ${E.fmtIn(+d.cricketRatio || 3)}′ of width across the field slope, a cricket runs 1′ up the slope. Between drains it runs that length on each side of the drain line. Valleys are straight from each drain or curb corner to the cricket point, and cricket panels run parallel to the valley${A && A.F.cs ? `, starting at ${fi(A.F.toe)} (thinnest ${esc(A.F.cs.name)} panel)` : ''}.</p>
+        <label class="cb"><input type="checkbox" data-bind="design.curbCrickets" data-type="bool" ${d.curbCrickets !== false ? 'checked' : ''}> Add crickets on the high side of curbs</label>
+      </section>
+      <section class="grp">
+        <h3>Panel grid</h3>
+        <div class="row">
+          <label>Module, ft${numIn('design.module', d.module)}</label>
+          <label>Max fill layers${numIn('design.maxFillLayers', d.maxFillLayers)}</label>
+          <label>Waste %${numIn('design.waste', d.waste)}</label>
+        </div>
+        <label class="cb"><input type="checkbox" data-bind="design.autoGrid" data-type="bool" ${d.autoGrid !== false ? 'checked' : ''}> Start the grid at drain D-1</label>
+        <div class="row ${d.autoGrid !== false ? 'dim-off' : ''}"><label>Grid origin X${numIn('design.gridOx', d.gridOx)}</label><label>Grid origin Y${numIn('design.gridOy', d.gridOy)}</label></div>
+      </section>`;
+
+    // PANELS
+    $('#tab-panels').innerHTML = `
+      <section class="grp">
+        <h3>Tapered panel series</h3>
+        <p class="hint-s">Enter panels in order from the thinnest. Each series repeats as a cycle: after the last panel it starts over on flat fill equal to the cycle's rise, so a ¼″ series runs X, Y, X+2, Y+2, X+4.</p>
+        ${P.series.map((s, si) => `
+          <div class="series">
+            <div class="row"><input class="grow sname" data-bind="series.${si}.name" value="${esc(s.name)}" aria-label="Series name"><button type="button" class="x" data-act="delseries" data-i="${si}" aria-label="Remove series">×</button></div>
+            <div class="row">
+              <label>Slope in/ft${numIn(`series.${si}.slope`, s.slope)}</label>
+              <label>Width ft${numIn(`series.${si}.w`, s.w)}</label>
+              <label>Taper length ft${numIn(`series.${si}.l`, s.l)}</label>
+            </div>
+            <div class="tblwrap"><table class="tbl"><thead><tr><th>Code</th><th>Low in</th><th>High in</th><th>Rise</th><th></th></tr></thead><tbody>
+              ${s.panels.map((p, pi) => { const ok = Math.abs((p.hi - p.lo) - s.slope * s.l) < 0.02; return `<tr><td><input class="w-code" data-bind="series.${si}.panels.${pi}.code" value="${esc(p.code)}"></td>
+                <td>${numIn(`series.${si}.panels.${pi}.lo`, p.lo)}</td><td>${numIn(`series.${si}.panels.${pi}.hi`, p.hi)}</td>
+                <td class="mono ${ok ? '' : 'warn'}" title="${ok ? '' : 'Rise does not match slope × taper length'}">${fi(p.hi - p.lo)}</td>
+                <td><button type="button" class="x" data-act="delpanel" data-i="${si}" data-j="${pi}" aria-label="Remove panel">×</button></td></tr>`; }).join('')}
+            </tbody></table></div>
+            ${s.panels.length ? `<p class="prog"><span>Progression</span> ${progression(s)}</p>` : ''}
+            <div class="row"><button type="button" data-act="addpanel" data-i="${si}">Add panel</button><button type="button" data-act="autopanels" data-i="${si}">Recalculate highs from slope</button></div>
+          </div>`).join('')}
+        <div class="row"><select id="presetSel" aria-label="Series preset">
+            <option value="">Blank series</option>${Object.entries(PRESETS).map(([k, v]) => `<option value="${k}">${esc(v.name)} (generic)</option>`).join('')}
+          </select><button type="button" data-act="addseries">Add series</button></div>
+        <p class="hint-s">Presets are standard ½″-start profiles at ⅛″, ¼″ and ½″ (Carlisle codes). Use a blank series for any other slope or manufacturer.</p>
+      </section>
+      <section class="grp">
+        <h3>Flat fill</h3>
+        <label class="full">Available thicknesses, in (comma separated)<input id="fillsIn" value="${esc(P.fills.join(', '))}"></label>
+        <div class="row"><label>Board width ft${numIn('fillBoard.w', P.fillBoard.w)}</label><label>Board length ft${numIn('fillBoard.l', P.fillBoard.l)}</label></div>
+      </section>`;
+
+    // R-VALUE
+    const rv = P.rvalue;
+    $('#tab-rvalue').innerHTML = `
+      <section class="grp">
+        <h3>Assembly</h3>
+        <div class="row">
+          <label>Tapered R per inch${numIn('rvalue.rpi', rv.rpi)}</label>
+          <label>Target R${numIn('rvalue.target', rv.target)}</label>
+          <label>Min. total thickness, in${numIn('rvalue.minTotal', rv.minTotal)}</label>
+        </div>
+        <h4>Base layers under the taper</h4>
+        <div class="tblwrap"><table class="tbl"><thead><tr><th>Layer</th><th>Thk in</th><th>R/in</th><th>Layers</th><th></th></tr></thead><tbody>
+          ${rv.layers.map((l, i) => `<tr><td><input class="w-name" data-bind="rvalue.layers.${i}.name" value="${esc(l.name)}"></td><td>${numIn(`rvalue.layers.${i}.thk`, l.thk)}</td><td>${numIn(`rvalue.layers.${i}.rpi`, l.rpi)}</td><td>${numIn(`rvalue.layers.${i}.qty`, l.qty)}</td>
+            <td><button type="button" class="x" data-act="dellayer" data-i="${i}" aria-label="Remove layer">×</button></td></tr>`).join('')}
+        </tbody></table></div>
+        <div class="row"><button type="button" data-act="addlayer">Add layer</button></div>
+        <div class="row">
+          <label class="grow">Cover board<input data-bind="rvalue.coverName" value="${esc(rv.coverName)}"></label>
+          <label>Cover R${numIn('rvalue.coverR', rv.coverR)}</label>
+          <label>Other R${numIn('rvalue.otherR', rv.otherR)}</label>
+        </div>
+      </section>
+      <section class="grp" id="rResults"></section>`;
+
+    // TAKEOFF container
+    $('#tab-takeoff').innerHTML = `<section class="grp" id="toResults"></section>`;
+    $('#projName').value = P.name;
+    renderResults();
+  }
+
+  function renderResults() {
+    if (!A) return;
+    const R = A.R, T = A.takeoff;
+    const rr = $('#rResults');
+    if (rr && R) {
+      const bins = Object.entries(R.hist).map(([k, v]) => [+k, v]).sort((a, b) => a[0] - b[0]);
+      const tot = bins.reduce((a, b) => a + b[1], 0), mx = Math.max(...bins.map(b => b[1]));
+      const W = 320, H = 130, bw = (W - 30) / Math.max(1, bins.length);
+      const bars = bins.map(([k, v], i) => {
+        const h = (v / mx) * (H - 38);
+        return `<rect x="${24 + i * bw + 2}" y="${H - 22 - h}" width="${Math.max(2, bw - 4)}" height="${h}" rx="1.5"/>` +
+          `<text class="ax" x="${24 + i * bw + bw / 2}" y="${H - 8}">${k}–${k + 1}"</text>` +
+          (bw > 26 ? `<text class="vl" x="${24 + i * bw + bw / 2}" y="${H - 26 - h}">${Math.round(v / tot * 100)}%</text>` : '');
+      }).join('');
+      rr.innerHTML = `
+        <h3>Thermal results</h3>
+        <div class="rgrid">
+          <div><span>Average-thickness method</span><b>R-${R.Ravg.toFixed(1)}</b>${chip(R.passThk, 'Meets target', 'Below target')}</div>
+          <div><span>Area-weighted U method</span><b>R-${R.Ru.toFixed(1)}</b>${chip(R.passU, 'Meets target', 'Below target')}<em>U = ${R.Uavg.toFixed(4)}</em></div>
+          <div><span>Lowest point</span><b>R-${R.minR.toFixed(1)}</b><em>${R.minTotalT.toFixed(2)}" total</em>${+P.rvalue.minTotal ? chip(R.minThkOK, 'Min. thickness OK', 'Under min. thickness') : ''}</div>
+          <div><span>Highest point</span><b>R-${R.maxR.toFixed(1)}</b><em>${R.maxTotalT.toFixed(2)}" total</em></div>
+        </div>
+        <p class="hint-s">Average taper ${R.avgTaper.toFixed(2)}" over ${R.baseT}" of base layers (R-${R.baseR.toFixed(1)}), plus R-${R.otherR.toFixed(1)} cover and other. Energy codes differ on which method applies to tapered insulation; many allow average thickness with a minimum at the low point. Confirm with the governing code and your manufacturer's LTTR values.</p>
+        <h4>Share of roof area by taper thickness</h4>
+        <svg class="hist" viewBox="0 0 ${W} ${H}" role="img" aria-label="Histogram of tapered thickness across the roof">${bars}<line class="base" x1="24" x2="${W - 6}" y1="${H - 22}" y2="${H - 22}"/></svg>`;
+    }
+    const to = $('#toResults');
+    if (to) {
+      let g = '';
+      const rows = T.rows.map(r => { const head = r.group !== g ? `<tr class="gh"><th colspan="4">${esc(r.group)}</th></tr>` : ''; g = r.group; return head + `<tr><td>${esc(r.item)}<small>${esc(r.spec)}</small></td><td class="num">${n0(r.area)}</td><td class="num"><b>${r.qty}</b></td><td class="num">${n0(r.bf)}</td></tr>`; }).join('');
+      const bf = T.rows.reduce((a, r) => a + r.bf, 0);
+      to.innerHTML = `
+        <h3>Material takeoff</h3>
+        ${A.warnings.length ? `<ul class="warns">${A.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : '<p class="okline">Every module matched a panel and fill combination within ⅛".</p>'}
+        <div class="tblwrap"><table class="tbl to"><thead><tr><th>Item</th><th class="num">Area sf</th><th class="num">Qty</th><th class="num">Board ft</th></tr></thead>
+        <tbody>${rows}</tbody><tfoot><tr><td>Total</td><td></td><td></td><td class="num">${n0(bf)}</td></tr></tfoot></table></div>
+        <dl class="facts">
+          <div><dt>Roof area</dt><dd>${n0(T.roofArea)} sf</dd></div>
+          <div><dt>Curbs</dt><dd>${n0(T.curbArea)} sf</dd></div>
+          <div><dt>Net insulated</dt><dd>${n0(T.net)} sf</dd></div>
+          <div><dt>Perimeter</dt><dd>${n0(T.perimeter)} lf</dd></div>
+          <div><dt>Drains / scuppers</dt><dd>${T.drains}</dd></div>
+          <div><dt>Waste applied</dt><dd>${Math.round(T.waste * 100)}%</dd></div>
+          <div><dt>Crickets</dt><dd>${T.crickets} · ${n0(T.cricketArea)} sf</dd></div>
+          <div><dt>Mitered modules</dt><dd>${T.mitered}</dd></div>
+          <div><dt>Edge-cut modules</dt><dd>${T.partial}</dd></div>
+        </dl>
+        <p class="hint-s">Quantities are area-based with waste, rounded up to whole boards. The main taper runs under the crickets, so cricket panels are in addition to field panels. Cricket panels are cut along the valleys and mitered at ridges, which usually means more waste than the field.</p>`;
+    }
+  }
+
+  function syncSelection() { if (activeTab === 'roof') renderForms(); }
+
+  const side = $('#side');
+  side.addEventListener('input', e => {
+    const el = e.target;
+    if (el.id === 'fillsIn') {
+      const v = el.value.split(/[,\s]+/).map(parseNum).filter(x => isFinite(x) && x > 0);
+      P.fills = [...new Set(v)].sort((a, b) => a - b); saveLocal(); schedule(); return;
+    }
+    const path = el.dataset.bind; if (!path) return;
+    let v;
+    if (el.dataset.type === 'num') { v = parseNum(el.value); if (!isFinite(v)) { el.classList.add('invalid'); return; } el.classList.remove('invalid'); }
+    else if (el.dataset.type === 'bool') v = el.checked;
+    else v = el.value;
+    if (el.type === 'radio' && !el.checked) return;
+    setPath(P, path, v);
+    saveLocal(); schedule();
+  });
+  side.addEventListener('change', e => {
+    const el = e.target;
+    if (el.id === 'fillsIn') { renderForms(); return; }
+    if (el.dataset.act === 'gutter') {
+      checkpoint(); const i = +el.dataset.i, g = P.gutters || (P.gutters = []);
+      const k = g.indexOf(i); if (el.checked && k < 0) g.push(i); if (!el.checked && k >= 0) g.splice(k, 1);
+      changed(); return;
+    }
+    if (el.type === 'radio' || el.tagName === 'SELECT' || el.dataset.type === 'bool') renderForms();
+    else if (el.dataset.bind && /^(roof|drains|curbs)\./.test(el.dataset.bind)) { /* keep focus */ }
+    if (el.dataset.bind && (/^series\./.test(el.dataset.bind) || el.dataset.bind === 'design.cricketRatio')) renderForms();
+  });
+  side.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]'); if (!b || b.type === 'checkbox') return;
+    const i = +b.dataset.i, j = +b.dataset.j, act = b.dataset.act;
+    const bb = E.bbox(P.roof);
+    checkpoint();
+    switch (act) {
+      case 'rect': {
+        const W = parseNum($('#rectW').value), L = parseNum($('#rectL').value);
+        if (!(W > 0 && L > 0)) { history.pop(); toast('Enter a width and length in feet'); return; }
+        P.roof = [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: L }, { x: 0, y: L }]; P.gutters = [];
+        P.drains = P.drains.filter(d => d.x > 0 && d.x < W && d.y > 0 && d.y < L);
+        changed(true); fit(); return;
+      }
+      case 'delvtx': if (P.roof.length <= 3) { history.pop(); toast('A roof needs at least 3 corners'); return; } delVertex(i); break;
+      case 'adddrain': P.drains.push({ x: snapV((bb.x0 + bb.x1) / 2), y: snapV((bb.y0 + bb.y1) / 2), type: 'drain' }); break;
+      case 'deldrain': P.drains.splice(i, 1); sel = null; break;
+      case 'addcurb': P.curbs.push({ x: snapV(bb.x0 + (bb.x1 - bb.x0) * 0.4), y: snapV(bb.y0 + 6), w: 6, h: 4, name: 'CURB-' + (P.curbs.length + 1) }); break;
+      case 'delcurb': P.curbs.splice(i, 1); sel = null; break;
+      case 'delseries': P.series.splice(i, 1); break;
+      case 'addseries': {
+        const k = $('#presetSel').value, pr = PRESETS[k];
+        const s = pr ? { id: 's' + Date.now(), name: pr.name, slope: pr.slope, w: pr.w, l: pr.l, panels: pr.panels.map(([code, lo, hi]) => ({ code, lo, hi })) }
+          : { id: 's' + Date.now(), name: 'New series', slope: 0.25, w: 4, l: 4, panels: [{ code: 'A', lo: +P.design.tmin, hi: +P.design.tmin + 1 }] };
+        P.series.push(s); break;
+      }
+      case 'addpanel': {
+        const s = P.series[i], last = s.panels[s.panels.length - 1];
+        const lo = last ? last.hi : +P.design.tmin, code = last ? nextCode(last.code) : 'A';
+        s.panels.push({ code, lo, hi: +(lo + s.slope * s.l).toFixed(4) }); break;
+      }
+      case 'delpanel': P.series[i].panels.splice(j, 1); break;
+      case 'autopanels': { const s = P.series[i]; s.panels.forEach(p => { p.hi = +(p.lo + s.slope * s.l).toFixed(4); }); break; }
+      case 'addlayer': P.rvalue.layers.push({ name: 'Polyiso flat', thk: 1.5, rpi: 5.7, qty: 1 }); break;
+      case 'dellayer': P.rvalue.layers.splice(i, 1); break;
+      default: history.pop(); return;
+    }
+    changed(true);
+  });
+  function progression(s) {
+    const combos = E.fillCombos(P.fills, +P.design.maxFillLayers || 3);
+    const lo0 = Math.min(...s.panels.map(p => +p.lo)), out = [];
+    const rise = s.slope * s.l;
+    for (let i = 0; i < 7; i++) {
+      const m = E.matchPanel(s, lo0 + rise * i, combos);
+      if (!m) { out.push('<b class="warn">?</b>'); break; }
+      const off = Math.abs(m.err) > 0.07;
+      out.push(`<b${off ? ' class="warn" title="Fill boards on hand can\'t make this step exactly"' : ''}>${esc(m.panel.code)}${m.fill.sum ? '+' + E.fmtIn(m.fill.sum) : ''}</b>`);
+    }
+    return out.join('<i>›</i>') + '<i>…</i>';
+  }
+  function nextCode(c) {
+    if (/^[A-Z]+$/.test(c)) {
+      const ch = c[c.length - 1]; if (ch === 'Z') return c + 'A';
+      const n = String.fromCharCode(ch.charCodeAt(0) + 1); return c.length > 1 && new Set(c).size === 1 ? n.repeat(c.length) : c.slice(0, -1) + n;
+    }
+    const m = c.match(/^(.*?)(\d+)$/); return m ? m[1] + (+m[2] + 1) : c + '2';
+  }
+
+  function showTab(t) {
+    activeTab = t;
+    document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
+    document.querySelectorAll('.tabpane').forEach(p => { p.hidden = p.id !== 'tab-' + t; });
+    try { localStorage.setItem(STORE + '-tab', t); } catch (e) { }
+  }
+  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+
+  $('#projName').addEventListener('input', e => { P.name = e.target.value; saveLocal(); });
+
+  /* ---------- toolbar extras ---------- */
+  $('#zin').onclick = () => zoomAt(0.8);
+  $('#zout').onclick = () => zoomAt(1.25);
+  $('#zfit').onclick = fit;
+  $('#undo').onclick = undo; $('#redo').onclick = redo;
+  ['labels', 'arrows', 'heat'].forEach(k => {
+    const el = $('#v-' + k); el.checked = show[k];
+    el.addEventListener('change', () => { show[k] = el.checked; $('#legendHeat').hidden = !show.heat; renderPlan(); });
+  });
+  $('#resetSample').onclick = () => { checkpoint(); P = clone(DEFAULT_PROJECT); sel = null; changed(true); fit(); toast('Sample roof loaded. Undo to go back.'); };
+  $('#newBlank').onclick = () => {
+    checkpoint();
+    P = clone(DEFAULT_PROJECT); P.name = 'New roof'; P.roof = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 60 }, { x: 0, y: 60 }]; P.drains = []; P.curbs = []; P.gutters = [];
+    sel = null; changed(true); fit(); toast('Blank 100′ × 60′ roof. Add drains to start the taper.');
+  };
+
+  /* ---------- exports ---------- */
+  let dlNs, dlReady = false;
+  if (window.claude && typeof window.claude.use === 'function') {
+    window.claude.use('downloads').then(v => { dlNs = v; dlReady = true; }).catch(() => { dlNs = null; dlReady = true; });
+  } else dlReady = true;
+  const inArtifact = !!(window.claude && window.claude.use);
+
+  async function offer(filename, data, mime) {
+    if (inArtifact) {
+      if (!dlReady) { toast('Getting file saving ready, try again in a moment'); return; }
+      if (!dlNs) { toast('File saving isn\'t available in this view'); return; }
+      try { await dlNs.save({ filename, data }); toast('Saved ' + filename); }
+      catch (err) { if (err && err.code === 'declined') return; toast(err && err.code === 'rate_limited' ? 'A save prompt is already open' : 'Couldn\'t save ' + filename); }
+      return;
+    }
+    const blob = data instanceof Blob ? data : new Blob([data], { type: mime || 'application/octet-stream' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+  const slug = () => (P.name || 'roof').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() || 'roof';
+  function loadScript(src, global) {
+    if (window[global]) return Promise.resolve(window[global]);
+    return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = () => res(window[global]); s.onerror = rej; document.head.appendChild(s); });
+  }
+  $('#exCSV').onclick = () => A && offer(slug() + '-takeoff.csv', '﻿' + E.csv(P, A), 'text/csv');
+  $('#exJSON').onclick = () => offer(slug() + '.json', JSON.stringify(P, null, 2), 'application/json');
+  $('#exDXF').onclick = async () => {
+    if (!A) return;
+    const txt = E.dxf(P, A);
+    if (inArtifact) {
+      try {
+        const JSZip = await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js', 'JSZip');
+        const z = new JSZip(); z.file(slug() + '.dxf', txt);
+        offer(slug() + '-dxf.zip', await z.generateAsync({ type: 'blob' }));
+      } catch (e) { toast('Couldn\'t load the zip library'); }
+    } else offer(slug() + '.dxf', txt, 'application/dxf');
+  };
+  $('#exXLSX').onclick = async () => {
+    if (!A) return;
+    let XLSX;
+    try { XLSX = await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'XLSX'); } catch (e) { toast('Couldn\'t load the spreadsheet library'); return; }
+    const wb = XLSX.utils.book_new();
+    const T = A.takeoff, R = A.R;
+    const t1 = [['Project', P.name], ['Net insulated area (sf)', +T.net.toFixed(1)], ['Squares', +T.squares.toFixed(2)], ['Waste %', +P.design.waste], [],
+      ['Group', 'Item', 'Spec', 'Area (sf)', 'Qty', 'Unit', 'Board ft'], ...T.rows.map(r => [r.group, r.item, r.spec, +r.area.toFixed(1), r.qty, r.unit, Math.round(r.bf)])];
+    const ws1 = XLSX.utils.aoa_to_sheet(t1); ws1['!cols'] = [{ wch: 14 }, { wch: 34 }, { wch: 22 }, { wch: 10 }, { wch: 8 }, { wch: 6 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Takeoff');
+    const sch = [['Col', 'Row', 'X0 ft', 'Y0 ft', 'Part', 'Upslope dir', 'Slope in/ft', 'Series', 'Panel', 'Fill boards (in)', 'Fill total (in)', 'Low edge (in)', 'High edge (in)', 'Area (sf)', 'Mitered', 'Edge cut']];
+    A.cells.forEach(c => c.parts.forEach((p, k) => sch.push([c.i, c.j, +c.x0.toFixed(2), +c.y0.toFixed(2), k + 1, p.dir === 'F' ? 'flat' : p.dir, +p.slope.toFixed(4), p.series ? p.series.name : '', p.panel ? p.panel.code : (p.dir === 'F' ? 'flat fill' : 'NO MATCH'),
+      p.fill ? p.fill.boards.join(' + ') : '', p.fill ? p.fill.sum : '', +p.Tlow.toFixed(3), +p.Thigh.toFixed(3), +p.area.toFixed(2), c.parts.length > 1 ? 'Y' : '', c.full ? '' : 'Y'])));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sch), 'Panel schedule');
+    const csch = [['Cricket', 'Facet', 'Band from valley', 'Series', 'Panel', 'Fill boards (in)', 'Fill total (in)', 'Low edge (in)', 'High edge (in)', 'Area (sf)']];
+    (A.bands || []).forEach(b => csch.push([b.cricket.label, b.facet + 1, b.k + 1, b.series ? b.series.name : '', b.panel ? b.panel.code : 'NO MATCH', b.fill ? b.fill.boards.join(' + ') : '', b.fill ? b.fill.sum : '', +b.low.toFixed(3), +b.high.toFixed(3), +b.area.toFixed(2)]));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(csch), 'Cricket schedule');
+    if (R) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ['Tapered R per inch', +P.rvalue.rpi], ['Base layer thickness (in)', R.baseT], ['Base layer R', +R.baseR.toFixed(2)], ['Cover + other R', R.otherR],
+      ['Average taper thickness (in)', +R.avgTaper.toFixed(3)], ['Min taper (in)', +R.minTaper.toFixed(3)], ['Max taper (in)', +R.maxTaper.toFixed(3)],
+      ['R, average-thickness method', +R.Ravg.toFixed(2)], ['R, area-weighted U method', +R.Ru.toFixed(2)], ['U-factor', +R.Uavg.toFixed(5)], ['Target R', R.target],
+      ['Min R (low point)', +R.minR.toFixed(2)], ['Max R (high point)', +R.maxR.toFixed(2)]]), 'R-value');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Layout', P.design.mode === '4way' ? 'Four-way to drains' : 'Two-way with crickets'], ['Field slope in/ft', +P.design.fieldSlope], ['Cricket slope in/ft', +P.design.cricketSlope],
+      ['Min thickness at drain (in)', +P.design.tmin], ['Cricket ratio (width:length)', +(P.design.cricketRatio || 3)], ['Module (ft)', +P.design.module], [], ['Drain', 'Type', 'X ft', 'Y ft'], ...P.drains.map((d, i) => [(d.type === 'scupper' ? 'SC-' : 'D-') + (i + 1), d.type, d.x, d.y]),
+      [], ['Curb', 'X', 'Y', 'W', 'L'], ...P.curbs.map(c => [c.name, c.x, c.y, c.w, c.h])]), 'Design inputs');
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    offer(slug() + '-takeoff.xlsx', new Blob([buf]), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  };
+  $('#exSVG').onclick = () => { if (A) offer(slug() + '-taper-plan.svg', sheetSVG(), 'image/svg+xml'); };
+  $('#openJSON').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { const p = JSON.parse(await f.text()); if (!p.roof || !p.design) throw 0; checkpoint(); P = migrate(p); sel = null; changed(true); fit(); toast('Opened ' + f.name); }
+    catch (err) { toast('That file isn\'t a saved taper project'); }
+    e.target.value = '';
+  };
+
+  /* ---------- shop drawing sheet ---------- */
+  function sheetSVG() {
+    const W = 1700, H = 1100, tb = 380, m = 30;
+    const bb = E.bbox(P.roof); const span = Math.max(bb.x1 - bb.x0, bb.y1 - bb.y0);
+    const off = Math.max(2.5, span * 0.035) * 2.4;
+    const vb = { x: bb.x0 - off, y: bb.y0 - off, w: bb.x1 - bb.x0 + off * 1.6, h: bb.y1 - bb.y0 + off * 1.6 };
+    const R = A.R, T = A.takeoff, d = P.design;
+    const date = new Date().toLocaleDateString();
+    const used = new Map(); A.cells.forEach(c => c.parts.forEach(p => { if (p.panel) used.set(p.series.id + p.panel.code, p); }));
+    (A.bands || []).forEach(b => { if (b.panel) used.set(b.series.id + b.panel.code, b); });
+    const keyRows = [...used.values()].sort((a, b) => (a.series.name + a.panel.code).localeCompare(b.series.name + b.panel.code));
+    const css = `.cell{fill:#fff;stroke:#9aa7aa;stroke-width:.6}.cband{fill:#f6e6c9;stroke:#c9a46a;stroke-width:.6}.cband.bad{fill:#f7d6d2}.valley{stroke:#b8741a;stroke-width:1.8}.ridge{stroke:#b8741a;stroke-width:1;stroke-dasharray:6 3}.arw.ck{stroke:#8a5410}.cell.bad{fill:#f7d6d2}.miter{stroke:#1d5f86;stroke-width:.9;stroke-dasharray:4 3}
+      .roof{fill:none;stroke:#111;stroke-width:2.4}.gutter{stroke:#1d5f86;stroke-width:5}.ckt{fill:none;stroke:#b8741a;stroke-width:1.2;stroke-dasharray:5 3}.ckt-r{stroke:#b8741a;stroke-width:1}
+      .curb{fill:url(#hatchS);stroke:#111;stroke-width:1.4}.drn{fill:#fff;stroke:#b3261e;stroke-width:1.6}.drnx{stroke:#b3261e;stroke-width:1}
+      text{font-family:Archivo,'Arial Narrow',Arial,sans-serif;fill:#111;text-anchor:middle;dominant-baseline:central}.pl{font-weight:700}.pl.bad{fill:#b3261e}.pf{fill:#555}.cl{font-weight:600}.dl{fill:#b3261e;font-weight:700;text-anchor:start}
+      .arw{fill:none;stroke:#1d5f86;stroke-width:1.1}.dim path{fill:none;stroke:#555;stroke-width:.8}.dim text{fill:#333}
+      *{vector-effect:non-scaling-stroke}.tb text{text-anchor:start;dominant-baseline:auto}.tb .h{font-size:22px;font-weight:800;letter-spacing:.5px}.tb .s{font-size:13px;fill:#444}.tb .k{font-size:11px;fill:#666;letter-spacing:1.2px}.tb .v{font-size:15px;font-weight:600}.tb .m{font-family:'IBM Plex Mono',Consolas,monospace;font-size:12.5px}`;
+    let y = m + 40; const tx = W - tb - m + 18;
+    const tbx = [];
+    const line = (yy) => tbx.push(`<line x1="${W - tb - m}" x2="${W - m}" y1="${yy}" y2="${yy}" stroke="#111" stroke-width="1"/>`);
+    tbx.push(`<text class="k" x="${tx}" y="${y}">PROJECT</text>`); y += 26;
+    tbx.push(`<text class="h" x="${tx}" y="${y}">${esc(P.name).slice(0, 34)}</text>`); y += 22;
+    tbx.push(`<text class="s" x="${tx}" y="${y}">Tapered insulation plan · ${date} · NTS</text>`); y += 18; line(y); y += 26;
+    tbx.push(`<text class="k" x="${tx}" y="${y}">DESIGN CRITERIA</text>`); y += 22;
+    [[`Layout`, d.mode === '4way' ? 'Four-way to drains' : 'Two-way with crickets'], ['Field slope', fi(+d.fieldSlope) + ' / ft'], ['Cricket slope', fi(+d.cricketSlope) + ' / ft'], ['Min. at drain', fi(+d.tmin)], ['Cricket ratio', (+d.cricketRatio || 3) + ' : 1'],
+    ['Base layers', R.baseT + '"'], ['High point (total)', R.maxTotalT.toFixed(2) + '"'], ['R (avg thickness)', 'R-' + R.Ravg.toFixed(1)], ['R (U-factor)', 'R-' + R.Ru.toFixed(1)], ['Target', 'R-' + R.target], ['Net area', n0(T.net) + ' sf']]
+      .forEach(([k, v]) => { tbx.push(`<text class="s" x="${tx}" y="${y}">${k}</text><text class="v" x="${tx + 175}" y="${y}">${esc(v)}</text>`); y += 21; });
+    y += 4; line(y); y += 26;
+    tbx.push(`<text class="k" x="${tx}" y="${y}">PANEL KEY</text>`); y += 22;
+    keyRows.slice(0, 14).forEach(p => { tbx.push(`<text class="v" x="${tx}" y="${y}">${esc(p.panel.code)}</text><text class="m" x="${tx + 52}" y="${y}">${p.panel.lo}" – ${p.panel.hi}"</text><text class="s" x="${tx + 175}" y="${y}">${esc(p.series.name)}</text>`); y += 20; });
+    tbx.push(`<text class="s" x="${tx}" y="${y}">+n" = flat fill under panel · FF = flat fill only</text>`); y += 14; line(y + 6); y += 32;
+    tbx.push(`<text class="k" x="${tx}" y="${y}">LEGEND</text>`); y += 24;
+    const lg = [[`<line x1="0" x2="34" y1="-4" y2="-4" stroke="#1d5f86" stroke-width="1.2"/><path d="M0 -4l7 -4M0 -4l7 4" stroke="#1d5f86" fill="none"/>`, 'Slope direction (downhill)'],
+    [`<line x1="0" x2="34" y1="-4" y2="-4" stroke="#1d5f86" stroke-dasharray="4 3"/>`, 'Hip / valley miter'], [`<rect x="0" y="-12" width="34" height="14" fill="#f6e6c9" stroke="#c9a46a"/>`, 'Cricket panels (over field)'], [`<line x1="0" x2="34" y1="-4" y2="-4" stroke="#b8741a" stroke-width="1.8"/>`, 'Cricket valley'], [`<line x1="0" x2="34" y1="-4" y2="-4" stroke="#b8741a" stroke-dasharray="6 3"/>`, 'Cricket ridge'],
+    [`<circle cx="17" cy="-5" r="7" fill="#fff" stroke="#b3261e" stroke-width="1.6"/>`, 'Roof drain'], [`<line x1="0" x2="34" y1="-4" y2="-4" stroke="#1d5f86" stroke-width="5"/>`, 'Edge drain']];
+    lg.forEach(([g, t]) => { tbx.push(`<g transform="translate(${tx} ${y})">${g}</g><text class="s" x="${tx + 48}" y="${y}">${t}</text>`); y += 24; });
+    y += 4; line(y); y += 26;
+    tbx.push(`<text class="k" x="${tx}" y="${y}">NOTES</text>`); y += 20;
+    ['Verify drain locations, sump size and deck slope in field.', 'Stagger joints between layers min. 6".', 'Crickets install over field taper; cut panels at valleys.', 'Panel codes per manufacturer table entered.']
+      .forEach(t => { if (y < H - m - 20) { tbx.push(`<text class="s" x="${tx}" y="${y}">${t}</text>`); y += 18; } });
+    const N = `<g transform="translate(${W - tb - m - 60} ${m + 60})"><circle r="26" fill="none" stroke="#111"/><path d="M0 -22L9 12L0 5L-9 12Z" fill="#111"/><text y="-36" font-size="14" font-weight="700">N</text></g>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="17in" height="11in" viewBox="0 0 ${W} ${H}"><style>${css}</style>
+      <defs><pattern id="hatchS" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#666" stroke-width="1"/></pattern></defs>
+      <rect width="${W}" height="${H}" fill="#fff"/><rect x="${m / 2}" y="${m / 2}" width="${W - m}" height="${H - m}" fill="none" stroke="#111" stroke-width="2"/>
+      <line x1="${W - tb - m}" x2="${W - tb - m}" y1="${m / 2}" y2="${H - m / 2}" stroke="#111" stroke-width="1.5"/>
+      <svg x="${m}" y="${m}" width="${W - tb - 3 * m}" height="${H - 2 * m}" viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}">${planMarkup({ sheet: true })}</svg>
+      ${N}<g class="tb">${tbx.join('')}</g></svg>`;
+  }
+
+  /* ---------- toast ---------- */
+  let tt;
+  function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => { t.hidden = true; }, 2600); }
+
+  /* ---------- boot ---------- */
+  new ResizeObserver(() => { applyView(); renderOverlay(); }).observe(svg);
+  let tab = 'roof'; try { tab = localStorage.getItem(STORE + '-tab') || 'roof'; } catch (e) { }
+  renderForms(); showTab(tab); setTool('select');
+  A = E.analyze(P); renderPlan(); renderKPIs(); renderResults();
+  requestAnimationFrame(fit);
+})();
+
+</script>
+
+</body></html>

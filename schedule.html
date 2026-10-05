@@ -1,0 +1,1342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CPM Scheduler</title>
+<meta name="description" content="Browser-based critical path scheduler with a Gantt chart: FS/SS/FF/SF links with lag, work calendars, constraints, baselines, MS Project XML import and export.">
+<meta name="color-scheme" content="light dark">
+<style>
+:root{
+  --bg:#f6f4ef;--panel:#fffdf8;--text:#1c1b19;--muted:#6b675f;--rule:#e4dfd4;--rule2:#cdc6b8;
+  --accent:#9a4a1f;--sel:#f3e6d8;--bar:#5b7fa6;--barp:#26466b;--crit:#c2412d;--critp:#7d2112;
+  --sum:#2a2825;--base:#b5ad9e;--nonwork:rgba(60,50,30,.05);--status:#2a7a3b;--neg:#c2412d;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#161614;--panel:#1c1b19;--text:#e9e5dc;--muted:#9a958a;--rule:#2c2a26;--rule2:#3d3a34;
+  --accent:#e08a55;--sel:#3a2c22;--bar:#6f93bb;--barp:#bcd3ec;--crit:#e0644d;--critp:#f6b7aa;
+  --sum:#e9e5dc;--base:#5d584f;--nonwork:rgba(255,255,255,.035);--status:#5cbf73;--neg:#ff7b66;
+}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);font:13px/1.3 var(--sans);overflow:hidden}
+button{font:inherit;color:inherit}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;padding:8px 12px;border-bottom:1px solid var(--rule2);background:var(--panel)}
+.brand{font-weight:700;font-size:15px;margin-right:6px;letter-spacing:-.01em}
+.grp{display:flex;gap:2px;align-items:center}
+.grp>span{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-right:4px}
+.bar button{background:transparent;border:1px solid transparent;border-radius:5px;padding:4px 8px;cursor:pointer}
+.bar button:hover{background:var(--sel);border-color:var(--rule2)}
+#main{flex:1;overflow:auto;position:relative}
+#content{display:flex;width:max-content;min-height:100%}
+#tpane{position:sticky;left:0;z-index:3;background:var(--panel);border-right:1px solid var(--rule2);overflow:hidden;flex:none}
+#thead{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--rule2)}
+.grid{display:grid;grid-template-columns:44px 270px 120px 62px 104px 104px 110px 56px 54px;width:924px}
+#thead .grid>div{height:44px;display:flex;align-items:flex-end;padding:0 6px 6px;font-size:11px;font-weight:600;color:var(--muted);border-right:1px solid var(--rule)}
+.row{height:26px;border-bottom:1px solid var(--rule)}
+.row>div{position:relative;border-right:1px solid var(--rule);display:flex;align-items:center;min-width:0}
+.row.sel{background:var(--sel)}
+.row input{width:100%;height:25px;border:0;background:transparent;color:inherit;font:inherit;padding:0 6px;outline:none;min-width:0}
+.row input:focus{box-shadow:inset 0 0 0 2px var(--accent);background:var(--panel)}
+.row input[readonly]{color:var(--muted)}
+.r input,.r{justify-content:flex-end;text-align:right}
+.num{justify-content:space-between;padding:0 4px 0 6px;color:var(--muted);cursor:pointer;user-select:none;font-size:12px}
+.num .m{display:flex;gap:2px}
+.num i{font-style:normal;font-size:10px;line-height:1;padding:1px 3px;border-radius:3px;background:var(--rule);color:var(--text)}
+.num i.e{background:var(--crit);color:#fff}
+.name{padding-left:calc(var(--l,0)*16px)}
+.tog{width:16px;flex:none;border:0;background:transparent;padding:0;cursor:pointer;color:var(--muted);font-size:10px}
+.row.sum input{font-weight:650}
+.row.crit .nm input{color:var(--crit)}
+.neg{color:var(--neg);font-weight:600}
+.tf{padding:0 6px}
+.newrow input::placeholder{color:var(--muted);opacity:.7}
+#resizer{position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:col-resize;z-index:6}
+#gpane{position:relative;flex:none}
+#ghead{position:sticky;top:0;z-index:2;background:var(--panel);border-bottom:1px solid var(--rule2);display:block}
+#gbody{display:block}
+svg text{font-family:var(--sans)}
+.ht{font-size:11px;fill:var(--muted)}
+.hl{stroke:var(--rule)}
+.gl{stroke:var(--rule);stroke-width:1}
+.nw{fill:var(--nonwork)}
+.rowbg{fill:transparent}
+.rowbg.sel{fill:var(--sel)}
+.b{fill:var(--bar)}.bp{fill:var(--barp)}
+.c .b{fill:var(--crit)}.c .bp{fill:var(--critp)}
+.ms{fill:var(--text)}.c .ms{fill:var(--crit)}
+.sm{fill:var(--sum)}
+.bl{fill:var(--base)}
+.lbl{font-size:11px;fill:var(--muted)}
+.ar{fill:none;stroke:var(--muted);stroke-width:1}
+.ar.c{stroke:var(--crit)}
+.ah{fill:var(--muted)}.ah.c{fill:var(--crit)}
+.stl{stroke:var(--status);stroke-width:1.5;stroke-dasharray:5 3}
+.tdl{stroke:var(--accent);stroke-width:1}
+[data-bar]{cursor:grab}
+.dim{opacity:.22}
+.ar.tr{stroke:var(--accent);stroke-width:2}.ah.tr{fill:var(--accent)}
+.row.trc .num span:first-child{color:var(--accent);font-weight:700}
+.bar select{font:inherit;color:inherit;background:transparent;border:1px solid var(--rule2);border-radius:5px;padding:3px 4px;max-width:170px}
+.bar select.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.trd{gap:0}.trd .sw{flex:none;width:8px;height:8px;border-radius:2px;margin-left:6px}
+.leg{display:inline-flex;align-items:center;gap:4px}.leg i{width:9px;height:9px;border-radius:2px;display:inline-block}
+.filt{color:var(--accent);font-weight:600;cursor:pointer}
+.bar button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#drag{stroke:var(--accent);stroke-width:2;stroke-dasharray:4 3;pointer-events:none}
+.foot{display:flex;gap:18px;align-items:center;padding:5px 12px;border-top:1px solid var(--rule2);background:var(--panel);color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden}
+.foot b{color:var(--text);font-weight:600}
+#toast{position:fixed;left:50%;bottom:42px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:6px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90vw}
+#toast.on{opacity:.95}
+dialog{border:1px solid var(--rule2);border-radius:10px;background:var(--panel);color:var(--text);padding:20px 22px;width:min(560px,94vw);box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(20,18,15,.35)}
+dialog h3{margin:0 0 14px;font-size:16px}
+dialog label{display:block;font-size:12px;color:var(--muted);margin:0 0 10px}
+dialog input,dialog select,dialog textarea{display:block;width:100%;margin-top:4px;padding:6px 8px;border:1px solid var(--rule2);border-radius:5px;background:var(--bg);color:var(--text);font:13px var(--sans)}
+dialog textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.three{display:grid;grid-template-columns:1fr 1fr 2fr;gap:12px}
+fieldset{border:1px solid var(--rule2);border-radius:6px;margin:0 0 10px;padding:6px 10px 8px}
+fieldset legend{font-size:12px;color:var(--muted)}
+fieldset label{display:inline-flex;align-items:center;gap:4px;margin:0 10px 0 0;color:var(--text)}
+fieldset input{display:inline;width:auto;margin:0}
+.hb{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-2px 0 12px;font-size:12px;color:var(--muted)}
+.hb input{display:inline;width:80px;margin:0}
+.hb button,menu button{border:1px solid var(--rule2);background:var(--bg);border-radius:5px;padding:6px 12px;cursor:pointer}
+menu{display:flex;justify-content:flex-end;gap:8px;margin:16px 0 0;padding:0}
+menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.facts{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+.facts td{padding:3px 0;border-bottom:1px solid var(--rule)}
+.facts td:nth-child(even){text-align:right;padding-right:14px}
+.facts td:nth-child(odd){color:var(--muted)}
+.help{font-size:13px;line-height:1.55}.help code{background:var(--bg);padding:1px 4px;border-radius:3px}
+.help table{border-collapse:collapse;width:100%}.help td{padding:2px 8px 2px 0;vertical-align:top}
+#narrow{position:fixed;inset:0;z-index:100;background:var(--bg);display:none;align-items:center;justify-content:center;padding:24px;text-align:center}
+#narrow div{max-width:360px}#narrow button{margin-top:14px;padding:8px 16px;border:1px solid var(--rule2);border-radius:6px;background:var(--panel);cursor:pointer}
+#print{display:none}
+@media print{
+  body{display:block;overflow:visible;height:auto;background:#fff}
+  body>*:not(#print){display:none!important}
+  #print{display:block;
+    --bg:#fff;--panel:#fff;--text:#111;--muted:#555;--rule:#ddd;--rule2:#bbb;--bar:#5b7fa6;--barp:#26466b;
+    --crit:#c2412d;--critp:#7d2112;--sum:#111;--base:#aaa;--nonwork:rgba(0,0,0,.04);--status:#2a7a3b;--sel:transparent}
+  #print .pg{page-break-after:always;break-after:page}
+  #print .pg:last-child{page-break-after:auto;break-after:auto}
+  #print svg{display:block}
+}
+</style>
+<style id="pagesize"></style>
+</head>
+<body>
+<header class="bar" id="toolbar">
+  <div class="brand">CPM Scheduler</div>
+  <div class="grp"><span>File</span>
+    <button data-cmd="new" title="New (Ctrl+Alt+N)">New</button>
+    <button data-cmd="open" title="Open .json or MS Project .xml (Ctrl+O)">Open</button>
+    <button data-cmd="save" title="Save (Ctrl+S)">Save</button>
+    <button data-cmd="csv" title="Export CSV">CSV</button>
+    <button data-cmd="xml" title="Export MS Project XML">MSP XML</button>
+    <button data-cmd="print" title="Print or save as PDF (Ctrl+P)">Print</button>
+  </div>
+  <div class="grp"><span>Edit</span>
+    <button data-cmd="undo" title="Undo (Ctrl+Z)">Undo</button>
+    <button data-cmd="redo" title="Redo (Ctrl+Y)">Redo</button>
+  </div>
+  <div class="grp"><span>Task</span>
+    <button data-cmd="insert" title="Insert task above selection (Insert)">Insert</button>
+    <button data-cmd="del" title="Delete selected tasks (Delete)">Delete</button>
+    <button data-cmd="outdent" title="Outdent (Alt+Shift+←)">←</button>
+    <button data-cmd="indent" title="Indent (Alt+Shift+→)">→</button>
+    <button data-cmd="up" title="Move up (Alt+Shift+↑)">↑</button>
+    <button data-cmd="down" title="Move down (Alt+Shift+↓)">↓</button>
+    <button data-cmd="dup" title="Duplicate selected tasks and their subtasks (Ctrl+D)">Duplicate</button>
+    <button data-cmd="link" title="Link selected tasks finish-to-start (Ctrl+F2)">Link</button>
+    <button data-cmd="unlink" title="Unlink selected tasks (Ctrl+Shift+F2)">Unlink</button>
+    <button data-cmd="info" title="Task information (Shift+F2)">Info</button>
+  </div>
+  <div class="grp"><span>Project</span>
+    <button data-cmd="project" title="Name, start date, status date, calendar and holidays">Settings</button>
+    <button data-cmd="baseline" title="Save current dates as the baseline">Set baseline</button>
+    <button data-cmd="clearbase" title="Remove the baseline">Clear</button>
+  </div>
+  <div class="grp"><span>View</span>
+    <button data-cmd="zout" title="Zoom out (Ctrl+−)">−</button>
+    <button data-cmd="zin" title="Zoom in (Ctrl+=)">+</button>
+    <button data-cmd="goto" title="Scroll to project start">Start</button>
+    <button data-cmd="trace" id="btnTrace" title="Highlight what drives the selected task's start (Alt+T)">Trace</button>
+    <button data-cmd="help" title="Help (F1)">?</button>
+  </div>
+  <div class="grp"><span>Filter</span>
+    <select id="fShow" title="Which tasks to show">
+      <option value="">All tasks</option><option value="crit">Critical</option>
+      <option value="la2">2-week lookahead</option><option value="la3">3-week lookahead</option><option value="la4">4-week lookahead</option><option value="la6">6-week lookahead</option>
+    </select>
+    <select id="fTrade" title="Show one trade"></select>
+    <button data-cmd="color" id="btnColor" title="Color bars by trade instead of critical path">Color by trade</button>
+  </div>
+</header>
+
+<div id="main">
+  <div id="content">
+    <div id="tpane">
+      <div id="thead"><div class="grid"><div>#</div><div>Task name</div><div>Trade</div><div>Duration</div><div>Start</div><div>Finish</div><div>Predecessors</div><div>Float</div><div>% done</div></div></div>
+      <div id="tbody"></div>
+      <div id="resizer" title="Drag to resize"></div>
+    </div>
+    <div id="gpane"><svg id="ghead"></svg><svg id="gbody"></svg></div>
+  </div>
+</div>
+
+<footer class="foot" id="foot"></footer>
+<div id="toast"></div>
+<datalist id="tradeList"></datalist>
+<input type="file" id="fileIn" accept=".json,.xml,application/json,text/xml" hidden>
+<div id="print"></div>
+
+<dialog id="dlgProj"><form method="dialog">
+  <h3>Project settings</h3>
+  <label>Project name <input name="name"></label>
+  <div class="two"><label>Project start <input type="date" name="start" required></label><label>Status date <input type="date" name="status"></label></div>
+  <fieldset><legend>Working days</legend><span id="wdBoxes"></span></fieldset>
+  <label>Holidays and non-working days — one per line, date then an optional name
+    <textarea name="hol" rows="8" placeholder="2026-11-26 Thanksgiving Day"></textarea></label>
+  <div class="hb">Add for year <input type="number" name="year" min="2000" max="2100">
+    <button type="button" data-h="fed">US federal holidays</button>
+    <button type="button" data-h="con">Common construction holidays</button></div>
+  <menu><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="pri">Save</button></menu>
+</form></dialog>
+
+<dialog id="dlgInfo"><form method="dialog">
+  <h3>Task information</h3>
+  <div class="two" style="grid-template-columns:2fr 1fr"><label>Name <input name="name"></label><label>Trade <input name="trade" list="tradeList"></label></div>
+  <div class="three"><label>Duration <input name="dur"></label><label>% complete <input name="pct" type="number" min="0" max="100"></label><label>Predecessors <input name="pred" placeholder="e.g. 4, 6SS+2d"></label></div>
+  <div class="two"><label>Constraint <select name="ct">
+    <option value="">As soon as possible</option><option value="SNET">Start no earlier than</option><option value="SNLT">Start no later than</option>
+    <option value="FNET">Finish no earlier than</option><option value="FNLT">Finish no later than</option>
+    <option value="MSO">Must start on</option><option value="MFO">Must finish on</option></select></label>
+    <label>Constraint date <input type="date" name="cd"></label></div>
+  <div class="two"><label>Actual start <input type="date" name="as"></label><label>Actual finish <input type="date" name="af"></label></div>
+  <label>Notes <textarea name="notes" rows="3"></textarea></label>
+  <table class="facts" id="facts"></table>
+  <menu><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="pri">Save</button></menu>
+</form></dialog>
+
+<dialog id="dlgPrint"><form method="dialog">
+  <h3>Print schedule</h3>
+  <label>Sheet (landscape) <select name="paper">
+    <option value="letter">Letter — 11 × 8.5 in</option><option value="legal">Legal — 14 × 8.5 in</option>
+    <option value="tabloid" selected>Tabloid — 17 × 11 in</option><option value="archd">ARCH D — 36 × 24 in</option></select></label>
+  <p style="font-size:12px;color:var(--muted);margin:0 0 8px">Prints what's on screen. For a lookahead or one sub's tasks, set the Filter first — a lookahead fits the timeline to its weeks.</p>
+  <p style="font-size:12px;color:var(--muted);margin:0">Otherwise the whole schedule is fitted to the sheet width and split across pages by rows. Collapsed summaries stay collapsed. Choose “Save as PDF” in your browser's print dialog for a PDF, and set margins to Default.</p>
+  <menu><button value="cancel">Cancel</button><button value="ok" class="pri">Print</button></menu>
+</form></dialog>
+
+<dialog id="dlgHelp"><form method="dialog" class="help">
+  <h3>How it works</h3>
+  <p>Type tasks in the table. Durations are in workdays (<code>5</code>, <code>5d</code>, <code>2w</code>); <code>0</code> makes a milestone. Indent a task under another to make the one above it a summary.</p>
+  <p><b>Predecessors</b> use row numbers: <code>4</code> (finish-to-start), <code>4SS</code>, <code>4FF+2d</code>, <code>4SF</code>, <code>7FS-1d</code> (lead). Use <code>ed</code> or <code>ew</code> for calendar-day lags that run through weekends and holidays, like cure time: <code>4FS+7ed</code>. Separate several with commas. You can also drag a bar up or down onto another bar to link them.</p>
+  <p>Typing a date in <b>Start</b> or <b>Finish</b> sets a start/finish-no-earlier-than constraint, like MS Project. Dragging a bar sideways does the same. Clear it in Info.</p>
+  <p><b>Paste from Excel</b>: copy cells and paste into any cell here — columns fill left to right from that cell in table order (Name, Trade, Duration, Start, Finish, Predecessors, Float is skipped, % done). Paste with rows selected (not in a cell) to insert the rows above.</p>
+  <p><b>Trade</b> labels who does the work. Use <b>Color by trade</b> and the <b>Filter</b> menus for a sub's tasks or a 2–6 week lookahead; Print prints what's shown.</p>
+  <p><b>Status date</b> (in Settings) drives updates: tasks not started yet can't start before the day after it, and unfinished work on in-progress tasks is pushed past it. Tasks that slip show negative float.</p>
+  <p><b>Trace</b> highlights the chain of tasks that sets the selected task's start. Info and the bar tooltip also say what drives each start.</p>
+  <p><b>Float</b> is total float in workdays; tasks with zero or negative float are critical and shown in red. A gray bar under a task is its baseline.</p>
+  <table>
+    <tr><td><code>Enter</code></td><td>Commit and move down</td></tr>
+    <tr><td><code>Insert</code></td><td>Insert a task above the selection</td></tr>
+    <tr><td><code>Delete</code></td><td>Delete selected rows (click the # cell to select; Shift/Ctrl for more)</td></tr>
+    <tr><td><code>Alt+Shift+→ ← ↑ ↓</code></td><td>Indent, outdent, move up, move down</td></tr>
+    <tr><td><code>Ctrl+F2</code> / <code>Ctrl+Shift+F2</code></td><td>Link / unlink selected</td></tr>
+    <tr><td><code>Shift+F2</code></td><td>Task information (or double-click the # cell or a bar)</td></tr>
+    <tr><td><code>Ctrl+C</code> / <code>Ctrl+X</code> / <code>Ctrl+V</code></td><td>Copy, cut, paste selected rows (with subtasks). Paste goes above the selected row.</td></tr>
+    <tr><td><code>Ctrl+D</code></td><td>Duplicate selected rows below themselves</td></tr>
+    <tr><td><code>Alt+T</code></td><td>Trace what drives the selected task</td></tr>
+    <tr><td><code>Ctrl+Z</code> / <code>Ctrl+Y</code></td><td>Undo / redo</td></tr>
+    <tr><td><code>Ctrl+S</code> / <code>Ctrl+O</code> / <code>Ctrl+P</code></td><td>Save / open / print</td></tr>
+  </table>
+  <p style="color:var(--muted);font-size:12px">Everything stays in this browser tab. Work is autosaved to this browser; use Save to keep a file.</p>
+  <menu><button value="ok" class="pri">Got it</button></menu>
+</form></dialog>
+
+<div id="narrow"><div><b>Built for a bigger screen</b><p>This scheduler is made for a mouse and keyboard on a wide display. It won't work well on a phone.</p><button id="narrowGo">Continue anyway</button></div></div>
+<script>
+'use strict';
+/* ===== Dates ===== */
+const ROW=26, HEAD=44, D864=864e5;
+const DOWS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONF=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const pad=n=>String(n).padStart(2,'0');
+const dn=s=>{const [y,m,d]=String(s).slice(0,10).split('-').map(Number);return Math.round(Date.UTC(y,m-1,d)/D864);};
+const isoOf=n=>new Date(n*D864).toISOString().slice(0,10);
+const ymd=n=>{const d=new Date(n*D864);return [d.getUTCFullYear(),d.getUTCMonth()+1,d.getUTCDate()];};
+const dow=n=>(((n%7)+7)%7+4)%7;
+const mkD=(y,m,d)=>{if(m<1||m>12||d<1||d>31)return null;const n=Math.round(Date.UTC(y,m-1,d)/D864);const c=ymd(n);return c[1]===m&&c[2]===d?n:null;};
+const todayDn=()=>{const t=new Date();return Math.round(Date.UTC(t.getFullYear(),t.getMonth(),t.getDate())/D864);};
+function fmtD(n){if(n==null||!isFinite(n))return '';const [y,m,d]=ymd(n);return `${DOWS[dow(n)]} ${m}/${d}/${String(y).slice(2)}`;}
+function parseDate(s,refYear){
+  s=String(s||'').trim();if(!s)return null;
+  s=s.replace(/^(sun|mon|tue|wed|thu|fri|sat)[a-z]*\.?,?\s*/i,'');
+  let m;
+  if((m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)))return mkD(+m[1],+m[2],+m[3]);
+  if((m=s.match(/^(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2}|\d{4}))?$/))){let y=m[3]?+m[3]:refYear;if(y<100)y+=2000;return mkD(y,+m[1],+m[2]);}
+  if((m=s.match(/^([a-z]{3,9})\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?$/i))){const i=MONS.findIndex(x=>x.toLowerCase()===m[1].slice(0,3).toLowerCase());if(i>=0)return mkD(m[3]?+m[3]:refYear,i+1,+m[2]);}
+  return null;
+}
+function unitMul(u){u=(u||'d').toLowerCase();if(/^(d|dy|dys|day|days)$/.test(u))return 1;if(/^(w|wk|wks|week|weeks)$/.test(u))return 5;if(/^(mo|mon|mons|month|months)$/.test(u))return 20;return null;}
+function parseDur(s){
+  const m=String(s).trim().replace(/\?$/,'').match(/^(\d+(?:\.\d+)?)\s*([a-z]*)$/i);if(!m)return null;
+  const k=unitMul(m[2]);if(k==null)return null;return Math.max(0,Math.round(parseFloat(m[1])*k));
+}
+
+/* ===== Holidays ===== */
+function nthDow(y,m,wd,n){
+  if(n>0){let d=mkD(y,m,1);while(dow(d)!==wd)d++;return d+7*(n-1);}
+  let d=(m===12?mkD(y+1,1,1):mkD(y,m+1,1))-1;while(dow(d)!==wd)d--;return d;
+}
+const observed=d=>dow(d)===6?d-1:dow(d)===0?d+1:d;
+function holidaySet(kind,y){
+  const fed=[['New Year’s Day',observed(mkD(y,1,1))],['Martin Luther King Jr. Day',nthDow(y,1,1,3)],['Washington’s Birthday',nthDow(y,2,1,3)],
+    ['Memorial Day',nthDow(y,5,1,-1)],['Juneteenth',observed(mkD(y,6,19))],['Independence Day',observed(mkD(y,7,4))],['Labor Day',nthDow(y,9,1,1)],
+    ['Columbus Day',nthDow(y,10,1,2)],['Veterans Day',observed(mkD(y,11,11))],['Thanksgiving Day',nthDow(y,11,4,4)],['Christmas Day',observed(mkD(y,12,25))]];
+  if(kind==='fed')return fed;
+  const tg=nthDow(y,11,4,4);
+  return [['New Year’s Day',observed(mkD(y,1,1))],['Memorial Day',nthDow(y,5,1,-1)],['Independence Day',observed(mkD(y,7,4))],['Labor Day',nthDow(y,9,1,1)],
+    ['Thanksgiving Day',tg],['Day after Thanksgiving',tg+1],['Christmas Eve',observed(mkD(y,12,24))===observed(mkD(y,12,25))?observed(mkD(y,12,25))-1:observed(mkD(y,12,24))],['Christmas Day',observed(mkD(y,12,25))]];
+}
+
+/* ===== Calendar ===== */
+function buildCal(p){
+  const wk=new Set(p.calendar.workdays&&p.calendar.workdays.length?p.calendar.workdays:[1,2,3,4,5]);
+  const hol=new Set((p.calendar.holidays||[]).map(h=>dn(h.d)));
+  const isW=d=>wk.has(dow(d))&&!hol.has(d);
+  const s=dn(p.start),lo=s-2500,hi=s+7300,days=[];
+  for(let d=lo;d<=hi;d++)if(isW(d))days.push(d);
+  if(!days.length)days.push(s);
+  const lb=x=>{let a=0,b=days.length;while(a<b){const m=(a+b)>>1;if(days[m]<x)a=m+1;else b=m;}return a;};
+  const o=lb(s),at=k=>days[Math.max(0,Math.min(days.length-1,k))];
+  return {isW,hol,
+    idxStart:d=>lb(d)-o,          // first workday on/after d (morning)
+    idxFinish:d=>lb(d+1)-o,       // end of last workday on/before d
+    dateStart:i=>at(i+o),
+    dateFinish:f=>at(f-1+o),
+    workBetween:(a,b)=>lb(b+1)-lb(a),
+    // Elapsed-time helpers. A "moment" is the morning of a calendar date.
+    mS:i=>at(i+o),                // start boundary i → moment
+    mF:f=>at(f-1+o)+1,            // finish boundary f → moment (morning after last workday)
+    iS:m=>lb(m)-o,                // earliest start boundary at or after moment m
+    iF:m=>lb(m-1)-o+1,            // earliest finish boundary at or after moment m
+    lS:m=>lb(m+1)-o-1,            // latest start boundary at or before moment m
+    lF:m=>lb(m)-o};               // latest finish boundary at or before moment m
+}
+
+/* ===== Project model ===== */
+let P=null,cal=null,U=new Map(),S={};
+function blankProject(){
+  let d=todayDn();while(dow(d)!==1)d++;
+  return {v:1,name:'Untitled schedule',start:isoOf(d),status:null,calendar:{workdays:[1,2,3,4,5],holidays:[]},tasks:[],nextUid:1};
+}
+function newTask(name,level){return {uid:P.nextUid++,name:name||'',dur:1,level:level||0,preds:[],cons:null,pct:0,as:null,af:null,bs:null,bf:null,notes:'',trade:'',collapsed:false};}
+const ser=()=>JSON.stringify(P,(k,v)=>k[0]==='_'?undefined:v);
+function sanitize(p){
+  const b=blankProject();p=Object.assign(b,p||{});
+  p.calendar=Object.assign({workdays:[1,2,3,4,5],holidays:[]},p.calendar||{});
+  p.tasks=(p.tasks||[]).map(t=>Object.assign({uid:0,name:'',dur:1,level:0,preds:[],cons:null,pct:0,as:null,af:null,bs:null,bf:null,notes:'',trade:'',collapsed:false},t));
+  let mx=0;p.tasks.forEach(t=>{mx=Math.max(mx,t.uid||0);});
+  p.tasks.forEach(t=>{if(!t.uid)t.uid=++mx;});
+  p.nextUid=Math.max(p.nextUid||1,mx+1);
+  return p;
+}
+function normalizeLevels(){
+  const T=P.tasks;T.forEach((t,i)=>{t.level=Math.max(0,Math.min(t.level|0,i?T[i-1].level+1:0));});
+}
+const isSumIdx=i=>i+1<P.tasks.length&&P.tasks[i+1].level>P.tasks[i].level;
+function subtreeEnd(i){const T=P.tasks;let j=i+1;while(j<T.length&&T[j].level>T[i].level)j++;return j;}
+
+/* ===== CPM ===== */
+function topo(leaf){
+  const indeg=new Map(leaf.map(t=>[t,t._preds.length]));
+  const q=leaf.filter(t=>!indeg.get(t)),out=[];
+  for(let h=0;h<q.length;h++){const t=q[h];out.push(t);for(const s of t._succ){const k=indeg.get(s.t)-1;indeg.set(s.t,k);if(k===0)q.push(s.t);}}
+  return out;
+}
+function linkGraph(){
+  const T=P.tasks;U=new Map(T.map(t=>[t.uid,t]));
+  T.forEach((t,i)=>{t._sum=isSumIdx(i);t._row=i+1;t._err='';t._preds=[];t._succ=[];});
+  const leaf=T.filter(t=>!t._sum);
+  for(const t of leaf)for(const p of t.preds){
+    const q=U.get(p.uid);if(!q)continue;
+    if(q._sum){t._err='Links to summary tasks are ignored — link to a task inside it';continue;}
+    t._preds.push({t:q,type:p.type,lag:p.lag||0,el:!!p.el});q._succ.push({t,type:p.type,lag:p.lag||0,el:!!p.el});
+  }
+  for(const t of T)if(t._sum&&t.preds.length)t._err='Links on summary tasks are ignored';
+  return leaf;
+}
+function hasCycle(){const leaf=linkGraph();return topo(leaf).length<leaf.length;}
+
+function schedule(){
+  normalizeLevels();
+  cal=buildCal(P);
+  const T=P.tasks,n=T.length,leaf=linkGraph();
+  const order=topo(leaf),cyc=order.length<leaf.length;
+  if(cyc){const s=new Set(order);for(const t of leaf)if(!s.has(t)){t._err='Part of a circular link — check predecessors';order.push(t);}}
+  for(const t of leaf){t._es=t._ef=t._ls=t._lf=null;}
+  const cIdx=t=>{if(!t.cons||!t.cons.date||!t.cons.type)return null;const d=dn(t.cons.date);return {type:t.cons.type,s:cal.idxStart(d),f:cal.idxFinish(d)};};
+  // Link math. fromFin/toFin: which end of predecessor/successor the link ties.
+  // Workday lags shift boundary indexes; elapsed lags (el) shift calendar days.
+  const fwd=(p,q)=>{ // earliest allowed successor boundary (start or finish per link type)
+    const fromFin=p.type[0]==='F',toFin=p.type[1]==='F',pt=fromFin?q._ef:q._es;
+    if(!p.el)return pt+p.lag;
+    const m=(fromFin?cal.mF(pt):cal.mS(pt))+p.lag;return toFin?cal.iF(m):cal.iS(m);
+  };
+  const bwd=(s,u)=>{ // latest allowed predecessor boundary given successor late dates
+    const fromFin=s.type[0]==='F',toFin=s.type[1]==='F',pt=toFin?u._lf:u._ls;
+    if(!s.el)return pt-s.lag;
+    const m=(toFin?cal.mF(pt):cal.mS(pt))-s.lag;return fromFin?cal.lF(m):cal.lS(m);
+  };
+  const stIdx=P.status?cal.idxFinish(dn(P.status)):null; // first workday after status date
+  // forward pass
+  for(const t of order){
+    const D=t.dur;let es=0,st=true,why='start';const cand=[];
+    for(const p of t._preds){
+      const q=p.t;if(q._es==null)continue;
+      const r=fwd(p,q),v=p.type[1]==='F'?r-D:r,s=p.type[0]==='S';cand.push([p,v]);
+      if(v>es||(v===es&&!s)){es=v;st=s;why='pred';}
+    }
+    const c=cIdx(t);
+    if(c){
+      const e0=es;
+      if(c.type==='SNET'&&c.s>es){es=c.s;st=true;}
+      else if(c.type==='FNET'&&c.f-D>es){es=c.f-D;st=false;}
+      else if(c.type==='MSO'){es=c.s;st=true;}
+      else if(c.type==='MFO'){es=c.f-D;st=false;}
+      if(es!==e0)why='cons';
+    }
+    let ef;
+    if(t.as){
+      es=cal.idxStart(dn(t.as));st=true;why='actual';
+      if(t.af)ef=Math.max(es,cal.idxFinish(dn(t.af)));
+      else if(stIdx!=null){ // in progress: remaining work resumes after the status date
+        const rem=Math.max(0,Math.round(D*(100-Math.min(99,t.pct))/100));
+        ef=Math.max(es+D-rem,stIdx)+rem;
+      }else ef=es+D;
+    }else{
+      if(stIdx!=null&&!t.af&&es<stIdx){es=stIdx;st=true;why='status';}
+      ef=t.af?Math.max(es,cal.idxFinish(dn(t.af))):es+D;
+    }
+    t._es=es;t._ef=ef;t._st=st;t._why=why;
+    t._drv=why==='pred'?cand.filter(x=>x[1]===es).map(x=>x[0]):[];
+  }
+  let pf=0;for(const t of leaf)pf=Math.max(pf,t._ef);
+  // backward pass
+  for(let k=order.length-1;k>=0;k--){
+    const t=order[k],D=t._ef-t._es;let lf=pf;
+    for(const s of t._succ){
+      const u=s.t;if(u._lf==null)continue;
+      const r=bwd(s,u),v=s.type[0]==='F'?r:r+D;
+      if(v<lf)lf=v;
+    }
+    const c=cIdx(t);
+    if(c){
+      if(c.type==='FNLT')lf=Math.min(lf,c.f);
+      else if(c.type==='SNLT')lf=Math.min(lf,c.s+D);
+      else if(c.type==='MSO')lf=Math.min(lf,c.s+D);
+      else if(c.type==='MFO')lf=Math.min(lf,c.f);
+    }
+    t._lf=lf;t._ls=lf-D;t._tf=t._ls-t._es;
+  }
+  // free float, display dates
+  let crit=0;
+  for(const t of leaf){
+    let ff=pf-t._ef;
+    for(const s of t._succ){const u=s.t,v=(s.type[1]==='F'?u._ef:u._es)-fwd(s,t);if(v<ff)ff=v;}
+    t._ff=ff;
+    t._ms=t.dur===0&&t._ef===t._es;
+    if(t._ms){
+      t._sd=t._fd=t._st?cal.dateStart(t._es):cal.dateFinish(t._es);
+      t._lsd=t._lfd=t._st?cal.dateStart(t._ls):cal.dateFinish(t._ls);
+    }else{
+      t._sd=cal.dateStart(t._es);t._fd=cal.dateFinish(t._ef);
+      t._lsd=cal.dateStart(t._ls);t._lfd=cal.dateFinish(t._lf);
+    }
+    t._done=t.pct>=100;
+    t._crit=!t._done&&t._tf<=0;
+    if(t._crit)crit++;
+  }
+  // summary rollup
+  for(let i=n-1;i>=0;i--){
+    const t=T[i];if(!t._sum)continue;
+    let sd=Infinity,fd=-Infinity,ds=0,ws=0,ps=0,cn=0,bs=Infinity,bf=-Infinity;
+    for(let j=i+1;j<n&&T[j].level>t.level;j++){const c=T[j];if(c._sum)continue;
+      sd=Math.min(sd,c._sd);fd=Math.max(fd,c._fd);ds+=c.dur;ws+=c.dur*c.pct;ps+=c.pct;cn++;
+      if(c.bs){bs=Math.min(bs,dn(c.bs));bf=Math.max(bf,dn(c.bf));}}
+    t._sd=sd;t._fd=fd;t._sdur=cal.workBetween(sd,fd);
+    t._pct=ds?Math.round(ws/ds):cn?Math.round(ps/cn):0;
+    t._bs=isFinite(bs)?bs:null;t._bf=isFinite(bf)?bf:null;
+    t._crit=false;t._ms=false;t._done=t._pct>=100;
+  }
+  let ps=Infinity,pfD=-Infinity;for(const t of leaf){ps=Math.min(ps,t._sd);pfD=Math.max(pfD,t._fd);}
+  S={leaf,cyc,crit,start:isFinite(ps)?ps:dn(P.start),finish:isFinite(pfD)?pfD:dn(P.start)};
+  S.days=leaf.length?cal.workBetween(S.start,S.finish):0;
+}
+
+/* ===== Predecessor text ===== */
+function fmtPreds(t){
+  return t.preds.map(p=>{const q=U.get(p.uid);if(!q)return '';let s=String(q._row);
+    if(p.type!=='FS'||p.lag)s+=p.type;if(p.lag)s+=(p.lag>0?'+':'')+p.lag+(p.el?'ed':'d');return s;}).filter(Boolean).join(', ');
+}
+function parsePreds(text,t){
+  const out=[],T=P.tasks;
+  for(const raw of String(text||'').split(/[,;]+/)){
+    const s=raw.trim();if(!s)continue;
+    const m=s.match(/^(\d+)\s*(fs|ss|ff|sf)?\s*(?:([+-])\s*(\d+(?:\.\d+)?)\s*([a-z]*))?$/i);
+    if(!m)return {err:`Couldn't read “${s}”. Use a row number like 4, 4SS or 4FS+2d.`};
+    const q=T[+m[1]-1];
+    if(!q)return {err:`There's no row ${m[1]}.`};
+    if(q===t)return {err:'A task can’t be its own predecessor.'};
+    if(isSumIdx(+m[1]-1))return {err:`Row ${m[1]} is a summary task — link to a task inside it.`};
+    let lag=0,el=false;
+    if(m[3]){
+      let u=(m[5]||'d').toLowerCase();el=/^e/.test(u);if(el)u=u.slice(1)||'d';
+      const k=el?{d:1,w:7,mo:30}[u.replace(/^(dy|dys|day|days)$/,'d').replace(/^(wk|wks|week|weeks)$/,'w').replace(/^(mon|mons|month|months)$/,'mo')]:unitMul(u);
+      if(k==null)return {err:`Unknown lag unit “${m[5]}”. Use d or w for workdays, ed or ew for calendar days.`};
+      lag=Math.round(parseFloat(m[4])*k)*(m[3]==='-'?-1:1);
+      if(!lag)el=false;
+    }
+    const i=out.findIndex(x=>x.uid===q.uid);if(i>=0)out.splice(i,1);
+    const o={uid:q.uid,type:(m[2]||'FS').toUpperCase(),lag};if(el)o.el=true;out.push(o);
+  }
+  return {preds:out};
+}
+
+/* ===== MS Project XML ===== */
+const CT2N={'':0,ASAP:0,ALAP:1,MSO:2,MFO:3,SNET:4,SNLT:5,FNET:6,FNLT:7},N2CT=['','','MSO','MFO','SNET','SNLT','FNET','FNLT'];
+const LT2N={FF:0,FS:1,SF:2,SS:3},N2LT=['FF','FS','SF','SS'];
+const xe=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function exportMSP(){
+  const T=P.tasks,L=[];
+  const st=d=>isoOf(d)+'T08:00:00',fi=d=>isoOf(d)+'T17:00:00',du=d=>`PT${d*8}H0M0S`;
+  L.push('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>','<Project xmlns="http://schemas.microsoft.com/project">');
+  L.push(`<Name>${xe(P.name)}</Name><ScheduleFromStart>1</ScheduleFromStart><StartDate>${st(dn(P.start))}</StartDate>`);
+  L.push('<CalendarUID>1</CalendarUID><DefaultStartTime>08:00:00</DefaultStartTime><DefaultFinishTime>17:00:00</DefaultFinishTime><MinutesPerDay>480</MinutesPerDay><MinutesPerWeek>2400</MinutesPerWeek><DaysPerMonth>20</DaysPerMonth>');
+  L.push('<ExtendedAttributes><ExtendedAttribute><FieldID>188743731</FieldID><FieldName>Text1</FieldName><Alias>Trade</Alias></ExtendedAttribute></ExtendedAttributes>');
+  L.push('<Calendars><Calendar><UID>1</UID><Name>Standard</Name><IsBaseCalendar>1</IsBaseCalendar><WeekDays>');
+  const wk=new Set(P.calendar.workdays);
+  for(let d=0;d<7;d++){
+    L.push(`<WeekDay><DayType>${d+1}</DayType><DayWorking>${wk.has(d)?1:0}</DayWorking>`+(wk.has(d)?'<WorkingTimes><WorkingTime><FromTime>08:00:00</FromTime><ToTime>12:00:00</ToTime></WorkingTime><WorkingTime><FromTime>13:00:00</FromTime><ToTime>17:00:00</ToTime></WorkingTime></WorkingTimes>':'')+'</WeekDay>');
+  }
+  for(const h of P.calendar.holidays)L.push(`<WeekDay><DayType>0</DayType><DayWorking>0</DayWorking><TimePeriod><FromDate>${h.d}T00:00:00</FromDate><ToDate>${h.d}T23:59:00</ToDate></TimePeriod></WeekDay>`);
+  L.push('</WeekDays></Calendar></Calendars><Tasks>');
+  const outline=[];
+  T.forEach((t,i)=>{
+    outline.length=t.level+1;outline[t.level]=(outline[t.level]||0)+1;for(let k=t.level+1;k<outline.length;k++)outline[k]=0;
+    const on=outline.slice(0,t.level+1).join('.');
+    const dur=t._sum?t._sdur:t.dur;
+    let x=`<Task><UID>${t.uid}</UID><ID>${i+1}</ID><Name>${xe(t.name)}</Name><Manual>0</Manual><Type>1</Type><IsNull>0</IsNull><OutlineNumber>${on}</OutlineNumber><OutlineLevel>${t.level+1}</OutlineLevel>`;
+    x+=`<Start>${st(t._sd)}</Start><Finish>${t._ms?st(t._fd):fi(t._fd)}</Finish><Duration>${du(dur)}</Duration><DurationFormat>7</DurationFormat><Estimated>0</Estimated>`;
+    x+=`<Milestone>${t._ms?1:0}</Milestone><Summary>${t._sum?1:0}</Summary><Critical>${t._crit?1:0}</Critical><PercentComplete>${t._sum?t._pct:t.pct}</PercentComplete>`;
+    if(!t._sum&&t.as)x+=`<ActualStart>${t.as}T08:00:00</ActualStart>`;
+    if(!t._sum&&t.af)x+=`<ActualFinish>${t.af}T17:00:00</ActualFinish>`;
+    if(!t._sum){const c=t.cons&&t.cons.type?t.cons:null;x+=`<ConstraintType>${c?CT2N[c.type]:0}</ConstraintType>`;if(c&&c.date)x+=`<ConstraintDate>${c.date}T${/^F|MFO/.test(c.type)?'17:00:00':'08:00:00'}</ConstraintDate>`;}
+    if(t.notes)x+=`<Notes>${xe(t.notes)}</Notes>`;
+    if(!t._sum)for(const p of t.preds)if(U.has(p.uid))x+=`<PredecessorLink><PredecessorUID>${p.uid}</PredecessorUID><Type>${LT2N[p.type]}</Type><CrossProject>0</CrossProject><LinkLag>${p.el?p.lag*14400:p.lag*4800}</LinkLag><LagFormat>${p.el?8:7}</LagFormat></PredecessorLink>`;
+    if(t.trade)x+=`<ExtendedAttribute><FieldID>188743731</FieldID><Value>${xe(t.trade)}</Value></ExtendedAttribute>`;
+    if(!t._sum&&t.bs)x+=`<Baseline><Number>0</Number><Start>${t.bs}T08:00:00</Start><Finish>${t.bf}T17:00:00</Finish><Duration>${du(cal.workBetween(dn(t.bs),dn(t.bf)))}</Duration></Baseline>`;
+    L.push(x+'</Task>');
+  });
+  L.push('</Tasks></Project>');
+  return L.join('\n');
+}
+function importMSP(text){
+  const doc=new DOMParser().parseFromString(text,'application/xml');
+  if(doc.getElementsByTagName('parsererror').length)throw new Error('That XML file could not be read.');
+  const root=doc.documentElement;if(root.localName!=='Project')throw new Error('That isn’t an MS Project XML file.');
+  const kids=(el,tag)=>[...el.children].filter(c=>c.localName===tag);
+  const kid=(el,tag)=>{const c=kids(el,tag)[0];return c?c.textContent.trim():'';};
+  const mpd=+kid(root,'MinutesPerDay')||480;
+  const p=blankProject();
+  p.name=(kid(root,'Title')||kid(root,'Name')||'Imported schedule').replace(/\.(xml|mpp)$/i,'');
+  const sd=kid(root,'StartDate');if(sd)p.start=sd.slice(0,10);
+  const sdt=kid(root,'StatusDate');if(sdt)p.status=sdt.slice(0,10);
+  const calUID=kid(root,'CalendarUID');
+  const cals=kids(root,'Calendars')[0];
+  if(cals){
+    const c=kids(cals,'Calendar').find(c=>kid(c,'UID')===calUID)||kids(cals,'Calendar')[0];
+    if(c){
+      const wd=kids(c,'WeekDays')[0],work=[],hol=new Map();
+      const addRange=(f,t,name)=>{if(!f)return;let a=dn(f),b=t?dn(t):a;for(let d=a;d<=b&&d-a<400;d++)hol.set(d,name||'Non-working');};
+      if(wd)for(const w of kids(wd,'WeekDay')){
+        const dt=+kid(w,'DayType'),on=kid(w,'DayWorking')==='1';
+        if(dt>=1&&dt<=7){if(on)work.push(dt-1);}
+        else if(dt===0&&!on){const tp=kids(w,'TimePeriod')[0];if(tp)addRange(kid(tp,'FromDate'),kid(tp,'ToDate'));}
+      }
+      const ex=kids(c,'Exceptions')[0];
+      if(ex)for(const e of kids(ex,'Exception'))if(kid(e,'DayWorking')!=='1'){const tp=kids(e,'TimePeriod')[0];if(tp)addRange(kid(tp,'FromDate'),kid(tp,'ToDate'),kid(e,'Name'));}
+      if(work.length)p.calendar.workdays=work.sort();
+      p.calendar.holidays=[...hol].sort((a,b)=>a[0]-b[0]).map(([d,n])=>({d:isoOf(d),n}));
+    }
+  }
+  let tradeFid='188743731';
+  const eas=kids(root,'ExtendedAttributes')[0];
+  if(eas)for(const a of kids(eas,'ExtendedAttribute'))if(/^(trade|responsible|sub(contractor)?|company)$/i.test(kid(a,'Alias'))){tradeFid=kid(a,'FieldID');break;}
+  const tasksEl=kids(root,'Tasks')[0];if(!tasksEl)throw new Error('No tasks found in that file.');
+  const map=new Map(),raw=[];let uid=1;
+  const hours=s=>{const m=String(s).match(/PT(\d+(?:\.\d+)?)H(\d+(?:\.\d+)?)M/);return m?+m[1]+(+m[2])/60:0;};
+  for(const x of kids(tasksEl,'Task')){
+    if(kid(x,'IsNull')==='1'||kid(x,'OutlineLevel')==='0'||kid(x,'UID')==='0')continue;
+    const t={uid:uid++,name:kid(x,'Name'),level:Math.max(0,(+kid(x,'OutlineLevel')||1)-1),preds:[],cons:null,pct:+kid(x,'PercentComplete')||0,
+      as:kid(x,'ActualStart').slice(0,10)||null,trade:'',af:kid(x,'ActualFinish').slice(0,10)||null,bs:null,bf:null,notes:kid(x,'Notes'),collapsed:false};
+    t.dur=kid(x,'Milestone')==='1'?0:Math.max(0,Math.round(hours(kid(x,'Duration'))*60/mpd));
+    const ct=N2CT[+kid(x,'ConstraintType')||0],cd=kid(x,'ConstraintDate');if(ct&&cd)t.cons={type:ct,date:cd.slice(0,10)};
+    for(const a of kids(x,'ExtendedAttribute'))if(kid(a,'FieldID')===tradeFid)t.trade=kid(a,'Value');
+    for(const b of kids(x,'Baseline'))if(kid(b,'Number')==='0'&&kid(b,'Start')){t.bs=kid(b,'Start').slice(0,10);t.bf=kid(b,'Finish').slice(0,10);}
+    t._links=kids(x,'PredecessorLink').map(l=>{
+      const lf=+kid(l,'LagFormat')||7,lag=+kid(l,'LinkLag')||0;
+      const elapsed=[4,6,8,10,12].includes(lf);
+      const days=lf===19||lf===20?0:elapsed?lag/10/1440:lag/10/mpd;
+      const o={uid:kid(l,'PredecessorUID'),type:N2LT[+kid(l,'Type')]||'FS',lag:Math.round(days)};if(elapsed&&o.lag)o.el=true;return o;
+    });
+    map.set(kid(x,'UID'),t.uid);raw.push(t);
+  }
+  for(const t of raw){t.preds=t._links.filter(l=>map.has(l.uid)).map(l=>Object.assign({uid:map.get(l.uid),type:l.type,lag:l.lag},l.el?{el:true}:{}));delete t._links;}
+  p.tasks=raw;p.nextUid=uid;
+  return p;
+}
+
+/* ===== CSV ===== */
+function exportCSV(){
+  const q=v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  const rows=[['ID','Outline level','Task name','Trade','Duration (workdays)','Start','Finish','Predecessors','Total float','Free float','% complete','Critical','Baseline start','Baseline finish','Constraint','Constraint date','Notes']];
+  for(const t of P.tasks){
+    rows.push([t._row,t.level+1,t.name,t.trade||'',t._sum?t._sdur:t.dur,isoOf(t._sd),isoOf(t._fd),t._sum?'':fmtPreds(t),t._sum?'':t._tf,t._sum?'':t._ff,t._sum?t._pct:t.pct,t._crit?'Yes':'',
+      t._sum?(t._bs!=null?isoOf(t._bs):''):(t.bs||''),t._sum?(t._bf!=null?isoOf(t._bf):''):(t.bf||''),t.cons?t.cons.type:'',t.cons?t.cons.date:'',t.notes]);
+  }
+  return rows.map(r=>r.map(q).join(',')).join('\r\n');
+}
+
+/* ===== Sample ===== */
+function sampleProject(){
+  P=blankProject();P.name='Reroof — Building 2';P.start='2026-10-12';
+  P.calendar.holidays=[...holidaySet('con',2026),...holidaySet('con',2027)].map(([n,d])=>({d:isoOf(d),n}));
+  const rows=[
+    [0,'Preconstruction'],[1,'Notice to proceed',0,''],[1,'Submittals & shop drawings',10,'2'],[1,'Architect submittal review',10,'3'],
+    [1,'Material procurement & delivery',15,'4'],[1,'Mobilize & set up staging',2,'5FS-2d'],
+    [0,'Roof Area A'],[1,'Tear-off & dry-in',5,'6'],[1,'Deck repairs',3,'8SS+2d'],[1,'Tapered insulation',6,'8, 9'],[1,'TPO membrane',7,'10SS+2d'],[1,'Perimeter flashings',4,'11FF+2d'],
+    [0,'Roof Area B'],[1,'Tear-off & dry-in',6,'8'],[1,'Deck repairs',3,'14SS+2d'],[1,'Tapered insulation',7,'14, 15, 10'],[1,'TPO membrane',8,'16SS+2d, 11'],[1,'Perimeter flashings',4,'17FF+2d'],
+    [0,'Sheet metal'],[1,'Fabricate coping & edge metal',8,'4FS+5d'],[1,'Install coping',5,'20, 12'],[1,'Gutters & downspouts',3,'21SS+2d, 18'],
+    [0,'Closeout'],[1,'Punch list walk',1,'18, 22'],[1,'Punch list completion',4,'24'],[1,'Final inspection',1,'25'],[1,'Substantial completion',0,'26'],[1,'O&M manuals & warranties',5,'27']];
+  const TR=[[/submittal|review|procure|notice|mobilize|punch|inspection|completion|manual/i,'General'],[/deck/i,'Carpentry'],[/coping|edge metal|gutter/i,'Sheet metal'],[/tear|insul|tpo|flashing/i,'Roofing']];
+  P.tasks=rows.map(r=>{const t=newTask(r[1],r[0]);t.dur=r[2]??1;if(r.length>2){const m=TR.find(x=>x[0].test(r[1]));if(m)t.trade=m[1];}return t;});
+  schedule();
+  rows.forEach((r,i)=>{if(r[3]){const res=parsePreds(r[3],P.tasks[i]);if(res.preds)P.tasks[i].preds=res.preds;}});
+  return P;
+}
+/* ===== UI state ===== */
+const $=s=>document.querySelector(s);
+const tbody=$('#tbody'),ghead=$('#ghead'),gbody=$('#gbody'),main=$('#main'),tpane=$('#tpane');
+const ZOOMS=[{ppd:2.2,top:'year',bot:'month'},{ppd:4.5,top:'month',bot:'week'},{ppd:9,top:'month',bot:'week'},{ppd:20,top:'month',bot:'day'},{ppd:32,top:'month',bot:'day'}];
+const prefs=(()=>{try{return JSON.parse(localStorage.getItem('cpm.prefs'))||{};}catch(e){return {};}})();
+let zoom=prefs.zoom??2,sel=new Set(),anchor=null,undoS=[],redoS=[],pendingFocus=null,range=[0,0],visRows=[],saved=true;
+const savePrefs=()=>{try{localStorage.setItem('cpm.prefs',JSON.stringify(prefs));}catch(e){}};
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+let toastT;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),3200);}
+
+function commit(fn){
+  const before=ser();
+  if(fn()===false)return false;
+  undoS.push(before);if(undoS.length>200)undoS.shift();redoS=[];
+  saved=false;refresh();return true;
+}
+let asT;function autosave(){clearTimeout(asT);asT=setTimeout(()=>{try{localStorage.setItem('cpm.autosave',ser());}catch(e){}},400);}
+function refresh(){schedule();render();autosave();}
+
+/* ===== Visible rows ===== */
+/* ===== Filters and trades ===== */
+let fShow='',fTrade=''; // fShow: '', 'crit', 'la2' 'la3' 'la4' 'la6'; fTrade: '' all, '\u0000' none, else trade name
+const NOTRADE='\u0000';
+const PALETTE=['#4e79a7','#e1813a','#59a14f','#b07aa1','#d4a62a','#5fa8a3','#9c755f','#e0698c','#7d8a99','#8fb33f','#c45a5a','#6f6fc4'];
+function tradeList(){return [...new Set(P.tasks.filter(t=>!t._sum&&t.trade).map(t=>t.trade))].sort((a,b)=>a.localeCompare(b));}
+function tradeColor(tr){if(!tr)return null;const L=tradeList(),i=L.indexOf(tr);return i<0?null:PALETTE[i%PALETTE.length];}
+function laWin(){ // lookahead window: Monday of the week after the status date (or today) through N weeks
+  const wk=+fShow.slice(2);if(!wk)return null;
+  let a=P.status?dn(P.status)+1:todayDn();
+  if(dow(a)===6||dow(a)===0)while(dow(a)!==1)a++;else while(dow(a)!==1)a--; // weekend → next week
+  return [a,a+wk*7-1,wk];
+}
+function filterLabel(){
+  const w=laWin(),parts=[];
+  if(fShow==='crit')parts.push('Critical tasks');
+  if(w)parts.push(`${w[2]}-week lookahead ${fmtD(w[0])} – ${fmtD(w[1])}`);
+  if(fTrade)parts.push(fTrade===NOTRADE?'No trade':'Trade: '+fTrade);
+  return parts.join(' · ');
+}
+function matches(t){
+  if(fTrade&&(t.trade||NOTRADE)!==fTrade)return false;
+  if(fShow==='crit'&&!t._crit)return false;
+  const w=laWin();if(w&&(t._done||t._sd>w[1]||t._fd<w[0]))return false;
+  return true;
+}
+function visible(){
+  const T=P.tasks;let keep=null;
+  if(fShow||fTrade){ // keep matching tasks plus their summary ancestors
+    keep=new Set();
+    T.forEach((t,i)=>{if(t._sum||!matches(t))return;keep.add(i);let lv=t.level;for(let j=i-1;j>=0&&lv>0;j--)if(T[j].level<lv){keep.add(j);lv=T[j].level;}});
+  }
+  const out=[];let hide=Infinity;
+  T.forEach((t,i)=>{if(t.level>hide)return;hide=Infinity;if(keep&&!keep.has(i))return;out.push(t);if(t._sum&&t.collapsed)hide=t.level;});
+  return out;
+}
+
+/* ===== Render table ===== */
+const CT_LABEL={SNET:'Start no earlier than',SNLT:'Start no later than',FNET:'Finish no earlier than',FNLT:'Finish no later than',MSO:'Must start on',MFO:'Must finish on'};
+/* ===== Driving trace ===== */
+let trace=false;
+function lagTxt(p){return p.type+(p.lag?(p.lag>0?'+':'')+p.lag+(p.el?'ed':'d'):'');}
+function whyText(t){
+  if(t._sum)return '';
+  switch(t._why){
+    case 'pred':return t._drv.map(p=>`row ${p.t._row} (${lagTxt(p)})`).join(', ').replace(/^r/,'R');
+    case 'cons':return `${CT_LABEL[t.cons.type]} ${fmtD(dn(t.cons.date))}`;
+    case 'status':return `Status date ${fmtD(dn(P.status))} (not started yet)`;
+    case 'actual':return `Actual start ${fmtD(dn(t.as))}`;
+    default:return 'Project start (Settings)';
+  }
+}
+function traceSet(){ // tasks and links on the driving chain back from the selected task
+  if(!trace||sel.size!==1)return null;
+  const t0=U.get([...sel][0]);if(!t0||t0._sum)return null;
+  const tasks=new Set([t0.uid]),links=new Set(),q=[t0];
+  while(q.length){const t=q.pop();for(const p of t._drv||[]){links.add(p.t.uid+'>'+t.uid);if(!tasks.has(p.t.uid)){tasks.add(p.t.uid);q.push(p.t);}}}
+  return {tasks,links,root:t0};
+}
+function rowHTML(t){
+  const s=t._sum,ro=s?' readonly':'';
+  const marks=(t.cons&&t.cons.type?`<i title="${esc(CT_LABEL[t.cons.type]+' '+fmtD(dn(t.cons.date)))}">${t.cons.type}</i>`:'')+(t._err?`<i class="e" title="${esc(t._err)}">!</i>`:'')+(t.notes?`<i title="${esc(t.notes)}">n</i>`:'');
+  const tf=s||t._done?'—':`${t._tf}d`;
+  return `<div class="row grid${s?' sum':''}${t._crit?' crit':''}${sel.has(t.uid)?' sel':''}" data-uid="${t.uid}">`+
+   `<div class="num" data-act="sel"><span>${t._row}</span><span class="m">${marks}</span></div>`+
+   `<div class="name nm" style="--l:${t.level}">${s?`<button class="tog" data-act="tog" tabindex="-1">${t.collapsed?'▸':'▾'}</button>`:'<span class="tog"></span>'}<input data-col="name" value="${esc(t.name)}"></div>`+
+   `<div class="trd">${!s&&t.trade&&prefs.color==='trade'?`<span class="sw" style="background:${tradeColor(t.trade)}"></span>`:''}<input data-col="trade" list="tradeList" value="${s?'':esc(t.trade||'')}"${ro}></div>`+
+   `<div class="r"><input data-col="dur" value="${s?t._sdur+'d':t.dur+'d'}"${ro}></div>`+
+   `<div><input data-col="start" value="${fmtD(t._sd)}"${ro}></div>`+
+   `<div><input data-col="finish" value="${fmtD(t._fd)}"${ro}></div>`+
+   `<div><input data-col="pred" value="${s?'':esc(fmtPreds(t))}"${ro}></div>`+
+   `<div class="r tf${!s&&!t._done&&t._tf<0?' neg':''}">${tf}</div>`+
+   `<div class="r"><input data-col="pct" value="${s?t._pct:t.pct}%"${ro}></div></div>`;
+}
+function render(){
+  const a=document.activeElement;let f=pendingFocus;pendingFocus=null;
+  if(!f&&a&&a.dataset&&a.dataset.col&&tbody.contains(a)){f={uid:a.closest('.row').dataset.uid,col:a.dataset.col,ss:a.selectionStart,se:a.selectionEnd,val:a.value!==a.defaultValue&&a.dataset.col!=='new'?null:undefined};}
+  visRows=visible();
+  tbody.innerHTML=visRows.map(rowHTML).join('')+
+    `<div class="row grid newrow" data-uid="new"><div class="num"></div><div class="name"><span class="tog"></span><input data-col="new" placeholder="Add a task…"></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>`;
+  $('#tradeList').innerHTML=tradeList().map(x=>`<option value="${esc(x)}">`).join('');
+  renderGantt();renderFoot();markTrace();syncFilterUI();
+  if(f){
+    const row=tbody.querySelector(`.row[data-uid="${f.uid}"]`),inp=row&&row.querySelector(`[data-col="${f.col}"]`);
+    if(inp){inp.focus({preventScroll:true});try{if(f.ss!=null&&!f.sel)inp.setSelectionRange(f.ss,f.se);else inp.select();}catch(e){}}
+  }
+}
+function syncFilterUI(){
+  const L=tradeList(),ft=$('#fTrade');
+  if(fTrade&&fTrade!==NOTRADE&&!L.includes(fTrade))fTrade='';
+  ft.innerHTML='<option value="">All trades</option>'+L.map(x=>`<option>${esc(x)}</option>`).join('')+(P.tasks.some(t=>!t._sum&&!t.trade)&&L.length?`<option value="${NOTRADE}">(No trade)</option>`:'');
+  ft.value=fTrade;$('#fShow').value=fShow;
+  ft.classList.toggle('on',!!fTrade);$('#fShow').classList.toggle('on',!!fShow);
+  $('#btnColor').classList.toggle('on',prefs.color==='trade');
+}
+$('#fShow').addEventListener('change',e=>{fShow=e.target.value;render();if(laWin())setTimeout(()=>scrollToDate(laWin()[0]-7),0);});
+$('#foot').addEventListener('click',e=>{if(e.target.closest('#clearFilt')){fShow=fTrade='';render();}});
+$('#fTrade').addEventListener('change',e=>{fTrade=e.target.value;render();});
+function markTrace(){const T=traceSet();tbody.querySelectorAll('.row').forEach(r=>r.classList.toggle('trc',!!T&&T.tasks.has(+r.dataset.uid)));}
+function renderFoot(){
+  const n=S.leaf.length;
+  $('#foot').innerHTML=`<span><b>${esc(P.name)}</b></span>`+
+    (n?`<span>Start <b>${fmtD(S.start)}</b></span><span>Finish <b>${fmtD(S.finish)}</b></span><span><b>${S.days}</b> workdays</span><span><b>${S.crit}</b> critical</span>`:'<span>No tasks yet</span>')+
+    (S.cyc?'<span style="color:var(--neg)">Circular link — some dates are not reliable</span>':'')+
+    (fShow||fTrade?`<span class="filt" id="clearFilt" title="Click to show all tasks">Filtered: ${esc(filterLabel())} ✕</span>`:'')+
+    (prefs.color==='trade'?tradeList().map(x=>`<span class="leg"><i style="background:${tradeColor(x)}"></i>${esc(x)}</span>`).join(''):'')+
+    `<span style="margin-left:auto">${saved?'Saved':'Unsaved changes (autosaved in this browser)'}</span>`;
+}
+function updateSel(){
+  if(trace){renderGantt();markTrace();const T=traceSet();if(T)toast(`${T.root._row}: driven by ${whyText(T.root)}.`);}
+  tbody.querySelectorAll('.row').forEach(r=>r.classList.toggle('sel',sel.has(+r.dataset.uid)));
+  gbody.querySelectorAll('.rowbg').forEach(r=>r.classList.toggle('sel',sel.has(+r.dataset.row)));
+}
+
+/* ===== Gantt ===== */
+function bounds(unit,a,b){
+  const out=[];
+  if(unit==='day'){for(let d=a;d<=b+1;d++)out.push(d);}
+  else if(unit==='week'){let d=a;while(dow(d)!==1)d--;for(;d<=b+7;d+=7)out.push(d);}
+  else if(unit==='month'){let [y,m]=ymd(a);for(;;){const d=mkD(y,m,1);out.push(d);if(d>b)break;if(++m>12){m=1;y++;}}}
+  else{let y=ymd(a)[0];for(;;){const d=mkD(y,1,1);out.push(d);if(d>b)break;y++;}}
+  return out;
+}
+function label(unit,d,w){
+  const [y,m,dd]=ymd(d);
+  if(unit==='day')return w>=16?String(dd):'';
+  if(unit==='week')return w>=44?`${MONS[m-1]} ${dd}`:w>=18?String(dd):'';
+  if(unit==='month')return w>=90?`${MONF[m-1]} ${y}`:w>=26?MONS[m-1]:MONS[m-1][0];
+  return String(y);
+}
+function headSVG(x0,x1,ppd,zt,zb,th){
+  const X=d=>(d-x0)*ppd,W=(x1-x0)*ppd;let s='';
+  [[zt,0],[zb,th]].forEach(([u,y])=>{
+    const b=bounds(u,x0,x1);
+    for(let i=0;i<b.length-1;i++){
+      const xa=Math.max(0,X(b[i])),xb=Math.min(W,X(b[i+1]));if(xb<=0||xa>=W)continue;
+      s+=`<line class="hl" x1="${X(b[i])}" x2="${X(b[i])}" y1="${y}" y2="${y+th}"/>`;
+      const lb=label(u,b[i],xb-xa);if(lb)s+=`<text class="ht" x="${xa+4}" y="${y+th-6}">${lb}</text>`;
+    }
+  });
+  s+=`<line class="hl" x1="0" x2="${W}" y1="${th}" y2="${th}"/>`;
+  return s;
+}
+function bodySVG(rows,o){
+  const {x0,x1,ppd,rh,names,id,nonwork,gridUnit}=o,X=d=>(d-x0)*ppd,W=(x1-x0)*ppd,H=o.h;
+  const TR=o.print?null:traceSet();
+  let s=`<defs><marker id="${id}a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="ah" d="M0,0L8,4L0,8z"/></marker><marker id="${id}c" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="ah c" d="M0,0L8,4L0,8z"/></marker><marker id="${id}r" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path class="ah tr" d="M0,0L8,4L0,8z"/></marker></defs>`;
+  rows.forEach((t,i)=>{s+=`<rect class="rowbg${sel.has(t.uid)&&!o.print?' sel':''}" data-row="${t.uid}" x="0" y="${i*rh}" width="${W}" height="${rh}"/>`;});
+  if(nonwork)for(let d=x0;d<x1;d++)if(!cal.isW(d))s+=`<rect class="nw" x="${X(d)}" y="0" width="${ppd}" height="${H}"/>`;
+  for(const d of bounds(gridUnit,x0,x1))s+=`<line class="gl" x1="${X(d)}" x2="${X(d)}" y1="0" y2="${H}"/>`;
+  const td=todayDn();if(!o.print&&td>=x0&&td<=x1)s+=`<line class="tdl" x1="${X(td)+ppd/2}" x2="${X(td)+ppd/2}" y1="0" y2="${H}"><title>Today</title></line>`;
+  if(P.status){const sd=dn(P.status);if(sd>=x0&&sd<=x1)s+=`<line class="stl" x1="${X(sd+1)}" x2="${X(sd+1)}" y1="0" y2="${H}"><title>Status date ${fmtD(sd)}</title></line>`;}
+  const idx=new Map(rows.map((t,i)=>[t.uid,i]));
+  const sx=t=>({s:t._ms&&!t._st?X(t._fd+1):X(t._sd),f:t._ms&&t._st?X(t._sd):X(t._fd+1)});
+  // arrows
+  let ar='';
+  for(const t of rows){if(t._sum)continue;
+    for(const p of t._preds){const q=p.t;if(!idx.has(q.uid))continue;
+      const fromEnd=p.type[0]==='F',toStart=p.type[1]==='S';
+      const ax=fromEnd?sx(q).f:sx(q).s,ay=idx.get(q.uid)*rh+rh/2,bx=toStart?sx(t).s:sx(t).f,by=idx.get(t.uid)*rh+rh/2;
+      const out=fromEnd?1:-1,ein=toStart?1:-1,p1=ax+out*6,qx=bx-ein*7;
+      let d;
+      if((ein===1&&qx>=p1)||(ein===-1&&qx<=p1))d=`M${ax},${ay}H${qx}V${by}H${bx-ein*1}`;
+      else{const ym=by+(by>ay?-rh/2:rh/2);d=`M${ax},${ay}H${p1}V${ym}H${qx}V${by}H${bx-ein*1}`;}
+      const c=q._crit&&t._crit,tr=TR&&TR.links.has(q.uid+'>'+t.uid);
+      ar+=`<path class="ar${tr?' tr':c?' c':''}${TR&&!tr?' dim':''}" d="${d}" marker-end="url(#${id}${tr?'r':c?'c':'a'})"/>`;
+    }}
+  // bars
+  let br='';const bh=Math.round(rh*0.46),by0=(rh-bh)/2;
+  rows.forEach((t,i)=>{
+    const y=i*rh,tip=`${esc(t.name)}\n${fmtD(t._sd)} – ${fmtD(t._fd)}`+(t._sum?'':`\nTotal float ${t._tf}d · free float ${t._ff}d\nDriven by ${whyText(t)}`);
+    const dim=TR&&!TR.tasks.has(t.uid)?' dim':'';
+    if(t._sum){
+      const xa=X(t._sd),xb=X(t._fd+1),yy=y+rh/2-3;
+      if(t._bs!=null)br+=`<rect class="bl" x="${X(t._bs)}" y="${y+rh-6}" width="${Math.max(2,X(t._bf+1)-X(t._bs))}" height="3"/>`;
+      br+=`<g class="${dim}" data-row="${t.uid}"><title>${tip}</title><path class="sm" d="M${xa},${yy}H${xb}V${yy+9}L${xb-5},${yy+5}H${xa+5}L${xa},${yy+9}Z"/></g>`;
+      if(names)br+=`<text class="lbl" x="${xb+6}" y="${y+rh/2+4}">${esc(t.name)}</text>`;
+      return;
+    }
+    if(t.bs){const a=dn(t.bs),b=dn(t.bf);br+=t.dur===0&&a===b?`<path class="bl" d="M${X(a+1)},${y+rh-8}l4,4l-4,4l-4,-4z"/>`:`<rect class="bl" x="${X(a)}" y="${y+rh-5}" width="${Math.max(2,X(b+1)-X(a))}" height="3"/>`;}
+    if(t._ms){
+      const cx=sx(t).s,cy=y+rh/2,r=Math.min(7,rh*0.3);
+      br+=`<g class="${t._crit?'c':''}${dim}" data-bar="${t.uid}"><title>${tip}</title><path class="ms" d="M${cx},${cy-r}L${cx+r},${cy}L${cx},${cy+r}L${cx-r},${cy}Z"/></g>`;
+      if(names)br+=`<text class="lbl" x="${cx+r+5}" y="${cy+4}">${esc(t.name)}${o.print?'':' '+fmtD(t._sd).slice(4)}</text>`;
+    }else{
+      const xa=X(t._sd),w=Math.max(2,X(t._fd+1)-xa),yy=y+by0,tc=prefs.color==='trade'?tradeColor(t.trade):null;
+      br+=`<g class="${t._crit?'c':''}${dim}" data-bar="${t.uid}"><title>${tip}</title><rect class="b" x="${xa}" y="${yy}" width="${w}" height="${bh}" rx="2"${tc?` style="fill:${tc}${t._crit?';stroke:var(--crit);stroke-width:1.6':''}"`:''}/>`+
+        (t.pct>0?`<rect class="bp" x="${xa}" y="${yy+bh/2-2}" width="${w*Math.min(100,t.pct)/100}" height="4"${tc?' style="fill:rgba(0,0,0,.45)"':''}/>`:'')+`</g>`;
+      if(names)br+=`<text class="lbl" x="${xa+w+6}" y="${y+rh/2+4}">${esc(t.name)}</text>`;
+    }
+  });
+  return s+ar+br;
+}
+function computeRange(){
+  let a=dn(P.start),b=a+28;
+  for(const t of P.tasks){if(t._sd==null)continue;a=Math.min(a,t._sd);b=Math.max(b,t._fd);if(t.bs){a=Math.min(a,dn(t.bs));b=Math.max(b,dn(t.bf));}}
+  if(P.status)b=Math.max(b,dn(P.status));
+  a-=7;while(dow(a)!==1)a--;b+=35;
+  return [a,b];
+}
+function renderGantt(){
+  const z=ZOOMS[zoom];range=computeRange();
+  const [x0,x1]=range,W=Math.ceil((x1-x0)*z.ppd);
+  const H=Math.max((visRows.length+1)*ROW,main.clientHeight-HEAD-2);
+  ghead.setAttribute('width',W);ghead.setAttribute('height',HEAD);
+  ghead.innerHTML=headSVG(x0,x1,z.ppd,z.top,z.bot,HEAD/2);
+  gbody.setAttribute('width',W);gbody.setAttribute('height',H);
+  gbody.innerHTML=bodySVG(visRows,{x0,x1,ppd:z.ppd,rh:ROW,h:H,names:true,id:'g',nonwork:z.ppd>=8,gridUnit:z.ppd>=8?'week':'month'})+'<line id="drag" x1="0" y1="0" x2="0" y2="0" style="display:none"/>';
+}
+function scrollToDate(d){main.scrollLeft=Math.max(0,(d-range[0])*ZOOMS[zoom].ppd-40);}
+
+/* ===== Cell editing ===== */
+function commitCell(uid,col,val){
+  if(col==='new'){
+    if(!val.trim())return;
+    commit(()=>{const last=P.tasks[P.tasks.length-1];const lv=last?(last._sum?last.level+1:last.level):0;P.tasks.push(newTask(val.trim(),lv));});
+    return;
+  }
+  const t=U.get(+uid);if(!t)return;
+  const bad=m=>{toast(m);render();};
+  switch(col){
+    case 'name':if(val!==t.name)commit(()=>{t.name=val;});break;
+    case 'trade':if(!t._sum&&val.trim()!==(t.trade||''))commit(()=>{t.trade=val.trim();});else render();break;
+    case 'dur':{const d=parseDur(val);if(d==null)return bad('Duration not understood — try 5, 5d or 2w.');if(d!==t.dur)commit(()=>{t.dur=d;});else render();break;}
+    case 'start':case 'finish':{
+      if(!val.trim()){commit(()=>{t.cons=null;});toast('Constraint cleared.');break;}
+      const d=parseDate(val,ymd(t._sd)[0]);if(d==null)return bad('Date not understood — try 10/12/26.');
+      const cur=col==='start'?t._sd:t._fd;if(d===cur&&!t.cons){render();break;}
+      if(col==='start'){setStart(t,d);break;}
+      if(t.af){commit(()=>{t.af=isoOf(d);});toast(`Actual finish set to ${fmtD(d)}.`);break;}
+      commit(()=>{t.cons={type:'FNET',date:isoOf(d)};});
+      afterMove(t,d,'finish');break;}
+    case 'pred':{
+      const r=parsePreds(val,t);if(r.err)return bad(r.err);
+      const old=t.preds;t.preds=r.preds;const cyc=hasCycle();t.preds=old;
+      if(cyc)return bad('That would create a circular link.');
+      if(JSON.stringify(old)!==JSON.stringify(r.preds))commit(()=>{t.preds=r.preds;});else render();break;}
+    case 'pct':{
+      const n=parseFloat(String(val).replace('%',''));if(!isFinite(n))return bad('Enter a percent from 0 to 100.');
+      const v=Math.max(0,Math.min(100,Math.round(n)));
+      if(v!==t.pct)commit(()=>setPct(t,v));else render();break;}
+  }
+}
+/* Move a task's start. Actual start wins if present; dates before the project
+   start move the project start; otherwise a start-no-earlier-than is set. */
+function setStart(t,d){
+  while(!cal.isW(d))d++;
+  if(t.as){commit(()=>{t.as=isoOf(d);if(t.af&&dn(t.af)<d)t.af=null;});return toast(`Actual start set to ${fmtD(d)}.`);}
+  const ps=dn(P.start);
+  if(d<ps&&!t._preds.length){
+    commit(()=>{P.start=isoOf(d);if(t.cons&&(t.cons.type==='SNET'||t.cons.type==='FNET'))t.cons=null;});
+    return toast(`Moved the project start to ${fmtD(d)} so this task can start then.`);
+  }
+  commit(()=>{t.cons={type:'SNET',date:isoOf(d)};});
+  afterMove(t,d,'start');
+}
+function afterMove(t,d,which){
+  const got=which==='start'?t._sd:t._fd;
+  if(got===d)return toast(`Set “${CT_LABEL[which==='start'?'SNET':'FNET']} ${fmtD(d)}”. Clear the date to remove it.`);
+  toast(`Can't go earlier than ${fmtD(got)} — held by ${whyText(t)}.`);
+}
+function setPct(t,v){
+  const sd=t._sd,fd=t._fd;t.pct=v;
+  if(v>0&&!t.as)t.as=isoOf(sd);
+  if(v===100&&!t.af)t.af=isoOf(Math.max(fd,dn(t.as)));
+  if(v<100)t.af=null;
+  if(v===0)t.as=null;
+}
+tbody.addEventListener('change',e=>{
+  const i=e.target;if(!i.dataset.col)return;
+  const uid=i.closest('.row').dataset.uid,col=i.dataset.col,val=i.value;
+  setTimeout(()=>commitCell(uid,col,val),0);
+});
+function focusCell(uid,col){const r=tbody.querySelector(`.row[data-uid="${uid}"]`),i=r&&r.querySelector(`[data-col="${col}"]`);if(i){i.focus();i.select();}}
+tbody.addEventListener('keydown',e=>{
+  const i=e.target;if(!i.dataset||!i.dataset.col)return;
+  const row=i.closest('.row'),col=i.dataset.col==='new'?'name':i.dataset.col;
+  if(e.key==='Escape'){i.value=i.defaultValue;i.blur();return;}
+  if(e.key==='Enter'||e.key==='ArrowDown'||e.key==='ArrowUp'){
+    e.preventDefault();
+    const rows=[...tbody.querySelectorAll('.row')],k=rows.indexOf(row);
+    let nk=e.key==='ArrowUp'?k-1:k+1;if(i.dataset.col==='new'&&e.key!=='ArrowUp')nk=k;
+    nk=Math.max(0,Math.min(rows.length-1,nk));
+    const target=rows[nk].dataset.uid,tcol=target==='new'?'new':col;
+    if(i.value!==i.defaultValue){pendingFocus={uid:target,col:tcol,sel:true};i.blur();}
+    else focusCell(target,tcol);
+  }
+});
+tbody.addEventListener('focusin',e=>{
+  const r=e.target.closest('.row');if(!r||r.dataset.uid==='new')return;
+  const u=+r.dataset.uid;if(!(sel.size===1&&sel.has(u))){sel=new Set([u]);anchor=u;updateSel();}
+});
+tbody.addEventListener('mousedown',e=>{
+  const a=e.target.closest('[data-act]');if(!a)return;
+  const r=a.closest('.row');if(!r||r.dataset.uid==='new')return;const u=+r.dataset.uid;
+  if(a.dataset.act==='tog'){e.preventDefault();const t=U.get(u);t.collapsed=!t.collapsed;render();autosave();return;}
+  e.preventDefault();if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
+  if(e.shiftKey&&anchor!=null){
+    const ids=visRows.map(t=>t.uid),a1=ids.indexOf(anchor),b1=ids.indexOf(u);
+    sel=new Set(ids.slice(Math.min(a1,b1),Math.max(a1,b1)+1));
+  }else if(e.ctrlKey||e.metaKey){sel.has(u)?sel.delete(u):sel.add(u);anchor=u;}
+  else{sel=new Set([u]);anchor=u;}
+  updateSel();
+});
+tbody.addEventListener('dblclick',e=>{const a=e.target.closest('.num');const r=a&&a.closest('.row');if(r&&r.dataset.uid!=='new')openInfo(+r.dataset.uid);});
+
+/* ===== Clipboard: paste from Excel, copy/cut/paste/duplicate rows ===== */
+const COLS=['name','trade','dur','start','finish','pred','float','pct'];
+let clip=null; // {tasks, base, tsv, cut}
+function parseTSV(text){
+  const rows=[];let row=[],cell='',q=false;
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(q){if(c==='"'){if(text[i+1]==='"'){cell+='"';i++;}else q=false;}else cell+=c;}
+    else if(c==='"'&&cell==='')q=true;
+    else if(c==='\t'){row.push(cell);cell='';}
+    else if(c==='\r'||c==='\n'){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cell);rows.push(row);row=[];cell='';}
+    else cell+=c;}
+  if(cell!==''||row.length){row.push(cell);rows.push(row);}
+  return rows.filter(r=>r.some(c=>c.trim()));
+}
+const newLevelAt=i=>{const T=P.tasks;if(i<T.length)return T[i].level;const last=T[T.length-1];return last?(last._sum?last.level+1:last.level):0;};
+// mode 'over': write into visible rows from visRows[at] down, adding tasks past the end. 'insert': new tasks at P.tasks index at.
+function pasteGrid(data,col0,mode,at){
+  let errs=0,made=0,firstUid=null;
+  const ok=commit(()=>{
+    const pend=[],lv=newLevelAt(mode==='insert'?at:P.tasks.length),yr=ymd(dn(P.start))[0];
+    data.forEach((cells,k)=>{
+      let t=mode==='over'?visRows[at+k]:null;
+      if(!t){t=newTask('',lv);if(mode==='insert')P.tasks.splice(at+made,0,t);else P.tasks.push(t);made++;}
+      if(firstUid==null)firstUid=t.uid;
+      const sum=!!t._sum;let st=null,fi=null,durSet=false;
+      cells.forEach((raw,j)=>{const c=COLS[col0+j],v=raw.trim();if(!c||!v||c==='float')return;
+        if(c==='name'){t.name=v;return;}
+        if(sum){errs++;return;}
+        if(c==='trade')t.trade=v;
+        else if(c==='dur'){const d=parseDur(v);if(d==null)errs++;else{t.dur=d;durSet=true;}}
+        else if(c==='start'||c==='finish'){const d=parseDate(v,yr);if(d==null)errs++;else if(c==='start')st=d;else fi=d;}
+        else pend.push([t,c,v]);
+      });
+      if(st!=null&&fi!=null){if(!durSet)t.dur=Math.max(0,cal.workBetween(st,fi));t.cons={type:'SNET',date:isoOf(st)};}
+      else if(st!=null)t.cons={type:'SNET',date:isoOf(st)};
+      else if(fi!=null)t.cons={type:'FNET',date:isoOf(fi)};
+    });
+    schedule();
+    for(const [t,c,v] of pend)if(c==='pred'&&!t._sum){
+      const r=parsePreds(v,t);if(r.err){errs++;continue;}
+      const old=t.preds;t.preds=r.preds;if(hasCycle()){t.preds=old;errs++;}
+    }
+    schedule();
+    for(const [t,c,v] of pend)if(c==='pct'&&!t._sum){const n=parseFloat(v.replace('%',''));if(isFinite(n))setPct(t,Math.max(0,Math.min(100,Math.round(n))));else errs++;}
+  });
+  if(!ok)return;
+  toast(`Pasted ${data.length} row${data.length>1?'s':''}${made&&mode==='over'?` (${made} new)`:''}.${errs?` ${errs} cell${errs>1?'s':''} skipped — not understood or on a summary row.`:''}`);
+  if(mode==='insert'&&firstUid!=null){sel=new Set(P.tasks.slice(at,at+made).map(t=>t.uid));anchor=firstUid;updateSel();}
+}
+const cloneTask=t=>JSON.parse(JSON.stringify(t,(k,v)=>k[0]==='_'?undefined:v));
+function blockIdx(){const T=P.tasks,out=[];for(const i of topSel())for(let j=i;j<subtreeEnd(i);j++)out.push(j);return out;}
+function rowsTSV(ix){
+  const q=v=>{v=String(v??'');return /[\t\n"]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  return ix.map(i=>{const t=P.tasks[i];return [t.name,t._sum?'':t.trade||'',t._sum?'':t.dur+'d',fmtD(t._sd),fmtD(t._fd),t._sum?'':fmtPreds(t),'',t._sum?'':t.pct+'%'].map(q).join('\t');}).join('\r\n');
+}
+function makeClip(cut){
+  const ix=blockIdx(),tasks=ix.map(i=>cloneTask(P.tasks[i]));
+  return {tasks,base:Math.min(...tasks.map(t=>t.level)),tsv:rowsTSV(ix),cut};
+}
+// Copies a block of tasks: links inside the block follow the copy, links to outside tasks are kept.
+function cloneBlock(src,base,lv,keepUids,keepProgress){
+  const map=new Map(src.map(t=>[t.uid,keepUids?t.uid:P.nextUid++]));
+  return src.map(t=>{const c=cloneTask(t);c.uid=map.get(t.uid);c.level=t.level-base+lv;
+    c.preds=c.preds.map(p=>map.has(p.uid)?Object.assign({},p,{uid:map.get(p.uid)}):p).filter(p=>map.has(p.uid)||[...map.values()].includes(p.uid)||U.has(p.uid));
+    if(!keepProgress){c.as=c.af=c.bs=c.bf=null;c.pct=0;}
+    return c;});
+}
+function pasteClip(){
+  const ix=topSel(),at=ix.length?ix[0]:P.tasks.length,lv=newLevelAt(at);
+  const keep=clip.cut&&clip.tasks.every(t=>!U.has(t.uid));
+  let made;
+  commit(()=>{made=cloneBlock(clip.tasks,clip.base,lv,keep,clip.cut);P.tasks.splice(at,0,...made);});
+  clip.cut=false; // later pastes make copies
+  sel=new Set(made.map(t=>t.uid));anchor=made[0].uid;updateSel();
+  toast(`Pasted ${made.length} task${made.length>1?'s':''}${keep?(made.length>1?' with their links':' with its links'):''}.`);
+}
+function isTyping(e){return document.querySelector('dialog[open]')||(e.target.matches&&e.target.matches('input,textarea,select'));}
+document.addEventListener('copy',e=>{
+  if(isTyping(e)||!sel.size)return;e.preventDefault();
+  clip=makeClip(false);e.clipboardData.setData('text/plain',clip.tsv);
+  toast(`Copied ${clip.tasks.length} task${clip.tasks.length>1?'s':''}. Ctrl+V pastes above the selected row — or into Excel.`);
+});
+document.addEventListener('cut',e=>{
+  if(isTyping(e)||!sel.size)return;e.preventDefault();
+  clip=makeClip(true);e.clipboardData.setData('text/plain',clip.tsv);
+  deleteSel(true);toast(`Cut ${clip.tasks.length} task${clip.tasks.length>1?'s':''}. Select a row and Ctrl+V to paste above it.`);
+});
+document.addEventListener('paste',e=>{
+  if(document.querySelector('dialog[open]'))return;
+  const text=e.clipboardData.getData('text/plain'),inp=e.target.closest&&e.target.closest('#tbody input');
+  if(inp){
+    if(!/[\t\n]/.test(text.replace(/[\r\n]+$/,'')))return; // one cell: normal typing paste
+    e.preventDefault();
+    const col=inp.dataset.col==='new'?'name':inp.dataset.col,uid=inp.closest('.row').dataset.uid;
+    const at=uid==='new'?visRows.length:visRows.findIndex(t=>t.uid===+uid);
+    inp.value=inp.defaultValue;inp.blur();
+    pasteGrid(parseTSV(text),COLS.indexOf(col),'over',at);return;
+  }
+  if(isTyping(e))return;
+  e.preventDefault();
+  if(clip&&text.replace(/\r\n/g,'\n')===clip.tsv.replace(/\r\n/g,'\n'))return pasteClip();
+  const data=parseTSV(text);if(!data.length)return;
+  const ix=topSel();pasteGrid(data,0,'insert',ix.length?ix[0]:P.tasks.length);
+});
+
+/* ===== Gantt drag: sideways = SNET, up/down onto another bar = link ===== */
+let drag=null;
+gbody.addEventListener('mousedown',e=>{
+  if(e.button!==0)return;const g=e.target.closest('[data-bar]');if(!g)return;
+  e.preventDefault();const u=+g.dataset.bar;sel=new Set([u]);anchor=u;updateSel();
+  drag={t:U.get(u),g,x:e.clientX,y:e.clientY,mode:null};
+});
+gbody.addEventListener('dblclick',e=>{const g=e.target.closest('[data-bar],[data-row]');if(g)openInfo(+(g.dataset.bar||g.dataset.row));});
+gbody.addEventListener('click',e=>{const r=e.target.closest('.rowbg');if(r){const u=+r.dataset.row;sel=new Set([u]);anchor=u;updateSel();}});
+window.addEventListener('mousemove',e=>{
+  if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+  if(!drag.mode&&(Math.abs(dx)>4||Math.abs(dy)>4))drag.mode=Math.abs(dy)>Math.abs(dx)?'link':'move';
+  if(drag.mode==='move'){const z=ZOOMS[zoom].ppd;drag.g.setAttribute('transform',`translate(${Math.round(dx/z)*z},0)`);}
+  if(drag.mode==='link'){
+    const r=gbody.getBoundingClientRect(),i=visRows.indexOf(drag.t),l=$('#drag');
+    const x1=(drag.t._fd+1-range[0])*ZOOMS[zoom].ppd;
+    l.style.display='';l.setAttribute('x1',x1);l.setAttribute('y1',i*ROW+ROW/2);l.setAttribute('x2',e.clientX-r.left);l.setAttribute('y2',e.clientY-r.top);
+  }
+});
+window.addEventListener('mouseup',e=>{
+  if(!drag)return;const d=drag;drag=null;$('#drag').style.display='none';
+  if(d.mode==='move'){
+    const days=Math.round((e.clientX-d.x)/ZOOMS[zoom].ppd);d.g.removeAttribute('transform');
+    if(days){let nd=d.t._sd+days;while(!cal.isW(nd))nd+=days>0?1:-1;setStart(d.t,nd);}
+  }else if(d.mode==='link'){
+    const r=gbody.getBoundingClientRect(),k=Math.floor((e.clientY-r.top)/ROW),t=visRows[k];
+    if(!t||t===d.t)return;if(t._sum)return toast('Link to a task inside the summary instead.');
+    if(t.preds.some(p=>p.uid===d.t.uid))return toast('Those tasks are already linked.');
+    t.preds.push({uid:d.t.uid,type:'FS',lag:0});const cyc=hasCycle();t.preds.pop();
+    if(cyc)return toast('That would create a circular link.');
+    commit(()=>{t.preds.push({uid:d.t.uid,type:'FS',lag:0});});toast(`Linked ${d.t._row} → ${t._row} finish-to-start.`);
+  }
+});
+
+/* ===== Commands ===== */
+const selIdx=()=>P.tasks.map((t,i)=>sel.has(t.uid)?i:-1).filter(i=>i>=0);
+function topSel(){ // selected indices whose ancestors are not selected
+  const T=P.tasks,out=[];
+  for(const i of selIdx()){let lv=T[i].level,anc=false;for(let j=i-1;j>=0&&lv>0;j--){if(T[j].level<lv){if(sel.has(T[j].uid)){anc=true;break;}lv=T[j].level;}}if(!anc)out.push(i);}
+  return out;
+}
+const need=()=>{if(!sel.size){toast('Select a task first — click its row number.');return false;}return true;};
+function download(name,text,type){const b=new Blob([text],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);}
+const fname=ext=>(P.name||'schedule').replace(/[\\/:*?"<>|]+/g,'').trim()+ext;
+function loadProject(p,msg){P=sanitize(p);sel=new Set();anchor=null;undoS=[];redoS=[];refresh();setTimeout(()=>scrollToDate(S.start-7),0);if(msg)toast(msg);}
+const CMD={
+  new(){if(P.tasks.length&&!confirm('Start a new schedule? Unsaved changes in this one will be lost.'))return;const b=ser();loadProject(blankProject());undoS=[b];openProject();},
+  open(){$('#fileIn').click();},
+  save(){download(fname('.cpm.json'),ser(),'application/json');saved=true;renderFoot();},
+  csv(){download(fname('.csv'),exportCSV(),'text/csv');},
+  xml(){download(fname('.xml'),exportMSP(),'application/xml');toast('Exported MS Project XML. In Project: File › Open, choose the .xml file.');},
+  print(){$('#dlgPrint').showModal();},
+  undo(){if(!undoS.length)return toast('Nothing to undo.');redoS.push(ser());P=sanitize(JSON.parse(undoS.pop()));saved=false;refresh();},
+  redo(){if(!redoS.length)return toast('Nothing to redo.');undoS.push(ser());P=sanitize(JSON.parse(redoS.pop()));saved=false;refresh();},
+  insert(){
+    const ix=selIdx();const i=ix.length?ix[0]:P.tasks.length;
+    const lv=i<P.tasks.length?P.tasks[i].level:(P.tasks.length?P.tasks[P.tasks.length-1].level:0);
+    let t;commit(()=>{t=newTask('',lv);P.tasks.splice(i,0,t);});sel=new Set([t.uid]);anchor=t.uid;updateSel();focusCell(t.uid,'name');
+  },
+  del(){if(!need())return;const n=deleteSel(false);toast(`Deleted ${n} task${n>1?'s':''}. Ctrl+Z to undo.`);},
+  dup(){
+    if(!need())return;const ix=topSel();let made=[];
+    commit(()=>{for(const i of ix.slice().reverse()){const e=subtreeEnd(i),src=P.tasks.slice(i,e),c=cloneBlock(src,src[0].level,src[0].level,false,false);P.tasks.splice(e,0,...c);made.push(c[0].uid);}});
+    sel=new Set(made);anchor=made[0];updateSel();toast(`Duplicated ${ix.length>1?ix.length+' blocks':'it'} below — progress and baseline cleared.`);
+  },
+  indent(){if(!need())return;commit(()=>{let ch=false;for(const i of topSel()){if(i===0)continue;const T=P.tasks;if(T[i].level>T[i-1].level)continue;const e=subtreeEnd(i);for(let j=i;j<e;j++)T[j].level++;ch=true;}return ch;});},
+  outdent(){if(!need())return;commit(()=>{let ch=false;for(const i of topSel()){const T=P.tasks;if(!T[i].level)continue;const e=subtreeEnd(i);for(let j=i;j<e;j++)T[j].level--;ch=true;}return ch;});},
+  up(){move(-1);},down(){move(1);},
+  link(){
+    const ix=selIdx().filter(i=>!isSumIdx(i));if(ix.length<2)return toast('Select two or more tasks (Shift- or Ctrl-click the row numbers) to link them.');
+    const T=P.tasks,before=ser();let added=0;
+    for(let k=1;k<ix.length;k++){const a=T[ix[k-1]],b=T[ix[k]];if(!b.preds.some(p=>p.uid===a.uid)){b.preds.push({uid:a.uid,type:'FS',lag:0});added++;}}
+    if(hasCycle()){P=sanitize(JSON.parse(before));refresh();return toast('That would create a circular link.');}
+    if(!added)return toast('Those tasks are already linked.');
+    undoS.push(before);redoS=[];saved=false;refresh();
+  },
+  unlink(){
+    if(!need())return;const ids=[...sel];
+    commit(()=>{let ch=false;
+      if(ids.length===1){const u=ids[0];P.tasks.forEach(t=>{const n=t.preds.length;t.preds=t.preds.filter(p=>p.uid!==u);if(t.uid===u)t.preds=[];if(t.preds.length!==n||t.uid===u)ch=true;});}
+      else P.tasks.forEach(t=>{if(!sel.has(t.uid))return;const n=t.preds.length;t.preds=t.preds.filter(p=>!sel.has(p.uid));if(n!==t.preds.length)ch=true;});
+      return ch;});
+  },
+  info(){if(!need())return;openInfo([...sel][0]);},
+  project(){openProject();},
+  baseline(){if(!S.leaf.length)return;commit(()=>{for(const t of S.leaf){t.bs=isoOf(t._sd);t.bf=isoOf(t._fd);}});toast('Baseline saved. Gray bars show it from now on.');},
+  clearbase(){if(!P.tasks.some(t=>t.bs))return toast('There’s no baseline to clear.');commit(()=>{for(const t of P.tasks){t.bs=t.bf=null;}});},
+  color(){prefs.color=prefs.color==='trade'?'crit':'trade';savePrefs();render();if(prefs.color==='trade'&&!tradeList().length)toast('No trades yet — type one in the Trade column.');},
+  zin(){if(zoom<ZOOMS.length-1)setZoom(zoom+1);},
+  zout(){if(zoom>0)setZoom(zoom-1);},
+  goto(){scrollToDate(S.start-7);},
+  trace(){
+    trace=!trace;$('#btnTrace').classList.toggle('on',trace);render();
+    if(trace){const T=traceSet();if(!T)toast('Select one task to see what drives its start.');else toast(`${T.root._row}: driven by ${whyText(T.root)}.`);}
+  },
+  help(){$('#dlgHelp').showModal();}
+};
+function setZoom(z){
+  const old=ZOOMS[zoom].ppd,mid=range[0]+(main.scrollLeft+(main.clientWidth-tpane.offsetWidth)/2)/old;
+  zoom=z;prefs.zoom=z;savePrefs();renderGantt();
+  main.scrollLeft=Math.max(0,(mid-range[0])*ZOOMS[zoom].ppd-(main.clientWidth-tpane.offsetWidth)/2);
+}
+// keepLinks: leave other tasks' links to the removed ones in place (cut), so pasting restores them
+function deleteSel(keepLinks){
+  const T=P.tasks,kill=new Set();
+  for(const i of selIdx())for(let j=i;j<subtreeEnd(i);j++)kill.add(T[j].uid);
+  commit(()=>{P.tasks=T.filter(t=>!kill.has(t.uid));if(!keepLinks)P.tasks.forEach(t=>{t.preds=t.preds.filter(p=>!kill.has(p.uid));});});
+  sel=new Set();updateSel();return kill.size;
+}
+function move(dir){
+  if(!need())return;const ix=topSel();if(ix.length!==1)return toast('Move one task (with its subtasks) at a time.');
+  const T=P.tasks,i=ix[0],e=subtreeEnd(i),lv=T[i].level;
+  if(dir<0){let j=i-1;while(j>=0&&T[j].level>lv)j--;if(j<0||T[j].level!==lv)return;
+    commit(()=>{const blk=T.splice(i,e-i);T.splice(j,0,...blk);});}
+  else{if(e>=T.length||T[e].level!==lv)return;const e2=subtreeEnd(e);
+    commit(()=>{const blk=T.splice(e,e2-e);T.splice(i,0,...blk);});}
+}
+document.getElementById('toolbar').addEventListener('click',e=>{const b=e.target.closest('[data-cmd]');if(b)CMD[b.dataset.cmd]();});
+
+/* ===== Keyboard ===== */
+document.addEventListener('keydown',e=>{
+  if(document.querySelector('dialog[open]'))return;
+  const inInput=e.target.matches&&e.target.matches('input,textarea,select'),k=e.key,ctrl=e.ctrlKey||e.metaKey;
+  const dirty=inInput&&e.target.value!==e.target.defaultValue;
+  if(ctrl&&!e.shiftKey&&k.toLowerCase()==='z'&&!dirty){e.preventDefault();if(inInput)e.target.blur();CMD.undo();}
+  else if(ctrl&&(k.toLowerCase()==='y'||(e.shiftKey&&k.toLowerCase()==='z'))&&!dirty){e.preventDefault();if(inInput)e.target.blur();CMD.redo();}
+  else if(ctrl&&k.toLowerCase()==='s'){e.preventDefault();if(inInput)e.target.blur();setTimeout(CMD.save,10);}
+  else if(ctrl&&k.toLowerCase()==='o'){e.preventDefault();CMD.open();}
+  else if(ctrl&&k.toLowerCase()==='p'){e.preventDefault();if(inInput)e.target.blur();CMD.print();}
+  else if(ctrl&&e.altKey&&k.toLowerCase()==='n'){e.preventDefault();CMD.new();}
+  else if(ctrl&&(k==='='||k==='+')){e.preventDefault();CMD.zin();}
+  else if(ctrl&&k==='-'){e.preventDefault();CMD.zout();}
+  else if(e.altKey&&e.shiftKey&&k.startsWith('Arrow')){e.preventDefault();if(inInput)e.target.blur();setTimeout(()=>({ArrowRight:CMD.indent,ArrowLeft:CMD.outdent,ArrowUp:CMD.up,ArrowDown:CMD.down})[k](),10);}
+  else if(k==='F2'&&ctrl){e.preventDefault();if(inInput)e.target.blur();setTimeout(e.shiftKey?CMD.unlink:CMD.link,10);}
+  else if(k==='F2'&&e.shiftKey){e.preventDefault();if(inInput)e.target.blur();setTimeout(CMD.info,10);}
+  else if(k==='F1'){e.preventDefault();CMD.help();}
+  else if(ctrl&&!e.shiftKey&&k.toLowerCase()==='d'&&!dirty){e.preventDefault();if(inInput)e.target.blur();setTimeout(CMD.dup,10);}
+  else if(e.altKey&&!ctrl&&!e.shiftKey&&e.code==='KeyT'){e.preventDefault();CMD.trace();}
+  else if(k==='Insert'){e.preventDefault();if(inInput)e.target.blur();setTimeout(CMD.insert,10);}
+  else if(k==='Delete'&&!inInput&&sel.size){e.preventDefault();CMD.del();}
+});
+
+/* ===== Dialogs ===== */
+function openInfo(uid){
+  const t=U.get(uid);if(!t)return;const f=$('#dlgInfo form'),s=t._sum;
+  f.name.value=t.name;f.trade.value=s?'':t.trade||'';f.trade.disabled=s;f.dur.value=s?t._sdur+'d':t.dur+'d';f.pct.value=s?t._pct:t.pct;f.pred.value=s?'':fmtPreds(t);
+  f.ct.value=t.cons&&t.cons.type||'';f.cd.value=t.cons&&t.cons.date||'';f.as.value=t.as||'';f.af.value=t.af||'';f.notes.value=t.notes||'';
+  for(const n of ['dur','pct','pred','ct','cd','as','af'])f[n].disabled=s;
+  const bs=s?t._bs:t.bs&&dn(t.bs),bf=s?t._bf:t.bf&&dn(t.bf);
+  const varF=bf!=null&&bf!==''?(t._fd>bf?cal.workBetween(bf+1,t._fd):-cal.workBetween(t._fd+1,bf)):null;
+  const rows=s?[['Start',fmtD(t._sd),'Finish',fmtD(t._fd)]]:
+    [['Early start',fmtD(t._sd),'Early finish',fmtD(t._fd)],['Late start',fmtD(t._lsd),'Late finish',fmtD(t._lfd)],['Total float',t._tf+'d','Free float',t._ff+'d']];
+  rows.push(['Baseline start',bs!=null&&bs!==''?fmtD(bs):'—','Baseline finish',bf!=null&&bf!==''?fmtD(bf):'—']);
+  if(varF!=null)rows.push(['Finish variance',(varF>0?'+':'')+varF+'d'+(varF>0?' late':varF<0?' early':''),'','']);
+  if(!s)rows.push(['Start driven by',whyText(t),'','']);
+  if(t._err)rows.push(['Note',t._err,'','']);
+  $('#facts').innerHTML=rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('');
+  const dlg=$('#dlgInfo');dlg.onclose=()=>{
+    if(dlg.returnValue!=='ok')return;
+    if(s){commit(()=>{t.name=f.name.value;t.notes=f.notes.value;});return;}
+    const d=parseDur(f.dur.value);if(d==null)return toast('Duration not understood — nothing was changed.');
+    const r=parsePreds(f.pred.value,t);if(r.err)return toast(r.err+' Nothing was changed.');
+    const old=t.preds;t.preds=r.preds;const cyc=hasCycle();t.preds=old;if(cyc)return toast('That would create a circular link. Nothing was changed.');
+    if(f.ct.value&&!f.cd.value)return toast('Pick a constraint date. Nothing was changed.');
+    commit(()=>{t.name=f.name.value;t.trade=f.trade.value.trim();t.dur=d;t.preds=r.preds;t.notes=f.notes.value;
+      t.cons=f.ct.value?{type:f.ct.value,date:f.cd.value}:null;
+      const hadAs=!!t.as;t.as=f.as.value||null;t.af=f.af.value||null;
+      let p=Math.max(0,Math.min(100,Math.round(+f.pct.value||0)));if(t.af)p=100;else if(p===100)p=99;
+      if(hadAs&&!t.as&&!t.af)p=0;else if(!t.as&&p>0){t.as=isoOf(t._sd);}
+      t.pct=p;});
+  };
+  dlg.returnValue='';dlg.showModal();
+}
+const WDN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+$('#wdBoxes').innerHTML=WDN.map((n,i)=>`<label><input type="checkbox" name="wd" value="${i}">${n}</label>`).join('');
+function parseHol(text){
+  const out=new Map(),bad=[];
+  for(const line of text.split('\n')){const s=line.trim();if(!s)continue;
+    const m=s.match(/^(\S+)\s*(.*)$/);const d=parseDate(m[1],ymd(dn(P.start))[0]);if(d==null){bad.push(s);continue;}out.set(d,m[2]||'');}
+  return {list:[...out].sort((a,b)=>a[0]-b[0]).map(([d,n])=>({d:isoOf(d),n})),bad};
+}
+function openProject(){
+  const f=$('#dlgProj form');
+  f.name.value=P.name;f.start.value=P.start;f.status.value=P.status||'';
+  f.querySelectorAll('[name=wd]').forEach(c=>{c.checked=P.calendar.workdays.includes(+c.value);});
+  f.hol.value=P.calendar.holidays.map(h=>h.d+(h.n?'  '+h.n:'')).join('\n');
+  f.year.value=ymd(dn(P.start))[0];
+  const dlg=$('#dlgProj');dlg.onclose=()=>{
+    if(dlg.returnValue!=='ok')return;
+    const wd=[...f.querySelectorAll('[name=wd]:checked')].map(c=>+c.value);if(!wd.length)return toast('Pick at least one working day. Nothing was changed.');
+    const h=parseHol(f.hol.value);if(h.bad.length)toast(`Skipped ${h.bad.length} holiday line${h.bad.length>1?'s':''} that didn’t start with a date.`);
+    commit(()=>{P.name=f.name.value.trim()||'Untitled schedule';P.start=f.start.value||P.start;P.status=f.status.value||null;P.calendar.workdays=wd.sort();P.calendar.holidays=h.list;});
+    setTimeout(()=>scrollToDate(S.start-7),0);
+  };
+  dlg.returnValue='';dlg.showModal();
+}
+$('#dlgProj').addEventListener('click',e=>{
+  const b=e.target.closest('[data-h]');if(!b)return;const f=$('#dlgProj form'),y=+f.year.value;
+  if(!(y>=2000&&y<=2100))return toast('Enter a year between 2000 and 2100.');
+  const cur=parseHol(f.hol.value).list,have=new Set(cur.map(h=>h.d));
+  for(const [n,d] of holidaySet(b.dataset.h,y))if(!have.has(isoOf(d)))cur.push({d:isoOf(d),n});
+  cur.sort((a,b)=>a.d<b.d?-1:1);f.hol.value=cur.map(h=>h.d+(h.n?'  '+h.n:'')).join('\n');
+});
+
+/* ===== Print ===== */
+const PAPER={letter:[11,8.5],legal:[14,8.5],tabloid:[17,11],archd:[36,24]};
+$('#dlgPrint').addEventListener('close',()=>{if($('#dlgPrint').returnValue==='ok')doPrint($('#dlgPrint form').paper.value);});
+function doPrint(paper){
+  const [pw,ph]=PAPER[paper],m=0.4,W=Math.floor((pw-2*m)*96),H=Math.floor((ph-2*m)*96);
+  $('#pagesize').textContent=`@page{size:${pw}in ${ph}in;margin:${m}in}`;
+  const rows=visible(),rh=18,th=16,top=40,foot=prefs.color==='trade'?36:22;
+  const per=Math.max(1,Math.floor((H-top-2*th-foot)/rh)),pages=Math.max(1,Math.ceil(rows.length/per));
+  const cols=[['#',30],['Task name',Math.min(300,Math.round(W*0.22))],['Trade',Math.min(110,Math.round(W*0.08))],['Dur',44],['Start',78],['Finish',78],['Float',42]];
+  const tw=cols.reduce((a,c)=>a+c[1],0),gw=W-tw;
+  let a=Infinity,b=-Infinity;for(const t of P.tasks){if(t._sd==null)continue;a=Math.min(a,t._sd);b=Math.max(b,t._fd);if(t.bs){a=Math.min(a,dn(t.bs));b=Math.max(b,dn(t.bf));}}
+  if(!isFinite(a)){a=dn(P.start);b=a+30;}
+  if(P.status)b=Math.max(b,dn(P.status));
+  a-=2;b+=4;
+  const la=laWin();if(la){a=la[0];b=la[1]+1;}
+  const ppd=gw/(b-a),fl=filterLabel();
+  const zt=ppd>=2.5?'month':'year',zb=ppd>=14?'day':ppd>=2.5?'week':'month';
+  const clip=(s,w)=>{const n=Math.floor(w/5.6);return s.length>n?s.slice(0,n-1)+'…':s;};
+  let html='';
+  for(let p=0;p<pages;p++){
+    const rs=rows.slice(p*per,(p+1)*per),bh=rs.length*rh;
+    let s=`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-size="10">`;
+    s+=`<text x="0" y="16" font-size="15" font-weight="700" fill="var(--text)">${esc(P.name)}</text>`;
+    s+=`<text x="0" y="32" class="ht">${fmtD(S.start)} – ${fmtD(S.finish)} · ${S.days} workdays${P.status?' · Status date '+fmtD(dn(P.status)):''} · Printed ${fmtD(todayDn())}${fl?' · '+esc(fl):''}</text>`;
+    s+=`<text x="${W}" y="16" text-anchor="end" class="ht">Page ${p+1} of ${pages}</text>`;
+    let x=0;s+=`<g transform="translate(0,${top})">`;
+    for(const [h,w] of cols){s+=`<text x="${x+4}" y="${2*th-5}" class="ht" font-weight="600">${h}</text>`;x+=w;}
+    s+=`<line class="hl" x1="0" x2="${W}" y1="${2*th}" y2="${2*th}"/>`;
+    rs.forEach((t,i)=>{const y=2*th+i*rh+rh/2+3.5;let x=0;
+      const v=[String(t._row),t.name,t._sum?'':t.trade||'',(t._sum?t._sdur:t.dur)+'d',fmtD(t._sd),fmtD(t._fd),t._sum||t._done?'':t._tf+'d'];
+      v.forEach((c,k)=>{const w=cols[k][1];const right=k===3||k===6;
+        s+=`<text x="${right?x+w-4:x+4+(k===1?t.level*8:0)}" y="${y}" ${right?'text-anchor="end"':''} fill="${t._crit&&k===1?'var(--crit)':'var(--text)'}" ${t._sum?'font-weight="700"':''}>${esc(k===1?clip(c,w-8-t.level*8):clip(c,w-8))}</text>`;x+=w;});
+      s+=`<line class="gl" x1="0" x2="${W}" y1="${2*th+(i+1)*rh}" y2="${2*th+(i+1)*rh}"/>`;
+    });
+    s+=`<line class="hl" x1="${tw}" x2="${tw}" y1="0" y2="${2*th+bh}"/>`;
+    s+=`<g transform="translate(${tw},0)">${headSVG(a,b,ppd,zt,zb,th)}<clipPath id="pc${p}"><rect x="0" y="0" width="${gw}" height="${bh}"/></clipPath><g transform="translate(0,${2*th})" clip-path="url(#pc${p})">${bodySVG(rs,{x0:a,x1:b,ppd,rh,h:bh,names:false,id:'p'+p,nonwork:ppd>=8,gridUnit:ppd>=2.5?'month':'year',print:true})}</g></g>`;
+    let lg=0;const leg=(prefs.color==='trade'?tradeList():[]).map(x=>{const q=`<rect x="${lg}" y="${H-24}" width="9" height="9" rx="2" fill="${tradeColor(x)}"/><text x="${lg+13}" y="${H-16}" class="ht">${esc(x)}</text>`;lg+=26+x.length*6;return q;}).join('');
+    s+=`</g>${leg}<text x="0" y="${H-4}" class="ht">${prefs.color==='trade'?'Bar color = trade · red outline = critical':'Red = critical (total float ≤ 0)'} · Gray = baseline · Dashed line = status date</text></svg>`;
+    html+=`<div class="pg">${s}</div>`;
+  }
+  $('#print').innerHTML=html;
+  setTimeout(()=>window.print(),50);
+}
+window.addEventListener('afterprint',()=>{$('#print').innerHTML='';});
+
+/* ===== Open file ===== */
+$('#fileIn').addEventListener('change',async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{const text=await f.text();
+    if(P.tasks.length&&!confirm('Open this file? Unsaved changes in the current schedule will be lost.'))return;
+    if(/^\s*</.test(text))loadProject(importMSP(text),`Imported ${f.name}. Check the calendar in Settings.`);
+    else{const p=JSON.parse(text);if(!p||!Array.isArray(p.tasks))throw new Error('That file isn’t a schedule.');loadProject(p,`Opened ${f.name}.`);}
+    saved=true;renderFoot();
+  }catch(err){toast(err.message||'Could not open that file.');}
+});
+
+/* ===== Pane resize ===== */
+function setTW(w){w=Math.max(200,Math.min(924,w));tpane.style.width=w+'px';prefs.tw=w;}
+setTW(prefs.tw&&prefs.tw!==804?prefs.tw:924);
+$('#resizer').addEventListener('mousedown',e=>{e.preventDefault();const x=e.clientX,w=tpane.offsetWidth;
+  const mv=ev=>setTW(w+ev.clientX-x),up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);savePrefs();};
+  window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);});
+window.addEventListener('resize',()=>renderGantt());
+window.addEventListener('beforeunload',()=>{try{localStorage.setItem('cpm.autosave',ser());}catch(e){}});
+
+/* ===== Start ===== */
+if(innerWidth<900&&!prefs.narrowOk){$('#narrow').style.display='flex';}
+$('#narrowGo').onclick=()=>{$('#narrow').style.display='none';prefs.narrowOk=true;savePrefs();};
+(function boot(){
+  let p=null;try{const s=localStorage.getItem('cpm.autosave');if(s)p=JSON.parse(s);}catch(e){}
+  if(p&&Array.isArray(p.tasks)){P=sanitize(p);}else{sampleProject();}
+  refresh();setTimeout(()=>scrollToDate(S.start-7),0);
+})();
+</script>
+</body></html>
