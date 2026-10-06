@@ -23,7 +23,10 @@ html,body{height:100%;margin:0}
 body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);font:13px/1.3 var(--sans);overflow:hidden}
 button{font:inherit;color:inherit}
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;padding:8px 12px;border-bottom:1px solid var(--rule2);background:var(--panel)}
-.brand{font-weight:700;font-size:15px;margin-right:6px;letter-spacing:-.01em}
+.brand{font-weight:700;font-size:15px;margin-right:6px;letter-spacing:-.01em;white-space:nowrap}
+.brand a{color:var(--muted);text-decoration:none}
+.brand a:hover,.brand a:focus-visible{color:var(--accent)}
+.brand .sep{color:var(--rule2);margin:0 7px;font-weight:400}
 .grp{display:flex;gap:2px;align-items:center}
 .grp>span{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-right:4px}
 .bar button{background:transparent;border:1px solid transparent;border-radius:5px;padding:4px 8px;cursor:pointer}
@@ -129,7 +132,7 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
 </head>
 <body>
 <header class="bar" id="toolbar">
-  <div class="brand">CPM Scheduler</div>
+  <div class="brand"><a href="/">zbCAD</a><span class="sep">/</span>CPM Scheduler</div>
   <div class="grp"><span>File</span>
     <button data-cmd="new" title="New (Ctrl+Alt+N)">New</button>
     <button data-cmd="open" title="Open .json or MS Project .xml (Ctrl+O)">Open</button>

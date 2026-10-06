@@ -8,14 +8,14 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d9480f' stroke-width='2.2' stroke-linecap='round'%3E%3Cellipse cx='12' cy='6' rx='5' ry='2'/%3E%3Cpath d='M3 19h18M7 6L3 19M17 6l4 13'/%3E%3C/svg%3E">
 <style>
 :root{
-  --bg:#f3f1ec; --panel:#ffffff; --ink:#1c2228; --muted:#6a737d; --line:#dcd8cf; --soft:#ece9e2;
-  --accent:#d9480f; --accent-ink:#fff; --cut:#1c2228; --bend:#c92a2a; --form:#8d97a2; --grid:#e4e0d7; --sheet:#faf9f6;
+  --bg:#f6f4ef; --panel:#fffdf8; --ink:#1c1b19; --muted:#6b675f; --line:#d9d4c9; --soft:#efe9df;
+  --accent:#9a4a1f; --accent-ink:#fff; --cut:#1c1b19; --bend:#c92a2a; --form:#8d97a2; --grid:#e4dfd4; --sheet:#fbf9f4;
   --warn-bg:#fff4e6; --warn-ink:#8a3b00; --err-bg:#ffe3e3; --err-ink:#9b1c1c;
 }
 @media (prefers-color-scheme: dark){
   :root{
-    --bg:#14171a; --panel:#1c2024; --ink:#e5e8eb; --muted:#97a0aa; --line:#2e343a; --soft:#252a2f;
-    --accent:#ff7a3d; --accent-ink:#1a0d05; --cut:#e5e8eb; --bend:#ff6b6b; --form:#6f7a85; --grid:#22272c; --sheet:#181b1f;
+    --bg:#161614; --panel:#1c1b19; --ink:#e9e5dc; --muted:#9a958a; --line:#2f2d29; --soft:#252320;
+    --accent:#e08a55; --accent-ink:#1a0d05; --cut:#e9e5dc; --bend:#ff6b6b; --form:#6f7a85; --grid:#24221f; --sheet:#181816;
     --warn-bg:#3a2a12; --warn-ink:#ffc078; --err-bg:#3d1818; --err-ink:#ffa8a8;
   }
 }
@@ -24,8 +24,10 @@ html,body{margin:0;height:100%}
 body{background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
 button,input,select{font:inherit;color:inherit}
 .top{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--line);background:var(--panel)}
-.brand{display:flex;align-items:center;gap:10px;font-weight:650;letter-spacing:.2px}
-.brand svg{width:24px;height:24px;stroke:var(--accent)}
+.brand{display:flex;align-items:baseline;font-weight:700;font-size:15px;letter-spacing:-.01em}
+.brand a{color:var(--muted);text-decoration:none}
+.brand a:hover,.brand a:focus-visible{color:var(--accent)}
+.brand .sep{color:var(--line);margin:0 7px;font-weight:400}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .seg button{border:0;background:transparent;padding:6px 12px;cursor:pointer;color:var(--muted)}
 .seg button.on{background:var(--ink);color:var(--panel)}
@@ -113,10 +115,7 @@ dialog#pdlg::backdrop{background:rgba(0,0,0,.45)}
 </head>
 <body>
 <header class="top">
-  <div class="brand">
-    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="6" rx="5" ry="2"/><path d="M3 19h18M7 6L3 19M17 6l4 13"/></svg>
-    <span>Sheet Metal Layout</span>
-  </div>
+  <div class="brand"><a href="/">zbCAD</a><span class="sep">/</span><span>Sheet Metal Layout</span></div>
   <div class="seg" id="units"><button data-u="in">in</button><button data-u="mm">mm</button></div>
 </header>
 <main class="app">
