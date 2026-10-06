@@ -35,16 +35,17 @@ button{font:inherit;color:inherit}
 #content{display:flex;width:max-content;min-height:100%}
 #tpane{position:sticky;left:0;z-index:3;background:var(--panel);border-right:1px solid var(--rule2);overflow:hidden;flex:none}
 #thead{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--rule2)}
-.grid{display:grid;grid-template-columns:44px 270px 120px 62px 104px 104px 110px 56px 54px;width:924px}
-#thead .grid>div{height:44px;display:flex;align-items:flex-end;padding:0 6px 6px;font-size:11px;font-weight:600;color:var(--muted);border-right:1px solid var(--rule)}
+.grid{display:grid;grid-template-columns:var(--cols,28px 270px 120px 62px 104px 104px 110px 56px 54px);width:var(--gw,908px)}
+#thead .grid>div{position:relative;height:44px;display:flex;align-items:flex-end;padding:0 4px 6px;font-size:11px;font-weight:600;color:var(--muted);border-right:1px solid var(--rule)}
+.ch{position:absolute;top:0;right:-4px;width:8px;height:100%;cursor:col-resize;z-index:2}.ch:hover,.ch.on{background:var(--accent);opacity:.35}
 .row{height:26px;border-bottom:1px solid var(--rule)}
 .row>div{position:relative;border-right:1px solid var(--rule);display:flex;align-items:center;min-width:0}
 .row.sel{background:var(--sel)}
-.row input{width:100%;height:25px;border:0;background:transparent;color:inherit;font:inherit;padding:0 6px;outline:none;min-width:0}
+.row input{width:100%;height:25px;border:0;background:transparent;color:inherit;font:inherit;padding:0 4px;outline:none;min-width:0}
 .row input:focus{box-shadow:inset 0 0 0 2px var(--accent);background:var(--panel)}
 .row input[readonly]{color:var(--muted)}
 .r input,.r{justify-content:flex-end;text-align:right}
-.num{justify-content:space-between;padding:0 4px 0 6px;color:var(--muted);cursor:pointer;user-select:none;font-size:12px}
+.num{justify-content:space-between;overflow:hidden;padding:0 3px 0 4px;color:var(--muted);cursor:pointer;user-select:none;font-size:12px}
 .num .m{display:flex;gap:2px}
 .num i{font-style:normal;font-size:10px;line-height:1;padding:1px 3px;border-radius:3px;background:var(--rule);color:var(--text)}
 .num i.e{background:var(--crit);color:#fff}
@@ -83,7 +84,7 @@ svg text{font-family:var(--sans)}
 .row.trc .num span:first-child{color:var(--accent);font-weight:700}
 .bar select{font:inherit;color:inherit;background:transparent;border:1px solid var(--rule2);border-radius:5px;padding:3px 4px;max-width:170px}
 .bar select.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
-.trd{gap:0}.trd .sw{flex:none;width:8px;height:8px;border-radius:2px;margin-left:6px}
+.trd{gap:0}.trd input::-webkit-calendar-picker-indicator{display:none!important}.trd .sw{flex:none;width:8px;height:8px;border-radius:2px;margin-left:3px}
 .leg{display:inline-flex;align-items:center;gap:4px}.leg i{width:9px;height:9px;border-radius:2px;display:inline-block}
 .filt{color:var(--accent);font-weight:600;cursor:pointer}
 .bar button.on{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -1329,8 +1330,20 @@ $('#fileIn').addEventListener('change',async e=>{
 });
 
 /* ===== Pane resize ===== */
-function setTW(w){w=Math.max(200,Math.min(924,w));tpane.style.width=w+'px';prefs.tw=w;}
-setTW(prefs.tw&&prefs.tw!==804?prefs.tw:924);
+const CW0=[28,270,120,62,104,104,110,56,54],CWMIN=[24,90,50,44,70,70,70,40,40];
+let CW=Array.isArray(prefs.cw)&&prefs.cw.length===CW0.length?prefs.cw.map((v,i)=>Math.max(CWMIN[i],Math.min(600,+v||CW0[i]))):CW0.slice();
+const cwSum=()=>CW.reduce((a,b)=>a+b,0);
+function applyCW(){tpane.style.setProperty('--cols',CW.map(v=>v+'px').join(' '));tpane.style.setProperty('--gw',cwSum()+'px');}
+function setTW(w){w=Math.max(200,Math.min(cwSum(),w));tpane.style.width=w+'px';prefs.tw=w;}
+applyCW();
+setTW(prefs.tw&&prefs.tw!==804?prefs.tw:cwSum());
+// Column handles sit on the header cells. A pane that was showing every column keeps showing them as widths change.
+$('#thead .grid').querySelectorAll(':scope>div').forEach((d,i)=>{const h=document.createElement('i');h.className='ch';h.title='Drag to resize. Double-click to reset.';d.appendChild(h);
+  const set=v=>{const full=tpane.offsetWidth>=cwSum();CW[i]=Math.max(CWMIN[i],Math.min(600,v));applyCW();setTW(full?cwSum():tpane.offsetWidth);};
+  h.addEventListener('dblclick',()=>{set(CW0[i]);prefs.cw=CW.slice();savePrefs();});
+  h.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const x=e.clientX,w=CW[i];h.classList.add('on');
+    const mv=ev=>set(w+ev.clientX-x),up=()=>{h.classList.remove('on');window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);prefs.cw=CW.slice();savePrefs();renderGantt();};
+    window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);});});
 $('#resizer').addEventListener('mousedown',e=>{e.preventDefault();const x=e.clientX,w=tpane.offsetWidth;
   const mv=ev=>setTW(w+ev.clientX-x),up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);savePrefs();};
   window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);});
