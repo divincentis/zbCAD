@@ -239,11 +239,15 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
   <p>Type tasks in the table. Durations are in workdays (<code>5</code>, <code>5d</code>, <code>2w</code>); <code>0</code> makes a milestone. Indent a task under another to make the one above it a summary.</p>
   <p><b>Predecessors</b> use row numbers: <code>4</code> (finish-to-start), <code>4SS</code>, <code>4FF+2d</code>, <code>4SF</code>, <code>7FS-1d</code> (lead). Use <code>ed</code> or <code>ew</code> for calendar-day lags that run through weekends and holidays, like cure time: <code>4FS+7ed</code>. Separate several with commas. You can also drag a bar up or down onto another bar to link them.</p>
   <p>Typing a date in <b>Start</b> or <b>Finish</b> sets a start/finish-no-earlier-than constraint, like MS Project. Dragging a bar sideways does the same. Clear it in Info.</p>
+  <p><b>Other constraints</b> (Info): start/finish no later than, must start on, must finish on. The no-later-than types never move a task; they cap its late dates, so a task pushed past one shows negative float. Must-start/finish pin the task even if its predecessors say otherwise.</p>
+  <p><b>Calendar</b> (Settings): pick the workdays and list holidays, one per line; the buttons load US federal or common construction holidays. Every duration, lag and float is counted in workdays on that calendar. One calendar covers the whole project.</p>
   <p><b>Paste from Excel</b>: copy cells and paste into any cell here — columns fill left to right from that cell in table order (Name, Trade, Duration, Start, Finish, Predecessors, Float is skipped, % done). Paste with rows selected (not in a cell) to insert the rows above.</p>
   <p><b>Trade</b> labels who does the work. Use <b>Color by trade</b> and the <b>Filter</b> menus for a sub's tasks or a 2–6 week lookahead; Print prints what's shown.</p>
   <p><b>Status date</b> (in Settings) drives updates: tasks not started yet can't start before the day after it, and unfinished work on in-progress tasks is pushed past it. Tasks that slip show negative float.</p>
   <p><b>Trace</b> highlights the chain of tasks that sets the selected task's start. Info and the bar tooltip also say what drives each start.</p>
-  <p><b>Float</b> is total float in workdays; tasks with zero or negative float are critical and shown in red. A gray bar under a task is its baseline.</p>
+  <p><b>Float</b> is total float in workdays; tasks with zero or negative float are critical and shown in red. Summary tasks span their subtasks, with % done weighted by duration, and are never critical themselves; their dates, duration and % can't be typed over.</p>
+  <p><b>Baseline</b>: Set baseline saves every task's current dates, and gray bars show them from then on. Re-setting overwrites the old one; Clear removes it. Duplicated tasks start without progress or baseline.</p>
+  <p><b>Files</b>: Save writes a .json file that keeps everything. MSP XML exports to MS Project (File › Open there) and Open reads Project XML back in. Check the calendar after an import, since Project calendars carry more detail than this tool uses. CSV is a one-way export for spreadsheets.</p>
   <table>
     <tr><td><code>Enter</code></td><td>Commit and move down</td></tr>
     <tr><td><code>Insert</code></td><td>Insert a task above the selection</td></tr>
@@ -619,7 +623,7 @@ function exportCSV(){
 
 /* ===== Sample ===== */
 function sampleProject(){
-  P=blankProject();P.name='Reroof — Building 2';P.start='2026-10-12';
+  P=blankProject();P.name='Reroof - Building 2';P.start='2026-10-12';
   P.calendar.holidays=[...holidaySet('con',2026),...holidaySet('con',2027)].map(([n,d])=>({d:isoOf(d),n}));
   const rows=[
     [0,'Preconstruction'],[1,'Notice to proceed',0,''],[1,'Submittals & shop drawings',10,'2'],[1,'Architect submittal review',10,'3'],
