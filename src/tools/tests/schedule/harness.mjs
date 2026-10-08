@@ -59,11 +59,12 @@ function parseXML(text) {
   return { documentElement: root.children[0], getElementsByTagName: () => [] };
 }
 
-export function boot(page = DEFAULT_PAGE, { autosave = null } = {}) {
+export function boot(page = DEFAULT_PAGE, { autosave = null, prefs = null } = {}) {
   const html = fs.readFileSync(page, 'utf8');
   const m = html.match(/<script>([\s\S]*?)<\/script>/);
   if (!m) throw new Error('no inline <script> in ' + page);
   const store = new Map(autosave == null ? [] : [['cpm.autosave', typeof autosave === 'string' ? autosave : JSON.stringify(autosave)]]);
+  if (prefs != null) store.set('cpm.prefs', typeof prefs === 'string' ? prefs : JSON.stringify(prefs));
   const els = {}, timers = [], confirms = [];
   const $ = sel => (sel === 'dialog[open]' ? null : (els[sel] ||= makeEl(sel)));
   const document = {

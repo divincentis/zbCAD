@@ -27,6 +27,12 @@ button{font:inherit;color:inherit}
 .brand a{color:var(--muted);text-decoration:none}
 .brand a:hover,.brand a:focus-visible{color:var(--accent)}
 .brand .sep{color:var(--rule2);margin:0 7px;font-weight:400}
+.brand img{max-height:24px;max-width:140px;vertical-align:middle;margin-right:10px}
+.logo{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 4px;font-size:12px;color:var(--muted)}
+.logo img{max-height:28px;max-width:160px}
+.logo button{border:1px solid var(--rule2);background:var(--bg);border-radius:5px;padding:4px 10px;cursor:pointer}
+/* Most logos are drawn for white paper, and one with dark lettering on a transparent ground would vanish here. */
+@media (prefers-color-scheme:dark){.brand img,.logo img{background:#fff;border-radius:3px;padding:2px 4px}}
 .grp{display:flex;gap:2px;align-items:center}
 .grp>span{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-right:4px}
 .bar button{background:transparent;border:1px solid transparent;border-radius:5px;padding:4px 8px;cursor:pointer}
@@ -141,7 +147,7 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
 </head>
 <body>
 <header class="bar" id="toolbar">
-  <div class="brand"><a href="/">zbCAD</a><span class="sep">/</span>CPM Scheduler</div>
+  <div class="brand"><img id="brandLogo" alt="" hidden><a href="/">zbCAD</a><span class="sep">/</span>CPM Scheduler</div>
   <div class="grp"><span>File</span>
     <button data-cmd="new" title="New schedule, blank or from a template (Ctrl+Alt+N)">New</button>
     <button data-cmd="open" title="Open .json or MS Project .xml (Ctrl+O)">Open</button>
@@ -205,6 +211,7 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
 <div id="toast"></div>
 <datalist id="tradeList"></datalist>
 <input type="file" id="fileIn" accept=".json,.xml,application/json,text/xml" hidden>
+<input type="file" id="logoIn" accept="image/png,image/jpeg" hidden>
 <div id="print"></div>
 
 <dialog id="dlgProj"><form method="dialog">
@@ -249,6 +256,8 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
     <option value="tabloid" selected>Tabloid — 17 × 11 in</option><option value="archd">ARCH D — 36 × 24 in</option></select></label>
   <p style="font-size:12px;color:var(--muted);margin:0 0 8px">Prints what's on screen. For a lookahead or one sub's tasks, set the Filter first — a lookahead fits the timeline to its weeks.</p>
   <p style="font-size:12px;color:var(--muted);margin:0">Otherwise the whole schedule is fitted to the sheet width and split across pages by rows. Collapsed summaries stay collapsed. Choose “Save as PDF” in your browser's print dialog for a PDF, and set margins to Default.</p>
+  <div class="logo" style="margin-top:12px"><span>Logo</span><img id="logoPrev" alt="" hidden><button type="button" id="logoPick">Choose image…</button><button type="button" id="logoClear" hidden>Remove</button><span id="logoMsg"></span></div>
+  <p style="font-size:12px;color:var(--muted);margin:0">A PNG or JPEG, shown in the toolbar and at the top of every printed page. It is kept in this browser, not in the schedule file, so it appears on every schedule you open here and on none you send.</p>
   <menu><button value="cancel">Cancel</button><button value="ok" class="pri">Print</button></menu>
 </form></dialog>
 
@@ -833,7 +842,14 @@ const tbody=$('#tbody'),ghead=$('#ghead'),gbody=$('#gbody'),main=$('#main'),tpan
 const ZOOMS=[{ppd:2.2,top:'year',bot:'month'},{ppd:4.5,top:'month',bot:'week'},{ppd:9,top:'month',bot:'week'},{ppd:20,top:'month',bot:'day'},{ppd:32,top:'month',bot:'day'}];
 const prefs=(()=>{try{return JSON.parse(localStorage.getItem('cpm.prefs'))||{};}catch(e){return {};}})();
 let zoom=prefs.zoom??2,sel=new Set(),anchor=null,undoS=[],redoS=[],pendingFocus=null,range=[0,0],visRows=[],saved=true;
-const savePrefs=()=>{try{localStorage.setItem('cpm.prefs',JSON.stringify(prefs));}catch(e){}};
+const savePrefs=()=>{try{localStorage.setItem('cpm.prefs',JSON.stringify(prefs));return true;}catch(e){return false;}};
+// The logo is the company's, not the project's, so it lives with the browser's preferences and
+// never enters a schedule file. Its src is written into the page, so what localStorage hands
+// back is checked as strictly as a file would be: a raster data URL and nothing else.
+const LOGO_MAX=400000,LOGO_W=480,LOGO_H=160;
+const validLogo=l=>!!l&&typeof l==='object'&&typeof l.src==='string'&&l.src.length<=LOGO_MAX&&/^data:image\/(png|jpeg);base64,[A-Za-z0-9+\/]+=*$/.test(l.src)&&
+  Number.isFinite(l.w)&&Number.isFinite(l.h)&&l.w>0&&l.h>0;
+if(!validLogo(prefs.logo))delete prefs.logo;
 // Display only: turning this off hides the red, never the data. Float, the critical count, the
 // Critical filter and every export still say which tasks are critical.
 const showCrit=()=>prefs.crit!==false;
@@ -1542,12 +1558,14 @@ function doPrint(paper){
   const ppd=gw/(b-a),fl=filterLabel(),hc=showCrit();
   const zt=ppd>=2.5?'month':'year',zb=ppd>=14?'day':ppd>=2.5?'week':'month';
   const clip=(s,w)=>{const n=Math.floor(w/5.6);return s.length>n?s.slice(0,n-1)+'…':s;};
+  const logo=prefs.logo,lh=34,lw=logo?Math.max(1,Math.round(Math.min(lh*logo.w/logo.h,160))):0,tx=lw?lw+10:0;
   let html='';
   for(let p=0;p<pages;p++){
     const rs=rows.slice(p*per,(p+1)*per),bh=rs.length*rh;
     let s=`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-size="10">`;
-    s+=`<text x="0" y="16" font-size="15" font-weight="700" fill="var(--text)">${esc(P.name)}</text>`;
-    s+=`<text x="0" y="32" class="ht">${fmtD(S.start)} – ${fmtD(S.finish)} · ${S.days} workdays${P.status?' · Status date '+fmtD(dn(P.status)):''} · Printed ${fmtD(todayDn())}${fl?' · '+esc(fl):''}</text>`;
+    if(logo)s+=`<image href="${esc(logo.src)}" x="0" y="0" width="${lw}" height="${lh}" preserveAspectRatio="xMinYMid meet"/>`;
+    s+=`<text x="${tx}" y="16" font-size="15" font-weight="700" fill="var(--text)">${esc(P.name)}</text>`;
+    s+=`<text x="${tx}" y="32" class="ht">${fmtD(S.start)} – ${fmtD(S.finish)} · ${S.days} workdays${P.status?' · Status date '+fmtD(dn(P.status)):''} · Printed ${fmtD(todayDn())}${fl?' · '+esc(fl):''}</text>`;
     s+=`<text x="${W}" y="16" text-anchor="end" class="ht">Page ${p+1} of ${pages}</text>`;
     let x=0;s+=`<g transform="translate(0,${top})">`;
     for(const [h,w] of cols){s+=`<text x="${x+4}" y="${2*th-5}" class="ht" font-weight="600">${h}</text>`;x+=w;}
@@ -1568,6 +1586,46 @@ function doPrint(paper){
   $('#print').innerHTML=html;
   setTimeout(()=>window.print(),50);
 }
+
+/* ===== Logo ===== */
+function showLogo(){
+  const l=prefs.logo;
+  for(const id of ['#brandLogo','#logoPrev']){const im=$(id);im.hidden=!l;if(l)im.src=l.src;else im.removeAttribute('src');}
+  $('#logoClear').hidden=!l;
+}
+function setLogo(l){
+  if(l&&!validLogo(l))return false;
+  const was=prefs.logo;
+  if(l)prefs.logo=l;else delete prefs.logo;
+  // A logo that would be gone on the next visit is worse than none: put back what was there.
+  if(!savePrefs()){if(was)prefs.logo=was;else delete prefs.logo;return false;}
+  showLogo();return true;
+}
+const fitLogo=(w,h)=>{const k=Math.min(1,LOGO_W/w,LOGO_H/h);return [Math.max(1,Math.round(w*k)),Math.max(1,Math.round(h*k))];};
+// Redrawn small rather than stored as picked: the header band is a third of an inch tall, and
+// preferences share localStorage's few megabytes with the autosaved schedule.
+async function readLogo(file){
+  const url=URL.createObjectURL(file);
+  try{
+    const im=new Image();im.src=url;await im.decode();
+    if(!(im.naturalWidth>0&&im.naturalHeight>0))throw new Error('no size');
+    const [w,h]=fitLogo(im.naturalWidth,im.naturalHeight),c=document.createElement('canvas');
+    c.width=w;c.height=h;const g=c.getContext('2d');g.drawImage(im,0,0,w,h);
+    let src=c.toDataURL('image/png');
+    // PNG keeps a transparent ground; a photograph too big for it goes out as JPEG on white.
+    if(src.length>LOGO_MAX){g.globalCompositeOperation='destination-over';g.fillStyle='#fff';g.fillRect(0,0,w,h);src=c.toDataURL('image/jpeg',.85);}
+    return {src,w,h};
+  }finally{URL.revokeObjectURL(url);}
+}
+$('#logoPick').onclick=()=>$('#logoIn').click();
+$('#logoClear').onclick=()=>{setLogo(null);$('#logoMsg').textContent='';};
+$('#logoIn').addEventListener('change',async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;
+  let l=null;try{l=await readLogo(f);}catch(err){}
+  // Said in the dialog, not a toast: the print dialog is modal and would sit on top of one.
+  $('#logoMsg').textContent=!l?'That file couldn’t be read as an image.':setLogo(l)?'':'The logo couldn’t be kept: this browser’s storage is full.';
+});
+showLogo();
 window.addEventListener('afterprint',()=>{$('#print').innerHTML='';});
 
 /* ===== Open file ===== */
