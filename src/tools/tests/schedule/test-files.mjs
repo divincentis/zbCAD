@@ -232,4 +232,55 @@ const base = (tasks, extra = {}) => ({ v: 1, name: 'f', start: '2026-10-12', sta
   const back = boot(page, { autosave: base([{ uid: 1, name: 'mine', dur: 2 }]) });
   t.ok(!back.$('#dlgNew').open && back.P.tasks[0].name === 'mine', 'an autosaved schedule opens straight to the work');
 }
+
+// ---- company logo: a browser preference, never part of a schedule
+{
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const logo = { src: PNG, w: 240, h: 60 };
+  const printed = () => { ev('doPrint')('letter'); return h.$('#print').innerHTML; };
+  h.make({ rows: Array.from({ length: 60 }, (_, i) => ({ name: 'r' + i })) });
+
+  const bare = printed();
+  t.ok(!bare.includes('<image') && bare.includes('<text x="0" y="16"'), 'no logo: the header is as it was');
+  t.ok(h.$('#brandLogo').hidden && h.$('#logoClear').hidden, 'and the toolbar shows none');
+
+  t.ok(ev('setLogo')(logo), 'a raster data URL is accepted');
+  const pr = printed(), pages = pr.split('class="pg"').length - 1;
+  t.ok(pages > 1 && pr.split('<image').length - 1 === pages, 'it heads every printed page: ' + pages);
+  const [, iw, ih] = pr.match(/<image [^>]*width="(\d+)" height="(\d+)"/).map(Number);
+  t.ok(ih <= 40 && iw <= 160 && Math.abs(iw / ih - 4) < 0.2, `it fits the header band at its own proportions: ${iw}x${ih}`);
+  t.ok(pr.includes(`<text x="${iw + 10}" y="16"`) && !pr.includes('<text x="0" y="16"'), 'and the title moves clear of it');
+  t.ok(!h.$('#brandLogo').hidden && h.$('#brandLogo').src === PNG && !h.$('#logoClear').hidden, 'the toolbar shows it');
+  t.eq(JSON.parse(h.store.get('cpm.prefs')).logo, logo, 'it is remembered');
+  t.ok(!ev('ser')().includes('iVBOR') && !ev('exportMSP')().includes('iVBOR'), 'and it stays out of the schedule file');
+
+  t.eq(ev('fitLogo')(2400, 600), [480, 120], 'a large image is scaled down to the cap');
+  t.eq(ev('fitLogo')(300, 900), [53, 160], 'a tall one by its height');
+  t.eq(ev('fitLogo')(120, 40), [120, 40], 'a small one is never scaled up');
+
+  const bad = [
+    { ...logo, src: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=' },
+    { ...logo, src: 'https://example.com/logo.png' },
+    { ...logo, src: PNG + '"/><script>alert(1)</script>' },
+    { ...logo, src: 'data:image/png;base64,' + 'A'.repeat(400001) },
+    { ...logo, w: 0 }, { ...logo, h: '60' }, { src: PNG }, 'x', [],
+  ];
+  for (const b of bad) t.ok(!ev('setLogo')(b) && ev('prefs').logo.src === PNG, 'refused, and the one in place is kept: ' + JSON.stringify(b).slice(0, 60));
+
+  ev('setLogo')(null);
+  t.ok(!printed().includes('<image') && h.$('#brandLogo').hidden && !('logo' in JSON.parse(h.store.get('cpm.prefs'))), 'removing it clears the toolbar, the print and the preference');
+
+  const full = boot(page);
+  full.ev('localStorage').setItem = () => { throw new Error('quota'); };
+  t.ok(!full.ev('setLogo')(logo) && !full.ev('prefs').logo && full.$('#brandLogo').hidden, 'storage full: nothing is shown that would not survive a reload');
+
+  const kept = boot(page, { prefs: { logo, band: true } });
+  t.ok(!kept.$('#brandLogo').hidden && kept.ev('prefs').band === true, 'a stored logo is back at the next visit');
+  for (const b of bad) {
+    const evil = boot(page, { prefs: { logo: b, band: true } });
+    evil.ev('doPrint')('letter');
+    t.ok(!evil.ev('prefs').logo && evil.$('#brandLogo').hidden && !evil.$('#print').innerHTML.includes('<image') && evil.ev('prefs').band === true,
+      'a tampered preference is dropped at boot, the rest kept: ' + JSON.stringify(b).slice(0, 60));
+  }
+}
 t.done();
