@@ -50,9 +50,9 @@ const DATE = 'Oct 8, 2026';
   t.ok(/R1-\d+A – R1-\d+A/.test(prod[0].ids) && /R2-\d+A – R2-\d+A/.test(prod[0].ids), 'consecutive IDs collapse to a range');
   t.ok(prod.every(r => r.profile === '16" SSMR snap-lock'), 'each row names its profile');
   const both = app.ev('production')(R.pk);
-  t.ok(both.some(r => r.color === 'Galvalume' && /^W1-/.test(r.ids)) && both.filter(r => r.color === 'Galvalume').every(r => !/R\d/.test(r.ids)), 'different profile and colour never share a row');
+  t.ok(both.some(r => r.color === 'Galvalume' && /^W1-/.test(r.ids)) && both.filter(r => r.color === 'Galvalume').every(r => !/R\d/.test(r.ids)), 'different profile and color never share a row');
   const buy = app.ev('purchasing')(R.pk);
-  t.eq(buy.map(r => [r.profile, r.color]), [['16" SSMR snap-lock', ''], ['36" exposed fastener (R / PBR)', 'Galvalume']], 'purchasing summary by profile and colour');
+  t.eq(buy.map(r => [r.profile, r.color]), [['16" SSMR snap-lock', ''], ['36" exposed fastener (R / PBR)', 'Galvalume']], 'purchasing summary by profile and color');
   t.ok(near(buy[0].count, roof.q.count) && near(buy[1].gross, walls.q.gross), 'with piece count and gross area');
   // IDs are tied to location: sorting the production list does not renumber anything.
   t.eq(R.L.get(app.P.facets[0].id).strips[6].pieces.map(x => x.id), ['R1-07'], 'strip 7 of R1 is R1-07 in every view');
@@ -60,6 +60,8 @@ const DATE = 'Oct 8, 2026';
   // The drawing plan.
   const L = R.L.get(app.P.facets[0].id), plan = app.ev('facetPlan')(L, 720, 480), txt = plan.ops.filter(o => o.k === 'text');
   t.ok(L.pieces.every(p => txt.some(o => o.s === p.id)), 'every piece is labelled on the layout');
+  const idOps = txt.filter(o => o.id);
+  t.ok(idOps.filter(o => o.rot === -90).length > idOps.length / 2 && Math.max(...idOps.map(o => o.size)) > 9, 'IDs read up the panel, as large as the strip allows');
   t.ok(txt.some(o => o.s === 'Eave 480') && txt.some(o => /^Hip /.test(o.s)), 'edges are labelled with type and dimension');
   t.ok(txt.some(o => o.s === 'SPLICE'), 'splice seams are tagged');
   t.ok(txt.some(o => o.s === 'panel run') && txt.some(o => o.s === 'lay'), 'run and lay direction arrows');
@@ -247,5 +249,51 @@ const DATE = 'Oct 8, 2026';
   app.select('R1'); app.type('f.$pk', 'sel', app.P.packages[1].id);
   t.eq(app.P.packages.map(k => k.facetIds.length), [3, 1], 'a facet can be moved to another package');
   t.eq(app.ev('compute')().pk[1].q.count, app.layout('R1').q.count, 'and its totals go with it');
+}
+
+// ===== coil order =====
+{
+  // 20 ft of eave in 16" panels on 20" coil: fifteen 10 ft pieces, 150 ft, 250 sf of 24 ga.
+  const plain = { profile: { cover: 16, sheetW: 20, maxLen: 0, minLen: 0, lap: 6, type: 'exposed' }, def: { allow: {}, round: 0.25, ripMin: 0 } };
+  app.make(plain, [{ template: 'rect', params: { w: 240, h: 120 } }]);
+  const coils = () => app.ev('coilOrder')(app.ev('compute')().pk);
+  let [c] = coils();
+  t.eq([coils().length, c.width, c.gauge, c.n], [1, 20, '24 ga', 1], 'one coil per width, gauge and color when nothing limits it');
+  t.ok(near(c.lf, 150) && near(c.sf, 250) && near(c.lb, 250 * 1.156) && near(c.each, 150), 'linear length, stretch-out area and weight from the gauge');
+  t.eq(app.type('c.maxFt', 'numopt', '60'), undefined, 'a max coil length is a project setting');
+  [c] = coils();
+  t.eq([c.n, c.each, c.ordLf], [3, 50, 150], 'a length limit splits the order into equal coils of whole panels');
+  app.type('c.extra', 'num', '10');
+  [c] = coils();
+  t.ok(c.n === 3 && near(c.each, 55) && c.each <= 60, 'the extra per coil is added to each without passing the limit');
+  app.type('c.extra', 'num', '0'); app.type('c.maxFt', 'numopt', ''); app.type('c.maxLb', 'numopt', '100');
+  [c] = coils();
+  t.ok(c.n === 3 && c.each === 50 && c.eachLb <= 100 && near(c.eachLb, 50 * 20 / 12 * 1.156), 'a weight limit does the same through the coil weight');
+  app.type('c.maxFt', 'numopt', '25');
+  t.eq([coils()[0].n, coils()[0].each], [8, 20], 'the tighter of the two limits governs');
+  app.type('c.maxFt', 'numopt', '8');
+  [c] = coils();
+  t.ok(c.over && c.n === 15 && c.each === 10 && app.ev('coilNotes')([c]).some(x => /longer than the coil limit/.test(x)), 'a panel longer than the limit is ordered over it and flagged');
+  app.type('c.maxFt', 'numopt', '');
+  app.P.profiles.find(q => q.id === 'p2').psf = 2;
+  t.ok(near(coils()[0].lb, 500), 'a profile can state its own coil weight');
+  Object.assign(app.P.profiles.find(q => q.id === 'p2'), { psf: null, gauge: '.032 aluminum' });
+  [c] = coils();
+  t.ok(c.lb === null && c.noWt && c.n === 1 && app.ev('coilNotes')([c]).some(x => /No weight is known/.test(x)), 'an unrecognized gauge has no weight, and the weight limit is not applied');
+  t.eq(['24 ga', '26ga G90', '22', '0.032'].map(gauge => app.ev('coilPsf')({ gauge })), [1.156, 0.906, 1.406, null], 'gauge text is read loosely');
+  // A second profile is a second coil.
+  app.P.profiles.find(q => q.id === 'p2').gauge = '24 ga';
+  app.ev('newFacet')(app.P, app.P.packages[0], { ov: { profileId: 'p7' } });
+  t.eq(coils().map(r => [r.width, r.gauge]), [[20, '24 ga'], [38, '26 ga']], 'a coil per stretch out and gauge, narrowest first');
+  const back = app.ev('checkProject')(JSON.parse(JSON.stringify({ ...app.P, coil: { maxFt: 500, maxLb: 'x', extra: 3 }, profiles: [{ ...app.P.profiles[0], psf: 1.2 }] })));
+  t.eq([back.coil, back.profiles[0].psf], [{ maxFt: 500, maxLb: null, extra: 3 }, 1.2], 'coil limits and coil weight are saved with the project');
+  t.eq(app.ev('checkProject')({ packages: [], facets: [] }).coil, { maxFt: null, maxLb: null, extra: 0 }, 'and an older file opens with no limits');
+  const csv = app.ev('buildCSV')('coil').trim().split('\r\n');
+  t.ok(csv.length === 3 && csv[0].startsWith('Coil width (in),Gauge,Color,Profiles,Panel length (ft)') && csv[1].startsWith('20,24 ga,,"16"" SSMR snap-lock",150,250,289,3,50,'), 'coil order CSV');
+  const pages = app.ev('reportPages')(DATE), pg = pages.find(x => x.title === 'Coil order'), txt = pg.ops.filter(o => o.k === 'text').map(o => o.s);
+  t.ok(pages.findIndex(x => x.title === 'Coil order') < pages.findIndex(x => x.title === 'Quantities and waste') && txt.includes('Length each') && txt.includes('50 ft') && txt.some(x => /No coil is over 100 lb/.test(x)), 'the package carries a coil order sheet');
+  app.ev('S').tab = 'cut'; app.ev('ACT').cutView({ dataset: { v: 'coil' } });
+  t.ok(/Coil order/.test(app.$('#pane').innerHTML) && /<td class="r">50 ft<\/td>/.test(app.$('#pane').innerHTML), 'and the cut list has a coil order view');
+  app.ev('S').tab = 'layout'; app.ev('S').cut = 'loc';
 }
 t.done();

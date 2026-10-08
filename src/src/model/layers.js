@@ -74,7 +74,7 @@ export function renameLayer(id, name) {
 }
 
 export function setLayerColor(id, color) {
-  if (!requireIdle('changing a layer colour')) return false;
+  if (!requireIdle('changing a layer color')) return false;
   const layer = getLayer(id);
   if (!layer || !/^#[0-9a-f]{6}$/i.test(String(color))) return false;
   const nextColor = String(color).toLowerCase();
