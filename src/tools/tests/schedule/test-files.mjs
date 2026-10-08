@@ -169,6 +169,24 @@ const base = (tasks, extra = {}) => ({ v: 1, name: 'f', start: '2026-10-12', sta
   t.eq([ev('fTrade'), names().length], ['', 4], 'and so does assigning the last untraded task');
 }
 
+// ---- banded rows follow what is shown, on screen and in print
+{
+  h.make({ rows: [{ name: 'b1' }, { name: 'b2', pred: '1' }, { name: 'b3', pred: '2', trade: 'Steel' }, { name: 'b4', pred: '3' }, { name: 'b5', pred: '4', trade: 'Steel' }] });
+  const drawn = () => { ev('render')(); ev('doPrint')('letter'); return [h.$('#tbody').innerHTML, h.$('#gbody').innerHTML, h.$('#print').innerHTML]; };
+  const n = (x, re) => (x.match(re) || []).length;
+  let [tb, gb, pr] = drawn();
+  t.ok(!/band/.test(tb + gb + pr), 'off by default');
+  ev('CMD').band(); [tb, gb, pr] = drawn();
+  t.eq([n(tb, /class="row grid[^"]* band/g), n(gb, /rowbg band/g), n(pr, /rowbg band/g)], [2, 2, 4], 'on: every other row, in the table and the chart, and both halves of the printed page');
+  t.ok(/band[^>]*data-uid="2"/.test(tb) && /band[^>]*data-uid="4"/.test(tb), 'the second and fourth rows');
+  t.eq(JSON.parse(h.store.get('cpm.prefs')).band, true, 'the choice is remembered');
+  // Banding counts the rows on screen, not task IDs: filtered to rows 3 and 5, only the second is shaded.
+  ev('fTrade="Steel"'); [tb, gb, pr] = drawn();
+  t.ok(n(tb, /class="row grid[^"]* band/g) === 1 && /band[^>]*data-uid="5"/.test(tb) && n(gb, /rowbg band/g) === 1, 'a filter re-stripes what is left');
+  ev('fTrade=""'); ev('CMD').band(); [tb, gb, pr] = drawn();
+  t.ok(!/band/.test(tb + gb + pr), 'and off again');
+}
+
 // ---- the critical-path toggle hides the red and nothing else
 {
   // Two critical tasks, one with float, so "no red" is told apart from "nothing was critical".
@@ -184,6 +202,7 @@ const base = (tasks, extra = {}) => ({ v: 1, name: 'f', start: '2026-10-12', sta
   ev('CMD').crit(); [tb, gb, pr] = drawn();
   t.ok(!RED.test(tb) && !RED.test(gb) && !RED.test(pr), 'off: no red in the table, the chart or the printed pages');
   t.ok(/Gray = baseline/.test(pr) && !/> · Gray/.test(pr), 'the print legend keeps the rest, with no stray separator');
+  t.eq((pr.match(/>zbCAD<\/tspan> \/ CPM Scheduler/g) || []).length, (pr.match(/class="pg"/g) || []).length, 'every printed page says where it came from');
   t.eq(facts(), before, 'the schedule itself is untouched: count, float and the export still mark the critical tasks');
   t.ok(/<b>2<\/b> critical/.test(h.$('#foot').innerHTML), 'and the on-screen count stays');
   t.eq(JSON.parse(h.store.get('cpm.prefs')).crit, false, 'the choice is remembered');
