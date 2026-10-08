@@ -10,13 +10,13 @@
 :root{
   --bg:#f6f4ef;--panel:#fffdf8;--text:#1c1b19;--muted:#6b675f;--rule:#e4dfd4;--rule2:#cdc6b8;
   --accent:#9a4a1f;--sel:#f3e6d8;--bar:#5b7fa6;--barp:#26466b;--crit:#c2412d;--critp:#7d2112;
-  --sum:#2a2825;--base:#b5ad9e;--nonwork:rgba(60,50,30,.05);--status:#2a7a3b;--neg:#c2412d;
+  --sum:#2a2825;--base:#b5ad9e;--nonwork:rgba(60,50,30,.05);--status:#2a7a3b;--neg:#c2412d;--band:rgba(60,50,30,.045);
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
 }
 @media (prefers-color-scheme:dark){:root{
   --bg:#161614;--panel:#1c1b19;--text:#e9e5dc;--muted:#9a958a;--rule:#2c2a26;--rule2:#3d3a34;
   --accent:#e08a55;--sel:#3a2c22;--bar:#6f93bb;--barp:#bcd3ec;--crit:#e0644d;--critp:#f6b7aa;
-  --sum:#e9e5dc;--base:#5d584f;--nonwork:rgba(255,255,255,.035);--status:#5cbf73;--neg:#ff7b66;
+  --sum:#e9e5dc;--base:#5d584f;--nonwork:rgba(255,255,255,.035);--status:#5cbf73;--neg:#ff7b66;--band:rgba(255,255,255,.035);
 }}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
@@ -40,6 +40,7 @@ button{font:inherit;color:inherit}
 .ch{position:absolute;top:0;right:-4px;width:8px;height:100%;cursor:col-resize;z-index:2}.ch:hover,.ch.on{background:var(--accent);opacity:.35}
 .row{height:26px;border-bottom:1px solid var(--rule)}
 .row>div{position:relative;border-right:1px solid var(--rule);display:flex;align-items:center;min-width:0}
+.row.band{background:var(--band)}
 .row.sel{background:var(--sel)}
 .row input{width:100%;height:25px;border:0;background:transparent;color:inherit;font:inherit;padding:0 4px;outline:none;min-width:0}
 .row input:focus{box-shadow:inset 0 0 0 2px var(--accent);background:var(--panel)}
@@ -66,6 +67,7 @@ svg text{font-family:var(--sans)}
 .gl{stroke:var(--rule);stroke-width:1}
 .nw{fill:var(--nonwork)}
 .rowbg{fill:transparent}
+.rowbg.band{fill:var(--band)}
 .rowbg.sel{fill:var(--sel)}
 .b{fill:var(--bar)}.bp{fill:var(--barp)}
 .c .b{fill:var(--crit)}.c .bp{fill:var(--critp)}
@@ -129,7 +131,7 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
   body>*:not(#print){display:none!important}
   #print{display:block;
     --bg:#fff;--panel:#fff;--text:#111;--muted:#555;--rule:#ddd;--rule2:#bbb;--bar:#5b7fa6;--barp:#26466b;
-    --crit:#c2412d;--critp:#7d2112;--sum:#111;--base:#aaa;--nonwork:rgba(0,0,0,.04);--status:#2a7a3b;--sel:transparent}
+    --crit:#c2412d;--critp:#7d2112;--sum:#111;--base:#aaa;--nonwork:rgba(0,0,0,.04);--status:#2a7a3b;--sel:transparent;--band:rgba(0,0,0,.05)}
   #print .pg{page-break-after:always;break-after:page}
   #print .pg:last-child{page-break-after:auto;break-after:auto}
   #print svg{display:block}
@@ -174,7 +176,7 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
     <button data-cmd="zin" title="Zoom in (Ctrl+=)">+</button>
     <button data-cmd="goto" title="Scroll to project start">Start</button>
     <button data-cmd="trace" id="btnTrace" title="Highlight what drives the selected task's start (Alt+T)">Trace</button>
-    <button data-cmd="help" title="Help (F1)">?</button>
+    <button data-cmd="help" title="Help (F1)">Help</button>
   </div>
   <div class="grp"><span>Filter</span>
     <select id="fShow" title="Which tasks to show">
@@ -184,6 +186,7 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
     <select id="fTrade" title="Show one trade"></select>
     <button data-cmd="color" id="btnColor" title="Color bars by trade instead of critical path">Color by trade</button>
     <button data-cmd="crit" id="btnCrit" title="Highlight critical tasks and links in red">Critical path</button>
+    <button data-cmd="band" id="btnBand" title="Shade every other row, on screen and in print">Banded rows</button>
   </div>
 </header>
 
@@ -257,7 +260,7 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
   <p><b>Other constraints</b> (Info): start/finish no later than, must start on, must finish on. The no-later-than types never move a task; they cap its late dates, so a task pushed past one shows negative float. Must-start/finish pin the task even if its predecessors say otherwise.</p>
   <p><b>Calendar</b> (Settings): pick the workdays and list holidays, one per line; the buttons load US federal or common construction holidays. Every duration, lag and float is counted in workdays on that calendar. One calendar covers the whole project.</p>
   <p><b>Paste from Excel</b>: copy cells and paste into any cell here — columns fill left to right from that cell in table order (Name, Trade, Duration, Start, Finish, Predecessors, Float is skipped, % done). Paste with rows selected (not in a cell) to insert the rows above.</p>
-  <p><b>Trade</b> labels who does the work. Use <b>Color by trade</b> and the <b>Filter</b> menus for a sub's tasks or a 2–6 week lookahead; Print prints what's shown.</p>
+  <p><b>Trade</b> labels who does the work. Use <b>Color by trade</b> and the <b>Filter</b> menus for a sub's tasks or a 2–6 week lookahead; Print prints what's shown. <b>Banded rows</b> shades every other row to make a wide chart easier to read across.</p>
   <p><b>Status date</b> (in Settings) drives updates: tasks not started yet can't start before the day after it, and unfinished work on in-progress tasks is pushed past it and still waits for its predecessors. Actual dates are never moved to fit the links: progress recorded ahead of an unfinished predecessor is marked with a red “!”. Slipping shows as a later finish, and as finish variance in Info once a baseline is saved; float only goes negative when a no-later-than or must-finish date is being missed.</p>
   <p><b>Trace</b> highlights the chain of tasks that sets the selected task's start. Info and the bar tooltip also say what drives each start.</p>
   <p><b>Float</b> is total float in workdays; tasks with zero or negative float are critical and shown in red; <b>Critical path</b> in the Filter group turns the red off, on screen and in print, without changing any dates or float. Summary tasks span their subtasks, with % done weighted by duration, and are never critical themselves; their dates, duration and % can't be typed over.</p>
@@ -908,11 +911,11 @@ function traceSet(){ // tasks and links on the driving chain back from the selec
   while(q.length){const t=q.pop();for(const p of t._drv||[]){links.add(p.t.uid+'>'+t.uid);if(!tasks.has(p.t.uid)){tasks.add(p.t.uid);q.push(p.t);}}}
   return {tasks,links,root:t0};
 }
-function rowHTML(t){
+function rowHTML(t,i){
   const s=t._sum,ro=s?' readonly':'';
   const marks=(t.cons&&t.cons.type?`<i title="${esc(CT_LABEL[t.cons.type]+' '+fmtD(dn(t.cons.date)))}">${esc(t.cons.type)}</i>`:'')+(t._err?`<i class="e" title="${esc(t._err)}">!</i>`:'')+(t.notes?`<i title="${esc(t.notes)}">n</i>`:'');
   const tf=s||t._done?'—':`${t._tf}d`;
-  return `<div class="row grid${s?' sum':''}${t._crit&&showCrit()?' crit':''}${sel.has(t.uid)?' sel':''}" data-uid="${esc(t.uid)}">`+
+  return `<div class="row grid${s?' sum':''}${t._crit&&showCrit()?' crit':''}${prefs.band&&i%2?' band':''}${sel.has(t.uid)?' sel':''}" data-uid="${esc(t.uid)}">`+
    `<div class="num" data-act="sel"><span>${t._row}</span><span class="m">${marks}</span></div>`+
    `<div class="name nm" style="--l:${t.level}">${s?`<button class="tog" data-act="tog" tabindex="-1">${t.collapsed?'▸':'▾'}</button>`:'<span class="tog"></span>'}<input data-col="name" value="${esc(t.name)}"></div>`+
    `<div class="trd">${!s&&t.trade&&prefs.color==='trade'?`<span class="sw" style="background:${tradeColor(t.trade)}"></span>`:''}<input data-col="trade" list="tradeList" value="${s?'':esc(t.trade||'')}"${ro}></div>`+
@@ -943,6 +946,7 @@ function syncFilterUI(){
   ft.classList.toggle('on',!!fTrade);$('#fShow').classList.toggle('on',!!fShow);
   $('#btnColor').classList.toggle('on',prefs.color==='trade');
   $('#btnCrit').classList.toggle('on',showCrit());
+  $('#btnBand').classList.toggle('on',!!prefs.band);
 }
 $('#fShow').addEventListener('change',e=>{fShow=e.target.value;render();if(laWin())setTimeout(()=>scrollToDate(laWin()[0]-7),0);});
 $('#foot').addEventListener('click',e=>{if(e.target.closest('#clearFilt')){fShow=fTrade='';render();}});
@@ -996,7 +1000,7 @@ function bodySVG(rows,o){
   const {x0,x1,ppd,rh,names,id,nonwork,gridUnit}=o,X=d=>(d-x0)*ppd,W=(x1-x0)*ppd,H=o.h;
   const TR=o.print?null:traceSet(),hc=showCrit();
   let s=`<defs><marker id="${id}a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="ah" d="M0,0L8,4L0,8z"/></marker><marker id="${id}c" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="ah c" d="M0,0L8,4L0,8z"/></marker><marker id="${id}r" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path class="ah tr" d="M0,0L8,4L0,8z"/></marker></defs>`;
-  rows.forEach((t,i)=>{s+=`<rect class="rowbg${sel.has(t.uid)&&!o.print?' sel':''}" data-row="${esc(t.uid)}" x="0" y="${i*rh}" width="${W}" height="${rh}"/>`;});
+  rows.forEach((t,i)=>{s+=`<rect class="rowbg${prefs.band&&i%2?' band':''}${sel.has(t.uid)&&!o.print?' sel':''}" data-row="${esc(t.uid)}" x="0" y="${i*rh}" width="${W}" height="${rh}"/>`;});
   if(nonwork)for(let d=x0;d<x1;d++)if(!cal.isW(d))s+=`<rect class="nw" x="${X(d)}" y="0" width="${ppd}" height="${H}"/>`;
   for(const d of bounds(gridUnit,x0,x1))s+=`<line class="gl" x1="${X(d)}" x2="${X(d)}" y1="0" y2="${H}"/>`;
   const td=todayDn();if(!o.print&&td>=x0&&td<=x1)s+=`<line class="tdl" x1="${X(td)+ppd/2}" x2="${X(td)+ppd/2}" y1="0" y2="${H}"><title>Today</title></line>`;
@@ -1394,6 +1398,7 @@ const CMD={
   project(){openProject();},
   baseline(){if(!S.leaf.length)return;commit(()=>{for(const t of S.leaf){t.bs=isoOf(t._sd);t.bf=isoOf(t._fd);}});toast('Baseline saved. Gray bars show it from now on.');},
   clearbase(){if(!P.tasks.some(t=>t.bs))return toast('There’s no baseline to clear.');commit(()=>{for(const t of P.tasks){t.bs=t.bf=null;}});},
+  band(){prefs.band=!prefs.band;savePrefs();render();},
   crit(){prefs.crit=!showCrit();savePrefs();render();},
   color(){prefs.color=prefs.color==='trade'?'crit':'trade';savePrefs();render();if(prefs.color==='trade'&&!tradeList().length)toast('No trades yet — type one in the Trade column.');},
   zin(){if(zoom<ZOOMS.length-1)setZoom(zoom+1);},
@@ -1548,6 +1553,7 @@ function doPrint(paper){
     for(const [h,w] of cols){s+=`<text x="${x+4}" y="${2*th-5}" class="ht" font-weight="600">${h}</text>`;x+=w;}
     s+=`<line class="hl" x1="0" x2="${W}" y1="${2*th}" y2="${2*th}"/>`;
     rs.forEach((t,i)=>{const y=2*th+i*rh+rh/2+3.5;let x=0;
+      if(prefs.band&&i%2)s+=`<rect class="rowbg band" x="0" y="${2*th+i*rh}" width="${tw}" height="${rh}"/>`;
       const v=[String(t._row),t.name,t._sum?'':t.trade||'',(t._sum?t._sdur:t.dur)+'d',fmtD(t._sd),fmtD(t._fd),t._sum||t._done?'':t._tf+'d'];
       v.forEach((c,k)=>{const w=cols[k][1];const right=k===3||k===6;
         s+=`<text x="${right?x+w-4:x+4+(k===1?t.level*8:0)}" y="${y}" ${right?'text-anchor="end"':''} fill="${hc&&t._crit&&k===1?'var(--crit)':'var(--text)'}" ${t._sum?'font-weight="700"':''}>${esc(k===1?clip(c,w-8-t.level*8):clip(c,w-8))}</text>`;x+=w;});
@@ -1556,7 +1562,7 @@ function doPrint(paper){
     s+=`<line class="hl" x1="${tw}" x2="${tw}" y1="0" y2="${2*th+bh}"/>`;
     s+=`<g transform="translate(${tw},0)">${headSVG(a,b,ppd,zt,zb,th)}<clipPath id="pc${p}"><rect x="0" y="0" width="${gw}" height="${bh}"/></clipPath><g transform="translate(0,${2*th})" clip-path="url(#pc${p})">${bodySVG(rs,{x0:a,x1:b,ppd,rh,h:bh,names:false,id:'p'+p,nonwork:ppd>=8,gridUnit:ppd>=2.5?'month':'year',print:true})}</g></g>`;
     let lg=0;const leg=(prefs.color==='trade'?tradeList():[]).map(x=>{const q=`<rect x="${lg}" y="${H-24}" width="9" height="9" rx="2" fill="${tradeColor(x)}"/><text x="${lg+13}" y="${H-16}" class="ht">${esc(x)}</text>`;lg+=26+x.length*6;return q;}).join('');
-    s+=`</g>${leg}<text x="0" y="${H-4}" class="ht">${[prefs.color==='trade'?'Bar color = trade':'',hc?(prefs.color==='trade'?'red outline = critical':'Red = critical (total float ≤ 0)'):''].filter(Boolean).map(x=>x+' · ').join('')}Gray = baseline · Dashed line = status date</text></svg>`;
+    s+=`</g>${leg}<text x="0" y="${H-4}" class="ht">${[prefs.color==='trade'?'Bar color = trade':'',hc?(prefs.color==='trade'?'red outline = critical':'Red = critical (total float ≤ 0)'):''].filter(Boolean).map(x=>x+' · ').join('')}Gray = baseline · Dashed line = status date</text><text x="${W}" y="${H-4}" text-anchor="end" class="ht"><tspan font-weight="700">zbCAD</tspan> / CPM Scheduler</text></svg>`;
     html+=`<div class="pg">${s}</div>`;
   }
   $('#print').innerHTML=html;
