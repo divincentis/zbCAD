@@ -127,6 +127,25 @@ const DATE = 'Oct 8, 2026';
   t.ok(/^\d+,"15'-0""",180,/.test(app.ev('buildCSV')('len').split('\r\n')[1]), 'displayed units follow the project setting');
   t.ok(app.ev('reportPages')(DATE)[0].ops.some(o => /lengths in feet and inches/.test(o.s)), 'and so does the units note');
   app.P.units.fmt = 'frac';
+
+  // A report can show lengths its own way without touching the screen's setting.
+  app.P.units.pdf = 'dec'; app.P.units.csv = 'mm';
+  const dec = app.ev('reportPages')(DATE);
+  t.ok(dec[0].ops.some(o => /lengths in decimal inches/.test(o.s)) && dec.flatMap(x => x.ops).some(o => o.s === '180.00'), 'the PDF can take its own length format');
+  t.ok(/^\d+,4572,180,/.test(app.ev('buildCSV')('len').split('\r\n')[1]), 'and so can the CSV, which still carries decimal inches');
+  t.eq([app.P.units.fmt, app.ev('fmtLen')(180)], ['frac', '180'], 'neither changes what the screen shows');
+  t.eq(app.ev('checkProject')(JSON.parse(JSON.stringify(app.P))).units, { bare: 'in', fmt: 'frac', prec: 16, area: 'sf', pdf: 'dec', csv: 'mm' }, 'and both are saved with the project');
+  app.P.units.pdf = app.P.units.csv = null;
+
+  // North arrow.
+  const north = o => app.ev('facetPlan')(app.ev('compute')().L.get(app.P.facets[0].id), 720, 480).ops.filter(x => x.s === 'N');
+  t.eq(north().length, 0, 'no north arrow unless one is asked for');
+  app.select('R1'); app.type('f.north', 'numopt', '90');
+  const N = north()[0], shaft = app.ev('facetPlan')(app.ev('compute')().L.get(app.P.facets[0].id), 720, 480).ops.filter(x => x.k === 'line').pop();
+  t.ok(N && Math.abs(shaft.y2 - shaft.y1) < 1e-6 && shaft.x2 > shaft.x1, 'north at 90 degrees points to the right of the sheet');
+  t.ok(app.ev('reportPages')(DATE).find(x => x.title.startsWith('Facet R1')).ops.some(x => x.s === 'N'), 'and it is on the facet sheet');
+  app.type('f.north', 'numopt', '');
+  t.eq(app.P.facets[0].north, null, 'blank removes it');
 }
 
 // ===== files =====
