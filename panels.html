@@ -169,6 +169,7 @@ menu button{border:1px solid var(--rule2);background:var(--bg);border-radius:5px
     <button data-cmd="print" title="Open the same package in the browser's print dialog (Ctrl+P)">Print</button>
     <button data-cmd="csvLoc" title="Location cut list as CSV">CSV by location</button>
     <button data-cmd="csvLen" title="Production cut list as CSV">CSV by length</button>
+    <button data-cmd="csvCoil" title="Coil order for the roll former as CSV">CSV coils</button>
   </div>
   <div class="grp"><button data-cmd="help">Help</button></div>
 </header>
@@ -205,6 +206,7 @@ menu button{border:1px solid var(--rule2);background:var(--bg);border-radius:5px
     <p><b>Panel IDs</b> read <code>R2-07B</code>: facet R2, seventh strip from the start edge, second piece up from the eave. A strip made in one piece has no letter. IDs belong to a location and never change when a list is re-sorted.</p>
     <p><b>Long runs</b> are split when they pass the profile's maximum length, and the pieces together are longer than the run by one lap per joint. On standing seam every transverse seam is marked as needing a splice. Laps can line up across the facet, stagger on alternate strips, or snap to purlin lines.</p>
     <p><b>Waste</b> is coverage area less roof area, broken down by where it comes from: allowances, laps, angle cuts and notches, edge rips, and rounding.</p>
+    <p><b>Coil order</b>, a view of the cut list, is what to buy for the roll former: the linear length, area and weight of each coil width, gauge and color. Set a maximum coil length or weight in the project settings and it gives the number of coils and the length to order each at.</p>
     <p><b>Packages</b> group facets ordered together, each with its own subtotal and PDF. Profile, laps and allowances are set once as project defaults, and a facet can override them. <b>Profiles</b> are a project library; the starter set is generic and must be checked against the manufacturer.</p>
     <p>The project is kept in this browser as you work. <b>Save</b> writes a file to keep or send. Nothing here checks structure, wind uplift, clips or fasteners.</p>
   </div>
@@ -314,7 +316,7 @@ const LAPMODES={aligned:'Aligned across the facet',stagger:'Staggered on alterna
 // ---- document -------------------------------------------------------------------
 let P,S={t:'facet',pk:null,f:null,prof:null,tab:'layout',cut:'loc',edge:null,edgeXY:[0,0]};
 function mkProfile(id,name,type,cover,sheetW,rib,minSlope){
-  return {id,name,mfr:'Generic starter, verify with manufacturer',gauge:'24 ga',color:'',type,cover,sheetW,rib,maxLen:480,minLen:12,lap:6,hand:'either',minSlope};
+  return {id,name,mfr:'Generic starter, verify with manufacturer',gauge:'24 ga',color:'',type,cover,sheetW,rib,psf:null,maxLen:480,minLen:12,lap:6,hand:'either',minSlope};
 }
 function starterProfiles(){
   return [mkProfile('p1','12" SSMR snap-lock','ssmr-snap',12,16,1.75,3),mkProfile('p2','16" SSMR snap-lock','ssmr-snap',16,20,1.75,3),mkProfile('p3','18" SSMR snap-lock','ssmr-snap',18,22,1.75,3),
@@ -322,8 +324,11 @@ function starterProfiles(){
     {...mkProfile('p7','36" exposed fastener (R / PBR)','exposed',36,38,1.25,1),gauge:'26 ga'}];
 }
 const newDefaults=()=>({profileId:'p2',color:'',allow:{eave:1},split:'max',lap:null,lapMode:'aligned',stagger:24,purlinSp:60,purlin0:0,round:0.25,ripMin:6});
+// What a coil can be ordered at: the supplier's or the decoiler's limit, in feet and pounds,
+// and a percentage over the cut list for leaders, tails and set-up scrap.
+const newCoil=()=>({maxFt:null,maxLb:null,extra:0});
 function newProject(){
-  const p={app:'zbcad-panels',v:1,name:'Untitled project',jobNo:'',address:'',units:{bare:'in',fmt:'frac',prec:16,area:'sf',pdf:null,csv:null},sheet:'letter',idMax:10,seq:10,profiles:starterProfiles(),def:newDefaults(),packages:[],facets:[]};
+  const p={app:'zbcad-panels',v:1,name:'Untitled project',jobNo:'',address:'',units:{bare:'in',fmt:'frac',prec:16,area:'sf',pdf:null,csv:null},sheet:'letter',idMax:10,seq:10,profiles:starterProfiles(),def:newDefaults(),coil:newCoil(),packages:[],facets:[]};
   p.packages.push({id:'k'+p.seq++,name:'Main roof',prefix:'',facetIds:[]});
   return p;
 }
@@ -355,10 +360,10 @@ function checkProject(raw){
   const str=(v,d='',n=200)=>typeof v==='string'?v.slice(0,n):d;
   const pick=(v,o,d)=>typeof v==='string'&&Object.prototype.hasOwnProperty.call(o,v)?v:d;
   const obj=v=>v&&typeof v==='object'?v:{},arr=v=>(Array.isArray(v)?v:[]).filter(x=>x&&typeof x==='object');
-  const u=obj(raw.units);
+  const u=obj(raw.units),c=obj(raw.coil);
   const p={app:'zbcad-panels',v:1,name:str(raw.name,'Untitled project'),jobNo:str(raw.jobNo),address:str(raw.address),
     units:{bare:pick(u.bare,{in:1,ft:1,mm:1},'in'),fmt:pick(u.fmt,UNIT_NOTE,'frac'),prec:[2,4,8,16].includes(u.prec)?u.prec:16,area:pick(u.area,{sf:1,sq:1,m2:1},'sf'),pdf:pick(u.pdf,UNIT_NOTE,null),csv:pick(u.csv,UNIT_NOTE,null)},
-    sheet:raw.sheet==='tabloid'?'tabloid':'letter',idMax:num(raw.idMax,10,4,40),seq:1,profiles:[],def:null,packages:[],facets:[]};
+    sheet:raw.sheet==='tabloid'?'tabloid':'letter',idMax:num(raw.idMax,10,4,40),seq:1,profiles:[],def:null,coil:{maxFt:num(c.maxFt,null,1,1e6),maxLb:num(c.maxLb,null,1,1e7),extra:num(c.extra,0,0,1000)},packages:[],facets:[]};
   const ids=new Set(),fresh=v=>{let id=str(v);while(!id||ids.has(id))id='x'+p.seq++;ids.add(id);return id;};
   p.profiles=checkProfiles(raw.profiles,fresh);
   if(!p.profiles.length)p.profiles=starterProfiles().map(q=>({...q,id:fresh(q.id)}));
@@ -418,7 +423,7 @@ function checkProject(raw){
 function checkProfiles(list,fresh=v=>v){
   const num=(v,d,min,max)=>v!==null&&v!==''&&v!==undefined&&Number.isFinite(+v)&&+v>=min&&+v<=max?+v:d,str=v=>typeof v==='string'?v.slice(0,200):'';
   return (Array.isArray(list)?list:[]).filter(q=>q&&typeof q==='object').map(q=>({id:fresh(q.id),name:str(q.name)||'Profile',mfr:str(q.mfr),gauge:str(q.gauge),color:str(q.color),
-    type:typeof q.type==='string'&&Object.prototype.hasOwnProperty.call(PTYPES,q.type)?q.type:'ssmr-snap',cover:num(q.cover,16,1,600),sheetW:num(q.sheetW,num(q.cover,16,1,600),1,600),rib:num(q.rib,0,0,24),
+    type:typeof q.type==='string'&&Object.prototype.hasOwnProperty.call(PTYPES,q.type)?q.type:'ssmr-snap',cover:num(q.cover,16,1,600),sheetW:num(q.sheetW,num(q.cover,16,1,600),1,600),rib:num(q.rib,0,0,24),psf:num(q.psf,null,0.01,50),
     maxLen:num(q.maxLen,480,0,12000),minLen:num(q.minLen,12,0,600),lap:num(q.lap,6,0,600),hand:q.hand==='left'||q.hand==='right'?q.hand:'either',minSlope:num(q.minSlope,0,0,24)}));
 }
 const ser=()=>JSON.stringify(P);
@@ -753,7 +758,7 @@ function idRanges(ps){
   flush();
   return out.join(', ');
 }
-// The production view: identical ordered lengths of one profile and colour together, longest first.
+// The production view: identical ordered lengths of one profile and color together, longest first.
 function production(gs){
   const m=new Map();
   for(const g of gs)for(const f of g.facets){
@@ -774,6 +779,57 @@ function purchasing(gs){
     const r=m.get(k);r.count+=L.q.count;r.lf+=L.q.lf;r.cover+=L.q.cover;r.gross+=L.q.gross;
   }
   return [...m.values()];
+}
+// ---- coil order ---------------------------------------------------------------------
+// Galvanized sheet gauge, pounds per square foot of flat coil. A profile that states its own
+// weight overrides this, and a gauge that is not on the list has no weight until it does.
+const GAUGE_PSF={20:1.656,22:1.406,24:1.156,26:0.906,28:0.781,29:0.719};
+const coilPsf=p=>p.psf??GAUGE_PSF[(/^\s*(\d+)\s*(?:ga|$)/i.exec(p.gauge)||[])[1]]??null;
+// What to buy for the roll former: one row per coil, which is a width (the stretch out), a
+// gauge and a color, whatever profiles are run from it. A panel cannot be made across two
+// coils, so the pieces are packed whole and every coil is ordered at the length of the fullest
+// one. That gives one quantity and one length to order, and it is always enough to make
+// every piece.
+function coilOrder(gs){
+  const m=new Map(),c=P.coil,k=1+c.extra/100;
+  for(const g of gs)for(const f of g.facets){
+    const L=R.L.get(f.id),p=L.e.profile,psf=coilPsf(p),key=[p.sheetW,p.gauge,L.e.color,psf].join('|');
+    if(!m.has(key))m.set(key,{width:p.sheetW,gauge:p.gauge,color:L.e.color,psf,profiles:[],lens:[]});
+    const r=m.get(key);
+    if(!r.profiles.includes(p.name))r.profiles.push(p.name);
+    for(const x of L.pieces)r.lens.push(x.len/12);
+  }
+  return [...m.values()].filter(r=>r.lens.length).map(({lens,...r})=>{
+    // plf: pounds per foot of this coil. Without a weight, a weight limit cannot be applied.
+    const lf=lens.reduce((a,b)=>a+b,0),plf=r.psf==null?null:r.psf*r.width/12,byWt=plf&&c.maxLb?c.maxLb/plf:Infinity;
+    const cap=Math.min(c.maxFt||Infinity,byWt),longest=Math.max(...lens),over=longest*k>cap+EPS,room=over?longest:cap/k;
+    let n=1,each=lf;
+    if(cap<Infinity){
+      // First fit, longest first, settles how many coils it takes. Dealing the same pieces to
+      // the emptiest of that many coils evens them out, and is kept when it still fits.
+      lens.sort((a,b)=>b-a);
+      const fit=[];
+      for(const l of lens){const i=fit.findIndex(b=>b+l<=room+EPS);if(i<0)fit.push(l);else fit[i]+=l;}
+      const even=fit.map(()=>0);
+      for(const l of lens)even[even.indexOf(Math.min(...even))]+=l;
+      n=fit.length;each=Math.min(Math.max(...fit),Math.max(...even));
+    }
+    // Ordered by the whole foot, short of pushing a coil past the limit it was packed to.
+    each=Math.max(each*k,Math.min(Math.ceil(each*k-EPS),over?Infinity:cap));
+    const wt=v=>plf==null?null:v*plf;
+    return {...r,lf,sf:lf*r.width/12,lb:wt(lf),n,each,eachLb:wt(each),ordLf:n*each,ordSf:n*each*r.width/12,ordLb:wt(n*each),over,noWt:plf==null};
+  }).sort((a,b)=>a.width-b.width||a.gauge.localeCompare(b.gauge)||a.color.localeCompare(b.color));
+}
+const fmtLb=v=>v==null?'–':Math.round(v).toLocaleString('en-US')+' lb';
+const fmtFt=ft=>P.units.fmt==='mm'?(ft*0.3048).toFixed(1)+' m':Math.round(ft*10)/10===Math.round(ft)?Math.round(ft).toLocaleString('en-US')+' ft':fmtRun(ft);
+const COIL_COLS=['Coil width','Gauge','Color','Profiles','Panel length','Coil area','Weight','Coils','Length each','Weight each','Order length'];
+const coilCells=r=>[fmtU(r.width),r.gauge,r.color,r.profiles.join('; '),fmtRun(r.lf),fmtArea(r.sf),fmtLb(r.lb),r.n,fmtFt(r.each),fmtLb(r.eachLb),fmtFt(r.ordLf)];
+function coilNotes(rows){
+  const c=P.coil,out=[],lim=[c.maxFt&&`${fmtFt(c.maxFt)}`,c.maxLb&&fmtLb(c.maxLb)].filter(Boolean);
+  out.push(`Coil area is stretch out times panel length. ${lim.length?`No coil is over ${lim.join(' or ')}`:'No coil limit is set, so each row is one coil'}${c.extra?`, and each carries ${+c.extra.toFixed(2)}% over its panels`:''}. No panel is made across two coils.`);
+  if(rows.some(r=>r.over))out.push('A panel is longer than the coil limit allows, so those coils are ordered over it: '+rows.filter(r=>r.over).map(r=>`${fmtU(r.width)} ${r.gauge}`).join(', ')+'.');
+  if(rows.some(r=>r.noWt))out.push('No weight is known for '+[...new Set(rows.filter(r=>r.noWt).map(r=>r.gauge||'a blank gauge'))].join(', ')+(c.maxLb?', so the weight limit is not applied to it':'')+'. Give the profile a coil weight.');
+  return out;
 }
 const angleText=p=>p.shape?'shape':[p.angB,p.angT].filter(a=>a!=null).map(a=>Math.abs(a).toFixed(1)+'°').filter((a,i,l)=>l.indexOf(a)===i).join(' / ');
 const lapText=p=>p.lapTop||p.lapBot?`${p.lapTop?fmtLen(p.lapTop):'–'} / ${p.lapBot?fmtLen(p.lapBot):'–'}`:'';
@@ -815,14 +871,15 @@ function facetPlan(L,w,h,o={}){
     ops.push({k:'text',x:X((x0+x1)/2),y:Y((y0+y1)/2)+5,s:L.f.mark,size:15,bold:true,anchor:'middle',color:'accent'});
     return {ops,tx};
   }
-  // Shrink the ID, then turn it along the panel, then move it outside on a leader.
-  const yb=Y(y0),yt=Y(y1),ripY=new Map();let below=0,above=0;
+  // The ID reads up the panel, where a strip has length to spare and the text can be large;
+  // it lies flat only where that is the bigger of the two, and goes outside on a leader last.
+  const yb=Y(y0),yt=Y(y1),ripY=new Map(),CAP=13;let below=0,above=0;
   for(const p of L.pieces){
     const pw=(p.cb-p.ca)*s,xm=(p.ca+p.cb)/2,sl=p.slabs.find(v=>v.xa<=xm&&v.xb>=xm),t=sl?(xm-sl.xa)/(sl.xb-sl.xa):0;
     const lo=sl?Math.max(p.y0,sl.loA+t*(sl.loB-sl.loA)):p.y0,hi=sl?Math.min(p.y1,sl.hiA+t*(sl.hiB-sl.hiA)):p.y1,ok=hi>lo,ym=ok?(lo+hi)/2:(p.y0+p.y1)/2;
     const ph=(ok?hi-lo:0)*s,c=UN([xm,ym]),w1=textW(p.id,1);
-    const flat=Math.min(9,(pw-3)/w1),turned=Math.min(9,pw*0.7,(ph-3)/w1);
-    if(!th&&flat>=6&&ph>=flat+3)ops.push({k:'text',x:c[0],y:c[1]+flat*0.35,s:p.id,size:flat,anchor:'middle',color:'ink',id:1});
+    const flat=th?0:Math.min(CAP,(pw-3)/w1,ph-3),turned=Math.min(CAP,pw*0.7,(ph-3)/w1);
+    if(flat>=6&&flat>turned)ops.push({k:'text',x:c[0],y:c[1]+flat*0.35,s:p.id,size:flat,anchor:'middle',color:'ink',id:1});
     else if(turned>=4.5){
       const d=th/DEG,r=th?(d>0?d-90:d+90):-90,a=(r+90)*DEG;
       ops.push({k:'text',x:c[0]+turned*0.35*Math.cos(a),y:c[1]+turned*0.35*Math.sin(a),s:p.id,size:turned,anchor:'middle',rot:r,color:'ink',id:1});
@@ -873,7 +930,7 @@ function facetPlan(L,w,h,o={}){
 }
 const SVGC={ink:'var(--text)',muted:'var(--muted)',accent:'var(--accent)',tA:'var(--tA)',tB:'var(--tB)',seam:'var(--seam)',bg:'var(--bg)',rule:'var(--rule2)'};
 const PDFC={ink:[.11,.11,.1],muted:[.42,.4,.37],accent:[.6,.29,.12],tA:[.9,.93,.96],tB:[.8,.86,.92],seam:[.35,.42,.49],bg:[1,1,1],rule:[.78,.76,.72]};
-// Print goes on white paper whatever theme the screen is in, so it takes the PDF's colours.
+// Print goes on white paper whatever theme the screen is in, so it takes the PDF's colors.
 const PRINTC=Object.fromEntries(Object.entries(PDFC).map(([k,v])=>[k,`rgb(${v.map(c=>Math.round(c*255)).join(',')})`]));
 const n2=v=>(+v.toFixed(2)).toString();
 function planSVG(ops,C=SVGC){
@@ -980,7 +1037,7 @@ function reportSheets(date,only){
   for(const l of [P.jobNo&&'Job '+P.jobNo,P.address,date,only?'Package: '+gs[0].pk.name:`${gs.length} package${gs.length>1?'s':''}`].filter(Boolean)){T(M,y,l,{size:11,color:'muted'});y+=15;}
   y+=14;
   const tq=gs.reduce((a,g)=>addQ(a,g.q),q0());
-  table([{h:'Package',w:150*z,b:1},{h:'Profile and colour',w:230*z,wrap:1},{h:'Facets',w:50*z,r:1},{h:'Pieces',w:50*z,r:1},{h:'Linear length',w:80*z,r:1},{h:'Roof area',w:80*z,r:1},{h:'Waste',w:80*z,r:1}],
+  table([{h:'Package',w:150*z,b:1},{h:'Profile and color',w:230*z,wrap:1},{h:'Facets',w:50*z,r:1},{h:'Pieces',w:50*z,r:1},{h:'Linear length',w:80*z,r:1},{h:'Roof area',w:80*z,r:1},{h:'Waste',w:80*z,r:1}],
     [...gs.map(g=>({cells:[g.pk.name,purchasing([g]).map(r=>r.profile+(r.color?' / '+r.color:'')).join('; '),g.facets.length,g.q.count,fmtRun(g.q.lf),fmtArea(g.q.slope),fmtPct(wasteOf(g.q).pct)]})),
      ...(gs.length>1?[{tot:1,cells:['Total','',gs.reduce((a,g)=>a+g.facets.length,0),tq.count,fmtRun(tq.lf),fmtArea(tq.slope),fmtPct(wasteOf(tq).pct)]}]:[])]);
   sub('Starter profiles are generic. Verify coverage, lengths, laps and minimum slope with the panel manufacturer. This package does not check structure, wind uplift, clips or fasteners.',8);
@@ -1018,10 +1075,23 @@ function reportSheets(date,only){
     if(!piecesOf(g).length)continue;
     page('Production cut list: '+g.pk.name);
     sub('Identical ordered lengths together, longest first. Mark each piece with its ID.');
-    table([{h:'Qty',w:40,r:1},{h:'Length',w:74,r:1},{h:'Mark with ID',w:(PW-2*M)-114-250*z,wrap:1},{h:'Profile',w:160*z},{h:'Colour',w:90*z}],
+    table([{h:'Qty',w:40,r:1},{h:'Length',w:74,r:1},{h:'Mark with ID',w:(PW-2*M)-114-250*z,wrap:1},{h:'Profile',w:160*z},{h:'Color',w:90*z}],
       production([g]).map(r=>({cells:[r.qty,fmtLen(r.len),r.ids,r.profile,r.color]})));
-    table([{h:'Profile',w:220*z,b:1},{h:'Colour',w:120*z},{h:'Pieces',w:60*z,r:1},{h:'Linear length',w:100*z,r:1},{h:'Coverage area',w:100*z,r:1},{h:'Gross area',w:100*z,r:1}],
+    table([{h:'Profile',w:220*z,b:1},{h:'Color',w:120*z},{h:'Pieces',w:60*z,r:1},{h:'Linear length',w:100*z,r:1},{h:'Coverage area',w:100*z,r:1},{h:'Gross area',w:100*z,r:1}],
       purchasing([g]).map(r=>({cells:[r.profile,r.color,r.count,fmtRun(r.lf),fmtArea(r.cover),fmtArea(r.gross)]})));
+  }
+  // Coil order: the whole scope as one order, then each package on its own.
+  if(tq.count){
+    page('Coil order');
+    const cw=[58,48,74,150,66,58,56,36,62,62,50],all=coilOrder(gs);
+    const coilTable=(name,rows)=>{
+      if(y+50>BOT)page();
+      T(M,y,name,{size:11,bold:true});y+=16;
+      table(COIL_COLS.map((h,i)=>({h,w:cw[i]*z,r:i>3,b:!i,wrap:i===3})),rows.map(r=>({cells:coilCells(r)})),{size:8});
+    };
+    coilTable(gs.length>1?'All packages':gs[0].pk.name,all);
+    if(gs.length>1)for(const g of gs)if(g.q.count)coilTable(g.pk.name,coilOrder([g]));
+    for(const l of coilNotes(all))sub(l,8);
   }
   // Quantities and waste.
   page('Quantities and waste');
@@ -1051,9 +1121,12 @@ function buildCSV(kind,only){return withFmt(P.units.csv,()=>csvRows(kind,only));
 function csvRows(kind,only){
   compute();
   const q=v=>/[",\n]/.test(v=String(v??''))?'"'+v.replace(/"/g,'""')+'"':v,gs=scopePks(only),d=v=>+v.toFixed(4);
-  const rows=kind==='len'
-    ?[['Qty','Length','Length (in)','IDs','Profile','Colour'],...production(gs).map(r=>[r.qty,fmtLen(r.len),d(r.len),r.pieces.map(p=>p.id).join(' '),r.profile,r.color])]
-    :[['ID','Package','Facet','Profile','Colour','Length','Length (in)','Short side (in)','Angle bottom (deg)','Angle top (deg)','Lap top (in)','Lap bottom (in)','Splice','Rip width (in)'],
+  const rows=kind==='coil'
+    ?[['Coil width (in)','Gauge','Color','Profiles','Panel length (ft)','Coil area (sf)','Weight (lb)','Coils','Length each (ft)','Weight each (lb)','Order length (ft)','Order area (sf)','Order weight (lb)'],
+      ...coilOrder(gs).map(r=>[d(r.width),r.gauge,r.color,r.profiles.join('; '),...[r.lf,r.sf,r.lb,r.n,r.each,r.eachLb,r.ordLf,r.ordSf,r.ordLb].map(v=>v==null?'':+v.toFixed(2))])]
+    :kind==='len'
+    ?[['Qty','Length','Length (in)','IDs','Profile','Color'],...production(gs).map(r=>[r.qty,fmtLen(r.len),d(r.len),r.pieces.map(p=>p.id).join(' '),r.profile,r.color])]
+    :[['ID','Package','Facet','Profile','Color','Length','Length (in)','Short side (in)','Angle bottom (deg)','Angle top (deg)','Lap top (in)','Lap bottom (in)','Splice','Rip width (in)'],
       ...gs.flatMap(g=>g.facets.flatMap(f=>{const L=R.L.get(f.id);return L.pieces.map(p=>[p.id,g.pk.name,[f.mark,f.name].filter(Boolean).join(' '),L.e.profile.name,L.e.color,fmtLen(p.len),d(p.len),d(p.short),
         p.angB==null?'':+p.angB.toFixed(2),p.angT==null?'':+p.angT.toFixed(2),p.lapTop||'',p.lapBot||'',p.splice?'REQUIRES SPLICE':'',p.rip==null?'':d(p.rip)]);}))];
   return rows.map(r=>r.map(q).join(',')).join('\r\n')+'\r\n';
@@ -1087,10 +1160,12 @@ function renderInputs(){
     h+=`${sel('Fraction precision','u.prec',[[16,'1/16'],[8,'1/8'],[4,'1/4'],[2,'1/2']],P.units.prec,'int')}${sel('Show areas as','u.area',{sf:'Square feet',sq:'Roofing squares',m2:'Square metres'},P.units.area)}</div>`;
     h+=`<p class="hint">Any field takes any format whatever is chosen here: <code>10'-6 1/2"</code>, <code>10.5 ft</code>, <code>3.2 m</code>, <code>=96+24</code>.</p>`;
     h+=`<h2>Reports</h2><div class="two">${sel('PDF and print lengths','u.pdf',{'':'Same as the screen',...FMTS},P.units.pdf,'selnull')}${sel('CSV lengths','u.csv',{'':'Same as the screen',...FMTS},P.units.csv,'selnull')}</div><p class="hint">CSV files always carry decimal inches as well.</p>`;
+    h+=`<h2>Coil order</h2><div class="three">${fld('Max coil length, ft','c.maxFt','numopt',P.coil.maxFt??'','data-min="1" placeholder="no limit"')}${fld('Max coil weight, lb','c.maxLb','numopt',P.coil.maxLb??'','data-min="1" placeholder="no limit"')}${fld('Extra per coil, %','c.extra','num',P.coil.extra,'data-min="0"')}</div>`;
+    h+=`<p class="hint">The cut list's Coil order view splits each coil to stay under both limits. Weight comes from the profile's gauge.</p>`;
     h+=`<h2>Panel IDs</h2>${fld('Longest ID the rollformer can mark','p.idMax','int',P.idMax,'inputmode="numeric" data-min="4"')}<p class="hint">IDs read facet-strip-piece, e.g. R2-07B. Anything longer than this is flagged.</p>`;
     const prof=P.profiles.find(x=>x.id===d.profileId)||P.profiles[0],kinds=new Set(P.facets.map(x=>x.kind));
     h+=`<h2>Defaults for every facet</h2>${sel('Profile','d.profileId',Object.fromEntries(P.profiles.map(x=>[x.id,x.name])),d.profileId)}`;
-    h+=`<div class="two">${fld('Colour','d.color','text',d.color,`placeholder="${esc(prof.color||'from profile')}"`)}${fld('End lap','d.lap','lenopt',len(d.lap),`data-min="0" placeholder="${esc(fmtField(prof.lap))} from profile"`)}</div>`;
+    h+=`<div class="two">${fld('Color','d.color','text',d.color,`placeholder="${esc(prof.color||'from profile')}"`)}${fld('End lap','d.lap','lenopt',len(d.lap),`data-min="0" placeholder="${esc(fmtField(prof.lap))} from profile"`)}</div>`;
     h+=`<div class="two">${sel('Split long runs','d.split',SPLITS,d.split)}${sel('Lap placement','d.lapMode',LAPMODES,d.lapMode)}</div>`;
     if(d.lapMode==='stagger')h+=fld('Stagger alternate strips by','d.stagger','len',len(d.stagger),'data-min="0"');
     if(d.lapMode==='purlin')h+=`<div class="two">${fld('Purlin spacing','d.purlinSp','len',len(d.purlinSp),'data-min="1"')}${fld('First purlin above eave','d.purlin0','len',len(d.purlin0))}</div>`;
@@ -1102,11 +1177,12 @@ function renderInputs(){
     const q=curProf();
     h+=`<h2>Profile library<span><button class="sb" data-act="cloneProfile">Clone</button>${P.profiles.length>1?'<button class="sb" data-act="delProfile">Delete</button>':''}</span></h2>`;
     h+=sel('Profile','s.prof',Object.fromEntries(P.profiles.map(x=>[x.id,x.name])),q.id);
-    h+=`${fld('Name','q.name','text',q.name)}${fld('Manufacturer','q.mfr','text',q.mfr)}<div class="two">${fld('Gauge','q.gauge','text',q.gauge)}${fld('Colour','q.color','text',q.color)}</div>`;
+    h+=`${fld('Name','q.name','text',q.name)}${fld('Manufacturer','q.mfr','text',q.mfr)}<div class="two">${fld('Gauge','q.gauge','text',q.gauge)}${fld('Color','q.color','text',q.color)}</div>`;
     h+=sel('Type','q.type',PTYPES,q.type);
     h+=`<div class="three">${fld('Coverage width','q.cover','len',len(q.cover),'data-min="1"')}${fld('Stretch out','q.sheetW','len',len(q.sheetW),'data-min="1"')}${fld('Rib height','q.rib','len',len(q.rib),'data-min="0"')}`;
     h+=`${fld('Max length','q.maxLen','len',len(q.maxLen),'data-min="0"')}${fld('Min length','q.minLen','len',len(q.minLen),'data-min="0"')}${fld('End lap','q.lap','len',len(q.lap),'data-min="0"')}</div>`;
     h+=`<div class="two">${sel('Lays from','q.hand',{either:'Either edge',left:'Left edge only',right:'Right edge only'},q.hand)}${fld('Min slope, rise in 12','q.minSlope','num',q.minSlope,'data-min="0"')}</div>`;
+    h+=fld('Coil weight, lb per sq ft (optional)','q.psf','numopt',q.psf??'',`data-min="0.01" placeholder="${coilPsf({gauge:q.gauge})?coilPsf({gauge:q.gauge})+' from the gauge':'gauge not recognized, enter a weight'}"`);
     h+=`<p class="hint">A max length of 0 means no limit. The starter profiles are generic: check every number with the manufacturer.</p>`;
     h+=`<h2>Share<span><button class="sb" data-act="expProfiles">Export library</button><button class="sb" data-act="impProfiles">Import library</button></span></h2><p class="hint">A library is a JSON file. Importing adds its profiles to this project.</p>`;
   }else if(S.t==='package'||!f){
@@ -1222,8 +1298,16 @@ function renderMain(keepTx){
   }
 }
 function cutHTML(){
-  const views={loc:'By location',len:'By length (production)',sum:'Summary'};
+  const views={loc:'By location',len:'By length (production)',sum:'Summary',coil:'Coil order'};
   let h=`<div class="seg">${Object.entries(views).map(([k,l])=>`<button data-act="cutView" data-v="${k}" class="${S.cut===k?'on':''}">${l}</button>`).join('')}</div>`;
+  if(S.cut==='coil'){
+    const tbl=(name,rows)=>`<h3>${esc(name)}</h3><table class="t"><tr>${COIL_COLS.map((c,i)=>`<th${i>3?' class="r"':''}>${c}</th>`).join('')}</tr>${rows.map(r=>`<tr>${coilCells(r).map((c,i)=>`<td class="${i>3?'r':i?'':'id'}">${esc(c)}</td>`).join('')}</tr>`).join('')}</table>`;
+    const all=coilOrder(R.pk);
+    if(!all.length)return h+'<p class="spec">No pieces yet.</p>';
+    if(R.pk.length>1)h+=tbl('All packages',all);
+    for(const g of R.pk)if(g.q.count)h+=tbl(g.pk.name,coilOrder([g]));
+    return h+`<p class="spec" style="margin-top:18px">${coilNotes(all).map(esc).join('<br>')}<br>Limits and the extra per coil are <button class="sb" data-act="sel" data-t="project">project settings</button>.</p>`;
+  }
   for(const g of R.pk){
     h+=`<h3>${esc(g.pk.name)}</h3>`;
     if(!piecesOf(g).length){h+='<p class="spec">No pieces yet.</p>';continue;}
@@ -1232,11 +1316,11 @@ function cutHTML(){
       for(const f of g.facets)for(const p of R.L.get(f.id).pieces)h+=`<tr><td class="id">${esc(p.id)}</td><td>${esc([f.mark,f.name].filter(Boolean).join(' '))}</td><td class="r">${fmtLen(p.len)}</td><td class="r">${p.square?'':fmtLen(p.short)}</td><td class="r">${angleText(p)}</td><td class="r">${lapText(p)}</td><td class="spl">${p.splice?'REQUIRES SPLICE':''}</td><td class="r">${p.rip!=null?fmtLen(p.rip):''}</td></tr>`;
       h+='</table>';
     }else if(S.cut==='len'){
-      h+=`<table class="t"><tr><th class="r">Qty</th><th class="r">Length</th><th>Mark with ID</th><th>Profile</th><th>Colour</th></tr>`;
+      h+=`<table class="t"><tr><th class="r">Qty</th><th class="r">Length</th><th>Mark with ID</th><th>Profile</th><th>Color</th></tr>`;
       for(const r of production([g]))h+=`<tr><td class="r">${r.qty}</td><td class="r">${fmtLen(r.len)}</td><td class="mk">${esc(r.ids)}</td><td>${esc(r.profile)}</td><td>${esc(r.color)}</td></tr>`;
       h+=`<tr class="tot"><td class="r">${g.q.count}</td><td class="r">${fmtRun(g.q.lf)}</td><td></td><td></td><td></td></tr></table>`;
     }else{
-      h+=`<table class="t"><tr><th>Profile</th><th>Colour</th><th class="r">Pieces</th><th class="r">Linear length</th><th class="r">Coverage area</th><th class="r">Gross area</th></tr>`;
+      h+=`<table class="t"><tr><th>Profile</th><th>Color</th><th class="r">Pieces</th><th class="r">Linear length</th><th class="r">Coverage area</th><th class="r">Gross area</th></tr>`;
       for(const r of purchasing([g]))h+=`<tr><td class="id">${esc(r.profile)}</td><td>${esc(r.color)}</td><td class="r">${r.count}</td><td class="r">${fmtRun(r.lf)}</td><td class="r">${fmtArea(r.cover)}</td><td class="r">${fmtArea(r.gross)}</td></tr>`;
       h+='</table>';
     }
@@ -1333,7 +1417,7 @@ function applyField(el){
   else if(root==='o'){if(v==null)delete f.ov[ks[0]];else f.ov[ks[0]]=v;}
   else if(b==='k.prefix')pk.prefix=v.trim().slice(0,3);
   else{
-    let o={p:P,u:P.units,k:pk,d:P.def,f,y:f&&f.layout,m:f&&f.params,q:curProf()}[root];
+    let o={p:P,u:P.units,c:P.coil,k:pk,d:P.def,f,y:f&&f.layout,m:f&&f.params,q:curProf()}[root];
     for(const kk of ks.slice(0,-1))o=o[kk];
     o[ks[ks.length-1]]=v;
   }
@@ -1495,6 +1579,7 @@ const CMD={
   print(){fillPrint(today());setTimeout(()=>window.print(),50);},
   csvLoc(){download(fileBase()+'-cut-list-by-location.csv',buildCSV('loc'),'text/csv');},
   csvLen(){download(fileBase()+'-cut-list-by-length.csv',buildCSV('len'),'text/csv');},
+  csvCoil(){download(fileBase()+'-coil-order.csv',buildCSV('coil'),'text/csv');},
   help(){$('#dlgHelp').showModal();},
 };
 $('#toolbar').addEventListener('click',e=>{const c=e.target.dataset&&e.target.dataset.cmd;if(c)CMD[c]();});
