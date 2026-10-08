@@ -32,7 +32,7 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   wasteAdds(L, 'split rectangle');
   t.ok(near(L.q.wLap, 30 * 6 * 16 / 144) && near(L.q.wAllow, 480 * 2 / 144), 'laps and allowance are each what they should be');
 
-  // Centred hip triangle -> the cut list is mirror-symmetric and the angle cuts match.
+  // Centered hip triangle -> the cut list is mirror-symmetric and the angle cuts match.
   mk({ def: { allow: { eave: 1 } } }, [{ template: 'tri', params: { w: 331, h: 187.5 }, layout: { start: 'center-seam' } }]);
   L = app.layout('R1');
   const ps = L.pieces, n = ps.length;
@@ -77,7 +77,7 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   t.ok(Number.isNaN(pitch('steep')) && Number.isNaN(pitch('95 deg')), 'bad pitch refused');
   t.eq(app.ev('fmtPitch')(6), '6:12 (26.6°)', 'pitch shown both ways');
   Object.assign(app.P.units, { area: 'sq' }); t.eq(app.ev('fmtArea')(1252), '12.52 sq', 'squares');
-  Object.assign(app.P.units, { area: 'm2' }); t.eq(app.ev('fmtArea')(1000), '92.9 m²', 'square metres');
+  Object.assign(app.P.units, { area: 'm2' }); t.eq(app.ev('fmtArea')(1000), '92.9 m²', 'square meters');
 }
 
 // ===== a rectangle that is not a whole number of panels =====
@@ -98,9 +98,9 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   t.ok(near(L.pieces[0].x1, 247.5) && near(L.pieces[15].rip, 7.5) && near(L.pieces[15].ca, 0), 'starting right numbers from the right and rips the left');
   app.type('y.start', 'sel', 'center-seam');
   L = app.layout('R1');
-  t.ok(near(L.pieces[0].rip, L.pieces[L.pieces.length - 1].rip) && L.strips.some(s => near(s.a, 123.75)), 'centred seam: equal rips, seam on the centreline');
+  t.ok(near(L.pieces[0].rip, L.pieces[L.pieces.length - 1].rip) && L.strips.some(s => near(s.a, 123.75)), 'centered seam: equal rips, seam on the centerline');
   app.type('y.start', 'sel', 'center-panel');
-  t.ok(app.layout('R1').strips.some(s => near((s.a + s.b) / 2, 123.75) && near(s.b - s.a, 16)), 'centred panel');
+  t.ok(app.layout('R1').strips.some(s => near((s.a + s.b) / 2, 123.75) && near(s.b - s.a, 16)), 'centered panel');
   app.type('y.start', 'sel', 'left'); app.type('y.offset', 'len', '5');
   L = app.layout('R1');
   t.ok(near(L.pieces[0].rip, 5) && near(L.pieces[1].ca, 5), 'a typed offset makes a 5" starter');
@@ -265,7 +265,7 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   const split = () => L.strips.filter(s => s.pieces.length > 1).flatMap(s => s.pieces);
   t.ok(split().some(p => p.raw < 24), 'with no minimum, a run just past the lap line leaves a stub');
   app.ev('S').prof = 'p2'; app.type('q.minLen', 'len', '24'); L = app.layout('R1'); checkRuns('rebalanced');
-  t.ok(split().every(p => p.raw >= 24 - 1e-9) && L.warn.some(w => /lap moved/.test(w)), 'a remainder under the minimum borrows from its neighbour, with a warning');
+  t.ok(split().every(p => p.raw >= 24 - 1e-9) && L.warn.some(w => /lap moved/.test(w)), 'a remainder under the minimum borrows from its neighbor, with a warning');
   app.type('q.minLen', 'len', '0');
 
   app.select('R1');
@@ -282,7 +282,7 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   t.ok(L.strips.every(s => s.pieces.length <= 2), 'and staggering adds no joints');
 
   app.type('d.lapMode', 'sel', 'purlin'); app.type('d.purlinSp', 'len', '50'); app.type('d.purlin0', 'len', '7'); L = app.layout('R1'); checkRuns('purlins');
-  t.ok(L.strips.filter(s => s.pieces.length > 1).every(s => near((s.pieces[0].y1 - 3 - 7) % 50, 0, 1e-6)), 'purlins: every lap is centred on a purlin line');
+  t.ok(L.strips.filter(s => s.pieces.length > 1).every(s => near((s.pieces[0].y1 - 3 - 7) % 50, 0, 1e-6)), 'purlins: every lap is centered on a purlin line');
   t.ok(near(mid()[0].y1, 210), 'the highest purlin the piece can reach (207), plus half the lap');
   app.type('d.purlinSp', 'len', '300'); app.type('d.purlin0', 'len', '290'); L = app.layout('R1');
   t.ok(L.warn.some(w => /could not be snapped/.test(w)), 'a lap with no purlin in reach is reported');
