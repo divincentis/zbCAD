@@ -169,6 +169,33 @@ const base = (tasks, extra = {}) => ({ v: 1, name: 'f', start: '2026-10-12', sta
   t.eq([ev('fTrade'), names().length], ['', 4], 'and so does assigning the last untraded task');
 }
 
+// ---- the critical-path toggle hides the red and nothing else
+{
+  // Two critical tasks, one with float, so "no red" is told apart from "nothing was critical".
+  h.make({ rows: [{ name: 'crit-a', dur: 3 }, { name: 'crit-b', dur: 4, pred: '1' }, { name: 'slack', dur: 2, pred: '1' }] });
+  const RED = /class="row grid crit|class="c"|ar c"|var\(--crit\)|critical/;
+  const drawn = () => { ev('render')(); ev('doPrint')('letter'); return [h.$('#tbody').innerHTML, h.$('#gbody').innerHTML, h.$('#print').innerHTML]; };
+  const facts = () => [h.S.crit, h.P.tasks.map(x => [x._crit, x._tf]), ev('exportMSP')().match(/<Critical>1/g).length];
+  const before = facts();
+  let [tb, gb, pr] = drawn();
+  t.ok(ev('showCrit')() && /row grid crit/.test(tb) && /class="c"/.test(gb) && /ar c"/.test(gb) && /Red = critical/.test(pr), 'on by default: names, bars, arrows and the print legend are red');
+  t.eq((tb.match(/row grid crit/g) || []).length, 2, 'and only the two critical rows');
+
+  ev('CMD').crit(); [tb, gb, pr] = drawn();
+  t.ok(!RED.test(tb) && !RED.test(gb) && !RED.test(pr), 'off: no red in the table, the chart or the printed pages');
+  t.ok(/Gray = baseline/.test(pr) && !/> · Gray/.test(pr), 'the print legend keeps the rest, with no stray separator');
+  t.eq(facts(), before, 'the schedule itself is untouched: count, float and the export still mark the critical tasks');
+  t.ok(/<b>2<\/b> critical/.test(h.$('#foot').innerHTML), 'and the on-screen count stays');
+  t.eq(JSON.parse(h.store.get('cpm.prefs')).crit, false, 'the choice is remembered');
+  ev('fShow="crit"'); t.eq(ev('visible')().length, 2, 'the Critical filter still works with the red off'); ev('fShow=""');
+
+  ev('prefs').color = 'trade'; cell(h.P.tasks[0], 'trade', 'Concrete'); [tb, gb, pr] = drawn();
+  t.ok(!RED.test(gb) && /Bar color = trade · Gray/.test(pr), 'by trade: no red outline either');
+  ev('CMD').crit(); [tb, gb, pr] = drawn();
+  t.ok(/stroke:var\(--crit\)/.test(gb) && /red outline = critical/.test(pr), 'back on: the outline and its legend return');
+  ev('prefs').color = 'crit';
+}
+
 // ---- the template picker greets a first visit, and only a first visit
 {
   const first = boot(page), dlg = first.$('#dlgNew');
