@@ -201,11 +201,11 @@ menu button{border:1px solid var(--rule2);background:var(--bg);border-radius:5px
   <div class="help">
     <p><b>Enter each facet from field dimensions.</b> A facet is one flat face of roof or wall, seen from in front with the eave or base at the bottom. Pick a template and type its sizes; the preview follows every keystroke. <b>Slope</b> mode takes dimensions as taped on the roof. <b>Plan + pitch</b> takes horizontal dimensions and stretches everything square to the eave by the slope factor.</p>
     <p><b>Lengths</b> can be typed any way: <code>126</code>, <code>126 1/2</code>, <code>10'-6 1/2"</code>, <code>10.5 ft</code>, <code>3.2 m</code>, or a sum like <code>=96+24</code>. What a bare number means, and how lengths and areas are shown, are project settings. Pitch takes <code>6:12</code>, <code>26.6 deg</code> or <code>50%</code>.</p>
-    <p><b>Edges</b> are typed from the shape and can be changed by clicking the edge on the drawing. Each type takes its allowance from the package, and any one edge can override it. Eave, valley and wall-base allowances push the panel past the line; ridge, headwall, hip and top allowances cut it back; rake, sidewall, jamb and corner allowances pull the layout in from the edge, which changes the edge rip and not the length. The dashed line on the drawing is where the metal ends.</p>
+    <p><b>Edges</b> are typed from the shape and can be changed by clicking the edge on the drawing. Each type takes its allowance from the project defaults, and any one edge can override it. Eave, valley and wall-base allowances push the panel past the line; ridge, headwall, hip and top allowances cut it back; rake, sidewall, jamb and corner allowances pull the layout in from the edge, which changes the edge rip and not the length. The dashed line on the drawing is where the metal ends.</p>
     <p><b>Panel IDs</b> read <code>R2-07B</code>: facet R2, seventh strip from the start edge, second piece up from the eave. A strip made in one piece has no letter. IDs belong to a location and never change when a list is re-sorted.</p>
     <p><b>Long runs</b> are split when they pass the profile's maximum length, and the pieces together are longer than the run by one lap per joint. On standing seam every transverse seam is marked as needing a splice. Laps can line up across the facet, stagger on alternate strips, or snap to purlin lines.</p>
     <p><b>Waste</b> is coverage area less roof area, broken down by where it comes from: allowances, laps, angle cuts and notches, edge rips, and rounding.</p>
-    <p><b>Packages</b> group facets ordered together and hold their defaults. <b>Profiles</b> are a project library; the starter set is generic and must be checked against the manufacturer.</p>
+    <p><b>Packages</b> group facets ordered together, each with its own subtotal and PDF. Profile, laps and allowances are set once as project defaults, and a facet can override them. <b>Profiles</b> are a project library; the starter set is generic and must be checked against the manufacturer.</p>
     <p>The project is kept in this browser as you work. <b>Save</b> writes a file to keep or send. Nothing here checks structure, wind uplift, clips or fasteners.</p>
   </div>
   <form method="dialog"><menu><button>Close</button></menu></form>
@@ -321,10 +321,10 @@ function starterProfiles(){
     mkProfile('p4','12" SSMR mechanical seam','ssmr-mech',12,16.5,2,0.5),mkProfile('p5','16" SSMR mechanical seam','ssmr-mech',16,20.5,2,0.5),mkProfile('p6','18" SSMR mechanical seam','ssmr-mech',18,22.5,2,0.5),
     {...mkProfile('p7','36" exposed fastener (R / PBR)','exposed',36,38,1.25,1),gauge:'26 ga'}];
 }
-const newDefaults=()=>({profileId:'p2',color:'',allow:{eave:1},split:'max',lap:null,lapMode:'aligned',stagger:24,purlinSp:60,purlin0:0,round:0.25,ripMin:6,wind:''});
+const newDefaults=()=>({profileId:'p2',color:'',allow:{eave:1},split:'max',lap:null,lapMode:'aligned',stagger:24,purlinSp:60,purlin0:0,round:0.25,ripMin:6});
 function newProject(){
-  const p={app:'zbcad-panels',v:1,name:'Untitled project',jobNo:'',address:'',units:{bare:'in',fmt:'frac',prec:16,area:'sf',pdf:null,csv:null},sheet:'letter',idMax:10,seq:10,profiles:starterProfiles(),packages:[],facets:[]};
-  p.packages.push({id:'k'+p.seq++,name:'Main roof',prefix:'',facetIds:[],def:newDefaults()});
+  const p={app:'zbcad-panels',v:1,name:'Untitled project',jobNo:'',address:'',units:{bare:'in',fmt:'frac',prec:16,area:'sf',pdf:null,csv:null},sheet:'letter',idMax:10,seq:10,profiles:starterProfiles(),def:newDefaults(),packages:[],facets:[]};
+  p.packages.push({id:'k'+p.seq++,name:'Main roof',prefix:'',facetIds:[]});
   return p;
 }
 function nextMark(p,kind){
@@ -332,7 +332,7 @@ function nextMark(p,kind){
   for(let i=1;;i++)if(!used.has(c+i))return c+i;
 }
 const newParams=()=>({w:240,h:144,top:96,inset:null,apex:null,skew:24,side:'right',h2:192});
-const newLayout=()=>({dir:'eave',dirEdge:0,angle:0,start:'left',offset:0,balance:false});
+const newLayout=()=>({dir:'eave',dirEdge:0,angle:0,start:'left',offset:0,balance:false,wind:''});
 function newFacet(p,pk,o={}){
   const kind=o.kind||'roof';
   const f=Object.assign({id:'f'+p.seq++,mark:nextMark(p,kind),name:'',kind,inputMode:'slope',pitch:null,template:'rect',params:newParams(),
@@ -358,11 +358,11 @@ function checkProject(raw){
   const u=obj(raw.units);
   const p={app:'zbcad-panels',v:1,name:str(raw.name,'Untitled project'),jobNo:str(raw.jobNo),address:str(raw.address),
     units:{bare:pick(u.bare,{in:1,ft:1,mm:1},'in'),fmt:pick(u.fmt,UNIT_NOTE,'frac'),prec:[2,4,8,16].includes(u.prec)?u.prec:16,area:pick(u.area,{sf:1,sq:1,m2:1},'sf'),pdf:pick(u.pdf,UNIT_NOTE,null),csv:pick(u.csv,UNIT_NOTE,null)},
-    sheet:raw.sheet==='tabloid'?'tabloid':'letter',idMax:num(raw.idMax,10,4,40),seq:1,profiles:[],packages:[],facets:[]};
+    sheet:raw.sheet==='tabloid'?'tabloid':'letter',idMax:num(raw.idMax,10,4,40),seq:1,profiles:[],def:null,packages:[],facets:[]};
   const ids=new Set(),fresh=v=>{let id=str(v);while(!id||ids.has(id))id='x'+p.seq++;ids.add(id);return id;};
   p.profiles=checkProfiles(raw.profiles,fresh);
   if(!p.profiles.length)p.profiles=starterProfiles().map(q=>({...q,id:fresh(q.id)}));
-  const pids=new Set(p.profiles.map(q=>q.id)),facets=new Map();
+  const pids=new Set(p.profiles.map(q=>q.id)),facets=new Map(),WIND={left:1,right:1};
   for(const f of arr(raw.facets)){
     const m=obj(f.params),y=obj(f.layout),o=obj(f.ov),kind=f.kind==='wall'?'wall':'roof',n0=newParams();
     const pts=(Array.isArray(f.pts)?f.pts:[]).filter(q=>Array.isArray(q)&&Number.isFinite(+q[0])&&Number.isFinite(+q[1])).map(q=>[+q[0],+q[1]]);
@@ -379,18 +379,36 @@ function checkProject(raw){
       params:{w:num(m.w,n0.w,1),h:num(m.h,n0.h,1),top:num(m.top,n0.top,0),inset:num(m.inset,null),apex:num(m.apex,null),skew:num(m.skew,n0.skew),side:m.side==='left'?'left':'right',h2:num(m.h2,n0.h2,1)},
       custom,pts,walk,edges:(Array.isArray(f.edges)?f.edges:[]).map(e=>({type:pick(obj(e).type,EDGE,null),allow:num(obj(e).allow,null,-600,600)})),
       openings:arr(f.openings).map(q=>({x:num(q.x,0),y:num(q.y,0),w:num(q.w,36,0),h:num(q.h,36,0)})),ov,north:num(f.north,null,-360,360),
-      layout:{dir:pick(y.dir,{eave:1,edge:1,angle:1},'eave'),dirEdge:num(y.dirEdge,0,0,999),angle:num(y.angle,0,-89,89),start:pick(y.start,STARTS,'left'),offset:num(y.offset,0),balance:!!y.balance}});
+      layout:{dir:pick(y.dir,{eave:1,edge:1,angle:1},'eave'),dirEdge:num(y.dirEdge,0,0,999),angle:num(y.angle,0,-89,89),start:pick(y.start,STARTS,'left'),offset:num(y.offset,0),balance:!!y.balance,wind:pick(y.wind,WIND,'')}});
   }
+  const checkDef=d0=>{
+    const d=obj(d0),n0=newDefaults(),allow={};
+    for(const t of Object.keys(EDGE))if(num(obj(d.allow)[t],0,-600,600))allow[t]=+d.allow[t];
+    return {profileId:pids.has(d.profileId)?d.profileId:p.profiles[0].id,color:str(d.color),allow,
+      split:pick(d.split,SPLITS,'max'),lap:num(d.lap,null,0,600),lapMode:pick(d.lapMode,LAPMODES,'aligned'),stagger:num(d.stagger,n0.stagger,0,6000),
+      purlinSp:num(d.purlinSp,n0.purlinSp,0,6000),purlin0:num(d.purlin0,0,-6000,6000),round:[0.125,0.25,0.5,1].includes(d.round)?d.round:0.25,ripMin:num(d.ripMin,6,0,600)};
+  };
+  // Defaults used to be held by each package, and so did prevailing wind. A file from then
+  // gives the project its first package's defaults; where a later package differed in
+  // something a facet can override, its facets take that as an override, and every facet
+  // takes its package's wind, so the layout that was saved is the layout that opens.
+  const old=!raw.def||typeof raw.def!=='object';
+  if(!old)p.def=checkDef(raw.def);
   const placed=new Set();
   for(const k of arr(raw.packages)){
-    const d=obj(k.def),n0=newDefaults(),allow={};
-    for(const t of Object.keys(EDGE))if(num(obj(d.allow)[t],0,-600,600))allow[t]=+d.allow[t];
-    const facetIds=(Array.isArray(k.facetIds)?k.facetIds:[]).filter(i=>facets.has(i)&&!placed.has(i)).map(i=>{placed.add(i);return facets.get(i).id;});
-    p.packages.push({id:fresh(k.id),name:str(k.name,'Package'),prefix:str(k.prefix,'',3),facetIds,def:{profileId:pids.has(d.profileId)?d.profileId:p.profiles[0].id,color:str(d.color),allow,
-      split:pick(d.split,SPLITS,'max'),lap:num(d.lap,null,0,600),lapMode:pick(d.lapMode,LAPMODES,'aligned'),stagger:num(d.stagger,n0.stagger,0,6000),
-      purlinSp:num(d.purlinSp,n0.purlinSp,0,6000),purlin0:num(d.purlin0,0,-6000,6000),round:[0.125,0.25,0.5,1].includes(d.round)?d.round:0.25,ripMin:num(d.ripMin,6,0,600),wind:pick(d.wind,{left:1,right:1},'')}});
+    const d=obj(k.def),kd=old?checkDef(d):null,mine=[];
+    const facetIds=(Array.isArray(k.facetIds)?k.facetIds:[]).filter(i=>facets.has(i)&&!placed.has(i)).map(i=>{placed.add(i);mine.push(facets.get(i));return facets.get(i).id;});
+    for(const f of mine)if(!f.layout.wind)f.layout.wind=pick(d.wind,WIND,'');
+    if(old&&!p.def)p.def=kd;
+    else if(old)for(const f of mine){
+      const lapOf=x=>x.lap??p.profiles.find(q=>q.id===(f.ov.profileId??x.profileId)).lap,was=f.ov.lap??lapOf(kd);
+      for(const key of ['profileId','split','lapMode','stagger'])if(f.ov[key]==null&&kd[key]!==p.def[key])f.ov[key]=kd[key];
+      if(was!==lapOf(p.def))f.ov.lap=was;
+    }
+    p.packages.push({id:fresh(k.id),name:str(k.name,'Package'),prefix:str(k.prefix,'',3),facetIds});
   }
-  if(!p.packages.length)p.packages.push({id:fresh(''),name:'Main roof',prefix:'',facetIds:[],def:{...newDefaults(),profileId:p.profiles[0].id}});
+  if(!p.def)p.def=checkDef();
+  if(!p.packages.length)p.packages.push({id:fresh(''),name:'Main roof',prefix:'',facetIds:[]});
   // A facet no package claims is still someone's work; it lands in the first package.
   for(const [k,f] of facets){p.facets.push(f);if(!placed.has(k))p.packages[0].facetIds.push(f.id);}
   // New ids are a letter plus seq, so seq has to clear every number already in use.
@@ -409,12 +427,12 @@ const curF=()=>P.facets.find(f=>f.id===S.f)||null;
 const curProf=()=>P.profiles.find(q=>q.id===S.prof)||P.profiles[0];
 const pkgOf=f=>P.packages.find(k=>k.facetIds.includes(f.id))||P.packages[0];
 const facetsOf=k=>k.facetIds.map(id=>P.facets.find(f=>f.id===id)).filter(Boolean);
-// A facet's working settings: the package defaults with the facet's overrides on top, and the
+// A facet's working settings: the project defaults with the facet's overrides on top, and the
 // profile's own lap where neither says otherwise.
 function eff(f){
-  const pk=pkgOf(f),d=pk.def,o=f.ov,profile=P.profiles.find(q=>q.id===(o.profileId??d.profileId))||P.profiles[0];
+  const pk=pkgOf(f),d=P.def,o=f.ov,profile=P.profiles.find(q=>q.id===(o.profileId??d.profileId))||P.profiles[0];
   return {profile,W:profile.cover,maxLen:profile.maxLen,minLen:profile.minLen,lap:o.lap??d.lap??profile.lap,split:o.split??d.split,lapMode:o.lapMode??d.lapMode,stagger:o.stagger??d.stagger,
-    purlinSp:d.purlinSp,purlin0:d.purlin0,round:d.round,ripMin:d.ripMin,allow:d.allow,wind:d.wind,color:d.color||profile.color,prefix:pk.prefix,idMax:P.idMax};
+    purlinSp:d.purlinSp,purlin0:d.purlin0,round:d.round,ripMin:d.ripMin,allow:d.allow,color:d.color||profile.color,prefix:pk.prefix,idMax:P.idMax};
 }
 
 // ---- facet geometry ---------------------------------------------------------------
@@ -699,7 +717,7 @@ function layoutFacet(f,e){
   if(L.pieces.some(p=>p.id.length>e.idMax))warn.push(`Panel IDs here run longer than the ${e.idMax}-character limit set for the project.`);
   const side=y.start==='left'||y.start==='right'?y.start:null;
   if(side&&e.profile.hand!=='either'&&e.profile.hand!==side)warn.push(`This profile lays from the ${e.profile.hand}, but the layout starts at the ${side} edge.`);
-  if(side&&e.wind===side)warn.push(`Panels start at the ${side} edge, so every sidelap opens toward the prevailing wind. Start from the other edge.`);
+  if(side&&y.wind===side)warn.push(`Panels start at the ${side} edge, so every sidelap opens toward the prevailing wind. Start from the other edge.`);
   return L;
 }
 
@@ -1018,7 +1036,7 @@ function reportSheets(date,only){
     if(g.q.splices)sub(`Splice locations: ${g.facets.filter(f=>R.L.get(f.id).q.splices).map(f=>`${f.mark} ${R.L.get(f.id).q.splices}`).join(', ')}; ${g.q.splices} in all.`,8);
   }
   if(gs.length>1)table(qCols,[qRow('Project total',tq,1)],{size:8});
-  sub('Waste is coverage area less roof slope area. Gross area is the sheet width times ordered length: the metal bought.',8);
+  sub('Waste is coverage area less roof slope area. Gross area is the stretch out times ordered length: the metal bought.',8);
   // Title blocks last, once the sheet count is known.
   pages.forEach((p,i)=>{
     pg=p;rule(PH-M-12,M,PW-M,0.8);
@@ -1060,9 +1078,9 @@ const opt=(o,v)=>(Array.isArray(o)?o:Object.entries(o)).map(([k,l])=>`<option va
 const fld=(label,b,t,v,x='')=>`<label>${label}<em></em><input data-b="${b}" data-t="${t}" value="${esc(v)}" ${x}></label>`;
 const sel=(label,b,o,v,t='sel')=>`<label>${label}<select data-b="${b}" data-t="${t}">${opt(o,v)}</select></label>`;
 const len=v=>v==null?'':fmtField(v);
-const OV='<u title="Overrides the package default">●</u>';
+const OV='<u title="Overrides the project default">●</u>';
 function renderInputs(){
-  const pk=curPk(),f=curF(),d=pk.def;let h='';
+  const pk=curPk(),f=curF(),d=P.def;let h='';
   if(S.t==='project'){
     h+=`<h2>Project</h2>${fld('Project name','p.name','text',P.name)}<div class="two">${fld('Job number','p.jobNo','text',P.jobNo)}${sel('Sheet size','p.sheet',{letter:'Letter landscape',tabloid:'Tabloid landscape'},P.sheet)}</div>${fld('Address','p.address','text',P.address)}`;
     h+=`<h2>Units</h2><div class="two">${sel('A bare number means','u.bare',{in:'Inches',ft:'Feet',mm:'Millimetres'},P.units.bare)}${sel('Show lengths as','u.fmt',FMTS,P.units.fmt)}`;
@@ -1070,30 +1088,31 @@ function renderInputs(){
     h+=`<p class="hint">Any field takes any format whatever is chosen here: <code>10'-6 1/2"</code>, <code>10.5 ft</code>, <code>3.2 m</code>, <code>=96+24</code>.</p>`;
     h+=`<h2>Reports</h2><div class="two">${sel('PDF and print lengths','u.pdf',{'':'Same as the screen',...FMTS},P.units.pdf,'selnull')}${sel('CSV lengths','u.csv',{'':'Same as the screen',...FMTS},P.units.csv,'selnull')}</div><p class="hint">CSV files always carry decimal inches as well.</p>`;
     h+=`<h2>Panel IDs</h2>${fld('Longest ID the rollformer can mark','p.idMax','int',P.idMax,'inputmode="numeric" data-min="4"')}<p class="hint">IDs read facet-strip-piece, e.g. R2-07B. Anything longer than this is flagged.</p>`;
+    const prof=P.profiles.find(x=>x.id===d.profileId)||P.profiles[0],kinds=new Set(P.facets.map(x=>x.kind));
+    h+=`<h2>Defaults for every facet</h2>${sel('Profile','d.profileId',Object.fromEntries(P.profiles.map(x=>[x.id,x.name])),d.profileId)}`;
+    h+=`<div class="two">${fld('Colour','d.color','text',d.color,`placeholder="${esc(prof.color||'from profile')}"`)}${fld('End lap','d.lap','lenopt',len(d.lap),`data-min="0" placeholder="${esc(fmtField(prof.lap))} from profile"`)}</div>`;
+    h+=`<div class="two">${sel('Split long runs','d.split',SPLITS,d.split)}${sel('Lap placement','d.lapMode',LAPMODES,d.lapMode)}</div>`;
+    if(d.lapMode==='stagger')h+=fld('Stagger alternate strips by','d.stagger','len',len(d.stagger),'data-min="0"');
+    if(d.lapMode==='purlin')h+=`<div class="two">${fld('Purlin spacing','d.purlinSp','len',len(d.purlinSp),'data-min="1"')}${fld('First purlin above eave','d.purlin0','len',len(d.purlin0))}</div>`;
+    h+=`<div class="two">${sel('Round cuts up to','d.round',[[0.125,'1/8"'],[0.25,'1/4"'],[0.5,'1/2"'],[1,'1"']],d.round,'float')}${fld('Min edge rip','d.ripMin','len',len(d.ripMin),'data-min="0"')}</div>`;
+    h+=`<h2>Edge allowances</h2><div class="two">`;
+    for(const t of [...(kinds.has('wall')&&!kinds.has('roof')?[]:KIND_EDGES.roof),...(kinds.has('wall')?KIND_EDGES.wall:[])])h+=fld(ALLOW_LABEL[t],'d.allow.'+t,'len',len(d.allow[t]||0));
+    h+=`</div><p class="hint">Every edge of that type in the project takes this unless the edge itself overrides it. Overhangs and extensions lengthen the panel; cutbacks shorten it; insets move the layout limit and change the edge rip.</p>`;
   }else if(S.t==='profiles'){
     const q=curProf();
     h+=`<h2>Profile library<span><button class="sb" data-act="cloneProfile">Clone</button>${P.profiles.length>1?'<button class="sb" data-act="delProfile">Delete</button>':''}</span></h2>`;
     h+=sel('Profile','s.prof',Object.fromEntries(P.profiles.map(x=>[x.id,x.name])),q.id);
     h+=`${fld('Name','q.name','text',q.name)}${fld('Manufacturer','q.mfr','text',q.mfr)}<div class="two">${fld('Gauge','q.gauge','text',q.gauge)}${fld('Colour','q.color','text',q.color)}</div>`;
     h+=sel('Type','q.type',PTYPES,q.type);
-    h+=`<div class="three">${fld('Coverage width','q.cover','len',len(q.cover),'data-min="1"')}${fld('Sheet width','q.sheetW','len',len(q.sheetW),'data-min="1"')}${fld('Rib height','q.rib','len',len(q.rib),'data-min="0"')}`;
+    h+=`<div class="three">${fld('Coverage width','q.cover','len',len(q.cover),'data-min="1"')}${fld('Stretch out','q.sheetW','len',len(q.sheetW),'data-min="1"')}${fld('Rib height','q.rib','len',len(q.rib),'data-min="0"')}`;
     h+=`${fld('Max length','q.maxLen','len',len(q.maxLen),'data-min="0"')}${fld('Min length','q.minLen','len',len(q.minLen),'data-min="0"')}${fld('End lap','q.lap','len',len(q.lap),'data-min="0"')}</div>`;
     h+=`<div class="two">${sel('Lays from','q.hand',{either:'Either edge',left:'Left edge only',right:'Right edge only'},q.hand)}${fld('Min slope, rise in 12','q.minSlope','num',q.minSlope,'data-min="0"')}</div>`;
     h+=`<p class="hint">A max length of 0 means no limit. The starter profiles are generic: check every number with the manufacturer.</p>`;
     h+=`<h2>Share<span><button class="sb" data-act="expProfiles">Export library</button><button class="sb" data-act="impProfiles">Import library</button></span></h2><p class="hint">A library is a JSON file. Importing adds its profiles to this project.</p>`;
   }else if(S.t==='package'||!f){
-    const prof=P.profiles.find(x=>x.id===d.profileId)||P.profiles[0],kinds=new Set(facetsOf(pk).map(x=>x.kind));
     h+=`<h2>Package<span><button class="sb" data-act="pkgPdf" title="PDF of this package alone">PDF</button>${P.packages.length>1?'<button class="sb" data-act="delPackage">Delete</button>':''}</span></h2>`;
     h+=`<div class="two">${fld('Name','k.name','text',pk.name)}${fld('ID prefix (optional)','k.prefix','text',pk.prefix,'maxlength="3" placeholder="e.g. B"')}</div>`;
-    h+=`<h2>Defaults for its facets</h2>${sel('Profile','d.profileId',Object.fromEntries(P.profiles.map(x=>[x.id,x.name])),d.profileId)}`;
-    h+=`<div class="two">${fld('Colour','d.color','text',d.color,`placeholder="${esc(prof.color||'from profile')}"`)}${fld('End lap','d.lap','lenopt',len(d.lap),`data-min="0" placeholder="${esc(fmtField(prof.lap))} from profile"`)}</div>`;
-    h+=`<div class="two">${sel('Split long runs','d.split',SPLITS,d.split)}${sel('Lap placement','d.lapMode',LAPMODES,d.lapMode)}</div>`;
-    if(d.lapMode==='stagger')h+=fld('Stagger alternate strips by','d.stagger','len',len(d.stagger),'data-min="0"');
-    if(d.lapMode==='purlin')h+=`<div class="two">${fld('Purlin spacing','d.purlinSp','len',len(d.purlinSp),'data-min="1"')}${fld('First purlin above eave','d.purlin0','len',len(d.purlin0))}</div>`;
-    h+=`<div class="three">${sel('Round cuts up to','d.round',[[0.125,'1/8"'],[0.25,'1/4"'],[0.5,'1/2"'],[1,'1"']],d.round,'float')}${fld('Min edge rip','d.ripMin','len',len(d.ripMin),'data-min="0"')}${sel('Prevailing wind','d.wind',{'':'Not given',left:'From the left',right:'From the right'},d.wind)}</div>`;
-    h+=`<h2>Edge allowances</h2><div class="two">`;
-    for(const t of [...(kinds.has('wall')&&!kinds.has('roof')?[]:KIND_EDGES.roof),...(kinds.has('wall')?KIND_EDGES.wall:[])])h+=fld(ALLOW_LABEL[t],'d.allow.'+t,'len',len(d.allow[t]||0));
-    h+=`</div><p class="hint">Every edge of that type takes this unless the edge itself overrides it. Overhangs and extensions lengthen the panel; cutbacks shorten it; insets move the layout limit and change the edge rip.</p>`;
+    h+=`<p class="hint">A package groups facets that are ordered together: it gets its own subtotal and its own PDF. Profile, laps and edge allowances are <button class="sb" data-act="sel" data-t="project">project defaults</button>, and any facet can override them.</p>`;
     if(!f)h+=`<p class="hint">This package has no facets yet. <button class="sb" data-act="addFacet" data-id="${esc(pk.id)}">+ Facet</button></p>`;
   }else{
     const L=R.L.get(f.id),m=f.params,wall=f.kind==='wall',y=f.layout,e=L.e,o=f.ov,hl=wall?'height':f.inputMode==='plan'?'plan run':'slope';
@@ -1127,15 +1146,16 @@ function renderInputs(){
     }
     h+=`<p class="hint bad" id="shapeMsg"></p><h2>Edges</h2><table class="mini"><tr><th></th><th>Length</th><th>Type</th><th>Allowance</th></tr>`;
     for(const ed of L.edges)h+=`<tr><td class="n">${ed.i+1}</td><td class="n">${fmtLen(ed.len)}</td><td><select data-b="e.${ed.i}.type" data-t="selnull">${opt({'':`${EDGE[ed.auto]} (auto)`,...Object.fromEntries(KIND_EDGES[f.kind].map(t=>[t,EDGE[t]]))},(f.edges[ed.i]||{}).type)}</select></td><td><input data-b="e.${ed.i}.allow" data-t="lenopt" value="${esc(len((f.edges[ed.i]||{}).allow))}" placeholder="${esc(fmtField(e.allow[ed.type]||0))}"></td></tr>`;
-    h+=`</table><p class="hint">Or click an edge on the drawing. A blank allowance takes the package's value for that edge type.</p>`;
+    h+=`</table><p class="hint">Or click an edge on the drawing. A blank allowance takes the project's value for that edge type.</p>`;
     h+=`<h2>Layout</h2><div class="two">${sel('Panels run','y.dir',{eave:'Square to the eave',edge:'Parallel to an edge',angle:'At an angle off square'},y.dir)}`;
     h+=y.dir==='edge'?sel('Which edge','y.dirEdge',L.edges.map(ed=>[ed.i,`${ed.i+1} ${EDGE[ed.type]}`]),y.dirEdge,'int'):y.dir==='angle'?fld('Angle, degrees','y.angle','num',y.angle,'data-min="-89"'):'<span></span>';
     h+=`${sel('Start at','y.start',STARTS,y.start)}${fld('Offset','y.offset','len',len(y.offset))}</div>`;
+    h+=sel('Prevailing wind, as this facet is drawn','y.wind',{'':'Not given',left:'From the left',right:'From the right'},y.wind);
     h+=fld('North arrow, degrees clockwise from straight up the drawing (optional)','f.north','numopt',f.north??'','placeholder="none"');
     if(y.start==='left'||y.start==='right')h+=`<label class="chk"><input type="checkbox" data-b="y.balance" data-t="chk"${y.balance?' checked':''}>Balance the two edge rips</label>`;
-    h+=`<h2>Overrides of ${esc(pk.name)}</h2>`;
-    h+=`<label>Profile${mark('profileId')}<select data-b="o.profileId" data-t="selnull">${opt({'':`Package default: ${(P.profiles.find(x=>x.id===d.profileId)||P.profiles[0]).name}`,...Object.fromEntries(P.profiles.map(x=>[x.id,x.name]))},o.profileId)}</select></label>`;
-    h+=`<div class="two"><label>Split long runs${mark('split')}<select data-b="o.split" data-t="selnull">${opt({'':'Package default',...SPLITS},o.split)}</select></label><label>Lap placement${mark('lapMode')}<select data-b="o.lapMode" data-t="selnull">${opt({'':'Package default',...LAPMODES},o.lapMode)}</select></label>`;
+    h+=`<h2>Overrides of the project defaults</h2>`;
+    h+=`<label>Profile${mark('profileId')}<select data-b="o.profileId" data-t="selnull">${opt({'':`Project default: ${(P.profiles.find(x=>x.id===d.profileId)||P.profiles[0]).name}`,...Object.fromEntries(P.profiles.map(x=>[x.id,x.name]))},o.profileId)}</select></label>`;
+    h+=`<div class="two"><label>Split long runs${mark('split')}<select data-b="o.split" data-t="selnull">${opt({'':'Project default',...SPLITS},o.split)}</select></label><label>Lap placement${mark('lapMode')}<select data-b="o.lapMode" data-t="selnull">${opt({'':'Project default',...LAPMODES},o.lapMode)}</select></label>`;
     h+=`<label>End lap${mark('lap')}<em></em><input data-b="o.lap" data-t="lenopt" data-min="0" value="${esc(len(o.lap))}" placeholder="${esc(fmtField(d.lap??e.profile.lap))}"></label>${e.lapMode==='stagger'?`<label>Stagger${mark('stagger')}<em></em><input data-b="o.stagger" data-t="lenopt" data-min="0" value="${esc(len(o.stagger))}" placeholder="${esc(fmtField(d.stagger))}"></label>`:''}</div>`;
     h+=`<h2>Openings<span><button class="sb" data-act="addOpen">+ Opening</button></span></h2>`;
     if(f.openings.length){
@@ -1197,7 +1217,7 @@ function renderMain(keepTx){
   $('#cv').innerHTML=planSVG(plan.ops)+hs;
   if(S.edge!=null&&L.edges[S.edge]){
     const e=L.edges[S.edge],ed=f.edges[e.i]||{},pop=$('#edgePop');
-    pop.innerHTML=`<b>Edge ${e.i+1}<button class="sb" data-act="closeEdge">×</button></b><label>Type<select data-b="e.${e.i}.type" data-t="selnull">${opt({'':`${EDGE[e.auto]} (auto)`,...Object.fromEntries(KIND_EDGES[f.kind].map(t=>[t,EDGE[t]]))},ed.type)}</select></label><label>${ALLOW_LABEL[e.type]}<em></em><input data-b="e.${e.i}.allow" data-t="lenopt" value="${esc(len(ed.allow))}" placeholder="${esc(fmtField(L.e.allow[e.type]||0))} from package"></label>`;
+    pop.innerHTML=`<b>Edge ${e.i+1}<button class="sb" data-act="closeEdge">×</button></b><label>Type<select data-b="e.${e.i}.type" data-t="selnull">${opt({'':`${EDGE[e.auto]} (auto)`,...Object.fromEntries(KIND_EDGES[f.kind].map(t=>[t,EDGE[t]]))},ed.type)}</select></label><label>${ALLOW_LABEL[e.type]}<em></em><input data-b="e.${e.i}.allow" data-t="lenopt" value="${esc(len(ed.allow))}" placeholder="${esc(fmtField(L.e.allow[e.type]||0))} from project"></label>`;
     pop.style.left=Math.max(6,Math.min(w-220,S.edgeXY[0]))+'px';pop.style.top=Math.max(6,Math.min(h-150,S.edgeXY[1]))+'px';pop.hidden=false;
   }
 }
@@ -1235,7 +1255,7 @@ function qtyHTML(){
     if(tr.length)h+=`<h4>Trim, linear length by edge type</h4><p class="spec">${tr.map(k=>`${EDGE[k]} ${fmtRun(g.q.trim[k])}`).join(' · ')}<br>Each facet is counted on its own, so a ridge, hip or valley shared by two facets is in here twice.</p>`;
     if(g.q.splices)h+=`<p class="spec">Splice locations to price: ${g.q.splices}.</p>`;
   }
-  return h+`<p class="spec" style="margin-top:18px">Waste is coverage area less roof slope area, and the five causes add up to it. Gross area is sheet width times ordered length.</p>`;
+  return h+`<p class="spec" style="margin-top:18px">Waste is coverage area less roof slope area, and the five causes add up to it. Gross area is stretch out times ordered length.</p>`;
 }
 function warnHTML(){
   if(!R.warn.length)return '<p class="spec">Nothing to flag.</p>';
@@ -1313,7 +1333,7 @@ function applyField(el){
   else if(root==='o'){if(v==null)delete f.ov[ks[0]];else f.ov[ks[0]]=v;}
   else if(b==='k.prefix')pk.prefix=v.trim().slice(0,3);
   else{
-    let o={p:P,u:P.units,k:pk,d:pk.def,f,y:f&&f.layout,m:f&&f.params,q:curProf()}[root];
+    let o={p:P,u:P.units,k:pk,d:P.def,f,y:f&&f.layout,m:f&&f.params,q:curProf()}[root];
     for(const kk of ks.slice(0,-1))o=o[kk];
     o[ks[ks.length-1]]=v;
   }
@@ -1356,6 +1376,7 @@ function mirrorFacet(c){
   c.openings=c.openings.map(o=>({...o,x:x0+x1-o.x-o.w}));
   const y=c.layout;
   if(y.start==='left'||y.start==='right')y.start=y.start==='left'?'right':'left';else y.offset=-y.offset;
+  if(y.wind)y.wind=y.wind==='left'?'right':'left';
   y.angle=-y.angle;if(c.north!=null)c.north=-c.north;
   return c;
 }
@@ -1379,7 +1400,7 @@ const ACT={
     if(document.body.dataset)document.body.dataset.pane=t==='facet'&&el.dataset.go?'view':'inputs';
     refresh();return false;
   },
-  addPackage(){const k={id:'k'+P.seq++,name:'Package '+(P.packages.length+1),prefix:'',facetIds:[],def:{...newDefaults(),profileId:curPk().def.profileId}};P.packages.push(k);S.pk=k.id;S.t='package';},
+  addPackage(){const k={id:'k'+P.seq++,name:'Package '+(P.packages.length+1),prefix:'',facetIds:[]};P.packages.push(k);S.pk=k.id;S.t='package';},
   delPackage(){
     const k=curPk(),n=k.facetIds.length;if(P.packages.length<2||(n&&!confirm(`Delete ${k.name} and its ${n} facet${n>1?'s':''}?`)))return false;
     P.facets=P.facets.filter(f=>!k.facetIds.includes(f.id));P.packages=P.packages.filter(x=>x!==k);S.t='package';
@@ -1396,7 +1417,7 @@ const ACT={
   delProfile(){
     const q=curProf();if(P.profiles.length<2)return false;
     P.profiles=P.profiles.filter(x=>x!==q);const fb=P.profiles[0].id;
-    for(const k of P.packages)if(k.def.profileId===q.id)k.def.profileId=fb;
+    if(P.def.profileId===q.id)P.def.profileId=fb;
     for(const f of P.facets)if(f.ov.profileId===q.id)delete f.ov.profileId;
     S.prof=fb;
   },

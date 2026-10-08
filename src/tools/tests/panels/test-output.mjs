@@ -28,8 +28,9 @@ const DATE = 'Oct 8, 2026';
   const p = app.ev('sampleProject')();
   p.name = 'Hip roof (test)'; p.jobNo = '26-114'; p.address = '12 Mill Rd';
   p.profiles.find(q => q.id === 'p2').maxLen = 180;
-  p.packages.push({ id: 'kw', name: 'East wall', prefix: '', facetIds: [], def: { ...app.ev('newDefaults')(), profileId: 'p7', color: 'Galvalume', allow: { base: 1 } } });
-  const wall = app.ev('newFacet')(p, p.packages[1], { kind: 'wall', name: 'North gable', template: 'gable' });
+  p.packages.push({ id: 'kw', name: 'East wall', prefix: '', facetIds: [] });
+  p.profiles.find(q => q.id === 'p7').color = 'Galvalume'; p.def.allow.base = 1;
+  const wall = app.ev('newFacet')(p, p.packages[1], { kind: 'wall', name: 'North gable', template: 'gable', ov: { profileId: 'p7' } });
   Object.assign(wall.params, { w: 360, h: 120, h2: 210 });
   wall.openings.push({ x: 61, y: 0, w: 38, h: 84 });
   app.load(p);
@@ -160,12 +161,21 @@ const DATE = 'Oct 8, 2026';
   const odd = check({ profiles: [{ cover: 'wide', type: 'nope', maxLen: -5 }, 7], packages: [{ facetIds: ['a', 'ghost'], def: { profileId: 'gone', split: 'sideways', round: 0.3, allow: { eave: 'x', hip: 2 } } }, 7],
     facets: [{ id: 'a', template: 'custom', pts: [[0, 0], ['a', 1]], inputMode: 'plan', pitch: 'steep', params: { w: -3 }, layout: { start: 'sideways', angle: 400 }, edges: [{ type: 'eave', allow: 2 }, { type: 'bogus' }, null], openings: [null, { w: 20 }], ov: { split: 'nope', lap: 4 } },
       { id: 'b', kind: 'wall', template: 'tri' }, null] });
-  const f = odd.facets[0], d = odd.packages[0].def;
+  const f = odd.facets[0], d = odd.def;
   t.eq([odd.profiles.length, odd.profiles[0].cover, odd.profiles[0].type, odd.profiles[0].maxLen], [1, 16, 'ssmr-snap', 480], 'bad profile values fall back');
-  t.eq([odd.packages.length, d.profileId, d.split, d.round, d.allow], [1, odd.profiles[0].id, 'max', 0.25, { hip: 2 }], 'bad package values fall back');
+  t.eq([odd.packages.length, d.profileId, d.split, d.round, d.allow], [1, odd.profiles[0].id, 'max', 0.25, { hip: 2 }], 'bad default values fall back');
   t.eq([f.template, f.pitch, f.params.w, f.layout.start, f.layout.angle, f.edges, f.openings.length, f.ov], ['rect', null, 240, 'left', 0, [{ type: 'eave', allow: 2 }, { type: null, allow: null }, { type: null, allow: null }], 1, { lap: 4 }], 'bad facet values fall back');
   t.eq(odd.facets[1].template, 'rect', 'a roof template on a wall falls back');
   t.eq(odd.packages[0].facetIds, [odd.facets[0].id, odd.facets[1].id], 'an unknown facet id is dropped and an unclaimed facet is adopted');
+  {
+    // Defaults were once per package: the first package's become the project's, and a later
+    // package's differences survive as overrides on its facets.
+    const was = { profiles: saved.profiles, facets: [{ id: 'a' }, { id: 'b' }, { id: 'c', ov: { split: 'eave' } }],
+      packages: [{ facetIds: ['a'], def: { profileId: 'p2', split: 'max', lap: 4, allow: { eave: 2 } } }, { facetIds: ['b', 'c'], def: { profileId: 'p7', split: 'equal', allow: { eave: 9 } } }] };
+    const now = check(was), [a, b, c] = now.facets;
+    t.eq([now.def.profileId, now.def.lap, now.def.allow, now.packages.map(k => Object.keys(k).sort())], ['p2', 4, { eave: 2 }, [['facetIds', 'id', 'name', 'prefix'], ['facetIds', 'id', 'name', 'prefix']]], 'older file: the first package\'s defaults become the project\'s');
+    t.eq([a.ov, b.ov, c.ov], [{}, { profileId: 'p7', split: 'equal', lap: 6 }, { split: 'eave', profileId: 'p7', lap: 6 }], 'older file: a later package\'s profile, split and lap carry over as facet overrides');
+  }
   app.load(odd);
   t.ok(app.ev('compute')().total.count > 0, 'and the result lays out');
 
