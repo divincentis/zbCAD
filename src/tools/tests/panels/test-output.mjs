@@ -1,0 +1,222 @@
+// What leaves the page: quantities, cut list views, the drawing plan, the PDF package, CSV
+// and saved files, and the edits that reach them through the inputs pane.
+import {boot, suite} from './harness.mjs';
+const t = suite(), app = boot();
+const near = (a, b, tol = 1e-6) => Math.abs(a - b) <= tol;
+const DATE = 'Oct 8, 2026';
+
+// ===== first visit opens the sample =====
+{
+  const R = app.ev('compute')();
+  t.eq(app.P.facets.map(f => f.mark), ['R1', 'R2', 'R3', 'R4'], 'sample facets are R1-R4');
+  // A 40 x 28 hip roof has 1,120 sf of plan area whatever its facets look like.
+  t.ok(near(R.total.plan, 40 * 28, 1e-6) && near(R.total.slope, 40 * 28 * Math.hypot(12, 6) / 12, 1e-6), 'sample: plan area is the footprint, slope area is that over cos(pitch)');
+  const ids = R.pk[0].facets.flatMap(f => R.L.get(f.id).pieces.map(p => p.id));
+  t.ok(ids.length > 0 && new Set(ids).size === ids.length, 'piece IDs are unique across the project');
+  const q = R.total, parts = q.wAllow + q.wLap + q.wAngle + q.wRip + q.wRound;
+  t.ok(Math.abs(parts - (q.cover - q.slope)) < 0.01, 'acceptance: waste components sum to the waste total within 0.01 sf');
+  t.ok(near(app.ev('wasteOf')(q).sf, q.cover - q.slope) && q.gross > q.cover, 'waste is coverage less roof; gross is more than coverage');
+  t.ok(near(q.cover, q.lf * 16 / 12) && near(q.gross, q.lf * 20 / 12), 'coverage and gross are linear length x coverage and sheet width');
+  app.flush();
+  t.ok(JSON.parse(app.store.get('panels.autosave')).facets.length === 4, 'and it is autosaved');
+  t.eq(app.P.profiles.map(p => p.cover), [12, 16, 18, 12, 16, 18, 36], 'starter profiles: 12/16/18 SSMR in both seam types and 36" exposed');
+  t.ok(app.P.profiles.every(p => /verify with manufacturer/.test(p.mfr)), 'each marked to verify with the manufacturer');
+}
+
+// ===== packages, cut list views, drawing, package output =====
+{
+  const p = app.ev('sampleProject')();
+  p.name = 'Hip roof (test)'; p.jobNo = '26-114'; p.address = '12 Mill Rd';
+  p.profiles.find(q => q.id === 'p2').maxLen = 180;
+  p.packages.push({ id: 'kw', name: 'East wall', prefix: '', facetIds: [], def: { ...app.ev('newDefaults')(), profileId: 'p7', color: 'Galvalume', allow: { base: 1 } } });
+  const wall = app.ev('newFacet')(p, p.packages[1], { kind: 'wall', name: 'North gable', template: 'gable' });
+  Object.assign(wall.params, { w: 360, h: 120, h2: 210 });
+  wall.openings.push({ x: 61, y: 0, w: 38, h: 84 });
+  app.load(p);
+  const R = app.ev('compute')(), [roof, walls] = R.pk;
+  t.eq(R.pk.map(g => g.facets.length), [4, 1], 'facets sit in their own package');
+  t.eq(app.P.facets[4].mark, 'W1', 'the wall is W1');
+  t.ok(near(R.total.slope, roof.q.slope + walls.q.slope) && R.total.count === roof.q.count + walls.q.count, 'project total is the sum of the packages');
+  t.ok(roof.q.planKnown && !R.total.planKnown, 'plan area is only reported where every facet has a pitch');
+  t.ok(near(roof.q.trim.hip, 8 * R.L.get(app.P.facets[0].id).edges[1].len / 12), 'trim length adds up by edge type, per facet');
+  t.ok(roof.q.splices === R.L.get(app.P.facets[0].id).q.splices * 2 + R.L.get(app.P.facets[2].id).q.splices * 2 && roof.q.splices > 0, 'splice locations are counted per facet and rolled up');
+  t.eq(walls.q.splices, 0, 'none on the exposed-fastener wall');
+
+  // Production view.
+  const prod = app.ev('production')([roof]);
+  t.ok(prod.every((x, i) => !i || x.len < prod[i - 1].len), 'production rows run longest first, one per ordered length');
+  t.eq(prod.reduce((s, x) => s + x.qty, 0), roof.q.count, 'and account for every piece');
+  t.ok(/R1-\d+A – R1-\d+A/.test(prod[0].ids) && /R2-\d+A – R2-\d+A/.test(prod[0].ids), 'consecutive IDs collapse to a range');
+  t.ok(prod.every(r => r.profile === '16" SSMR snap-lock'), 'each row names its profile');
+  const both = app.ev('production')(R.pk);
+  t.ok(both.some(r => r.color === 'Galvalume' && /^W1-/.test(r.ids)) && both.filter(r => r.color === 'Galvalume').every(r => !/R\d/.test(r.ids)), 'different profile and colour never share a row');
+  const buy = app.ev('purchasing')(R.pk);
+  t.eq(buy.map(r => [r.profile, r.color]), [['16" SSMR snap-lock', ''], ['36" exposed fastener (R / PBR)', 'Galvalume']], 'purchasing summary by profile and colour');
+  t.ok(near(buy[0].count, roof.q.count) && near(buy[1].gross, walls.q.gross), 'with piece count and gross area');
+  // IDs are tied to location: sorting the production list does not renumber anything.
+  t.eq(R.L.get(app.P.facets[0].id).strips[6].pieces.map(x => x.id), ['R1-07'], 'strip 7 of R1 is R1-07 in every view');
+
+  // The drawing plan.
+  const L = R.L.get(app.P.facets[0].id), plan = app.ev('facetPlan')(L, 720, 480), txt = plan.ops.filter(o => o.k === 'text');
+  t.ok(L.pieces.every(p => txt.some(o => o.s === p.id)), 'every piece is labelled on the layout');
+  t.ok(txt.some(o => o.s === 'Eave 480') && txt.some(o => /^Hip /.test(o.s)), 'edges are labelled with type and dimension');
+  t.ok(txt.some(o => o.s === 'SPLICE'), 'splice seams are tagged');
+  t.ok(txt.some(o => o.s === 'panel run') && txt.some(o => o.s === 'lay'), 'run and lay direction arrows');
+  t.ok(plan.ops.some(o => o.k === 'poly' && o.dash && o.stroke === 'accent'), 'the allowance line is dashed outside the facet');
+  const xy = plan.ops.flatMap(o => o.k === 'poly' ? o.pts : o.k === 'line' ? [[o.x1, o.y1], [o.x2, o.y2]] : [[o.x, o.y]]);
+  t.ok(xy.every(q => q[0] >= 0 && q[0] <= 720 && q[1] >= 0 && q[1] <= 480), 'nothing is drawn off the sheet');
+  const s = plan.tx.s, outline = plan.ops.find(o => o.k === 'poly' && o.stroke === 'ink');
+  t.ok(near(outline.pts[1][0] - outline.pts[0][0], 480 * s) && near(outline.pts[0][1] - outline.pts[2][1], L.pts[2][1] * s), 'one scale in both directions');
+  const Lw = R.L.get(app.P.facets[4].id);
+  t.ok(app.ev('facetPlan')(Lw, 720, 480).ops.some(o => o.k === 'text' && /^rip /.test(o.s)) === Lw.pieces.some(p => p.rip != null), 'partial rips are dimensioned when there are any');
+  t.ok(app.ev('planSVG')(plan.ops).includes('>R1-01<'), 'the plan renders to SVG');
+
+  // Acceptance: on Letter, no clipped or overlapping panel IDs. Boxes are taken from the same
+  // font metrics the PDF is set with.
+  const tw = app.ev('textW'), box = o => {
+    const w = tw(o.s, o.size), h = o.size * 0.72;
+    return o.rot ? [o.x - h, o.y - w / 2, o.x, o.y + w / 2] : [o.x - w / 2, o.y - h, o.x + w / 2, o.y];
+  };
+  for (const f of app.P.facets) {
+    const Lf = R.L.get(f.id), ids = app.ev('facetPlan')(Lf, 416, 430).ops.filter(o => o.id).map(box);
+    t.eq(ids.length, Lf.pieces.length, `${f.mark}: every ID is placed`);
+    t.ok(ids.every(b => b[0] >= 0 && b[2] <= 416 && b[1] >= 0 && b[3] <= 430), `${f.mark}: no ID is clipped by the sheet`);
+    let clash = 0;
+    for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) { const a = ids[i], b = ids[j]; if (a[0] < b[2] - 0.2 && b[0] < a[2] - 0.2 && a[1] < b[3] - 0.2 && b[1] < a[3] - 0.2) clash++; }
+    t.eq(clash, 0, `${f.mark}: no two IDs overlap`);
+  }
+
+  // The package.
+  const pages = app.ev('reportPages')(DATE), titles = pages.map(x => x.title), pdf = app.ev('buildPDF')(DATE);
+  t.ok(pages.every(x => x.w === 792 && x.h === 612), 'Letter landscape');
+  t.eq(titles[0], 'Hip roof (test)', 'sheet 1 is the cover');
+  const order = ['Overview: Main roof', 'Facet R1: Front', 'Production cut list: Main roof', 'Quantities and waste'].map(x => titles.indexOf(x));
+  t.ok(order.every((x, i) => x > 0 && (!i || x > order[i - 1])), 'then overview, facet sheets, production list, quantities');
+  t.ok(app.P.facets.every(f => titles.some(x => x.startsWith('Facet ' + f.mark))), 'a sheet for every facet');
+  const text = pg => pg.ops.filter(o => o.k === 'text').map(o => o.s);
+  t.ok(pages.every((pg, i) => text(pg).includes(`Page ${i + 1} of ${pages.length}`) && text(pg).some(x => /lengths in inches · Verify all dimensions in field\./.test(x)) && text(pg).some(x => /Hip roof \(test\) · Job 26-114/.test(x))), 'title block on every sheet: project, units note, verify note, page x of y');
+  const r1 = pages[titles.indexOf('Facet R1: Front')];
+  t.ok(text(r1).some(x => /^R1-\d+A$/.test(x)) && text(r1).includes('SPL') && text(r1).includes('Short side') && r1.ops.some(o => o.k === 'poly'), 'a facet sheet carries the drawing and its location cut list');
+  t.ok(pages.flatMap(x => x.ops).every(o => o.k !== 'text' || (o.x >= 0 && o.x <= 792 && o.y >= 0 && o.y <= 612)), 'no text is placed off a sheet');
+  t.ok(/^%PDF-1\.4\n/.test(pdf) && /%%EOF\n$/.test(pdf), 'PDF header and trailer');
+  t.ok(!/[^\x00-\x7f]/.test(pdf), 'PDF is pure ASCII, so its offsets survive being saved as text');
+  t.eq((pdf.match(/\/Type \/Page /g) || []).length, pages.length, 'one page object per sheet');
+  // Every xref entry has to point at the object it claims to, or readers refuse the file.
+  const xref = +pdf.match(/startxref\n(\d+)/)[1], rows = pdf.slice(xref).match(/\d{10} 00000 n /g);
+  t.ok(pdf.startsWith('xref', xref) && rows.every((r, i) => pdf.startsWith(`${i + 1} 0 obj`, +r.slice(0, 10))), 'xref offsets are exact');
+  t.ok([...pdf.matchAll(/<< \/Length (\d+) >>\nstream\n([\s\S]*?)\nendstream/g)].every(m => +m[1] === m[2].length), 'stream lengths are exact');
+  t.eq(app.ev('buildPDF')(DATE), pdf, 'same project, same bytes');
+  t.eq(app.ev('pdfStr')('6" (x) \\ · ½ ☃ –'), '6" \\(x\\) \\\\ \\267 \\275 ? \\226', 'text escaping');
+  const one = app.ev('reportPages')(DATE, 'kw').map(x => x.title);
+  t.ok(one.includes('Facet W1: North gable') && !one.some(x => /R1/.test(x)) && one.includes('Overview: East wall'), 'a package can be exported alone');
+  app.P.sheet = 'tabloid';
+  t.ok(app.ev('reportPages')(DATE).every(x => x.w === 1224 && x.h === 792), 'Tabloid landscape');
+  app.P.sheet = 'letter';
+  // Print uses the same sheets, as SVG.
+  app.ev('CMD').print();
+  t.ok((app.$('#print').innerHTML.match(/<svg /g) || []).length === pages.length && /size:11in 8.5in/.test(app.$('#pagesize').textContent), 'print lays the same sheets out as SVG at the sheet size');
+
+  // CSV.
+  const loc = app.ev('buildCSV')('loc').trim().split('\r\n'), len = app.ev('buildCSV')('len').trim().split('\r\n');
+  t.eq(loc.length, 1 + R.total.count, 'location CSV: one row per piece');
+  t.ok(loc[1].startsWith('R1-01,Main roof,R1 Front,"16"" SSMR snap-lock",,'), 'with ID, package, facet and profile');
+  t.ok(loc.some(r => /REQUIRES SPLICE/.test(r)), 'and the splice flag');
+  t.eq(len.length, 1 + app.ev('production')(R.pk).length, 'production CSV: one row per length');
+  t.ok(/^\d+,180,180,/.test(len[1]), 'with the length as displayed and in decimal inches');
+  app.P.units.fmt = 'ftin';
+  t.ok(/^\d+,"15'-0""",180,/.test(app.ev('buildCSV')('len').split('\r\n')[1]), 'displayed units follow the project setting');
+  t.ok(app.ev('reportPages')(DATE)[0].ops.some(o => /lengths in feet and inches/.test(o.s)), 'and so does the units note');
+  app.P.units.fmt = 'frac';
+}
+
+// ===== files =====
+{
+  const check = app.ev('checkProject'), saved = JSON.parse(JSON.stringify(app.P));
+  t.eq(JSON.parse(JSON.stringify(check(saved))), saved, 'a saved project reloads unchanged');
+  t.ok(!('pieces' in saved) && !JSON.stringify(saved).includes('R1-01'), 'panels are derived: a save holds inputs only');
+  t.eq(saved.v, 1, 'the schema carries a version');
+  t.throws(() => check(null), /not a panel layout/, 'null rejected');
+  t.throws(() => check({ tasks: [] }), /not a panel layout/, 'another tool\'s file rejected');
+  t.throws(() => check({ ...saved, v: 2 }), /newer version/, 'a newer schema is refused, not guessed at');
+  const odd = check({ profiles: [{ cover: 'wide', type: 'nope', maxLen: -5 }, 7], packages: [{ facetIds: ['a', 'ghost'], def: { profileId: 'gone', split: 'sideways', round: 0.3, allow: { eave: 'x', hip: 2 } } }, 7],
+    facets: [{ id: 'a', template: 'custom', pts: [[0, 0], ['a', 1]], inputMode: 'plan', pitch: 'steep', params: { w: -3 }, layout: { start: 'sideways', angle: 400 }, edges: [{ type: 'eave', allow: 2 }, { type: 'bogus' }, null], openings: [null, { w: 20 }], ov: { split: 'nope', lap: 4 } },
+      { id: 'b', kind: 'wall', template: 'tri' }, null] });
+  const f = odd.facets[0], d = odd.packages[0].def;
+  t.eq([odd.profiles.length, odd.profiles[0].cover, odd.profiles[0].type, odd.profiles[0].maxLen], [1, 16, 'ssmr-snap', 480], 'bad profile values fall back');
+  t.eq([odd.packages.length, d.profileId, d.split, d.round, d.allow], [1, odd.profiles[0].id, 'max', 0.25, { hip: 2 }], 'bad package values fall back');
+  t.eq([f.template, f.pitch, f.params.w, f.layout.start, f.layout.angle, f.edges, f.openings.length, f.ov], ['rect', null, 240, 'left', 0, [{ type: 'eave', allow: 2 }, { type: null, allow: null }, { type: null, allow: null }], 1, { lap: 4 }], 'bad facet values fall back');
+  t.eq(odd.facets[1].template, 'rect', 'a roof template on a wall falls back');
+  t.eq(odd.packages[0].facetIds, [odd.facets[0].id, odd.facets[1].id], 'an unknown facet id is dropped and an unclaimed facet is adopted');
+  app.load(odd);
+  t.ok(app.ev('compute')().total.count > 0, 'and the result lays out');
+
+  const fresh = boot(undefined, { autosave: saved });
+  t.eq(fresh.P.facets.length, 5, 'autosave is restored on boot');
+  t.eq(boot(undefined, { autosave: '{not json' }).P.facets.length, 4, 'a corrupt autosave falls back to the sample');
+  t.eq(boot(undefined, { autosave: { groups: [], facets: [] } }).P.facets.length, 4, 'and so does one in another format');
+
+  // Profile libraries travel between projects.
+  app.load(app.ev('sampleProject')());
+  t.eq(app.ev('importProfiles')({ profiles: [{ name: 'Acme 16', cover: 16, sheetW: 21, type: 'ssmr-mech', lap: 8 }, { id: 'p1', name: 'Acme 24', cover: 24 }] }), 2, 'importing a library adds its profiles');
+  t.eq(app.P.profiles.length, 9, 'alongside the ones already there');
+  t.ok(new Set(app.P.profiles.map(q => q.id)).size === 9, 'under ids of their own');
+  t.throws(() => app.ev('importProfiles')({ profiles: [] }), /no profiles/, 'an empty library is refused');
+}
+
+// ===== editing through the inputs pane =====
+{
+  app.load(app.ev('sampleProject')());
+  app.select('R1');
+  t.ok(/Could not read/.test(app.type('m.w', 'len', 'wide')), 'a bad length is refused with a message');
+  t.ok(/at least/.test(app.type('m.w', 'len', '0', { min: '1' })), 'and so is a zero width');
+  t.eq(app.P.facets[0].params.w, 480, 'neither changed the project');
+  app.type('m.w', 'len', "44'6");
+  t.eq(app.P.facets[0].params.w, 534, 'a good one lands');
+  app.ev('CMD').undo(); t.eq(app.P.facets[0].params.w, 480, 'undo');
+  app.ev('CMD').redo(); t.eq(app.P.facets[0].params.w, 534, 'redo');
+  app.type('u.bare', 'sel', 'ft'); app.type('m.w', 'len', '40');
+  t.eq(app.P.facets[0].params.w, 480, 'a bare number follows the project setting');
+  app.type('u.bare', 'sel', 'in');
+  app.type('f.pitch', 'pitch', '30 deg');
+  t.ok(near(app.P.facets[0].pitch, 12 * Math.tan(Math.PI / 6)), 'pitch can be typed in degrees');
+  app.type('f.pitch', 'pitch', '6:12');
+
+  // A profile switch on the package reaches every facet that does not override it.
+  app.type('d.profileId', 'sel', 'p7');
+  t.ok(app.layout('R1').e.W === 36 && app.layout('R3').e.W === 36, 'the package profile drives its facets');
+  app.type('o.profileId', 'selnull', 'p1');
+  t.ok(app.layout('R1').e.W === 12 && app.layout('R3').e.W === 36, 'unless a facet overrides it');
+  app.ev('S').prof = 'p1'; app.ev('ACT').delProfile(); app.ev('changed')();
+  t.ok(!('profileId' in app.P.facets[0].ov) && app.layout('R1').e.W === 36, 'deleting a profile drops the overrides that used it');
+  app.ev('ACT').cloneProfile(); app.ev('changed')();
+  t.ok(/\(copy\)$/.test(app.P.profiles[app.P.profiles.length - 1].name), 'profiles can be cloned');
+
+  const before = app.layout('R1').pts.map(p => p.map(v => +v.toFixed(6)));
+  app.type('f.template', 'sel', 'custom');
+  t.eq(app.layout('R1').pts.map(p => p.map(v => +v.toFixed(6))), before, 'converting to a custom perimeter keeps the shape');
+  app.type('f.template', 'sel', 'rect');
+  t.eq([app.P.facets[0].params.w, app.P.facets[0].params.h], [480, 168], 'and back to a rectangle keeps its extents');
+  app.type('f.kind', 'sel', 'wall');
+  t.eq([app.P.facets[0].mark, app.P.facets[0].inputMode, app.P.facets[0].pitch], ['W1', 'slope', null], 'a roof made a wall becomes W1, in slope mode');
+  app.type('f.kind', 'sel', 'roof');
+  t.eq(app.P.facets[0].mark, 'R1', 'and back');
+
+  // Mirror duplicate: the opposite hand of an off-centre facet.
+  app.type('f.template', 'sel', 'trap'); app.type('m.top', 'len', '100'); app.type('m.inset', 'lenopt', '60'); app.type('y.start', 'sel', 'left');
+  app.type('e.1.type', 'selnull', 'valley');
+  app.ev('ACT').mirFacet(); app.ev('changed')();
+  const a = app.layout('R1'), b = app.layout(app.P.packages[0].facetIds.map(id => app.P.facets.find(f => f.id === id))[1].mark);
+  t.eq(b.f.mark, 'R5', 'the mirror takes the next free ID and sits after its source');
+  t.eq([b.f.params.inset, b.f.layout.start], [480 - 100 - 60, 'right'], 'inset and start edge are flipped');
+  t.eq(b.edges.map(e => e.type), ['eave', 'hip', 'ridge', 'valley'], 'edge overrides follow their edges across');
+  t.eq(b.pieces.map(p => +p.len.toFixed(4)), a.pieces.map(p => +p.len.toFixed(4)), 'and the cut list matches strip for strip');
+  app.ev('ACT').delFacet(); app.ev('changed')();
+  t.eq(app.P.facets.length, 4, 'delete');
+
+  // Moving between packages.
+  app.ev('ACT').addPackage(); app.ev('changed')();
+  app.select('R1'); app.type('f.$pk', 'sel', app.P.packages[1].id);
+  t.eq(app.P.packages.map(k => k.facetIds.length), [3, 1], 'a facet can be moved to another package');
+  t.eq(app.ev('compute')().pk[1].q.count, app.layout('R1').q.count, 'and its totals go with it');
+}
+t.done();

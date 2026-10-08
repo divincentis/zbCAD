@@ -67,9 +67,13 @@ sh src/tools/tests/schedule/run.sh
 
 Anything a file, an import or the autosave brings in goes through `checkProject` before it can become the open schedule; add new task fields there as well as in `newTask`, or they are dropped on load.
 
-`src/tools/tests/harness.mjs` boots the built single-file bundle inside a Node `vm` with a stubbed DOM, canvas and localStorage, and returns `window.__cadPrototype` (see `testHook.js`). Its `Image`/`FileReader` stubs resolve asynchronously, but they cannot decode anything: the image re-encode path is only meaningfully exercised in a real browser, so keep the pure parts (placement, calibration, transforms) callable with a plain descriptor. That hook exists precisely so the app can be driven and inspected without real DOM events. Prefer driving real commands (`startCommand`, `commitPoint`, `submitCommandText`) over seeding `state` directly, so a test exercises what a user's clicks actually produce.
+`panels.html` (Metal Panel Layout, served as zbcad.com/panels.html) is the same kind of file: hand-edited, one classic script, no build step, with suites that boot it against the scheduler's DOM stub. `test-layout.mjs` opens with the spec's engine-level acceptance tests:
 
-**Test with realistic inputs, not just canonical ones.** Points that happen to land on a quadrant, an endpoint, or an axis take different code paths from the arbitrary points users actually produce with a NEAREST snap — a past associative-dimension bug survived a green suite for exactly this reason. Assert geometric *properties* (tangency, sweep, reflection) rather than only precomputed coordinates.
+```sh
+sh src/tools/tests/panels/run.sh
+```
+
+It follows the CAD's plan/writer split in miniature. `layoutFacet(facet, eff(facet))` is the engine: a pure function of a facet and its working settings (package defaults, facet overrides, profile), in decimal inches with y up the slope, that never draws. `facetPlan` turns a layout into sheet primitives, and `reportPages` lays the whole package out as pages of the same primitives; the on-screen SVG, the print sheets and the PDF writer all consume those, so assert on the layout or the plan rather than on any output. Panels are always derived: a saved project holds inputs only. Its `checkProject` has the same rule as the scheduler's: a new field must be added there as well as in its factory (`newFacet`, `newDefaults`, `mkProfile`, `newLayout`, `newParams`).
 
 ## Runtime architecture
 
