@@ -288,7 +288,7 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
 
   // Facet override of a package default.
   app.type('d.lapMode', 'sel', 'aligned'); app.type('o.split', 'selnull', 'equal');
-  t.ok(app.ev('eff')(app.P.facets[0]).split === 'equal' && app.P.packages[0].def.split === 'max', 'a facet can override the split rule');
+  t.ok(app.ev('eff')(app.P.facets[0]).split === 'equal' && app.P.def.split === 'max', 'a facet can override the split rule');
   app.type('o.split', 'selnull', '');
   t.ok(!('split' in app.P.facets[0].ov), 'and clear the override');
   app.type('o.lap', 'lenopt', '9');
@@ -340,11 +340,21 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
 
 // ===== warnings about profile and wind =====
 {
-  mk({ profile: { type: 'ssmr-snap', minSlope: 3, hand: 'right' }, def: { wind: 'left' } }, [{ template: 'rect', pitch: 2 }]);
+  mk({ profile: { type: 'ssmr-snap', minSlope: 3, hand: 'right' } }, [{ template: 'rect', pitch: 2, layout: { wind: 'left' } }, { template: 'rect', pitch: 4 }]);
   const w = app.layout('R1').warn.join('\n');
   t.ok(/below this profile's minimum of 3:12/.test(w), 'pitch below the profile minimum');
   t.ok(/lays from the right/.test(w), 'layout start against the sidelap hand');
   t.ok(/prevailing wind/.test(w), 'sidelaps open to the wind');
+  t.ok(!/prevailing wind/.test(app.layout('R2').warn.join('\n')), 'wind is set facet by facet');
+  {
+    const check = app.ev('checkProject'), old = JSON.parse(JSON.stringify(app.P));
+    t.eq(check(old).facets.map(f => f.layout.wind), ['left', ''], 'wind is saved with the facet');
+    for (const f of old.facets) delete f.layout.wind;
+    old.packages[0].def = { wind: 'right' };
+    t.eq(check(old).facets.map(f => f.layout.wind), ['right', 'right'], 'a package-wide wind from an older file is handed to its facets');
+    app.select('R1'); app.ev('copyFacet')(true);
+    t.eq(app.P.facets[app.P.facets.length - 1].layout.wind, 'right', 'mirroring a facet mirrors its wind');
+  }
   mk({}, [{ template: 'rect', inputMode: 'plan' }]);
   t.ok(app.layout('R1').warn.some(x => /needs a pitch/.test(x)), 'plan mode without a pitch');
   const thin = app.ev('layoutFacet')(app.P.facets[0], { ...app.ev('eff')(app.P.facets[0]), W: 0.02 });

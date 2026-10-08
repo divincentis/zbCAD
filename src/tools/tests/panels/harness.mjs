@@ -34,13 +34,13 @@ export function boot(page = process.argv[2] || DEFAULT_PAGE, { autosave = null }
     flush() { while (timers.length) timers.shift()(); },
     get P() { return ev('P'); },
     load(project) { ev('loadProject')(project); return ev('P'); },
-    // One package on one profile. `profile` and `def` patch the default profile and the package
+    // One package on one profile. `profile` and `def` patch the default profile and the project
     // defaults; each facet row patches a new facet, with params and layout merged, not replaced.
     make({ profile = {}, def = {}, units = {} } = {}, facets = []) {
       const p = ev('newProject')(), pk = p.packages[0];
       Object.assign(p.units, units);
-      Object.assign(p.profiles.find(q => q.id === pk.def.profileId), profile);
-      Object.assign(pk.def, def);
+      Object.assign(p.profiles.find(q => q.id === p.def.profileId), profile);
+      Object.assign(p.def, def);
       for (const row of facets) {
         const { params, layout, ...rest } = row;
         const f = ev('newFacet')(p, pk, rest);
