@@ -17,7 +17,7 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   let L = app.layout('R1');
   t.eq(L.strips.length, 30, 'acceptance: 30 strips');
   t.ok(L.pieces.length === 30 && L.pieces.every(p => p.len === 302), 'acceptance: each 302"');
-  t.eq([L.pieces[0].id, L.pieces[29].id], ['R1-01', 'R1-30'], 'acceptance: numbered from the start edge, no piece letter');
+  t.eq([...new Set(L.pieces.map(p => p.id))], ['R1-01'], 'thirty identical panels are one ID');
   t.ok(L.pieces.every(p => !p.splice) && L.q.splices === 0, 'no splices on single-piece runs');
   wasteAdds(L, 'rectangle');
 
@@ -26,7 +26,7 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   L = app.layout('R1');
   t.ok(L.strips.length === 30 && L.strips.every(s => s.pieces.length === 2 && near(s.pieces[0].len + s.pieces[1].len, 308)), 'acceptance: 2 pieces per strip totalling 308"');
   t.ok(L.pieces.every(p => p.splice) && L.q.splices === 30, 'acceptance: splice flagged on all 30');
-  t.eq(L.strips[6].pieces.map(p => p.id), ['R1-07A', 'R1-07B'], 'acceptance: piece letters A at the eave, B above');
+  t.ok(L.strips.every(s => s.pieces[0].id === 'R1-01' && s.pieces[1].id === 'R1-02'), 'the eave pieces are one ID and the pieces above them another');
   t.eq(L.strips[0].pieces.map(p => p.len), [240, 68], 'max + remainder: full piece at the eave');
   t.ok(L.warn.some(w => /REQUIRES SPLICE/.test(w)), 'and the splice is warned about');
   wasteAdds(L, 'split rectangle');
@@ -259,12 +259,13 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   const lines = () => [...new Set(L.laps.filter(l => !l.dash).map(l => l.y.toFixed(2)))];
   t.eq(lines(), ['238.50'], 'aligned: one lap line across the whole facet');
   const mid = () => L.strips.find(s => s.a <= 300 && s.b > 300).pieces;
-  t.eq(mid().map(p => p.letter), ['A', 'B'], 'pieces lettered from the eave up');
-  t.ok(near(mid()[0].raw, 240) && mid()[0].lapTop === 6 && mid()[0].lapBot === 0 && mid()[1].lapBot === 6, 'lap recorded at the top of A and the bottom of B');
+  t.ok(mid().length === 2 && mid()[0].y0 < mid()[1].y0 && mid()[0].id !== mid()[1].id, 'pieces run from the eave up, each its own panel');
+  t.ok(near(mid()[0].raw, 240) && mid()[0].lapTop === 6 && mid()[0].lapBot === 0 && mid()[1].lapBot === 6, 'lap recorded at the top of the lower piece and the bottom of the upper');
   t.ok(L.pieces.every(p => !p.splice), 'exposed fastener laps are not splices');
-  t.ok(L.pieces.some(p => p.letter && p.raw < 24), 'with no minimum, a run just past the lap line leaves a stub');
+  const split = () => L.strips.filter(s => s.pieces.length > 1).flatMap(s => s.pieces);
+  t.ok(split().some(p => p.raw < 24), 'with no minimum, a run just past the lap line leaves a stub');
   app.ev('S').prof = 'p2'; app.type('q.minLen', 'len', '24'); L = app.layout('R1'); checkRuns('rebalanced');
-  t.ok(L.pieces.filter(p => p.letter).every(p => p.raw >= 24 - 1e-9) && L.warn.some(w => /lap moved/.test(w)), 'a remainder under the minimum borrows from its neighbour, with a warning');
+  t.ok(split().every(p => p.raw >= 24 - 1e-9) && L.warn.some(w => /lap moved/.test(w)), 'a remainder under the minimum borrows from its neighbour, with a warning');
   app.type('q.minLen', 'len', '0');
 
   app.select('R1');
@@ -306,14 +307,26 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
 {
   mk({ profile: { cover: 2 } }, [{ template: 'rect', params: { w: 240, h: 60 } }]);
   let L = app.layout('R1');
-  t.eq([L.strips.length, L.pieces[0].id, L.pieces[119].id], [120, 'R1-001', 'R1-120'], 'three digits once a facet passes 99 strips');
+  t.eq([L.strips.length, L.pieces[0].id, L.pieces[119].id], [120, 'R1-01', 'R1-01'], 'however many strips, identical panels take one number');
+  // A triangle: every strip is a different length, and the two sides are mirror images.
+  mk({ profile: { cover: 2 } }, [{ template: 'tri', params: { w: 480, h: 240 } }]);
+  L = app.layout('R1');
+  t.eq([new Set(L.pieces.map(p => p.id)).size, L.pieces[0].id, L.pieces[239].id], [240, 'R1-001', 'R1-240'], 'three digits once a facet passes 99 different panels, numbered from the start edge');
+  mk({ def: { allow: {} } }, [{ template: 'tri', params: { w: 480, h: 240 } }]);
+  L = app.layout('R1');
+  const twin = L.pieces.find(p => p !== L.pieces[2] && near(p.len, L.pieces[2].len));
+  t.ok(twin && twin.id !== L.pieces[2].id && near(twin.angT, -L.pieces[2].angT), 'a mirror-image cut of the same length is a different panel');
+  mk({ def: { allow: {} } }, [{ template: 'para', params: { w: 240, h: 120, skew: 48 } }]);
+  L = app.layout('R1');
+  t.ok(L.pieces.filter(p => !p.square && p.rip == null && near(p.lenL, p.lenR)).every((p, i, a) => p.id === a[0].id) && L.pieces.some(p => !p.square), 'panels cut to the same angle at both ends share an ID');
+  mk({ profile: { cover: 2 } }, [{ template: 'rect', params: { w: 240, h: 60 } }]);
   app.select('R1');
   t.ok(/needs an ID/.test(app.type('f.mark', 'text', '  ')), 'a blank ID is refused');
   app.type('f.mark', 'text', 'NORTH');
   t.eq(app.P.facets[0].mark, 'NORT', 'a facet ID is at most 4 characters');
   app.type('k.prefix', 'text', 'B');
   L = app.layout('NORT');
-  t.eq(L.pieces[6].id, 'B-NORT-007', 'optional package prefix');
+  t.eq(L.pieces[6].id, 'B-NORT-01', 'optional package prefix');
   app.type('p.idMax', 'int', '8');
   t.ok(app.layout('NORT').warn.some(w => /8-character limit/.test(w)), 'IDs over the marking limit are flagged');
   mk({}, [{ template: 'rect', mark: 'R1' }, { template: 'rect', mark: 'R1' }]);
@@ -329,7 +342,7 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   t.ok(over.length === 2 && over.every(p => near(p.y0, 84) && near(p.raw, 36)), 'pieces over the door are head-to-top only');
   const win = L.pieces.filter(p => p.ca >= 150 && p.cb <= 198);
   t.ok(win.length === 6 && win.filter(p => near(p.raw, 36)).length === 3 && win.filter(p => near(p.raw, 44)).length === 3, 'window strips get a sill piece and a head piece');
-  t.eq(L.strips.find(s => s.a === 156).pieces.map(p => p.id), ['W1-14A', 'W1-14B'], 'lettered in the same strip');
+  t.ok(new Set(win.filter(p => near(p.raw, 36)).map(p => p.id)).size === 1 && new Set(win.map(p => p.id)).size === 2, 'the three sill pieces are one ID and the three head pieces another');
   t.ok(win.every(p => !p.lapTop && !p.lapBot && !p.splice), 'which are separate pieces, not a lapped run');
   const jamb = L.pieces.find(p => p.ca < 61 && p.cb > 61);
   t.ok(near(jamb.raw, 120) && jamb.shape, 'a piece that only catches the jamb is full height and cut to shape');

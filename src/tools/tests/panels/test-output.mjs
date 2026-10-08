@@ -11,8 +11,10 @@ const DATE = 'Oct 8, 2026';
   t.eq(app.P.facets.map(f => f.mark), ['R1', 'R2', 'R3', 'R4'], 'sample facets are R1-R4');
   // A 40 x 28 hip roof has 1,120 sf of plan area whatever its facets look like.
   t.ok(near(R.total.plan, 40 * 28, 1e-6) && near(R.total.slope, 40 * 28 * Math.hypot(12, 6) / 12, 1e-6), 'sample: plan area is the footprint, slope area is that over cos(pitch)');
-  const ids = R.pk[0].facets.flatMap(f => R.L.get(f.id).pieces.map(p => p.id));
-  t.ok(ids.length > 0 && new Set(ids).size === ids.length, 'piece IDs are unique across the project');
+  const marks = R.pk[0].facets.flatMap(f => app.ev('byMark')(R.L.get(f.id).pieces));
+  t.ok(marks.length > 0 && new Set(marks.map(r => r.p.id)).size === marks.length && marks.reduce((a, r) => a + r.qty, 0) === R.total.count, 'IDs are unique across the project, and their quantities account for every piece');
+  const front = app.ev('byMark')(R.L.get(app.P.facets[0].id).pieces);
+  t.ok(front.filter(r => r.p.square).length === 1 && front.find(r => r.p.square).qty === 8 && front.filter(r => !r.p.square).every(r => r.qty === 1), 'the eight full panels under the ridge share an ID; each hip cut, being handed, has its own');
   const q = R.total, parts = q.wAllow + q.wLap + q.wAngle + q.wRip + q.wRound;
   t.ok(Math.abs(parts - (q.cover - q.slope)) < 0.01, 'acceptance: waste components sum to the waste total within 0.01 sf');
   t.ok(near(app.ev('wasteOf')(q).sf, q.cover - q.slope) && q.gross > q.cover, 'waste is coverage less roof; gross is more than coverage');
@@ -47,15 +49,13 @@ const DATE = 'Oct 8, 2026';
   const prod = app.ev('production')([roof]);
   t.ok(prod.every((x, i) => !i || x.len < prod[i - 1].len), 'production rows run longest first, one per ordered length');
   t.eq(prod.reduce((s, x) => s + x.qty, 0), roof.q.count, 'and account for every piece');
-  t.ok(/R1-\d+A – R1-\d+A/.test(prod[0].ids) && /R2-\d+A – R2-\d+A/.test(prod[0].ids), 'consecutive IDs collapse to a range');
+  t.ok(/R1-\d+ ×\d+/.test(prod[0].ids) && /R2-\d+ ×\d+/.test(prod[0].ids), 'a row lists each ID to mark and how many of it');
   t.ok(prod.every(r => r.profile === '16" SSMR snap-lock'), 'each row names its profile');
   const both = app.ev('production')(R.pk);
   t.ok(both.some(r => r.color === 'Galvalume' && /^W1-/.test(r.ids)) && both.filter(r => r.color === 'Galvalume').every(r => !/R\d/.test(r.ids)), 'different profile and color never share a row');
   const buy = app.ev('purchasing')(R.pk);
   t.eq(buy.map(r => [r.profile, r.color]), [['16" SSMR snap-lock', ''], ['36" exposed fastener (R / PBR)', 'Galvalume']], 'purchasing summary by profile and color');
   t.ok(near(buy[0].count, roof.q.count) && near(buy[1].gross, walls.q.gross), 'with piece count and gross area');
-  // IDs are tied to location: sorting the production list does not renumber anything.
-  t.eq(R.L.get(app.P.facets[0].id).strips[6].pieces.map(x => x.id), ['R1-07'], 'strip 7 of R1 is R1-07 in every view');
 
   // The drawing plan.
   const L = R.L.get(app.P.facets[0].id), plan = app.ev('facetPlan')(L, 720, 480), txt = plan.ops.filter(o => o.k === 'text');
@@ -103,7 +103,7 @@ const DATE = 'Oct 8, 2026';
   const text = pg => pg.ops.filter(o => o.k === 'text').map(o => o.s);
   t.ok(pages.every((pg, i) => text(pg).includes(`Page ${i + 1} of ${pages.length}`) && text(pg).some(x => /lengths in inches · Verify all dimensions in field\./.test(x)) && text(pg).some(x => /Hip roof \(test\) · Job 26-114/.test(x))), 'title block on every sheet: project, units note, verify note, page x of y');
   const r1 = pages[titles.indexOf('Facet R1: Front')];
-  t.ok(text(r1).some(x => /^R1-\d+A$/.test(x)) && text(r1).includes('SPL') && text(r1).includes('Short side') && r1.ops.some(o => o.k === 'poly'), 'a facet sheet carries the drawing and its location cut list');
+  t.ok(text(r1).some(x => /^R1-\d+$/.test(x)) && text(r1).includes('Qty') && text(r1).includes('SPL') && text(r1).includes('Short side') && r1.ops.some(o => o.k === 'poly'), 'a facet sheet carries the drawing and its cut list');
   t.ok(pages.flatMap(x => x.ops).every(o => o.k !== 'text' || (o.x >= 0 && o.x <= 792 && o.y >= 0 && o.y <= 612)), 'no text is placed off a sheet');
   t.ok(/^%PDF-1\.4\n/.test(pdf) && /%%EOF\n$/.test(pdf), 'PDF header and trailer');
   t.ok(!/[^\x00-\x7f]/.test(pdf), 'PDF is pure ASCII, so its offsets survive being saved as text');
@@ -125,8 +125,8 @@ const DATE = 'Oct 8, 2026';
 
   // CSV.
   const loc = app.ev('buildCSV')('loc').trim().split('\r\n'), len = app.ev('buildCSV')('len').trim().split('\r\n');
-  t.eq(loc.length, 1 + R.total.count, 'location CSV: one row per piece');
-  t.ok(loc[1].startsWith('R1-01,Main roof,R1 Front,"16"" SSMR snap-lock",,'), 'with ID, package, facet and profile');
+  t.ok(loc.length === 1 + app.P.facets.reduce((a, f) => a + app.ev('byMark')(R.L.get(f.id).pieces).length, 0) && loc.slice(1).reduce((a, r) => a + +r.split(',')[1], 0) === R.total.count, 'facet CSV: one row per ID, with quantities that account for every piece');
+  t.ok(loc[1].startsWith('R1-01,1,Main roof,R1 Front,"16"" SSMR snap-lock",,'), 'with ID, quantity, package, facet and profile');
   t.ok(loc.some(r => /REQUIRES SPLICE/.test(r)), 'and the splice flag');
   t.eq(len.length, 1 + app.ev('production')(R.pk).length, 'production CSV: one row per length');
   t.ok(/^\d+,180,180,/.test(len[1]), 'with the length as displayed and in decimal inches');
