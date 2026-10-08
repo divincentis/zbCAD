@@ -217,10 +217,10 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
 </form></dialog>
 
 <dialog id="dlgNew"><form method="dialog">
-  <h3>New schedule</h3>
+  <h3 id="newTitle">New schedule</h3>
   <p style="font-size:12px;color:var(--muted);margin:-6px 0 12px">Pick a starting point. Template durations and logic are typical placeholders — adjust them to your job.</p>
   <div class="tpl" id="tplList"></div>
-  <menu><button value="cancel" formnovalidate>Cancel</button></menu>
+  <menu><button value="cancel" formnovalidate id="newCancel">Cancel</button></menu>
 </form></dialog>
 
 <dialog id="dlgInfo"><form method="dialog">
@@ -1318,14 +1318,18 @@ function templateStats(){
   for(const t of TEMPLATES){buildTemplate(t);schedule();t._n=t.rows.filter(r=>r.length>2).length;t._d=S.days;}
   P=keep;schedule();
 }
-function openNew(){
+// welcome: the first visit, where the picker opens by itself over the sample. Nothing can have been
+// edited behind a modal dialog, so there is no work to warn about and Cancel simply keeps the sample.
+function openNew(welcome){
   const dlg=$('#dlgNew');
   if(!TEMPLATES[0]._n)templateStats();
+  $('#newTitle').textContent=welcome?'Start a schedule':'New schedule';
+  $('#newCancel').textContent=welcome?'Look at the sample first':'Cancel';
   $('#tplList').innerHTML=`<button value="blank" class="wide"><b>Blank schedule</b><span>Start from an empty table.</span></button>`+
     TEMPLATES.map(t=>`<button value="${t.id}"><b>${esc(t.name)}</b><span>${esc(t.blurb)}</span><i>${t._n} tasks · about ${t._d} workdays</i></button>`).join('');
   dlg.onclose=()=>{
     const v=dlg.returnValue;if(!v||v==='cancel')return;
-    if(P.tasks.length&&!confirm('Start a new schedule? Unsaved changes in this one will be lost.'))return;
+    if(!welcome&&P.tasks.length&&!confirm('Start a new schedule? Unsaved changes in this one will be lost.'))return;
     const b=ser(),t=TEMPLATES.find(x=>x.id===v);
     loadProject(t?buildTemplate(t):blankProject());undoS=[b];openProject();
   };
@@ -1590,7 +1594,8 @@ window.addEventListener('beforeunload',()=>{try{localStorage.setItem('cpm.autosa
 
 /* ===== Start ===== */
 if(innerWidth<900&&!prefs.narrowOk){$('#narrow').style.display='flex';}
-$('#narrowGo').onclick=()=>{$('#narrow').style.display='none';prefs.narrowOk=true;savePrefs();};
+let greet=null;
+$('#narrowGo').onclick=()=>{$('#narrow').style.display='none';prefs.narrowOk=true;savePrefs();if(greet){greet();greet=null;}};
 (function boot(){
   let s=null,p=null,lost=false;try{s=localStorage.getItem('cpm.autosave');if(s)p=JSON.parse(s);}catch(e){lost=!!s;}
   if(p&&Array.isArray(p.tasks)){try{P=checkProject(p).p;schedule();}catch(e){P=null;lost=true;}}
@@ -1598,6 +1603,9 @@ $('#narrowGo').onclick=()=>{$('#narrow').style.display='none';prefs.narrowOk=tru
   // The sample is about to be autosaved over it, so an unreadable autosave is parked where it can still be fished out.
   if(lost){try{localStorage.setItem('cpm.autosave.bad',s);}catch(e){}setTimeout(()=>toast('The autosaved schedule couldn’t be read, so a sample was opened. Open your last saved file instead.'),0);}
   refresh();setTimeout(()=>scrollToDate(S.start-7),0);
+  // No autosave means a first visit: offer the templates up front rather than leaving them behind the New button.
+  // A modal dialog would sit on top of the small-screen notice, so there it waits for that to be dismissed.
+  if(!s){if($('#narrow').style.display==='flex')greet=()=>openNew(true);else openNew(true);}
 })();
 </script>
 </body></html>
