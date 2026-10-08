@@ -167,7 +167,7 @@ menu button{border:1px solid var(--rule2);background:var(--bg);border-radius:5px
   <div class="grp"><span>Output</span>
     <button data-cmd="pdf" class="pri" title="Download the PDF package in one click">PDF</button>
     <button data-cmd="print" title="Open the same package in the browser's print dialog (Ctrl+P)">Print</button>
-    <button data-cmd="csvLoc" title="Location cut list as CSV">CSV by location</button>
+    <button data-cmd="csvLoc" title="Cut list by facet as CSV">CSV by facet</button>
     <button data-cmd="csvLen" title="Production cut list as CSV">CSV by length</button>
     <button data-cmd="csvCoil" title="Coil order for the roll former as CSV">CSV coils</button>
   </div>
@@ -203,7 +203,7 @@ menu button{border:1px solid var(--rule2);background:var(--bg);border-radius:5px
     <p><b>Enter each facet from field dimensions.</b> A facet is one flat face of roof or wall, seen from in front with the eave or base at the bottom. Pick a template and type its sizes; the preview follows every keystroke. <b>Slope</b> mode takes dimensions as taped on the roof. <b>Plan + pitch</b> takes horizontal dimensions and stretches everything square to the eave by the slope factor.</p>
     <p><b>Lengths</b> can be typed any way: <code>126</code>, <code>126 1/2</code>, <code>10'-6 1/2"</code>, <code>10.5 ft</code>, <code>3.2 m</code>, or a sum like <code>=96+24</code>. What a bare number means, and how lengths and areas are shown, are project settings. Pitch takes <code>6:12</code>, <code>26.6 deg</code> or <code>50%</code>.</p>
     <p><b>Edges</b> are typed from the shape and can be changed by clicking the edge on the drawing. Each type takes its allowance from the project defaults, and any one edge can override it. Eave, valley and wall-base allowances push the panel past the line; ridge, headwall, hip and top allowances cut it back; rake, sidewall, jamb and corner allowances pull the layout in from the edge, which changes the edge rip and not the length. The dashed line on the drawing is where the metal ends.</p>
-    <p><b>Panel IDs</b> read <code>R2-07B</code>: facet R2, seventh strip from the start edge, second piece up from the eave. A strip made in one piece has no letter. IDs belong to a location and never change when a list is re-sorted.</p>
+    <p><b>Panel IDs</b> read <code>R2-07</code>: facet R2, its seventh different panel counting from the start edge. Panels in a facet that can be swapped for one another share an ID, and the cut list gives how many to make: same length, same rip, same end cuts and laps. A mirror-image cut is a different panel.</p>
     <p><b>Long runs</b> are split when they pass the profile's maximum length, and the pieces together are longer than the run by one lap per joint. On standing seam every transverse seam is marked as needing a splice. Laps can line up across the facet, stagger on alternate strips, or snap to purlin lines.</p>
     <p><b>Waste</b> is coverage area less roof area, broken down by where it comes from: allowances, laps, angle cuts and notches, edge rips, and rounding.</p>
     <p><b>Coil order</b>, a view of the cut list, is what to buy for the roll former: the linear length, area and weight of each coil width, gauge and color. Set a maximum coil length or weight in the project settings and it gives the number of coils and the length to order each at.</p>
@@ -660,7 +660,7 @@ function layoutFacet(f,e){
   }
   if(!runs.length)return L;
   const all=runs.flatMap(r=>r.pcs),B0=Math.min(...all.map(pc=>pc.b)),T0=Math.max(...all.map(pc=>pc.t));
-  const eaveY=Math.min(...pts.map(p=>rot(p,th)[1])),pad=runs.length>99?3:2,ssmr=isSSMR(e.profile),flag={short:[],long:[],rip:[],rebal:0,unsnap:0};
+  const eaveY=Math.min(...pts.map(p=>rot(p,th)[1])),ssmr=isSSMR(e.profile),flag={short:[],long:[],rip:[],rebal:0,unsnap:0};
   let mat=0;
   runs.forEach((run,ri)=>{
     // Alternate strips get a shorter first piece, which moves their lap line without adding a joint.
@@ -699,17 +699,27 @@ function layoutFacet(f,e){
       });
       for(const s of pc.slabs)if(s.xa<=run.a+EPS&&run.a>xmin+EPS)L.seams.push({x:s.xa,ya:s.loA,yb:s.hiA});
     }
-    const base=`${e.prefix?e.prefix+'-':''}${f.mark}-${String(ri+1).padStart(pad,'0')}`;
-    made.forEach((p,i)=>{
-      // A at the eave, counting up. A strip made in one piece needs no letter.
-      p.letter=made.length>1?String.fromCharCode(65+i%26):'';p.id=base+p.letter;
-      if(p.raw<e.minLen-EPS)flag.short.push(p.id);
-      if(e.maxLen>0&&p.raw>e.maxLen+EPS)flag.long.push(p.id);
-      if(p.rip!=null&&p.rip<e.ripMin-EPS&&!flag.rip.includes(base))flag.rip.push(base);
-      L.pieces.push(p);q.count++;q.lf+=p.len/12;q.cover+=W*p.len/144;q.gross+=e.profile.sheetW*p.len/144;
-    });
-    L.strips.push({id:base,index:ri+1,a:run.a,b:run.b,pieces:made});
+    for(const p of made){L.pieces.push(p);q.count++;q.lf+=p.len/12;q.cover+=W*p.len/144;q.gross+=e.profile.sheetW*p.len/144;}
+    L.strips.push({index:ri+1,a:run.a,b:run.b,pieces:made});
   });
+  // An ID names a panel, not a place: every piece that could be swapped for another carries
+  // the same one, numbered in the order they are first met from the start edge. To be
+  // swappable two pieces need the same ordered length, the same rip off the same leg, the
+  // same end cuts leaning the same way (a mirror image is a different panel, because the
+  // seam legs are handed), and the same laps. A notched piece is always one of a kind.
+  const n3=v=>v==null?'':v.toFixed(3),marks=new Map();
+  for(const p of L.pieces){
+    const k=p.shape?'shape'+marks.size:[p.len.toFixed(4),n3(p.ca-p.x0),n3(p.x1-p.cb),p.square?'':[p.lenL.toFixed(2),p.lenR.toFixed(2),n3(p.angB),n3(p.angT)],p.lapTop,p.lapBot].join('|');
+    if(!marks.has(k))marks.set(k,marks.size+1);
+    p.mark=marks.get(k);
+  }
+  const pad=marks.size>99?3:2,note=(a,id)=>{if(!a.includes(id))a.push(id);};
+  for(const p of L.pieces){
+    p.id=`${e.prefix?e.prefix+'-':''}${f.mark}-${String(p.mark).padStart(pad,'0')}`;
+    if(p.raw<e.minLen-EPS)note(flag.short,p.id);
+    if(e.maxLen>0&&p.raw>e.maxLen+EPS)note(flag.long,p.id);
+    if(p.rip!=null&&p.rip<e.ripMin-EPS)note(flag.rip,p.id);
+  }
   q.strips=runs.length;q.wAllow=mat-area;
   for(const kk of ['wAllow','wLap','wAngle','wRip','wRound'])q[kk]/=144;
   const list=a=>a.length>6?`${a.slice(0,6).join(', ')} and ${a.length-6} more`:a.join(', ');
@@ -746,18 +756,14 @@ function compute(){
 const scopePks=only=>R.pk.filter(g=>!only||g.pk.id===only);
 const piecesOf=g=>g.facets.flatMap(f=>R.L.get(f.id).pieces);
 const profKey=L=>L.e.profile.name+(L.e.color?' / '+L.e.color:'');
-// `R1-01 – R1-14`: consecutive strips of one facet collapse, so a production row stays readable.
-function idRanges(ps){
-  const out=[];let run=[];
-  const flush=()=>{if(run.length>=3)out.push(run[0].id+' – '+run[run.length-1].id);else out.push(...run.map(p=>p.id));run=[];};
-  for(const p of ps){
-    const l=run[run.length-1];
-    if(l&&(l.facetId!==p.facetId||l.letter!==p.letter||p.strip!==l.strip+1))flush();
-    run.push(p);
-  }
-  flush();
-  return out.join(', ');
+// One row per ID: the first piece that carries it stands for them all, with how many there are.
+function byMark(ps){
+  const m=new Map();
+  for(const p of ps){const k=p.facetId+'|'+p.id;if(m.has(k))m.get(k).qty++;else m.set(k,{p,qty:1});}
+  return [...m.values()];
 }
+// `R1-03 ×10, R2-03 ×10`: what to mark the pieces of one production row with.
+const idCounts=ps=>byMark(ps).map(r=>r.p.id+(r.qty>1?' ×'+r.qty:'')).join(', ');
 // The production view: identical ordered lengths of one profile and color together, longest first.
 function production(gs){
   const m=new Map();
@@ -769,7 +775,7 @@ function production(gs){
       m.get(k).pieces.push(p);
     }
   }
-  return [...m.values()].sort((a,b)=>a.profile.localeCompare(b.profile)||a.color.localeCompare(b.color)||b.len-a.len).map(r=>({...r,qty:r.pieces.length,ids:idRanges(r.pieces)}));
+  return [...m.values()].sort((a,b)=>a.profile.localeCompare(b.profile)||a.color.localeCompare(b.color)||b.len-a.len).map(r=>({...r,qty:r.pieces.length,ids:idCounts(r.pieces)}));
 }
 function purchasing(gs){
   const m=new Map();
@@ -1061,9 +1067,9 @@ function reportSheets(date,only){
       i++;
     }
   }
-  // One sheet per facet: the layout drawing with that facet's location cut list beside it.
-  const locCols=[{h:'ID',w:50,b:1},{h:'Length',w:50,r:1},{h:'Short side',w:48,r:1},{h:'Angle',w:38,r:1},{h:'Lap t / b',w:52,r:1},{h:'Splice',w:24,c:'accent'},{h:'Rip',w:34,r:1}];
-  const locRow=p=>({cells:[p.id,fmtLen(p.len),p.square?'':fmtLen(p.short),angleText(p),lapText(p),p.splice?'SPL':'',p.rip!=null?fmtLen(p.rip):'']});
+  // One sheet per facet: the layout drawing with that facet's cut list beside it.
+  const locCols=[{h:'ID',w:46,b:1},{h:'Qty',w:24,r:1},{h:'Length',w:50,r:1},{h:'Short side',w:48,r:1},{h:'Angle',w:38,r:1},{h:'Lap t / b',w:52,r:1},{h:'Splice',w:24,c:'accent'},{h:'Rip',w:34,r:1}];
+  const locRow=({p,qty})=>({cells:[p.id,qty,fmtLen(p.len),p.square?'':fmtLen(p.short),angleText(p),lapText(p),p.splice?'SPL':'',p.rip!=null?fmtLen(p.rip):'']});
   for(const g of gs)for(const f of g.facets){
     const L=R.L.get(f.id),q=L.q;
     page(`Facet ${f.mark}${f.name?': '+f.name:''}`);
@@ -1073,7 +1079,7 @@ function reportSheets(date,only){
     const tabW=locCols.reduce((a,c)=>a+c.w,0),dw=PW-2*M-tabW-16,top=y;
     pg.ops.push(...facetPlan(L,dw,BOT-top,{x:M,y:top}).ops);
     y=top+12;
-    table(locCols,L.pieces.map(locRow),{x:M+dw+16,size:7.5});
+    table(locCols,byMark(L.pieces).map(locRow),{x:M+dw+16,size:7.5});
   }
   // Production cut list.
   for(const g of gs){
@@ -1130,9 +1136,9 @@ function csvRows(kind,only){
     ?[['Coil width (in)','Gauge','Color','Profiles','Panel length (ft)','Coil area (sf)','Weight (lb)','Coils','Length each (ft)','Weight each (lb)','Order length (ft)','Order area (sf)','Order weight (lb)'],
       ...coilOrder(gs).map(r=>[d(r.width),r.gauge,r.color,r.profiles.join('; '),...[r.lf,r.sf,r.lb,r.n,r.each,r.eachLb,r.ordLf,r.ordSf,r.ordLb].map(v=>v==null?'':+v.toFixed(2))])]
     :kind==='len'
-    ?[['Qty','Length','Length (in)','IDs','Profile','Color'],...production(gs).map(r=>[r.qty,fmtLen(r.len),d(r.len),r.pieces.map(p=>p.id).join(' '),r.profile,r.color])]
-    :[['ID','Package','Facet','Profile','Color','Length','Length (in)','Short side (in)','Angle bottom (deg)','Angle top (deg)','Lap top (in)','Lap bottom (in)','Splice','Rip width (in)'],
-      ...gs.flatMap(g=>g.facets.flatMap(f=>{const L=R.L.get(f.id);return L.pieces.map(p=>[p.id,g.pk.name,[f.mark,f.name].filter(Boolean).join(' '),L.e.profile.name,L.e.color,fmtLen(p.len),d(p.len),d(p.short),
+    ?[['Qty','Length','Length (in)','IDs','Profile','Color'],...production(gs).map(r=>[r.qty,fmtLen(r.len),d(r.len),r.ids,r.profile,r.color])]
+    :[['ID','Qty','Package','Facet','Profile','Color','Length','Length (in)','Short side (in)','Angle bottom (deg)','Angle top (deg)','Lap top (in)','Lap bottom (in)','Splice','Rip width (in)'],
+      ...gs.flatMap(g=>g.facets.flatMap(f=>{const L=R.L.get(f.id);return byMark(L.pieces).map(({p,qty})=>[p.id,qty,g.pk.name,[f.mark,f.name].filter(Boolean).join(' '),L.e.profile.name,L.e.color,fmtLen(p.len),d(p.len),d(p.short),
         p.angB==null?'':+p.angB.toFixed(2),p.angT==null?'':+p.angT.toFixed(2),p.lapTop||'',p.lapBot||'',p.splice?'REQUIRES SPLICE':'',p.rip==null?'':d(p.rip)]);}))];
   return rows.map(r=>r.map(q).join(',')).join('\r\n')+'\r\n';
 }
@@ -1167,7 +1173,7 @@ function renderInputs(){
     h+=`<h2>Reports</h2><div class="two">${sel('PDF and print lengths','u.pdf',{'':'Same as the screen',...FMTS},P.units.pdf,'selnull')}${sel('CSV lengths','u.csv',{'':'Same as the screen',...FMTS},P.units.csv,'selnull')}</div><p class="hint">CSV files always carry decimal inches as well.</p>`;
     h+=`<h2>Coil order</h2><div class="three">${fld('Max coil length, ft','c.maxFt','numopt',P.coil.maxFt??'','data-min="1" placeholder="no limit"')}${fld('Max coil weight, lb','c.maxLb','numopt',P.coil.maxLb??'','data-min="1" placeholder="no limit"')}${fld('Extra per coil, %','c.extra','num',P.coil.extra,'data-min="0"')}</div>`;
     h+=`<p class="hint">The cut list's Coil order view splits each coil to stay under both limits. Weight comes from the profile's gauge.</p>`;
-    h+=`<h2>Panel IDs</h2>${fld('Longest ID the rollformer can mark','p.idMax','int',P.idMax,'inputmode="numeric" data-min="4"')}<p class="hint">IDs read facet-strip-piece, e.g. R2-07B. Anything longer than this is flagged.</p>`;
+    h+=`<h2>Panel IDs</h2>${fld('Longest ID the rollformer can mark','p.idMax','int',P.idMax,'inputmode="numeric" data-min="4"')}<p class="hint">IDs read facet-panel, e.g. R2-07. Identical panels in a facet share one. Anything longer than this is flagged.</p>`;
     const prof=P.profiles.find(x=>x.id===d.profileId)||P.profiles[0],kinds=new Set(P.facets.map(x=>x.kind));
     h+=`<h2>Defaults for every facet</h2>${sel('Profile','d.profileId',Object.fromEntries(P.profiles.map(x=>[x.id,x.name])),d.profileId)}`;
     h+=`<div class="two">${fld('Color','d.color','text',d.color,`placeholder="${esc(prof.color||'from profile')}"`)}${fld('End lap','d.lap','lenopt',len(d.lap),`data-min="0" placeholder="${esc(fmtField(prof.lap))} from profile"`)}</div>`;
@@ -1303,7 +1309,7 @@ function renderMain(keepTx){
   }
 }
 function cutHTML(){
-  const views={loc:'By location',len:'By length (production)',sum:'Summary',coil:'Coil order'};
+  const views={loc:'By facet',len:'By length (production)',sum:'Summary',coil:'Coil order'};
   let h=`<div class="seg">${Object.entries(views).map(([k,l])=>`<button data-act="cutView" data-v="${k}" class="${S.cut===k?'on':''}">${l}</button>`).join('')}</div>`;
   if(S.cut==='coil'){
     const tbl=(name,rows)=>`<h3>${esc(name)}</h3><table class="t"><tr>${COIL_COLS.map((c,i)=>`<th${i>3?' class="r"':''}>${c}</th>`).join('')}</tr>${rows.map(r=>`<tr>${coilCells(r).map((c,i)=>`<td class="${i>3?'r':i?'':'id'}">${esc(c)}</td>`).join('')}</tr>`).join('')}</table>`;
@@ -1317,8 +1323,8 @@ function cutHTML(){
     h+=`<h3>${esc(g.pk.name)}</h3>`;
     if(!piecesOf(g).length){h+='<p class="spec">No pieces yet.</p>';continue;}
     if(S.cut==='loc'){
-      h+=`<table class="t"><tr><th>ID</th><th>Facet</th><th class="r">Length</th><th class="r">Short side</th><th class="r">Angle</th><th class="r">Lap top / bottom</th><th>Splice</th><th class="r">Rip width</th></tr>`;
-      for(const f of g.facets)for(const p of R.L.get(f.id).pieces)h+=`<tr><td class="id">${esc(p.id)}</td><td>${esc([f.mark,f.name].filter(Boolean).join(' '))}</td><td class="r">${fmtLen(p.len)}</td><td class="r">${p.square?'':fmtLen(p.short)}</td><td class="r">${angleText(p)}</td><td class="r">${lapText(p)}</td><td class="spl">${p.splice?'REQUIRES SPLICE':''}</td><td class="r">${p.rip!=null?fmtLen(p.rip):''}</td></tr>`;
+      h+=`<table class="t"><tr><th>ID</th><th class="r">Qty</th><th>Facet</th><th class="r">Length</th><th class="r">Short side</th><th class="r">Angle</th><th class="r">Lap top / bottom</th><th>Splice</th><th class="r">Rip width</th></tr>`;
+      for(const f of g.facets)for(const {p,qty} of byMark(R.L.get(f.id).pieces))h+=`<tr><td class="id">${esc(p.id)}</td><td class="r">${qty}</td><td>${esc([f.mark,f.name].filter(Boolean).join(' '))}</td><td class="r">${fmtLen(p.len)}</td><td class="r">${p.square?'':fmtLen(p.short)}</td><td class="r">${angleText(p)}</td><td class="r">${lapText(p)}</td><td class="spl">${p.splice?'REQUIRES SPLICE':''}</td><td class="r">${p.rip!=null?fmtLen(p.rip):''}</td></tr>`;
       h+='</table>';
     }else if(S.cut==='len'){
       h+=`<table class="t"><tr><th class="r">Qty</th><th class="r">Length</th><th>Mark with ID</th><th>Profile</th><th>Color</th></tr>`;
@@ -1582,7 +1588,7 @@ const CMD={
     download(fileBase()+(only?'-'+curPk().name.replace(/[^\w.-]+/g,'-'):'')+'.pdf',buildPDF(today(),only),'application/pdf');
   },
   print(){fillPrint(today());setTimeout(()=>window.print(),50);},
-  csvLoc(){download(fileBase()+'-cut-list-by-location.csv',buildCSV('loc'),'text/csv');},
+  csvLoc(){download(fileBase()+'-cut-list-by-facet.csv',buildCSV('loc'),'text/csv');},
   csvLen(){download(fileBase()+'-cut-list-by-length.csv',buildCSV('len'),'text/csv');},
   csvCoil(){download(fileBase()+'-coil-order.csv',buildCSV('coil'),'text/csv');},
   help(){$('#dlgHelp').showModal();},
