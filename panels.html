@@ -1,0 +1,1469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Metal Panel Layout</title>
+<meta name="description" content="Metal roof and wall panel layout from field dimensions: numbered panels on a layout drawing, a rollformer-ready cut list, area and waste by cause, and a vector PDF package.">
+<meta property="og:title" content="Metal Panel Layout">
+<meta property="og:url" content="https://zbcad.com/panels.html">
+<link rel="canonical" href="https://zbcad.com/panels.html">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c1b19'/%3E%3Cpath d='M9 10h14L9 22h14' fill='none' stroke='%23f4f1ea' stroke-width='2.5' stroke-linecap='square'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f6f4ef;--panel:#fffdf8;--text:#1c1b19;--muted:#6b675f;--rule:#e4dfd4;--rule2:#cdc6b8;
+  --accent:#9a4a1f;--sel:#f3e6d8;--tA:#e3eaf1;--tB:#cfdbe7;--seam:#5a6b7d;--warn:#a4340f;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#161614;--panel:#1c1b19;--text:#e9e5dc;--muted:#9a958a;--rule:#2c2a26;--rule2:#3d3a34;
+  --accent:#e08a55;--sel:#3a2c22;--tA:#25303b;--tB:#31404f;--seam:#8ea3b8;--warn:#ff9c7a;
+}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);font:13px/1.35 var(--sans);overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;padding:8px 12px;border-bottom:1px solid var(--rule2);background:var(--panel)}
+.brand{font-weight:700;font-size:15px;margin-right:6px;letter-spacing:-.01em;white-space:nowrap}
+.brand a{color:var(--muted);text-decoration:none}
+.brand a:hover,.brand a:focus-visible{color:var(--accent)}
+.brand .sep{color:var(--rule2);margin:0 7px;font-weight:400}
+.grp{display:flex;gap:2px;align-items:center}
+.grp>span{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-right:4px}
+.bar button{background:transparent;border:1px solid transparent;border-radius:5px;padding:4px 8px;cursor:pointer}
+.bar button:hover{background:var(--sel);border-color:var(--rule2)}
+.bar button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+#panes{display:none}
+#work{flex:1;display:grid;grid-template-columns:224px 336px minmax(0,1fr);min-height:0}
+#tree,#inputs{overflow:auto;border-right:1px solid var(--rule2);background:var(--panel)}
+#tree{padding:8px 0 24px}
+.tn{display:flex;gap:6px;align-items:baseline;padding:5px 10px;cursor:pointer;white-space:nowrap;overflow:hidden}
+.tn:hover{background:var(--bg)}
+.tn.on{background:var(--sel)}
+.tn span{overflow:hidden;text-overflow:ellipsis}
+.tn i{font-style:normal;color:var(--muted);font-size:11px;margin-left:auto;padding-left:6px}
+.tn u{text-decoration:none;color:var(--warn);font-weight:700}
+.tn.pj{font-weight:700}
+.tn.pk{font-weight:650;margin-top:8px;border-top:1px solid var(--rule);padding-top:9px}
+.tn.fc{padding-left:22px}
+.tn.fc b{min-width:26px}
+.tn.add{color:var(--accent);font-size:12px;font-weight:400}
+#inputs{padding:4px 12px 28px}
+#inputs h2{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center;gap:6px}
+#inputs h2:first-child{border-top:0;padding-top:0}
+#inputs h2 span{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+label{display:block;font-size:11px;color:var(--muted);margin:0 0 8px;min-width:0}
+label em{font-style:normal;float:right;color:var(--muted);opacity:.85}
+label em.bad{color:var(--warn);opacity:1}
+label u{text-decoration:none;color:var(--accent);margin-left:3px}
+#inputs input,#inputs select,#edgePop input,#edgePop select{display:block;width:100%;margin-top:3px;padding:5px 7px;border:1px solid var(--rule2);border-radius:5px;background:var(--bg);color:var(--text);font-size:13px;min-width:0}
+#inputs input:focus,#inputs select:focus{outline:2px solid var(--accent);outline-offset:-1px}
+#inputs input.bad,#edgePop input.bad{border-color:var(--warn);outline-color:var(--warn)}
+label.chk{display:flex;gap:6px;align-items:center;color:var(--text);font-size:12px}
+label.chk input{display:inline!important;width:auto!important;margin:0!important}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 10px}
+.sb{border:1px solid var(--rule2);background:var(--bg);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text)}
+.sb:hover{border-color:var(--accent)}
+.badge{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--rule2);border-radius:10px;padding:1px 7px;color:var(--muted)}
+.badge.plan{border-color:var(--accent);color:var(--accent)}
+table.mini{width:100%;border-collapse:collapse;margin:0 0 8px;font-size:12px}
+table.mini th{font-size:10px;font-weight:600;color:var(--muted);text-align:left;padding:0 4px 3px 0}
+table.mini td{padding:0 4px 4px 0;vertical-align:middle}
+table.mini td:last-child{padding-right:0}
+table.mini input,table.mini select{margin:0!important;padding:4px 5px!important}
+table.mini .n{color:var(--muted);white-space:nowrap;width:1%}
+.hint{font-size:11px;color:var(--muted);margin:-2px 0 8px;line-height:1.4}
+.hint code{background:var(--bg);padding:0 3px;border-radius:3px}
+#mainc{display:flex;flex-direction:column;min-width:0;min-height:0}
+.tabs{display:flex;gap:2px;align-items:center;padding:6px 12px 0;border-bottom:1px solid var(--rule2)}
+.tabs button{background:transparent;border:1px solid transparent;border-bottom:0;border-radius:6px 6px 0 0;padding:6px 14px;cursor:pointer;color:var(--muted);margin-bottom:-1px}
+.tabs button.on{background:var(--bg);border-color:var(--rule2);color:var(--text);font-weight:600}
+.tabs button u{text-decoration:none;color:var(--warn);font-weight:700;margin-left:4px}
+#info{padding:8px 14px 0;font-size:12px;color:var(--muted)}
+#info b{color:var(--text)}
+#stage{flex:1;min-height:0;position:relative}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#cv text{font-family:Helvetica,Arial,sans-serif;pointer-events:none}
+.h{fill:var(--panel);stroke:var(--accent);stroke-width:2;cursor:move}
+.hm{fill:var(--accent);opacity:.35;cursor:copy}
+.hm:hover{opacity:.9}
+.eh{stroke:transparent;stroke-width:14;cursor:pointer}
+.eh:hover,.eh.on{stroke:var(--accent);stroke-opacity:.3}
+#edgePop{position:absolute;z-index:5;width:210px;background:var(--panel);border:1px solid var(--rule2);border-radius:8px;padding:10px 12px 4px;box-shadow:0 10px 30px rgba(0,0,0,.2)}
+#edgePop b{display:flex;justify-content:space-between;margin-bottom:8px}
+#pane{flex:1;overflow:auto;padding:14px 18px 40px}
+#pane h3{font-size:15px;margin:22px 0 4px}
+#pane h3:first-child{margin-top:0}
+#pane h4{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+#pane .spec{color:var(--muted);font-size:12px;margin:0 0 10px}
+.seg{display:inline-flex;border:1px solid var(--rule2);border-radius:6px;overflow:hidden;margin:0 0 12px}
+.seg button{border:0;background:transparent;padding:5px 12px;cursor:pointer;color:var(--muted)}
+.seg button.on{background:var(--sel);color:var(--text);font-weight:600}
+table.t{border-collapse:collapse;font-size:12.5px}
+table.t th{font-size:11px;font-weight:600;color:var(--muted);text-align:left;padding:4px 16px 4px 0;border-bottom:1px solid var(--rule2);white-space:nowrap}
+table.t td{padding:4px 16px 4px 0;border-bottom:1px solid var(--rule);vertical-align:top;white-space:nowrap}
+table.t .r{text-align:right;font-variant-numeric:tabular-nums}
+table.t tr.tot td{font-weight:650;border-bottom:0;border-top:1px solid var(--rule2)}
+table.t td.id{font-weight:650}
+table.t td.mk{max-width:520px;color:var(--muted);white-space:normal}
+table.t td.spl{color:var(--warn);font-weight:650;font-size:11px}
+.kpis{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 6px}
+.kpi{border:1px solid var(--rule2);background:var(--panel);border-radius:8px;padding:9px 14px;min-width:128px}
+.kpi span{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.kpi b{font-size:19px;font-weight:650}
+.kpi i{font-style:normal;font-size:11px;color:var(--muted);margin-left:4px}
+.wl{margin:0;padding:0;list-style:none}
+.wl li{padding:7px 0;border-bottom:1px solid var(--rule);display:flex;gap:10px;align-items:baseline}
+.wl a{color:var(--accent);cursor:pointer;font-weight:650;min-width:38px}
+.foot{display:flex;gap:18px;align-items:center;padding:5px 12px;border-top:1px solid var(--rule2);background:var(--panel);color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden}
+.foot b{color:var(--text);font-weight:600}
+#toast{position:fixed;left:50%;bottom:42px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:6px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90vw}
+#toast.on{opacity:.95}
+dialog{border:1px solid var(--rule2);border-radius:10px;background:var(--panel);color:var(--text);padding:20px 22px;width:min(640px,94vw);box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(20,18,15,.35)}
+dialog h3{margin:0 0 12px;font-size:16px}
+.help{font-size:13px;line-height:1.55}.help p{margin:0 0 10px}.help code{background:var(--bg);padding:1px 4px;border-radius:3px}
+menu{display:flex;justify-content:flex-end;gap:8px;margin:16px 0 0;padding:0}
+menu button{border:1px solid var(--rule2);background:var(--bg);border-radius:5px;padding:6px 12px;cursor:pointer}
+#print{display:none}
+/* Phone and tablet: the three panes become three tabs. */
+@media (max-width:900px){
+  #panes{display:flex;border-bottom:1px solid var(--rule2);background:var(--panel)}
+  #panes button{flex:1;border:0;background:transparent;padding:9px 4px;color:var(--muted);border-bottom:2px solid transparent}
+  #work{grid-template-columns:1fr}
+  #work>*{display:none;border-right:0}
+  body[data-pane=tree] #tree,body[data-pane=inputs] #inputs{display:block}
+  body[data-pane=view] #mainc{display:flex}
+  body[data-pane=tree] #panes [data-pane=tree],body[data-pane=inputs] #panes [data-pane=inputs],body[data-pane=view] #panes [data-pane=view]{color:var(--text);font-weight:600;border-bottom-color:var(--accent)}
+  .tn{padding-top:9px;padding-bottom:9px}
+}
+@media print{
+  html,body{height:auto;overflow:visible;background:#fff}
+  body>*:not(#print){display:none!important}
+  #print{display:block}
+  #print svg{display:block;page-break-after:always;break-after:page}
+  #print svg:last-child{page-break-after:auto;break-after:auto}
+  #print text{font-family:Helvetica,Arial,sans-serif}
+}
+</style>
+<style id="pagesize"></style>
+</head>
+<body data-pane="inputs">
+<header class="bar" id="toolbar">
+  <div class="brand"><a href="/">zbCAD</a><span class="sep">/</span>Metal Panel Layout</div>
+  <div class="grp"><span>File</span>
+    <button data-cmd="new" title="Start an empty project">New</button>
+    <button data-cmd="open" title="Open a saved project .json (Ctrl+O)">Open</button>
+    <button data-cmd="save" title="Save the project as .json (Ctrl+S)">Save</button>
+    <button data-cmd="sample" title="Load the sample hip roof">Sample</button>
+  </div>
+  <div class="grp"><span>Edit</span>
+    <button data-cmd="undo" title="Undo (Ctrl+Z)">Undo</button>
+    <button data-cmd="redo" title="Redo (Ctrl+Y)">Redo</button>
+  </div>
+  <div class="grp"><span>Output</span>
+    <button data-cmd="pdf" class="pri" title="Download the PDF package in one click">PDF</button>
+    <button data-cmd="print" title="Open the same package in the browser's print dialog (Ctrl+P)">Print</button>
+    <button data-cmd="csvLoc" title="Location cut list as CSV">CSV by location</button>
+    <button data-cmd="csvLen" title="Production cut list as CSV">CSV by length</button>
+  </div>
+  <div class="grp"><button data-cmd="help">Help</button></div>
+</header>
+<nav id="panes"><button data-pane="tree">Project</button><button data-pane="inputs">Inputs</button><button data-pane="view">Preview</button></nav>
+
+<div id="work">
+  <aside id="tree"></aside>
+  <section id="inputs"></section>
+  <div id="mainc">
+    <div class="tabs" id="tabs">
+      <button data-tab="layout">Layout</button>
+      <button data-tab="cut">Cut list</button>
+      <button data-tab="qty">Quantities</button>
+      <button data-tab="warn">Warnings</button>
+    </div>
+    <div id="info"></div>
+    <div id="stage"><svg id="cv" xmlns="http://www.w3.org/2000/svg"></svg><div id="edgePop" hidden></div></div>
+    <div id="pane" hidden></div>
+  </div>
+</div>
+
+<footer class="foot" id="foot"></footer>
+<div id="toast"></div>
+<input type="file" id="fileIn" accept=".json,application/json" hidden>
+<input type="file" id="libIn" accept=".json,application/json" hidden>
+<div id="print"></div>
+
+<dialog id="dlgHelp">
+  <h3>Metal Panel Layout</h3>
+  <div class="help">
+    <p><b>Enter each facet from field dimensions.</b> A facet is one flat face of roof or wall, seen from in front with the eave or base at the bottom. Pick a template and type its sizes; the preview follows every keystroke. <b>Slope</b> mode takes dimensions as taped on the roof. <b>Plan + pitch</b> takes horizontal dimensions and stretches everything square to the eave by the slope factor.</p>
+    <p><b>Lengths</b> can be typed any way: <code>126</code>, <code>126 1/2</code>, <code>10'-6 1/2"</code>, <code>10.5 ft</code>, <code>3.2 m</code>, or a sum like <code>=96+24</code>. What a bare number means, and how lengths and areas are shown, are project settings. Pitch takes <code>6:12</code>, <code>26.6 deg</code> or <code>50%</code>.</p>
+    <p><b>Edges</b> are typed from the shape and can be changed by clicking the edge on the drawing. Each type takes its allowance from the package, and any one edge can override it. Eave, valley and wall-base allowances push the panel past the line; ridge, headwall, hip and top allowances cut it back; rake, sidewall, jamb and corner allowances pull the layout in from the edge, which changes the edge rip and not the length. The dashed line on the drawing is where the metal ends.</p>
+    <p><b>Panel IDs</b> read <code>R2-07B</code>: facet R2, seventh strip from the start edge, second piece up from the eave. A strip made in one piece has no letter. IDs belong to a location and never change when a list is re-sorted.</p>
+    <p><b>Long runs</b> are split when they pass the profile's maximum length, and the pieces together are longer than the run by one lap per joint. On standing seam every transverse seam is marked as needing a splice. Laps can line up across the facet, stagger on alternate strips, or snap to purlin lines.</p>
+    <p><b>Waste</b> is coverage area less roof area, broken down by where it comes from: allowances, laps, angle cuts and notches, edge rips, and rounding.</p>
+    <p><b>Packages</b> group facets ordered together and hold their defaults. <b>Profiles</b> are a project library; the starter set is generic and must be checked against the manufacturer.</p>
+    <p>The project is kept in this browser as you work. <b>Save</b> writes a file to keep or send. Nothing here checks structure, wind uplift, clips or fasteners.</p>
+  </div>
+  <form method="dialog"><menu><button>Close</button></menu></form>
+</dialog>
+
+<script>
+'use strict';
+// ---------------------------------------------------------------------------
+// Metal Panel Layout. One classic script on purpose: every top-level function
+// stays reachable from the headless suites in src/tools/tests/panels/ without a
+// test hook. All lengths are decimal inches internally; rounding happens only at
+// display and when a cut length is ordered. x runs along the eave, y up the slope.
+// ---------------------------------------------------------------------------
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const EPS=1e-6,MM=25.4,DEG=Math.PI/180;
+
+// ---- units -------------------------------------------------------------------
+// `=96+24`: plain arithmetic only, parsed by hand so nothing typed is ever evaluated as code.
+function calc(expr){
+  const s=expr.replace(/\s+/g,'');let i=0;
+  const atom=()=>{
+    if(s[i]==='('){i++;const v=add();if(s[i++]!==')')throw 0;return v;}
+    if(s[i]==='-'){i++;return -atom();}
+    const m=/^\d*\.?\d+/.exec(s.slice(i));if(!m)throw 0;i+=m[0].length;return +m[0];
+  };
+  const mul=()=>{let v=atom();while(s[i]==='*'||s[i]==='/'){const o=s[i++],r=atom();v=o==='*'?v*r:v/r;}return v;};
+  const add=()=>{let v=mul();while(s[i]==='+'||s[i]==='-'){const o=s[i++],r=mul();v=o==='+'?v+r:v-r;}return v;};
+  try{const v=add();return i===s.length&&Number.isFinite(v)?v:NaN;}catch(e){return NaN;}
+}
+function parseLen(str,bare){
+  let s=String(str??'').trim().toLowerCase();if(!s)return NaN;
+  if(s[0]==='=')return calc(s.slice(1));
+  const m=s.match(/^(-?\d*\.?\d+)\s*(mm|cm|m)$/);
+  if(m)return m[1]*{mm:1,cm:10,m:1000}[m[2]]/MM;
+  s=s.replace(/feet|foot|ft\.?/g,"'").replace(/inches|inch|in\.?/g,'"').replace(/[’′]/g,"'").replace(/[”″]/g,'"');
+  let neg=false;if(s[0]==='-'){neg=true;s=s.slice(1).trim();}
+  const num=t=>{
+    t=t.trim();if(!t)return 0;
+    if(/^\d*\.?\d+$/.test(t))return +t;
+    const f=t.match(/^(?:(\d+)[\s-]+)?(\d+)\/(\d+)$/);
+    return f&&+f[3]?+(f[1]||0)+f[2]/f[3]:NaN;
+  };
+  let v;const q=s.indexOf("'");
+  if(q>=0)v=num(s.slice(0,q))*12+num(s.slice(q+1).replace(/"/g,'').replace(/^[\s-]+/,''));
+  else if(s.includes('"'))v=num(s.replace(/"/g,''));
+  else v=num(s)*{in:1,ft:12,mm:1/MM}[bare||P.units.bare];
+  return neg?-v:v;
+}
+function fmtLen(v,fmt=P.units.fmt,prec=P.units.prec){
+  if(fmt==='dec')return v.toFixed(2);
+  if(fmt==='ft')return (v/12).toFixed(2)+"'";
+  if(fmt==='mm')return String(Math.round(v*MM));
+  const n=Math.round(Math.abs(v)*prec),sg=v<0&&n?'-':'';
+  const fr=k=>{let d=prec;while(k&&k%2===0){k/=2;d/=2;}return k?k+'/'+d:'';};
+  if(fmt==='ftin'){const ft=Math.floor(n/(12*prec)),r=n-ft*12*prec,f=fr(r%prec);return `${sg}${ft}'-${Math.floor(r/prec)}${f?' '+f:''}"`;}
+  const f=fr(n%prec),w=Math.floor(n/prec);
+  return sg+(f?(w?w+' ':'')+f:String(w));
+}
+// What a field shows has to read back as the same length whatever a bare number is set to
+// mean, so it always carries its unit and more precision than a report needs.
+function fmtField(v){
+  const f=P.units.fmt;
+  return f==='ftin'?fmtLen(v,'ftin',64):f==='ft'?+(v/12).toFixed(4)+"'":f==='mm'?+(v*MM).toFixed(1)+'mm':f==='dec'?+v.toFixed(4)+'"':fmtLen(v,'frac',64)+'"';
+}
+// For a length inside a sentence, where there is no column heading or units note to lean on.
+const fmtU=v=>fmtLen(v)+({frac:'"',dec:'"',mm:' mm'}[P.units.fmt]||'');
+const UNIT_NOTE={dec:'decimal inches',frac:'inches',ftin:'feet and inches',ft:'decimal feet',mm:'millimetres'};
+function fmtArea(sf){
+  const a=P.units.area;
+  return a==='sq'?(sf/100).toFixed(2)+' sq':a==='m2'?(sf*0.09290304).toFixed(1)+' m²':Math.round(sf).toLocaleString('en-US')+' sf';
+}
+const fmtRun=ft=>P.units.fmt==='mm'?(ft*0.3048).toFixed(1)+' m':ft.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})+' ft';
+const fmtPct=v=>(v*100).toFixed(1)+'%';
+// Pitch is stored as rise in 12 however it was typed.
+function parsePitch(str){
+  const s=String(str??'').trim().toLowerCase();let m;
+  if((m=s.match(/^(\d*\.?\d+)\s*(?:[:/]|in)\s*12$/)))return +m[1];
+  if((m=s.match(/^(\d*\.?\d+)\s*(?:°|deg(?:rees)?)$/)))return +m[1]<89?12*Math.tan(m[1]*DEG):NaN;
+  if((m=s.match(/^(\d*\.?\d+)\s*%$/)))return m[1]*0.12;
+  return /^\d*\.?\d+$/.test(s)?+s:NaN;
+}
+const fmtPitch=r=>`${+r.toFixed(2)}:12 (${(Math.atan(r/12)/DEG).toFixed(1)}°)`;
+
+// ---- vocabulary ----------------------------------------------------------------
+const PTYPES={'ssmr-snap':'SSMR snap-lock','ssmr-mech':'SSMR mechanical seam',exposed:'Exposed fastener'};
+const isSSMR=p=>p.type!=='exposed';
+const EDGE={eave:'Eave',rake:'Rake',ridge:'Ridge',hip:'Hip',valley:'Valley',headwall:'Headwall',sidewall:'Sidewall',base:'Base',top:'Top',jamb:'Jamb',corner:'Corner'};
+const KIND_EDGES={roof:['eave','rake','ridge','hip','valley','headwall','sidewall'],wall:['base','top','jamb','corner']};
+// These push the metal past the facet line; every other type pulls it back.
+const OUTWARD={eave:1,valley:1,base:1};
+const ALLOW_LABEL={eave:'Eave overhang / hook',ridge:'Ridge cutback',headwall:'Headwall cutback',hip:'Hip cutback',valley:'Valley extension',rake:'Rake inset',sidewall:'Sidewall inset',base:'Base extension',top:'Top cutback',jamb:'Jamb inset',corner:'Corner inset'};
+const TEMPLATES={rect:['Rectangle','rw'],trap:['Trapezoid (hip roof side)','r'],tri:['Triangle (hip end)','r'],para:['Parallelogram','r'],angled:['One angled side (valley or hip)','r'],gable:['Rectangle with gable top','w'],shed:['Rectangle with shed top','w'],custom:['Custom perimeter','rw']};
+const STARTS={left:'Left edge',right:'Right edge','center-panel':'Centred panel','center-seam':'Centred seam'};
+const SPLITS={max:'Max length + remainder at top',equal:'Equal pieces',eave:'Remainder at eave'};
+const LAPMODES={aligned:'Aligned across the facet',stagger:'Staggered on alternate strips',purlin:'Snap to purlins'};
+
+// ---- document -------------------------------------------------------------------
+let P,S={t:'facet',pk:null,f:null,prof:null,tab:'layout',cut:'loc',edge:null,edgeXY:[0,0]};
+function mkProfile(id,name,type,cover,sheetW,rib,minSlope){
+  return {id,name,mfr:'Generic starter, verify with manufacturer',gauge:'24 ga',color:'',type,cover,sheetW,rib,maxLen:480,minLen:12,lap:6,hand:'either',minSlope};
+}
+function starterProfiles(){
+  return [mkProfile('p1','12" SSMR snap-lock','ssmr-snap',12,16,1.75,3),mkProfile('p2','16" SSMR snap-lock','ssmr-snap',16,20,1.75,3),mkProfile('p3','18" SSMR snap-lock','ssmr-snap',18,22,1.75,3),
+    mkProfile('p4','12" SSMR mechanical seam','ssmr-mech',12,16.5,2,0.5),mkProfile('p5','16" SSMR mechanical seam','ssmr-mech',16,20.5,2,0.5),mkProfile('p6','18" SSMR mechanical seam','ssmr-mech',18,22.5,2,0.5),
+    {...mkProfile('p7','36" exposed fastener (R / PBR)','exposed',36,38,1.25,1),gauge:'26 ga'}];
+}
+const newDefaults=()=>({profileId:'p2',color:'',allow:{eave:1},split:'max',lap:null,lapMode:'aligned',stagger:24,purlinSp:60,purlin0:0,round:0.25,ripMin:6,wind:''});
+function newProject(){
+  const p={app:'zbcad-panels',v:1,name:'Untitled project',jobNo:'',address:'',units:{bare:'in',fmt:'frac',prec:16,area:'sf'},sheet:'letter',idMax:10,seq:10,profiles:starterProfiles(),packages:[],facets:[]};
+  p.packages.push({id:'k'+p.seq++,name:'Main roof',prefix:'',facetIds:[],def:newDefaults()});
+  return p;
+}
+function nextMark(p,kind){
+  const used=new Set(p.facets.map(f=>f.mark)),c=kind==='wall'?'W':'R';
+  for(let i=1;;i++)if(!used.has(c+i))return c+i;
+}
+const newParams=()=>({w:240,h:144,top:96,inset:null,apex:null,skew:24,side:'right',h2:192});
+const newLayout=()=>({dir:'eave',dirEdge:0,angle:0,start:'left',offset:0,balance:false});
+function newFacet(p,pk,o={}){
+  const kind=o.kind||'roof';
+  const f=Object.assign({id:'f'+p.seq++,mark:nextMark(p,kind),name:'',kind,inputMode:'slope',pitch:null,template:'rect',params:newParams(),
+    custom:'xy',pts:[],walk:[],edges:[],openings:[],ov:{},layout:newLayout()},o);
+  p.facets.push(f);pk.facetIds.push(f.id);
+  return f;
+}
+function sampleProject(){
+  const p=newProject();p.name='Sample: 40 x 28 hip roof';
+  for(const [name,template,w] of [['Front','trap',480],['Back','trap',480],['Left hip','tri',336],['Right hip','tri',336]])
+    newFacet(p,p.packages[0],{name,template,inputMode:'plan',pitch:6,layout:{...newLayout(),start:'center-seam'},params:{...newParams(),w,top:144,h:168}});
+  return p;
+}
+// Anything a file or the autosave brings in passes through here before it can become the open
+// project. A new field has to be added here as well as in its factory, or it is dropped on load.
+function checkProject(raw){
+  if(!raw||typeof raw!=='object'||!Array.isArray(raw.packages)||!Array.isArray(raw.facets))throw new Error('That is not a panel layout project.');
+  if(raw.v>1)throw new Error('That project was saved by a newer version of this tool.');
+  const num=(v,d,min=-1e7,max=1e7)=>v!==null&&v!==''&&v!==undefined&&Number.isFinite(+v)&&+v>=min&&+v<=max?+v:d;
+  const str=(v,d='',n=200)=>typeof v==='string'?v.slice(0,n):d;
+  const pick=(v,o,d)=>typeof v==='string'&&Object.prototype.hasOwnProperty.call(o,v)?v:d;
+  const obj=v=>v&&typeof v==='object'?v:{},arr=v=>(Array.isArray(v)?v:[]).filter(x=>x&&typeof x==='object');
+  const u=obj(raw.units);
+  const p={app:'zbcad-panels',v:1,name:str(raw.name,'Untitled project'),jobNo:str(raw.jobNo),address:str(raw.address),
+    units:{bare:pick(u.bare,{in:1,ft:1,mm:1},'in'),fmt:pick(u.fmt,UNIT_NOTE,'frac'),prec:[2,4,8,16].includes(u.prec)?u.prec:16,area:pick(u.area,{sf:1,sq:1,m2:1},'sf')},
+    sheet:raw.sheet==='tabloid'?'tabloid':'letter',idMax:num(raw.idMax,10,4,40),seq:1,profiles:[],packages:[],facets:[]};
+  const ids=new Set(),fresh=v=>{let id=str(v);while(!id||ids.has(id))id='x'+p.seq++;ids.add(id);return id;};
+  p.profiles=checkProfiles(raw.profiles,fresh);
+  if(!p.profiles.length)p.profiles=starterProfiles().map(q=>({...q,id:fresh(q.id)}));
+  const pids=new Set(p.profiles.map(q=>q.id)),facets=new Map();
+  for(const f of arr(raw.facets)){
+    const m=obj(f.params),y=obj(f.layout),o=obj(f.ov),kind=f.kind==='wall'?'wall':'roof',n0=newParams();
+    const pts=(Array.isArray(f.pts)?f.pts:[]).filter(q=>Array.isArray(q)&&Number.isFinite(+q[0])&&Number.isFinite(+q[1])).map(q=>[+q[0],+q[1]]);
+    const walk=arr(f.walk).map(w=>({len:num(w.len,120,0),turn:num(w.turn,90,-360,360)}));
+    let template=pick(f.template,TEMPLATES,'rect');const custom=f.custom==='walk'?'walk':'xy';
+    if(!TEMPLATES[template][1].includes(kind[0])||(template==='custom'&&(custom==='walk'?walk:pts).length<3))template='rect';
+    const ov={};
+    if(pids.has(o.profileId))ov.profileId=o.profileId;
+    if(pick(o.split,SPLITS,''))ov.split=o.split;
+    if(pick(o.lapMode,LAPMODES,''))ov.lapMode=o.lapMode;
+    if(num(o.lap,null,0,600)!==null)ov.lap=+o.lap;
+    if(num(o.stagger,null,0,6000)!==null)ov.stagger=+o.stagger;
+    facets.set(str(f.id),{id:fresh(f.id),mark:str(f.mark).trim().slice(0,4)||'?',name:str(f.name),kind,inputMode:kind==='roof'&&f.inputMode==='plan'?'plan':'slope',pitch:num(f.pitch,null,0,120),template,
+      params:{w:num(m.w,n0.w,1),h:num(m.h,n0.h,1),top:num(m.top,n0.top,0),inset:num(m.inset,null),apex:num(m.apex,null),skew:num(m.skew,n0.skew),side:m.side==='left'?'left':'right',h2:num(m.h2,n0.h2,1)},
+      custom,pts,walk,edges:(Array.isArray(f.edges)?f.edges:[]).map(e=>({type:pick(obj(e).type,EDGE,null),allow:num(obj(e).allow,null,-600,600)})),
+      openings:arr(f.openings).map(q=>({x:num(q.x,0),y:num(q.y,0),w:num(q.w,36,0),h:num(q.h,36,0)})),ov,
+      layout:{dir:pick(y.dir,{eave:1,edge:1,angle:1},'eave'),dirEdge:num(y.dirEdge,0,0,999),angle:num(y.angle,0,-89,89),start:pick(y.start,STARTS,'left'),offset:num(y.offset,0),balance:!!y.balance}});
+  }
+  const placed=new Set();
+  for(const k of arr(raw.packages)){
+    const d=obj(k.def),n0=newDefaults(),allow={};
+    for(const t of Object.keys(EDGE))if(num(obj(d.allow)[t],0,-600,600))allow[t]=+d.allow[t];
+    const facetIds=(Array.isArray(k.facetIds)?k.facetIds:[]).filter(i=>facets.has(i)&&!placed.has(i)).map(i=>{placed.add(i);return facets.get(i).id;});
+    p.packages.push({id:fresh(k.id),name:str(k.name,'Package'),prefix:str(k.prefix,'',3),facetIds,def:{profileId:pids.has(d.profileId)?d.profileId:p.profiles[0].id,color:str(d.color),allow,
+      split:pick(d.split,SPLITS,'max'),lap:num(d.lap,null,0,600),lapMode:pick(d.lapMode,LAPMODES,'aligned'),stagger:num(d.stagger,n0.stagger,0,6000),
+      purlinSp:num(d.purlinSp,n0.purlinSp,0,6000),purlin0:num(d.purlin0,0,-6000,6000),round:[0.125,0.25,0.5,1].includes(d.round)?d.round:0.25,ripMin:num(d.ripMin,6,0,600),wind:pick(d.wind,{left:1,right:1},'')}});
+  }
+  if(!p.packages.length)p.packages.push({id:fresh(''),name:'Main roof',prefix:'',facetIds:[],def:{...newDefaults(),profileId:p.profiles[0].id}});
+  // A facet no package claims is still someone's work; it lands in the first package.
+  for(const [k,f] of facets){p.facets.push(f);if(!placed.has(k))p.packages[0].facetIds.push(f.id);}
+  // New ids are a letter plus seq, so seq has to clear every number already in use.
+  p.seq=Math.max(p.seq,num(raw.seq,1,1),...[...ids].map(id=>(+(id.match(/\d+$/)||[0])[0]||0)+1));
+  return p;
+}
+function checkProfiles(list,fresh=v=>v){
+  const num=(v,d,min,max)=>v!==null&&v!==''&&v!==undefined&&Number.isFinite(+v)&&+v>=min&&+v<=max?+v:d,str=v=>typeof v==='string'?v.slice(0,200):'';
+  return (Array.isArray(list)?list:[]).filter(q=>q&&typeof q==='object').map(q=>({id:fresh(q.id),name:str(q.name)||'Profile',mfr:str(q.mfr),gauge:str(q.gauge),color:str(q.color),
+    type:typeof q.type==='string'&&Object.prototype.hasOwnProperty.call(PTYPES,q.type)?q.type:'ssmr-snap',cover:num(q.cover,16,1,600),sheetW:num(q.sheetW,num(q.cover,16,1,600),1,600),rib:num(q.rib,0,0,24),
+    maxLen:num(q.maxLen,480,0,12000),minLen:num(q.minLen,12,0,600),lap:num(q.lap,6,0,600),hand:q.hand==='left'||q.hand==='right'?q.hand:'either',minSlope:num(q.minSlope,0,0,24)}));
+}
+const ser=()=>JSON.stringify(P);
+const curPk=()=>P.packages.find(k=>k.id===S.pk)||P.packages[0];
+const curF=()=>P.facets.find(f=>f.id===S.f)||null;
+const curProf=()=>P.profiles.find(q=>q.id===S.prof)||P.profiles[0];
+const pkgOf=f=>P.packages.find(k=>k.facetIds.includes(f.id))||P.packages[0];
+const facetsOf=k=>k.facetIds.map(id=>P.facets.find(f=>f.id===id)).filter(Boolean);
+// A facet's working settings: the package defaults with the facet's overrides on top, and the
+// profile's own lap where neither says otherwise.
+function eff(f){
+  const pk=pkgOf(f),d=pk.def,o=f.ov,profile=P.profiles.find(q=>q.id===(o.profileId??d.profileId))||P.profiles[0];
+  return {profile,W:profile.cover,maxLen:profile.maxLen,minLen:profile.minLen,lap:o.lap??d.lap??profile.lap,split:o.split??d.split,lapMode:o.lapMode??d.lapMode,stagger:o.stagger??d.stagger,
+    purlinSp:d.purlinSp,purlin0:d.purlin0,round:d.round,ripMin:d.ripMin,allow:d.allow,wind:d.wind,color:d.color||profile.color,prefix:pk.prefix,idMax:P.idMax};
+}
+
+// ---- facet geometry ---------------------------------------------------------------
+// Plan dimensions square to the eave grow by 1/cos(pitch); those along it do not change.
+const slopeK=f=>f.inputMode==='plan'&&f.pitch!=null?Math.hypot(12,f.pitch)/12:1;
+const rot=(p,a)=>{const c=Math.cos(a),s=Math.sin(a);return [p[0]*c-p[1]*s,p[0]*s+p[1]*c];};
+function walkPts(walk){
+  let x=0,y=0,a=0;const pts=[];
+  walk.forEach(e=>{pts.push([x,y]);x+=e.len*Math.cos(a*DEG);y+=e.len*Math.sin(a*DEG);a+=e.turn;});
+  // How far the last edge ends from where the first began: zero for a perimeter that closes.
+  pts.gap=Math.hypot(x,y);
+  return pts;
+}
+// Corners in the slope plane from what was typed. Only a custom perimeter is stored as points.
+function facetPts(f){
+  const m=f.params,w=m.w,h=m.h,k=slopeK(f);let pts;
+  switch(f.template){
+    case 'trap':{const i=m.inset??(w-m.top)/2;pts=m.top>EPS?[[0,0],[w,0],[i+m.top,h],[i,h]]:[[0,0],[w,0],[i,h]];break;}
+    case 'tri':pts=[[0,0],[w,0],[m.apex??w/2,h]];break;
+    case 'para':pts=[[0,0],[w,0],[w+m.skew,h],[m.skew,h]];break;
+    case 'angled':pts=m.side==='right'?[[0,0],[w,0],[m.top,h],[0,h]]:[[0,0],[w,0],[w,h],[w-m.top,h]];break;
+    case 'gable':pts=[[0,0],[w,0],[w,h],[m.apex??w/2,m.h2],[0,h]];break;
+    case 'shed':pts=m.side==='right'?[[0,0],[w,0],[w,m.h2],[0,h]]:[[0,0],[w,0],[w,h],[0,m.h2]];break;
+    case 'custom':pts=f.custom==='walk'?walkPts(f.walk):f.pts;break;
+    default:pts=[[0,0],[w,0],[w,h],[0,h]];
+  }
+  const out=pts.map(([x,y])=>[x,y*k]);out.gap=pts.gap||0;
+  return out;
+}
+function signedArea(pts){let a=0;for(let i=0;i<pts.length;i++){const p=pts[i],q=pts[(i+1)%pts.length];a+=p[0]*q[1]-q[0]*p[1];}return a/2;}
+function selfIntersects(pts){
+  const n=pts.length,side=(a,b,c)=>(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+  for(let i=0;i<n;i++)for(let j=i+2;j<n;j++){
+    if(i===0&&j===n-1)continue;
+    const a=pts[i],b=pts[i+1],c=pts[j],d=pts[(j+1)%n];
+    if(side(a,b,c)*side(a,b,d)<-EPS&&side(c,d,a)*side(c,d,b)<-EPS)return true;
+  }
+  return false;
+}
+// An edge the panels start on has the roof above it; one they die into has the roof below.
+// That one fact, plus whether the edge is level, plumb or neither, is the whole default.
+function autoType(dx,dy,lower,kind){
+  const len=Math.hypot(dx,dy),tol=0.001*len+0.01,plumb=Math.abs(dx)<=tol,level=Math.abs(dy)<=tol;
+  if(kind==='wall')return plumb?'corner':lower?'base':'top';
+  return plumb?'rake':level?(lower?'eave':'ridge'):(lower?'valley':'hip');
+}
+// Move every edge out (or in) by its own distance and re-find each corner where neighbouring
+// offset lines cross. Two edges in one line with different offsets have no crossing, so that
+// corner becomes a step.
+function offsetPoly(pts,edges){
+  const n=pts.length,out=[];
+  for(let i=0;i<n;i++){
+    const a=edges[(i+n-1)%n],b=edges[i],p=pts[i];
+    const pa=[p[0]+a.nx*a.d,p[1]+a.ny*a.d],pb=[p[0]+b.nx*b.d,p[1]+b.ny*b.d];
+    const cr=a.ux*b.uy-a.uy*b.ux;
+    if(Math.abs(cr)<1e-9){out.push(pa);if(Math.hypot(pa[0]-pb[0],pa[1]-pb[1])>EPS)out.push(pb);}
+    else{const t=((pb[0]-pa[0])*b.uy-(pb[1]-pa[1])*b.ux)/cr;out.push([pa[0]+a.ux*t,pa[1]+a.uy*t]);}
+  }
+  return out;
+}
+const yAt=(e,x)=>e.y1+(x-e.x1)*(e.y2-e.y1)/(e.x2-e.x1);
+// Sutherland-Hodgman against one horizontal line. Only ever fed the convex quads below.
+function clipY(poly,y,keepAbove){
+  const out=[],inside=p=>keepAbove?p[1]>=y-EPS:p[1]<=y+EPS;
+  for(let i=0;i<poly.length;i++){
+    const a=poly[i],b=poly[(i+1)%poly.length],ia=inside(a),ib=inside(b);
+    if(ia)out.push(a);
+    if(ia!==ib){const t=(y-a[1])/(b[1]-a[1]);out.push([a[0]+t*(b[0]-a[0]),y]);}
+  }
+  return out;
+}
+// The part of a slab's width that metal actually reaches at height y.
+function spanAtY(s,y){
+  let a=s.xa,b=s.xb;const w=s.xb-s.xa;
+  for(const [ga,gb] of [[y-s.loA,y-s.loB],[s.hiA-y,s.hiB-y]]){
+    if(ga<-EPS&&gb<-EPS)return null;
+    if(ga<-EPS)a=Math.max(a,s.xa+w*(-ga)/(gb-ga));
+    if(gb<-EPS)b=Math.min(b,s.xa+w*ga/(ga-gb));
+  }
+  return b-a>EPS?[a,b]:null;
+}
+function stripsFor(xmin,xmax,W,y,ripMin){
+  let anchor=y.start==='left'?xmin+y.offset:y.start==='right'?xmax-y.offset:(xmin+xmax)/2+y.offset-(y.start==='center-panel'?W/2:0);
+  if(y.balance&&(y.start==='left'||y.start==='right')){
+    // Share the leftover between both ends; if half of it would be too thin a rip, give each
+    // end half a panel more instead.
+    const r=(xmax-xmin)%W;
+    if(r>0.01&&W-r>0.01)anchor=xmin+(r/2>=ripMin?r/2:(r+W)/2);
+  }
+  const k0=Math.floor((xmin-anchor)/W+1e-9),k1=Math.ceil((xmax-anchor)/W-1e-9),out=[];
+  for(let k=k0;k<k1;k++){
+    const a=Math.max(xmin,anchor+k*W),b=Math.min(xmax,anchor+(k+1)*W);
+    // A sliver thinner than this is rounding, not a panel anyone would cut.
+    if(b-a>0.01)out.push({a,b});
+  }
+  return y.start==='right'?out.reverse():out;
+}
+// Cut one run [b,t] into pieces no longer than M, each upper one lapping the one below, so the
+// pieces add up to the run plus one lap per joint. `datum` is where the lap lines are measured
+// from: sharing it across a facet is what keeps them in one line where run bottoms differ.
+function splitRun(b,t,o){
+  const {M,lap,minLen}=o,L=t-b,res={cuts:[[b,t]],unsnapped:0,rebalanced:false,over:false};
+  if(!(M>0)||L<=M+EPS)return res;
+  if(!(M-lap>1)){res.over=true;return res;}
+  if(o.rule==='eave'){
+    // The same roof read from the ridge down: full pieces at the top, remainder at the eave.
+    const m=splitRun(-t,-b,{...o,rule:'max',datum:-o.datumTop,purlin0:-o.purlin0});
+    return {...m,cuts:m.cuts.map(([a,c])=>[-c,-a]).reverse()};
+  }
+  const cuts=[],step=M-lap;
+  if(o.rule==='equal'){
+    const n=Math.ceil((L-lap)/step-1e-9),len=(L+(n-1)*lap)/n;
+    for(let i=0,y=b;i<n;i++,y+=len-lap)cuts.push([y,i===n-1?t:y+len]);
+  }else{
+    let y=b;
+    while(t-y>M+EPS){
+      let top=y+M;
+      if(o.mode==='purlin'&&o.purlinSp>0){
+        // Centre the lap on the highest purlin the piece can reach.
+        const line=o.purlin0+Math.floor((top-lap/2-o.purlin0)/o.purlinSp+1e-9)*o.purlinSp+lap/2;
+        if(line-y>=Math.max(minLen,lap+1)-EPS)top=line;else res.unsnapped++;
+      }else top=o.datum+Math.floor((y-o.datum)/step+1e-9)*step+M;
+      cuts.push([y,top]);y=top-lap;
+    }
+    cuts.push([y,t]);
+  }
+  // A piece too short to rollform borrows length from its neighbour by moving their shared lap.
+  const fix=(si,oi)=>{
+    const s=cuts[si],ot=cuts[oi],need=minLen-(s[1]-s[0]);
+    if(need>EPS&&ot[1]-ot[0]-need>=minLen-EPS){if(si>oi){s[0]-=need;ot[1]-=need;}else{s[1]+=need;ot[0]+=need;}res.rebalanced=true;}
+  };
+  if(cuts.length>1){fix(cuts.length-1,cuts.length-2);fix(0,1);}
+  res.cuts=cuts;
+  return res;
+}
+const q0=()=>({slope:0,plan:0,planKnown:true,cover:0,gross:0,lf:0,count:0,strips:0,splices:0,wAllow:0,wLap:0,wAngle:0,wRip:0,wRound:0,trim:{}});
+function addQ(t,u){
+  for(const k of ['slope','plan','cover','gross','lf','count','strips','splices','wAllow','wLap','wAngle','wRip','wRound'])t[k]+=u[k];
+  t.planKnown=t.planKnown&&u.planKnown;
+  for(const k in u.trim)t.trim[k]=(t.trim[k]||0)+u.trim[k];
+  return t;
+}
+const wasteOf=q=>({sf:q.cover-q.slope,pct:q.slope>0?(q.cover-q.slope)/q.slope:0,gross:q.gross-q.slope});
+
+// The layout engine: a pure function of the facet and its working settings. It never draws or
+// touches the document, which is what lets the suites drive it directly.
+function layoutFacet(f,e){
+  const W=e.W,warn=[],k=slopeK(f),pts=facetPts(f),n=pts.length,A=signedArea(pts),orient=A>=0?1:-1,q=q0();
+  const edges=pts.map((p,i)=>{
+    const c=pts[(i+1)%n],dx=c[0]-p[0],dy=c[1]-p[1],len=Math.hypot(dx,dy)||1,auto=autoType(dx,dy,dx*orient>0,f.kind),ed=f.edges[i]||{};
+    const type=ed.type||auto,val=ed.allow??e.allow[type]??0;
+    return {i,x1:p[0],y1:p[1],x2:c[0],y2:c[1],len:Math.hypot(dx,dy),auto,type,val,d:(OUTWARD[type]?1:-1)*val,ux:dx/len,uy:dy/len,nx:dy/len*orient,ny:-dx/len*orient};
+  });
+  const holes=f.openings.filter(o=>o.w>EPS&&o.h>EPS).map(o=>[[o.x,o.y*k],[o.x+o.w,o.y*k],[o.x+o.w,(o.y+o.h)*k],[o.x,(o.y+o.h)*k]]);
+  const holeArea=holes.reduce((s,r)=>s+Math.abs(signedArea(r)),0),area=Math.max(Math.abs(A)-holeArea,0);
+  const L={f,e,k,pts,edges,holes,off:pts,theta:0,strips:[],pieces:[],seams:[],laps:[],warn,q};
+  q.slope=area/144;q.planKnown=f.pitch!=null;q.plan=q.planKnown?q.slope*12/Math.hypot(12,f.pitch):0;
+  for(const ed of edges)q.trim[ed.type]=(q.trim[ed.type]||0)+ed.len/12;
+  if(n<3||area<1){warn.push('This facet has no area yet.');return L;}
+  if(pts.gap>0.5)warn.push(`The custom perimeter does not close: the last edge ends ${fmtU(pts.gap)} from the start.`);
+  if(selfIntersects(pts)){warn.push('The outline crosses itself. Fix the dimensions before using this layout.');return L;}
+  if(!(W>=1)){warn.push('The profile coverage width must be at least 1".');return L;}
+  const shortE=edges.filter(ed=>ed.len<W-EPS);
+  if(shortE.length)warn.push(`Edge ${shortE.map(ed=>ed.i+1).join(', ')} is shorter than one ${fmtU(W)} panel. Check the dimensions.`);
+  if(f.inputMode==='plan'&&f.pitch==null)warn.push('Plan mode needs a pitch; until one is entered the dimensions are being used as slope lengths.');
+  if(f.kind==='roof'&&f.pitch!=null&&f.pitch<e.profile.minSlope-EPS)warn.push(`Pitch ${fmtPitch(f.pitch)} is below this profile's minimum of ${e.profile.minSlope}:12.`);
+  const eaves=edges.filter(ed=>(ed.type==='eave'||ed.type==='base')&&Math.abs(ed.val)<EPS);
+  if(eaves.length)warn.push(`${EDGE[eaves[0].type]} edge ${eaves.map(ed=>ed.i+1).join(', ')} has no overhang or hook allowance.`);
+
+  const off=L.off=offsetPoly(pts,edges),y=f.layout;
+  // Turn the facet so the panels run straight up; everything below works in that frame.
+  let th=0;
+  if(y.dir==='angle')th=y.angle*DEG;
+  else if(y.dir==='edge'){
+    const ed=edges[y.dirEdge%n];th=Math.PI/2-Math.atan2(ed.uy,ed.ux);
+    // Either way along the edge is the same panel direction; take the one that leaves the eave down.
+    while(th>Math.PI/2+EPS)th-=Math.PI;while(th<-Math.PI/2+EPS)th+=Math.PI;
+  }
+  L.theta=th;
+  // An opening hard against the facet's edge (a door at the base) has to follow that edge out
+  // to where the metal ends, or the allowance would leave a sliver of panel across it.
+  const bb=r=>[Math.min(...r.map(p=>p[0])),Math.max(...r.map(p=>p[0])),Math.min(...r.map(p=>p[1])),Math.max(...r.map(p=>p[1]))],bp=bb(pts),bo=bb(off);
+  const cut=holes.map(r=>{const b=bb(r),v=[0,1,2,3].map(i=>Math.abs(b[i]-bp[i])<0.01?bo[i]:b[i]);return [[v[0],v[2]],[v[1],v[2]],[v[1],v[3]],[v[0],v[3]]];});
+  const rings=[off,...cut].map(r=>r.map(p=>rot(p,th))),slant=[];
+  for(const r of rings)r.forEach((p,i)=>{const c=r[(i+1)%r.length];if(Math.abs(c[0]-p[0])>EPS)slant.push({x1:p[0],y1:p[1],x2:c[0],y2:c[1],xl:Math.min(p[0],c[0]),xr:Math.max(p[0],c[0])});});
+  // Strips stop at the roof's own width. Where an eave overhang meets a hip the metal's corner
+  // pokes an inch past it, and without this that corner would become a strip of its own.
+  const xs0=rings[0].map(p=>p[0]),xr=pts.map(p=>rot(p,th)[0]),xmin=Math.max(Math.min(...xs0),Math.min(...xr)),xmax=Math.min(Math.max(...xs0),Math.max(...xr));
+  if((xmax-xmin)/W>4000){warn.push('That is more than 4,000 strips on one facet. Check the coverage width.');return L;}
+  const vx=[...new Set(rings.flat().map(p=>p[0]))].sort((a,b)=>a-b),runs=[];
+  // Between two neighbouring corner positions no edge starts or ends, so the metal inside a
+  // strip is a stack of plain quads there. Every length and area below is exact for that reason,
+  // concave facets and openings included, with nothing sampled.
+  for(const st of stripsFor(xmin,xmax,W,y,e.ripMin)){
+    const xs=[st.a,...vx.filter(x=>x>st.a+EPS&&x<st.b-EPS),st.b],slabs=[];
+    for(let i=0;i+1<xs.length;i++){
+      const xa=xs[i],xb=xs[i+1],xm=(xa+xb)/2;
+      const hit=slant.filter(s=>s.xl<xm&&s.xr>xm).map(s=>({s,y:yAt(s,xm)})).sort((p,c)=>p.y-c.y);
+      for(let j=0;j+1<hit.length;j+=2){
+        const lo=hit[j].s,hi=hit[j+1].s,s={xa,xb,loA:yAt(lo,xa),loB:yAt(lo,xb),hiA:yAt(hi,xa),hiB:yAt(hi,xb)};
+        // An opening drawn hard against an edge leaves a strip of no height between the two.
+        if(s.hiA-s.loA<EPS&&s.hiB-s.loB<EPS)continue;
+        s.area=(xb-xa)*(s.hiA-s.loA+s.hiB-s.loB)/2;s.g0=Math.min(s.loA,s.loB);s.g1=Math.max(s.hiA,s.hiB);
+        slabs.push(s);
+      }
+    }
+    // Slabs that overlap in height are one sheet of metal, however it is notched; ones that do
+    // not (above and below a window, say) are separate runs in the same strip.
+    slabs.sort((a,b)=>a.g0-b.g0);
+    const pcs=[];let cur=null;
+    for(const s of slabs){
+      if(cur&&s.g0<cur.t-0.01){cur.slabs.push(s);cur.t=Math.max(cur.t,s.g1);}
+      else pcs.push(cur={slabs:[s],b:s.g0,t:s.g1});
+    }
+    for(const pc of pcs){pc.ca=Math.min(...pc.slabs.map(s=>s.xa));pc.cb=Math.max(...pc.slabs.map(s=>s.xb));pc.mat=pc.slabs.reduce((a,s)=>a+s.area,0);}
+    const live=pcs.filter(pc=>pc.t-pc.b>0.01);
+    if(live.length)runs.push({a:st.a,b:st.b,pcs:live});
+  }
+  if(!runs.length)return L;
+  const all=runs.flatMap(r=>r.pcs),B0=Math.min(...all.map(pc=>pc.b)),T0=Math.max(...all.map(pc=>pc.t));
+  const eaveY=Math.min(...pts.map(p=>rot(p,th)[1])),pad=runs.length>99?3:2,ssmr=isSSMR(e.profile),flag={short:[],long:[],rip:[],rebal:0,unsnap:0};
+  let mat=0;
+  runs.forEach((run,ri)=>{
+    // Alternate strips get a shorter first piece, which moves their lap line without adding a joint.
+    const made=[],sh=e.lapMode==='stagger'&&ri%2?e.stagger:0;
+    for(const pc of run.pcs){
+      const r=splitRun(pc.b,pc.t,{M:e.maxLen,lap:e.lap,minLen:e.minLen,rule:e.split,mode:e.lapMode,datum:B0-sh,datumTop:T0+sh,purlinSp:e.purlinSp,purlin0:eaveY+e.purlin0}),cuts=r.cuts,Lrun=pc.t-pc.b,cw=pc.cb-pc.ca;
+      flag.unsnap+=r.unsnapped;if(r.rebalanced)flag.rebal++;
+      const Ls=pc.slabs.filter(s=>s.xa<=pc.ca+EPS),Rs=pc.slabs.filter(s=>s.xb>=pc.cb-EPS),one=pc.slabs.length===1?pc.slabs[0]:null;
+      const bL=Math.min(...Ls.map(s=>s.loA)),tL=Math.max(...Ls.map(s=>s.hiA)),bR=Math.min(...Rs.map(s=>s.loB)),tR=Math.max(...Rs.map(s=>s.hiB));
+      // Cut angle off square, at the bottom and top of the run, where the run is one plain quad.
+      const ang=one?[Math.atan2(one.loB-one.loA,cw)/DEG,Math.atan2(one.hiB-one.hiA,cw)/DEG]:[0,0];
+      // Each of these is one cause of waste. Together with rounding and the allowances they
+      // account for every square inch between the roof and the metal ordered.
+      mat+=pc.mat;q.wRip+=(W-cw)*Lrun;q.wAngle+=cw*Lrun-pc.mat;q.wLap+=W*(cuts.reduce((a,c)=>a+c[1]-c[0],0)-Lrun);
+      cuts.forEach(([y0,y1],ci)=>{
+        const polys=[];let m=0;
+        for(const s of pc.slabs){
+          const c=clipY(clipY([[s.xa,s.loA],[s.xb,s.loB],[s.xb,s.hiB],[s.xa,s.hiA]],y0,true),y1,false),a=Math.abs(signedArea(c));
+          if(c.length>=3&&a>EPS){polys.push(c);m+=a;}
+        }
+        const raw=y1-y0,len=e.round>0?Math.ceil(raw/e.round-1e-9)*e.round:raw,rect=cw*raw,square=Math.abs(m-rect)<1e-4*rect+0.05;
+        const lenL=Math.max(0,Math.min(tL,y1)-Math.max(bL,y0)),lenR=Math.max(0,Math.min(tR,y1)-Math.max(bR,y0));
+        // An angled end belongs to whichever piece it actually runs through, which on a steep hip can be two.
+        const angB=one&&Math.abs(ang[0])>0.05&&y0<Math.max(one.loA,one.loB)-EPS?ang[0]:null,angT=one&&Math.abs(ang[1])>0.05&&y1>Math.min(one.hiA,one.hiB)+EPS?ang[1]:null;
+        made.push({facetId:f.id,strip:ri+1,x0:run.a,x1:run.b,ca:pc.ca,cb:pc.cb,y0,y1,raw,len,polys,slabs:pc.slabs,lenL,lenR,short:Math.min(lenL,lenR),square,angB,angT,
+          shape:!square&&angB==null&&angT==null,rip:cw<W-0.01?cw:null,lapTop:ci<cuts.length-1?e.lap:0,lapBot:ci>0?e.lap:0,splice:ssmr&&cuts.length>1});
+        q.wRound+=W*(len-raw);
+        if(ci){
+          if(ssmr)q.splices++;
+          for(const s of pc.slabs){
+            const lo=spanAtY(s,cuts[ci-1][1]),up=spanAtY(s,y0);
+            if(lo)L.laps.push({y:cuts[ci-1][1],xa:lo[0],xb:lo[1],dash:false});
+            if(up&&e.lap>EPS)L.laps.push({y:y0,xa:up[0],xb:up[1],dash:true});
+          }
+        }
+      });
+      for(const s of pc.slabs)if(s.xa<=run.a+EPS&&run.a>xmin+EPS)L.seams.push({x:s.xa,ya:s.loA,yb:s.hiA});
+    }
+    const base=`${e.prefix?e.prefix+'-':''}${f.mark}-${String(ri+1).padStart(pad,'0')}`;
+    made.forEach((p,i)=>{
+      // A at the eave, counting up. A strip made in one piece needs no letter.
+      p.letter=made.length>1?String.fromCharCode(65+i%26):'';p.id=base+p.letter;
+      if(p.raw<e.minLen-EPS)flag.short.push(p.id);
+      if(e.maxLen>0&&p.raw>e.maxLen+EPS)flag.long.push(p.id);
+      if(p.rip!=null&&p.rip<e.ripMin-EPS&&!flag.rip.includes(base))flag.rip.push(base);
+      L.pieces.push(p);q.count++;q.lf+=p.len/12;q.cover+=W*p.len/144;q.gross+=e.profile.sheetW*p.len/144;
+    });
+    L.strips.push({id:base,index:ri+1,a:run.a,b:run.b,pieces:made});
+  });
+  q.strips=runs.length;q.wAllow=mat-area;
+  for(const kk of ['wAllow','wLap','wAngle','wRip','wRound'])q[kk]/=144;
+  const list=a=>a.length>6?`${a.slice(0,6).join(', ')} and ${a.length-6} more`:a.join(', ');
+  if(flag.long.length)warn.push(`Over the ${fmtU(e.maxLen)} maximum and not split, because the lap is as long as the panel: ${list(flag.long)}.`);
+  if(flag.short.length)warn.push(`Under the ${fmtU(e.minLen)} minimum length: ${list(flag.short)}.`);
+  if(flag.rebal)warn.push(`${flag.rebal} run${flag.rebal>1?'s':''} had a lap moved so no piece falls under the ${fmtU(e.minLen)} minimum.`);
+  if(flag.rip.length)warn.push(`Edge rip under the ${fmtU(e.ripMin)} minimum at ${list(flag.rip)}. Balance the edge rips or change the start.`);
+  if(q.splices)warn.push(`${q.splices} transverse seam${q.splices>1?'s':''} on a standing seam profile: each REQUIRES SPLICE.`);
+  if(flag.unsnap)warn.push(`${flag.unsnap} lap${flag.unsnap>1?'s':''} could not be snapped to a purlin line.`);
+  if(L.pieces.some(p=>p.id.length>e.idMax))warn.push(`Panel IDs here run longer than the ${e.idMax}-character limit set for the project.`);
+  const side=y.start==='left'||y.start==='right'?y.start:null;
+  if(side&&e.profile.hand!=='either'&&e.profile.hand!==side)warn.push(`This profile lays from the ${e.profile.hand}, but the layout starts at the ${side} edge.`);
+  if(side&&e.wind===side)warn.push(`Panels start at the ${side} edge, so every sidelap opens toward the prevailing wind. Start from the other edge.`);
+  return L;
+}
+
+// ---- results ----------------------------------------------------------------------
+let R;
+function compute(){
+  R={L:new Map(),pk:[],total:q0(),warn:[]};
+  const marks={};for(const f of P.facets)marks[f.mark]=(marks[f.mark]||0)+1;
+  for(const pk of P.packages){
+    const fs=facetsOf(pk),q=q0();
+    for(const f of fs){
+      const L=layoutFacet(f,eff(f));
+      if(marks[f.mark]>1&&!pk.prefix)L.warn.push(`ID ${f.mark} is used by more than one facet, so panel IDs repeat.`);
+      R.L.set(f.id,L);addQ(q,L.q);
+      for(const m of L.warn)R.warn.push({fid:f.id,mark:f.mark,m});
+    }
+    R.pk.push({pk,facets:fs,q});addQ(R.total,q);
+  }
+  return R;
+}
+const scopePks=only=>R.pk.filter(g=>!only||g.pk.id===only);
+const piecesOf=g=>g.facets.flatMap(f=>R.L.get(f.id).pieces);
+const profKey=L=>L.e.profile.name+(L.e.color?' / '+L.e.color:'');
+// `R1-01 – R1-14`: consecutive strips of one facet collapse, so a production row stays readable.
+function idRanges(ps){
+  const out=[];let run=[];
+  const flush=()=>{if(run.length>=3)out.push(run[0].id+' – '+run[run.length-1].id);else out.push(...run.map(p=>p.id));run=[];};
+  for(const p of ps){
+    const l=run[run.length-1];
+    if(l&&(l.facetId!==p.facetId||l.letter!==p.letter||p.strip!==l.strip+1))flush();
+    run.push(p);
+  }
+  flush();
+  return out.join(', ');
+}
+// The production view: identical ordered lengths of one profile and colour together, longest first.
+function production(gs){
+  const m=new Map();
+  for(const g of gs)for(const f of g.facets){
+    const L=R.L.get(f.id);
+    for(const p of L.pieces){
+      const k=profKey(L)+'|'+p.len.toFixed(4);
+      if(!m.has(k))m.set(k,{len:p.len,profile:L.e.profile.name,color:L.e.color,pieces:[]});
+      m.get(k).pieces.push(p);
+    }
+  }
+  return [...m.values()].sort((a,b)=>a.profile.localeCompare(b.profile)||a.color.localeCompare(b.color)||b.len-a.len).map(r=>({...r,qty:r.pieces.length,ids:idRanges(r.pieces)}));
+}
+function purchasing(gs){
+  const m=new Map();
+  for(const g of gs)for(const f of g.facets){
+    const L=R.L.get(f.id),k=profKey(L);
+    if(!m.has(k))m.set(k,{profile:L.e.profile.name,color:L.e.color,count:0,lf:0,cover:0,gross:0});
+    const r=m.get(k);r.count+=L.q.count;r.lf+=L.q.lf;r.cover+=L.q.cover;r.gross+=L.q.gross;
+  }
+  return [...m.values()];
+}
+const angleText=p=>p.shape?'shape':[p.angB,p.angT].filter(a=>a!=null).map(a=>Math.abs(a).toFixed(1)+'°').filter((a,i,l)=>l.indexOf(a)===i).join(' / ');
+const lapText=p=>p.lapTop||p.lapBot?`${p.lapTop?fmtLen(p.lapTop):'–'} / ${p.lapBot?fmtLen(p.lapBot):'–'}`:'';
+const WASTE=[['wAllow','Allowances'],['wLap','Laps'],['wAngle','Angle cuts and notches'],['wRip','Edge rips'],['wRound','Rounding']];
+function specLine(L){
+  const e=L.e,p=e.profile,bits=[p.name,e.color,p.gauge,`${fmtU(p.cover)} coverage`].filter(Boolean);
+  if(p.maxLen>0)bits.push(`max ${fmtU(p.maxLen)}, ${fmtU(e.lap)} lap`);
+  return bits.join(' · ');
+}
+
+// ---- drawing plan --------------------------------------------------------------------
+// One list of primitives in sheet units (y down), drawn by the screen, the print sheets and
+// the PDF alike. The package therefore cannot drift from what was checked on screen, and a
+// test can read the plan instead of parsing any of the three.
+const HELV=[278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,
+  667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,
+  556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+function textW(s,size){let w=0;for(const ch of String(s)){const c=ch.charCodeAt(0);w+=c>=32&&c<=126?HELV[c-32]:556;}return w*size/1000;}
+function facetPlan(L,w,h,o={}){
+  const ops=[],m=o.margin??56,th=L.theta;
+  let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+  for(const [x,y] of [...L.pts,...L.off]){x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y);}
+  if(!isFinite(x0))return {ops,tx:null};
+  const bw=Math.max(x1-x0,1),bh=Math.max(y1-y0,1);
+  // A drag passes the transform it started with, so the sheet does not rescale under the cursor.
+  const tx=o.tx||(()=>{const s=Math.min((w-2*m)/bw,(h-2*m)/bh);return {s,ox:(w-bw*s)/2,oy:(h-bh*s)/2,xmin:x0,ymax:y1,k:L.k};})();
+  const s=tx.s,X=x=>(o.x||0)+tx.ox+(x-tx.xmin)*s,Y=y=>(o.y||0)+tx.oy+(tx.ymax-y)*s,XY=p=>[X(p[0]),Y(p[1])];
+  // Pieces live in the frame where panels run straight up; the sheet shows the eave at the bottom.
+  const UN=p=>XY(th?rot(p,-th):p);
+  const line=(a,b,st)=>ops.push({k:'line',x1:a[0],y1:a[1],x2:b[0],y2:b[1],...st});
+  for(const p of L.pieces)for(const c of p.polys)ops.push({k:'poly',pts:c.map(UN),fill:p.strip%2?'tA':'tB'});
+  for(const v of L.seams)line(UN([v.x,v.ya]),UN([v.x,v.yb]),{stroke:'seam',lw:0.6});
+  for(const l of L.laps)line(UN([l.xa,l.y]),UN([l.xb,l.y]),{stroke:'seam',lw:l.dash?0.5:0.9,dash:l.dash});
+  // Dashed where the metal ends, solid where the roof does.
+  if(L.edges.some(e=>Math.abs(e.d)>EPS))ops.push({k:'poly',pts:L.off.map(XY),stroke:'accent',lw:0.6,dash:true});
+  ops.push({k:'poly',pts:L.pts.map(XY),stroke:'ink',lw:1.4});
+  for(const r of L.holes)ops.push({k:'poly',pts:r.map(XY),fill:'bg',stroke:'ink',lw:1});
+  if(o.thumb){
+    ops.push({k:'text',x:X((x0+x1)/2),y:Y((y0+y1)/2)+5,s:L.f.mark,size:15,bold:true,anchor:'middle',color:'accent'});
+    return {ops,tx};
+  }
+  // Shrink the ID, then turn it along the panel, then move it outside on a leader.
+  const yb=Y(y0),yt=Y(y1),ripY=new Map();let below=0,above=0;
+  for(const p of L.pieces){
+    const pw=(p.cb-p.ca)*s,xm=(p.ca+p.cb)/2,sl=p.slabs.find(v=>v.xa<=xm&&v.xb>=xm),t=sl?(xm-sl.xa)/(sl.xb-sl.xa):0;
+    const lo=sl?Math.max(p.y0,sl.loA+t*(sl.loB-sl.loA)):p.y0,hi=sl?Math.min(p.y1,sl.hiA+t*(sl.hiB-sl.hiA)):p.y1,ok=hi>lo,ym=ok?(lo+hi)/2:(p.y0+p.y1)/2;
+    const ph=(ok?hi-lo:0)*s,c=UN([xm,ym]),w1=textW(p.id,1);
+    const flat=Math.min(9,(pw-3)/w1),turned=Math.min(9,pw*0.7,(ph-3)/w1);
+    if(!th&&flat>=6&&ph>=flat+3)ops.push({k:'text',x:c[0],y:c[1]+flat*0.35,s:p.id,size:flat,anchor:'middle',color:'ink',id:1});
+    else if(turned>=4.5){
+      const d=th/DEG,r=th?(d>0?d-90:d+90):-90,a=(r+90)*DEG;
+      ops.push({k:'text',x:c[0]+turned*0.35*Math.cos(a),y:c[1]+turned*0.35*Math.sin(a),s:p.id,size:turned,anchor:'middle',rot:r,color:'ink',id:1});
+    }else{
+      const up=c[1]<(yb+yt)/2,ly=up?yt-24-9*(above++%3):yb+30+16*(below++%2);
+      line(c,[c[0],ly+(up?2:-7)],{stroke:'muted',lw:0.4});
+      // A ripped edge strip is usually the one too thin to label, so its rip width goes under its leader.
+      if(!up)ripY.set(p,ly+8);
+      ops.push({k:'text',x:c[0],y:ly,s:p.id,size:6.5,anchor:'middle',color:'ink',id:1});
+    }
+  }
+  if(!th)for(const st of L.strips){
+    const p=st.pieces[0];
+    if(p.rip!=null)ops.push({k:'text',x:X((p.ca+p.cb)/2),y:ripY.get(p)??yb+19,s:'rip '+fmtLen(p.rip),size:6.5,anchor:'middle',color:'accent'});
+  }
+  // One tag per lap line, not one per strip: thirty of them would bury the drawing.
+  if(L.q.splices){
+    const seen=new Set();
+    for(const l of L.laps){
+      const kk=l.y.toFixed(1);if(l.dash||seen.has(kk)||seen.size>=6)continue;seen.add(kk);
+      const xr=Math.max(...L.laps.filter(v=>!v.dash&&v.y.toFixed(1)===kk).map(v=>v.xb)),c=UN([xr,l.y]);
+      ops.push({k:'text',x:c[0]+5,y:c[1]+2.5,s:'SPLICE',size:6.5,bold:true,color:'accent'});
+    }
+  }
+  for(const e of L.edges){
+    if(e.len*s<34)continue;
+    const nx=e.nx,ny=-e.ny,size=8,gap=10+Math.max(0,e.d)*s;
+    ops.push({k:'text',x:X((e.x1+e.x2)/2)+nx*gap,y:Y((e.y1+e.y2)/2)+ny*gap+(ny>0.3?size*0.8:ny<-0.3?0:size*0.35),
+      s:`${EDGE[e.type]} ${fmtLen(e.len)}`,size,anchor:nx>0.3?'start':nx<-0.3?'end':'middle',color:'muted'});
+  }
+  // Which way the panels run and which way they are laid, in the sheet's top-left corner.
+  const ax=(o.x||0)+18,ay=(o.y||0)+44,up=rot([0,1],-th),lay=rot([L.f.layout.start==='right'?-1:1,0],-th);
+  const arrow=(d,label)=>{
+    const tip=[ax+d[0]*26,ay-d[1]*26],nr=[d[1],d[0]];
+    line([ax,ay],tip,{stroke:'muted',lw:0.8});
+    ops.push({k:'poly',pts:[tip,[tip[0]-d[0]*6+nr[0]*2.5,tip[1]+d[1]*6+nr[1]*2.5],[tip[0]-d[0]*6-nr[0]*2.5,tip[1]+d[1]*6-nr[1]*2.5]],fill:'muted'});
+    ops.push({k:'text',x:tip[0]+(d[0]<-0.3?-4:4),y:tip[1]+2.5,s:label,size:6.5,color:'muted',anchor:d[0]<-0.3?'end':'start'});
+  };
+  arrow(up,'panel run');arrow(lay,'lay');
+  return {ops,tx};
+}
+const SVGC={ink:'var(--text)',muted:'var(--muted)',accent:'var(--accent)',tA:'var(--tA)',tB:'var(--tB)',seam:'var(--seam)',bg:'var(--bg)',rule:'var(--rule2)'};
+const PDFC={ink:[.11,.11,.1],muted:[.42,.4,.37],accent:[.6,.29,.12],tA:[.9,.93,.96],tB:[.8,.86,.92],seam:[.35,.42,.49],bg:[1,1,1],rule:[.78,.76,.72]};
+// Print goes on white paper whatever theme the screen is in, so it takes the PDF's colours.
+const PRINTC=Object.fromEntries(Object.entries(PDFC).map(([k,v])=>[k,`rgb(${v.map(c=>Math.round(c*255)).join(',')})`]));
+const n2=v=>(+v.toFixed(2)).toString();
+function planSVG(ops,C=SVGC){
+  let s='';
+  for(const o of ops){
+    const st=o.stroke?` stroke="${C[o.stroke]}" stroke-width="${o.lw}"${o.dash?' stroke-dasharray="3 2"':''}`:'';
+    if(o.k==='poly')s+=`<polygon points="${o.pts.map(p=>n2(p[0])+','+n2(p[1])).join(' ')}" fill="${o.fill?C[o.fill]:'none'}"${st}${o.stroke?' stroke-linejoin="round"':''}/>`;
+    else if(o.k==='line')s+=`<line x1="${n2(o.x1)}" y1="${n2(o.y1)}" x2="${n2(o.x2)}" y2="${n2(o.y2)}"${st}/>`;
+    else s+=`<text x="${n2(o.x)}" y="${n2(o.y)}" font-size="${n2(o.size)}" fill="${C[o.color||'ink']}" text-anchor="${o.anchor||'start'}"${o.bold?' font-weight="700"':''}${o.rot?` transform="rotate(${n2(o.rot)} ${n2(o.x)} ${n2(o.y)})"`:''}>${esc(o.s)}</text>`;
+  }
+  return s;
+}
+
+// ---- PDF writer ---------------------------------------------------------------------
+// Base-14 fonts and escaped text only, so the file is a plain ASCII string: it can be asserted
+// on in a test and downloaded as text without an encoding step corrupting the byte offsets.
+const WINANSI={'…':0x85,'‘':0x91,'’':0x92,'“':0x93,'”':0x94,'–':0x96,'—':0x97};
+function pdfStr(s){
+  let o='';
+  for(const ch of String(s)){
+    let c=ch.charCodeAt(0);
+    if(c<32||c>126)c=WINANSI[ch]??(c>=0xa0&&c<=0xff?c:63);
+    o+=c===40||c===41||c===92?'\\'+String.fromCharCode(c):c>126?'\\'+c.toString(8):String.fromCharCode(c);
+  }
+  return o;
+}
+function pdfContent(pg){
+  const out=[],H=pg.h,c=k=>PDFC[k].join(' ');
+  for(const o of pg.ops){
+    if(o.k==='text'){
+      const th=-(o.rot||0)*DEG,cs=Math.cos(th),sn=Math.sin(th),w=textW(o.s,o.size)*(o.bold?1.06:1);
+      const d=o.anchor==='middle'?-w/2:o.anchor==='end'?-w:0;
+      out.push(`BT /F${o.bold?2:1} ${n2(o.size)} Tf ${c(o.color||'ink')} rg ${n2(cs)} ${n2(sn)} ${n2(-sn)} ${n2(cs)} ${n2(o.x+d*cs)} ${n2(H-o.y+d*sn)} Tm (${pdfStr(o.s)}) Tj ET`);
+      continue;
+    }
+    if(o.fill)out.push(c(o.fill)+' rg');
+    if(o.stroke)out.push(`${c(o.stroke)} RG ${o.lw} w ${o.dash?'[3 2]':'[]'} 0 d`);
+    if(o.k==='line')out.push(`${n2(o.x1)} ${n2(H-o.y1)} m ${n2(o.x2)} ${n2(H-o.y2)} l S`);
+    else out.push(o.pts.map((p,i)=>`${n2(p[0])} ${n2(H-p[1])} ${i?'l':'m'}`).join(' ')+' h '+(o.fill&&o.stroke?'B':o.fill?'f':'S'));
+  }
+  return out.join('\n');
+}
+function pdfBuild(pages,title){
+  const font=n=>`<< /Type /Font /Subtype /Type1 /BaseFont /${n} /Encoding /WinAnsiEncoding >>`;
+  const objs=['<< /Type /Catalog /Pages 2 0 R >>',null,font('Helvetica'),font('Helvetica-Bold'),`<< /Title (${pdfStr(title)}) /Producer (zbCAD Metal Panel Layout) >>`],kids=[];
+  for(const pg of pages){
+    const body=pdfContent(pg),n=objs.length+1;
+    kids.push(n+' 0 R');
+    objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pg.w} ${pg.h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${n+1} 0 R >>`,
+      `<< /Length ${body.length} >>\nstream\n${body}\nendstream`);
+  }
+  objs[1]=`<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${pages.length} >>`;
+  let pdf='%PDF-1.4\n';const offs=[];
+  objs.forEach((b,i)=>{offs.push(pdf.length);pdf+=`${i+1} 0 obj\n${b}\nendobj\n`;});
+  const xref=pdf.length;
+  pdf+=`xref\n0 ${objs.length+1}\n0000000000 65535 f \n`+offs.map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('');
+  return pdf+`trailer\n<< /Size ${objs.length+1} /Root 1 0 R /Info 5 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+}
+function wrapText(s,size,maxW){
+  const lines=[];let cur='';
+  for(const w of String(s).split(' ')){
+    const t=cur?cur+' '+w:w;
+    if(cur&&textW(t,size)>maxW){lines.push(cur);cur=w;}else cur=t;
+  }
+  if(cur||!lines.length)lines.push(cur);
+  return lines;
+}
+function fitText(s,size,maxW){
+  s=String(s);if(textW(s,size)<=maxW)return s;
+  while(s.length>1&&textW(s+'…',size)>maxW)s=s.slice(0,-1);
+  return s+'…';
+}
+
+// ---- the package --------------------------------------------------------------------
+// Cover, overview, a sheet per facet, the production list, then quantities. `only` limits it
+// to one package. Returns pages of plan primitives for print and PDF to draw.
+function reportPages(date,only){
+  compute();
+  const gs=scopePks(only),[PW,PH]=P.sheet==='tabloid'?[1224,792]:[792,612],M=36,BOT=PH-M-24,pages=[],z=PW/792;let pg,y,title;
+  const T=(x,yy,s,o={})=>pg.ops.push({k:'text',x,y:yy,s:String(s),size:9,...o});
+  const rule=(yy,xa=M,xb=PW-M,lw=0.5)=>pg.ops.push({k:'line',x1:xa,y1:yy,x2:xb,y2:yy,stroke:'rule',lw});
+  const page=t=>{title=t??title;pg={w:PW,h:PH,ops:[],title};pages.push(pg);T(M,M+8,title,{size:14,bold:true});rule(M+16,M,PW-M,0.8);y=M+38;};
+  const sub=(s,size=8.5)=>{for(const l of wrapText(s,size,PW-2*M)){T(M,y,l,{size,color:'muted'});y+=size+2.5;}y+=4;};
+  const table=(cols,rows,o={})=>{
+    const size=o.size||8.5,lh=size+3,tw=cols.reduce((a,c)=>a+c.w,0);let x0=o.x??M;
+    const hdr=()=>{let x=x0;for(const c of cols){T(c.r?x+c.w-6:x,y,c.h,{size:size-0.5,bold:true,color:'muted',anchor:c.r?'end':'start'});x+=c.w;}y+=4;rule(y,x0,x0+tw);y+=lh;};
+    if(y+3*lh>BOT)page();
+    hdr();
+    for(const row of rows){
+      const cells=row.cells.map((c,i)=>cols[i].wrap?wrapText(c,size,cols[i].w-6):[fitText(c,size,cols[i].w-6)]),hh=Math.max(...cells.map(c=>c.length))*lh;
+      // A table that started beside a drawing continues full width on its own sheet.
+      if(y+hh-lh>BOT){page();x0=M;hdr();}
+      if(row.tot)rule(y-lh+2,x0,x0+tw);
+      let x=x0;
+      cells.forEach((ls,i)=>{ls.forEach((l,j)=>T(cols[i].r?x+cols[i].w-6:x,y+j*lh,l,{size,bold:!!row.tot||!!cols[i].b,color:cols[i].c||'ink',anchor:cols[i].r?'end':'start'}));x+=cols[i].w;});
+      y+=hh;
+    }
+    y+=14;
+  };
+  // Cover.
+  page(P.name);
+  T(M,y+10,P.name,{size:26,bold:true});y+=40;
+  for(const l of [P.jobNo&&'Job '+P.jobNo,P.address,date,only?'Package: '+gs[0].pk.name:`${gs.length} package${gs.length>1?'s':''}`].filter(Boolean)){T(M,y,l,{size:11,color:'muted'});y+=15;}
+  y+=14;
+  const tq=gs.reduce((a,g)=>addQ(a,g.q),q0());
+  table([{h:'Package',w:150*z,b:1},{h:'Profile and colour',w:230*z,wrap:1},{h:'Facets',w:50*z,r:1},{h:'Pieces',w:50*z,r:1},{h:'Linear length',w:80*z,r:1},{h:'Roof area',w:80*z,r:1},{h:'Waste',w:80*z,r:1}],
+    [...gs.map(g=>({cells:[g.pk.name,purchasing([g]).map(r=>r.profile+(r.color?' / '+r.color:'')).join('; '),g.facets.length,g.q.count,fmtRun(g.q.lf),fmtArea(g.q.slope),fmtPct(wasteOf(g.q).pct)]})),
+     ...(gs.length>1?[{tot:1,cells:['Total','',gs.reduce((a,g)=>a+g.facets.length,0),tq.count,fmtRun(tq.lf),fmtArea(tq.slope),fmtPct(wasteOf(tq).pct)]}]:[])]);
+  sub('Starter profiles are generic. Verify coverage, lengths, laps and minimum slope with the panel manufacturer. This package does not check structure, wind uplift, clips or fasteners.',8);
+  // Overview: every facet as a tile.
+  for(const g of gs){
+    if(!g.facets.length)continue;
+    page('Overview: '+g.pk.name);
+    const cols=Math.round(4*z),tw=(PW-2*M)/cols,th=150;let i=0;
+    for(const f of g.facets){
+      if(i&&i%cols===0)y+=th+34;
+      if(y+th+20>BOT){page();i=0;}
+      const L=R.L.get(f.id),x=M+(i%cols)*tw;
+      pg.ops.push(...facetPlan(L,tw-10,th,{x,y:y-10,margin:12,thumb:true}).ops);
+      T(x+(tw-10)/2,y+th+4,fitText([f.mark,f.name].filter(Boolean).join(' '),8.5,tw-14),{size:8.5,bold:true,anchor:'middle'});
+      T(x+(tw-10)/2,y+th+15,`${fmtArea(L.q.slope)} · ${L.q.count} pieces`,{size:7.5,anchor:'middle',color:'muted'});
+      i++;
+    }
+  }
+  // One sheet per facet: the layout drawing with that facet's location cut list beside it.
+  const locCols=[{h:'ID',w:54,b:1},{h:'Length',w:50,r:1},{h:'Short side',w:46,r:1},{h:'Angle',w:44,r:1},{h:'Lap t / b',w:38,r:1},{h:'Splice',w:26,c:'accent'},{h:'Rip',w:34,r:1}];
+  const locRow=p=>({cells:[p.id,fmtLen(p.len),p.square?'':fmtLen(p.short),angleText(p),lapText(p),p.splice?'SPL':'',p.rip!=null?fmtLen(p.rip):'']});
+  for(const g of gs)for(const f of g.facets){
+    const L=R.L.get(f.id),q=L.q;
+    page(`Facet ${f.mark}${f.name?': '+f.name:''}`);
+    sub(`${g.pk.name} · ${specLine(L)}`);
+    T(M,y,[`${q.strips} strips, ${q.count} pieces`,fmtRun(q.lf),`${f.kind} ${fmtArea(q.slope)}`,`waste ${fmtPct(wasteOf(q).pct)}`,f.pitch!=null&&'pitch '+fmtPitch(f.pitch),f.inputMode==='plan'&&'entered as plan + pitch',`laid from the ${STARTS[f.layout.start].toLowerCase()}`,q.splices&&`${q.splices} splices required`].filter(Boolean).join(' · '),{size:8.5});
+    y+=10;
+    const tabW=locCols.reduce((a,c)=>a+c.w,0),dw=PW-2*M-tabW-16,top=y;
+    pg.ops.push(...facetPlan(L,dw,BOT-top,{x:M,y:top}).ops);
+    y=top+12;
+    table(locCols,L.pieces.map(locRow),{x:M+dw+16,size:7.5});
+  }
+  // Production cut list.
+  for(const g of gs){
+    if(!piecesOf(g).length)continue;
+    page('Production cut list: '+g.pk.name);
+    sub('Identical ordered lengths together, longest first. Mark each piece with its ID.');
+    table([{h:'Qty',w:40,r:1},{h:'Length',w:74,r:1},{h:'Mark with ID',w:(PW-2*M)-114-250*z,wrap:1},{h:'Profile',w:160*z},{h:'Colour',w:90*z}],
+      production([g]).map(r=>({cells:[r.qty,fmtLen(r.len),r.ids,r.profile,r.color]})));
+    table([{h:'Profile',w:220*z,b:1},{h:'Colour',w:120*z},{h:'Pieces',w:60*z,r:1},{h:'Linear length',w:100*z,r:1},{h:'Coverage area',w:100*z,r:1},{h:'Gross area',w:100*z,r:1}],
+      purchasing([g]).map(r=>({cells:[r.profile,r.color,r.count,fmtRun(r.lf),fmtArea(r.cover),fmtArea(r.gross)]})));
+  }
+  // Quantities and waste.
+  page('Quantities and waste');
+  const qCols=[{h:'Facet',w:92*z,b:1},{h:'Roof (slope)',w:66*z,r:1},{h:'Roof (plan)',w:62*z,r:1},{h:'Coverage',w:62*z,r:1},{h:'Gross',w:62*z,r:1},{h:'Waste',w:58*z,r:1},{h:'%',w:44*z,r:1},
+    ...WASTE.map(([,l])=>({h:l.replace(' and notches',''),w:54.8*z,r:1}))];
+  const qRow=(label,q,tot)=>{const w=wasteOf(q);return {tot,cells:[label,fmtArea(q.slope),q.planKnown?fmtArea(q.plan):'–',fmtArea(q.cover),fmtArea(q.gross),fmtArea(w.sf),fmtPct(w.pct),...WASTE.map(([k])=>fmtArea(q[k]))]};};
+  for(const g of gs){
+    T(M,y,g.pk.name,{size:11,bold:true});y+=16;
+    table(qCols,[...g.facets.map(f=>qRow([f.mark,f.name].filter(Boolean).join(' '),R.L.get(f.id).q)),qRow('Package total',g.q,1)],{size:8});
+    const tr=Object.keys(g.q.trim).filter(k=>g.q.trim[k]>0.01);
+    if(tr.length)sub('Trim, linear length by edge type, each facet counted on its own (a ridge, hip or valley shared by two facets is in here twice): '+tr.map(k=>`${EDGE[k].toLowerCase()} ${fmtRun(g.q.trim[k])}`).join(', ')+'.',8);
+    if(g.q.splices)sub(`Splice locations: ${g.facets.filter(f=>R.L.get(f.id).q.splices).map(f=>`${f.mark} ${R.L.get(f.id).q.splices}`).join(', ')}; ${g.q.splices} in all.`,8);
+  }
+  if(gs.length>1)table(qCols,[qRow('Project total',tq,1)],{size:8});
+  sub('Waste is coverage area less roof slope area. Gross area is the sheet width times ordered length: the metal bought.',8);
+  // Title blocks last, once the sheet count is known.
+  pages.forEach((p,i)=>{
+    pg=p;rule(PH-M-12,M,PW-M,0.8);
+    T(M,PH-M,fitText(P.name+(P.jobNo?' · Job '+P.jobNo:''),8,PW*0.3),{size:8,bold:true});
+    T(PW/2,PH-M,`${fitText(p.title,7.5,PW*0.25)} · lengths in ${UNIT_NOTE[P.units.fmt]} · Verify all dimensions in field.`,{size:7.5,anchor:'middle',color:'muted'});
+    T(PW-M,PH-M,`Page ${i+1} of ${pages.length}`,{size:8,anchor:'end'});
+  });
+  return pages;
+}
+const buildPDF=(date,only)=>pdfBuild(reportPages(date,only),P.name);
+function buildCSV(kind,only){
+  compute();
+  const q=v=>/[",\n]/.test(v=String(v??''))?'"'+v.replace(/"/g,'""')+'"':v,gs=scopePks(only),d=v=>+v.toFixed(4);
+  const rows=kind==='len'
+    ?[['Qty','Length','Length (in)','IDs','Profile','Colour'],...production(gs).map(r=>[r.qty,fmtLen(r.len),d(r.len),r.pieces.map(p=>p.id).join(' '),r.profile,r.color])]
+    :[['ID','Package','Facet','Profile','Colour','Length','Length (in)','Short side (in)','Angle bottom (deg)','Angle top (deg)','Lap top (in)','Lap bottom (in)','Splice','Rip width (in)'],
+      ...gs.flatMap(g=>g.facets.flatMap(f=>{const L=R.L.get(f.id);return L.pieces.map(p=>[p.id,g.pk.name,[f.mark,f.name].filter(Boolean).join(' '),L.e.profile.name,L.e.color,fmtLen(p.len),d(p.len),d(p.short),
+        p.angB==null?'':+p.angB.toFixed(2),p.angT==null?'':+p.angT.toFixed(2),p.lapTop||'',p.lapBot||'',p.splice?'REQUIRES SPLICE':'',p.rip==null?'':d(p.rip)]);}))];
+  return rows.map(r=>r.map(q).join(',')).join('\r\n')+'\r\n';
+}
+
+// ---- tree ---------------------------------------------------------------------------
+function renderTree(){
+  const on=(t,id)=>S.t===t&&(id==null||id===(t==='package'?S.pk:S.f))?' on':'',bad=new Set(R.warn.map(w=>w.fid));
+  let h=`<div class="tn pj${on('project')}" data-act="sel" data-t="project"><span>${esc(P.name)}</span></div><div class="tn${on('profiles')}" data-act="sel" data-t="profiles"><span>Profile library</span><i>${P.profiles.length}</i></div>`;
+  for(const g of R.pk){
+    h+=`<div class="tn pk${on('package',g.pk.id)}" data-act="sel" data-t="package" data-id="${esc(g.pk.id)}"><span>${esc(g.pk.name)}</span><i>${fmtArea(g.q.slope)}</i></div>`;
+    for(const f of g.facets)h+=`<div class="tn fc${on('facet',f.id)}" data-act="sel" data-t="facet" data-id="${esc(f.id)}"><b>${esc(f.mark)}</b><span>${esc(f.name||TEMPLATES[f.template][0].split(' (')[0])}</span>${bad.has(f.id)?'<u title="Has warnings">!</u>':''}<i>${R.L.get(f.id).q.count}</i></div>`;
+    h+=`<div class="tn fc add" data-act="addFacet" data-id="${esc(g.pk.id)}">+ Facet</div>`;
+  }
+  $('#tree').innerHTML=h+'<div class="tn pk add" data-act="addPackage">+ Package</div>';
+}
+
+// ---- inputs -------------------------------------------------------------------------
+const opt=(o,v)=>(Array.isArray(o)?o:Object.entries(o)).map(([k,l])=>`<option value="${esc(k)}"${String(k)===String(v??'')?' selected':''}>${esc(l)}</option>`).join('');
+// data-b is the path a field writes to; data-t says how to read what was typed. The <em> is
+// where the parsed value is echoed while typing, so a slip shows before it is committed.
+const fld=(label,b,t,v,x='')=>`<label>${label}<em></em><input data-b="${b}" data-t="${t}" value="${esc(v)}" ${x}></label>`;
+const sel=(label,b,o,v,t='sel')=>`<label>${label}<select data-b="${b}" data-t="${t}">${opt(o,v)}</select></label>`;
+const len=v=>v==null?'':fmtField(v);
+const OV='<u title="Overrides the package default">●</u>';
+function renderInputs(){
+  const pk=curPk(),f=curF(),d=pk.def;let h='';
+  if(S.t==='project'){
+    h+=`<h2>Project</h2>${fld('Project name','p.name','text',P.name)}<div class="two">${fld('Job number','p.jobNo','text',P.jobNo)}${sel('Sheet size','p.sheet',{letter:'Letter landscape',tabloid:'Tabloid landscape'},P.sheet)}</div>${fld('Address','p.address','text',P.address)}`;
+    h+=`<h2>Units</h2><div class="two">${sel('A bare number means','u.bare',{in:'Inches',ft:'Feet',mm:'Millimetres'},P.units.bare)}${sel('Show lengths as','u.fmt',{frac:'Fractional inches, 126 1/2',dec:'Decimal inches, 126.50',ftin:'Feet-inches, 10\'-6 1/2"',ft:"Decimal feet, 10.54'",mm:'Millimetres, 3213'},P.units.fmt)}`;
+    h+=`${sel('Fraction precision','u.prec',[[16,'1/16'],[8,'1/8'],[4,'1/4'],[2,'1/2']],P.units.prec,'int')}${sel('Show areas as','u.area',{sf:'Square feet',sq:'Roofing squares',m2:'Square metres'},P.units.area)}</div>`;
+    h+=`<p class="hint">Any field takes any format whatever is chosen here: <code>10'-6 1/2"</code>, <code>10.5 ft</code>, <code>3.2 m</code>, <code>=96+24</code>.</p>`;
+    h+=`<h2>Panel IDs</h2>${fld('Longest ID the rollformer can mark','p.idMax','int',P.idMax,'inputmode="numeric" data-min="4"')}<p class="hint">IDs read facet-strip-piece, e.g. R2-07B. Anything longer than this is flagged.</p>`;
+  }else if(S.t==='profiles'){
+    const q=curProf();
+    h+=`<h2>Profile library<span><button class="sb" data-act="cloneProfile">Clone</button>${P.profiles.length>1?'<button class="sb" data-act="delProfile">Delete</button>':''}</span></h2>`;
+    h+=sel('Profile','s.prof',Object.fromEntries(P.profiles.map(x=>[x.id,x.name])),q.id);
+    h+=`${fld('Name','q.name','text',q.name)}${fld('Manufacturer','q.mfr','text',q.mfr)}<div class="two">${fld('Gauge','q.gauge','text',q.gauge)}${fld('Colour','q.color','text',q.color)}</div>`;
+    h+=sel('Type','q.type',PTYPES,q.type);
+    h+=`<div class="three">${fld('Coverage width','q.cover','len',len(q.cover),'data-min="1"')}${fld('Sheet width','q.sheetW','len',len(q.sheetW),'data-min="1"')}${fld('Rib height','q.rib','len',len(q.rib),'data-min="0"')}`;
+    h+=`${fld('Max length','q.maxLen','len',len(q.maxLen),'data-min="0"')}${fld('Min length','q.minLen','len',len(q.minLen),'data-min="0"')}${fld('End lap','q.lap','len',len(q.lap),'data-min="0"')}</div>`;
+    h+=`<div class="two">${sel('Lays from','q.hand',{either:'Either edge',left:'Left edge only',right:'Right edge only'},q.hand)}${fld('Min slope, rise in 12','q.minSlope','num',q.minSlope,'data-min="0"')}</div>`;
+    h+=`<p class="hint">A max length of 0 means no limit. The starter profiles are generic: check every number with the manufacturer.</p>`;
+    h+=`<h2>Share<span><button class="sb" data-act="expProfiles">Export library</button><button class="sb" data-act="impProfiles">Import library</button></span></h2><p class="hint">A library is a JSON file. Importing adds its profiles to this project.</p>`;
+  }else if(S.t==='package'||!f){
+    const prof=P.profiles.find(x=>x.id===d.profileId)||P.profiles[0],kinds=new Set(facetsOf(pk).map(x=>x.kind));
+    h+=`<h2>Package<span><button class="sb" data-act="pkgPdf" title="PDF of this package alone">PDF</button>${P.packages.length>1?'<button class="sb" data-act="delPackage">Delete</button>':''}</span></h2>`;
+    h+=`<div class="two">${fld('Name','k.name','text',pk.name)}${fld('ID prefix (optional)','k.prefix','text',pk.prefix,'maxlength="3" placeholder="e.g. B"')}</div>`;
+    h+=`<h2>Defaults for its facets</h2>${sel('Profile','d.profileId',Object.fromEntries(P.profiles.map(x=>[x.id,x.name])),d.profileId)}`;
+    h+=`<div class="two">${fld('Colour','d.color','text',d.color,`placeholder="${esc(prof.color||'from profile')}"`)}${fld('End lap','d.lap','lenopt',len(d.lap),`data-min="0" placeholder="${esc(fmtField(prof.lap))} from profile"`)}</div>`;
+    h+=`<div class="two">${sel('Split long runs','d.split',SPLITS,d.split)}${sel('Lap placement','d.lapMode',LAPMODES,d.lapMode)}</div>`;
+    if(d.lapMode==='stagger')h+=fld('Stagger alternate strips by','d.stagger','len',len(d.stagger),'data-min="0"');
+    if(d.lapMode==='purlin')h+=`<div class="two">${fld('Purlin spacing','d.purlinSp','len',len(d.purlinSp),'data-min="1"')}${fld('First purlin above eave','d.purlin0','len',len(d.purlin0))}</div>`;
+    h+=`<div class="three">${sel('Round cuts up to','d.round',[[0.125,'1/8"'],[0.25,'1/4"'],[0.5,'1/2"'],[1,'1"']],d.round,'float')}${fld('Min edge rip','d.ripMin','len',len(d.ripMin),'data-min="0"')}${sel('Prevailing wind','d.wind',{'':'Not given',left:'From the left',right:'From the right'},d.wind)}</div>`;
+    h+=`<h2>Edge allowances</h2><div class="two">`;
+    for(const t of [...(kinds.has('wall')&&!kinds.has('roof')?[]:KIND_EDGES.roof),...(kinds.has('wall')?KIND_EDGES.wall:[])])h+=fld(ALLOW_LABEL[t],'d.allow.'+t,'len',len(d.allow[t]||0));
+    h+=`</div><p class="hint">Every edge of that type takes this unless the edge itself overrides it. Overhangs and extensions lengthen the panel; cutbacks shorten it; insets move the layout limit and change the edge rip.</p>`;
+    if(!f)h+=`<p class="hint">This package has no facets yet. <button class="sb" data-act="addFacet" data-id="${esc(pk.id)}">+ Facet</button></p>`;
+  }else{
+    const L=R.L.get(f.id),m=f.params,wall=f.kind==='wall',y=f.layout,e=L.e,o=f.ov,hl=wall?'height':f.inputMode==='plan'?'plan run':'slope';
+    const mark=k=>o[k]!=null?OV:'';
+    h+=`<h2>Facet <span class="badge${f.inputMode==='plan'?' plan':''}">${f.inputMode==='plan'?'plan + pitch':'slope'}</span><span><button class="sb" data-act="dupFacet">Duplicate</button><button class="sb" data-act="mirFacet" title="Duplicate as a mirror image, for the opposite side">Mirror</button><button class="sb" data-act="upFacet">↑</button><button class="sb" data-act="downFacet">↓</button><button class="sb" data-act="delFacet">Delete</button></span></h2>`;
+    h+=`<div class="three">${fld('ID','f.mark','text',f.mark,'maxlength="4"')}<span style="grid-column:span 2">${fld('Name','f.name','text',f.name,'placeholder="e.g. Front slope"')}</span></div>`;
+    h+=`<div class="two">${sel('Surface','f.kind',{roof:'Roof',wall:'Wall'},f.kind)}${P.packages.length>1?sel('Package','f.$pk',Object.fromEntries(P.packages.map(x=>[x.id,x.name])),pk.id):''}</div>`;
+    if(!wall)h+=`<div class="two">${sel('Dimensions are','f.inputMode',{slope:'Slope, as taped on the roof',plan:'Plan + pitch, from drawings'},f.inputMode)}${fld('Pitch'+(f.inputMode==='plan'?'':' (optional)'),'f.pitch','pitch',f.pitch==null?'':`${+f.pitch.toFixed(3)}:12`,'placeholder="6:12, 26.6 deg, 50%"')}</div>`;
+    if(f.inputMode==='plan'&&f.pitch!=null)h+=`<p class="hint">Dimensions square to the eave are multiplied by ${L.k.toFixed(4)}; dimensions along it are left alone.</p>`;
+    h+=`<h2>Shape</h2>${sel('Template','f.template',Object.entries(TEMPLATES).filter(([,v])=>v[1].includes(f.kind[0])).map(([k,v])=>[k,v[0]]),f.template)}`;
+    const w=fld(wall?'Base length':'Eave length','m.w','len',len(m.w),'data-min="1"'),hh=fld(wall?'Height':f.inputMode==='plan'?'Plan run':'Slope height','m.h','len',len(m.h),'data-min="1"');
+    const side=sel(f.template==='shed'?'High side':'Angled side','m.side',{left:'Left',right:'Right'},m.side);
+    if(f.template==='rect')h+=`<div class="two">${w}${hh}</div>`;
+    if(f.template==='trap')h+=`<div class="two">${w}${fld('Ridge length','m.top','len',len(m.top),'data-min="0"')}${hh}${fld('Left inset','m.inset','lenopt',len(m.inset),'placeholder="symmetric"')}</div>`;
+    if(f.template==='tri')h+=`<div class="three">${w}${hh}${fld('Apex from left','m.apex','lenopt',len(m.apex),'placeholder="centred"')}</div>`;
+    if(f.template==='para')h+=`<div class="three">${w}${hh}${fld('Skew offset','m.skew','len',len(m.skew))}</div>`;
+    if(f.template==='angled')h+=`<div class="two">${w}${fld('Top length','m.top','len',len(m.top),'data-min="0"')}${hh}${side}</div>`;
+    if(f.template==='gable')h+=`<div class="two">${w}${fld('Eave height','m.h','len',len(m.h),'data-min="1"')}${fld('Peak height','m.h2','len',len(m.h2),'data-min="1"')}${fld('Peak from left','m.apex','lenopt',len(m.apex),'placeholder="centred"')}</div>`;
+    if(f.template==='shed')h+=`<div class="three">${w}${fld('Low height','m.h','len',len(m.h),'data-min="1"')}${fld('High height','m.h2','len',len(m.h2),'data-min="1"')}</div>${side}`;
+    if(f.template==='custom'){
+      h+=sel('Enter the perimeter as','f.custom',{xy:'X / Y points',walk:'Walk the edges: length + turn'},f.custom);
+      if(f.custom==='walk'){
+        h+=`<table class="mini"><tr><th></th><th>Edge length</th><th>Then turn, degrees</th><th></th></tr>`;
+        f.walk.forEach((s,i)=>{h+=`<tr><td class="n">${i+1}</td><td><input data-b="wk.${i}.len" data-t="len" data-min="0" value="${esc(len(s.len))}"></td><td><input data-b="wk.${i}.turn" data-t="num" value="${esc(s.turn)}"></td><td class="n">${f.walk.length>3?`<button class="sb" data-act="delRow" data-i="${i}">×</button>`:''}</td></tr>`;});
+        h+=`</table><button class="sb" data-act="addRow">+ Edge</button><p class="hint" style="margin-top:6px">Start at the left end of the eave heading right. A positive turn is to the left (counter-clockwise); a square corner is 90.${f.inputMode==='plan'?' Lengths here are in plan.':''}</p>`;
+      }else{
+        h+=`<table class="mini"><tr><th></th><th>X, along eave</th><th>Y, ${hl}</th><th></th></tr>`;
+        f.pts.forEach((p,i)=>{h+=`<tr><td class="n">${i+1}</td><td><input data-b="pt.${i}.0" data-t="len" value="${esc(len(p[0]))}"></td><td><input data-b="pt.${i}.1" data-t="len" value="${esc(len(p[1]))}"></td><td class="n">${f.pts.length>3?`<button class="sb" data-act="delRow" data-i="${i}">×</button>`:''}</td></tr>`;});
+        h+=`</table><button class="sb" data-act="addRow">+ Point</button><p class="hint" style="margin-top:6px">Corners can also be dragged on the drawing; drag a faint dot to add one.</p>`;
+      }
+    }
+    h+=`<h2>Edges</h2><table class="mini"><tr><th></th><th>Length</th><th>Type</th><th>Allowance</th></tr>`;
+    for(const ed of L.edges)h+=`<tr><td class="n">${ed.i+1}</td><td class="n">${fmtLen(ed.len)}</td><td><select data-b="e.${ed.i}.type" data-t="selnull">${opt({'':`${EDGE[ed.auto]} (auto)`,...Object.fromEntries(KIND_EDGES[f.kind].map(t=>[t,EDGE[t]]))},(f.edges[ed.i]||{}).type)}</select></td><td><input data-b="e.${ed.i}.allow" data-t="lenopt" value="${esc(len((f.edges[ed.i]||{}).allow))}" placeholder="${esc(fmtField(e.allow[ed.type]||0))}"></td></tr>`;
+    h+=`</table><p class="hint">Or click an edge on the drawing. A blank allowance takes the package's value for that edge type.</p>`;
+    h+=`<h2>Layout</h2><div class="two">${sel('Panels run','y.dir',{eave:'Square to the eave',edge:'Parallel to an edge',angle:'At an angle off square'},y.dir)}`;
+    h+=y.dir==='edge'?sel('Which edge','y.dirEdge',L.edges.map(ed=>[ed.i,`${ed.i+1} ${EDGE[ed.type]}`]),y.dirEdge,'int'):y.dir==='angle'?fld('Angle, degrees','y.angle','num',y.angle,'data-min="-89"'):'<span></span>';
+    h+=`${sel('Start at','y.start',STARTS,y.start)}${fld('Offset','y.offset','len',len(y.offset))}</div>`;
+    if(y.start==='left'||y.start==='right')h+=`<label class="chk"><input type="checkbox" data-b="y.balance" data-t="chk"${y.balance?' checked':''}>Balance the two edge rips</label>`;
+    h+=`<h2>Overrides of ${esc(pk.name)}</h2>`;
+    h+=`<label>Profile${mark('profileId')}<select data-b="o.profileId" data-t="selnull">${opt({'':`Package default: ${(P.profiles.find(x=>x.id===d.profileId)||P.profiles[0]).name}`,...Object.fromEntries(P.profiles.map(x=>[x.id,x.name]))},o.profileId)}</select></label>`;
+    h+=`<div class="two"><label>Split long runs${mark('split')}<select data-b="o.split" data-t="selnull">${opt({'':'Package default',...SPLITS},o.split)}</select></label><label>Lap placement${mark('lapMode')}<select data-b="o.lapMode" data-t="selnull">${opt({'':'Package default',...LAPMODES},o.lapMode)}</select></label>`;
+    h+=`<label>End lap${mark('lap')}<em></em><input data-b="o.lap" data-t="lenopt" data-min="0" value="${esc(len(o.lap))}" placeholder="${esc(fmtField(d.lap??e.profile.lap))}"></label>${e.lapMode==='stagger'?`<label>Stagger${mark('stagger')}<em></em><input data-b="o.stagger" data-t="lenopt" data-min="0" value="${esc(len(o.stagger))}" placeholder="${esc(fmtField(d.stagger))}"></label>`:''}</div>`;
+    h+=`<h2>Openings<span><button class="sb" data-act="addOpen">+ Opening</button></span></h2>`;
+    if(f.openings.length){
+      h+=`<table class="mini"><tr><th>From left</th><th>From bottom</th><th>Width</th><th>Height</th><th></th></tr>`;
+      f.openings.forEach((q,i)=>{h+='<tr>'+['x','y','w','h'].map(kk=>`<td><input data-b="op.${i}.${kk}" data-t="len" value="${esc(len(q[kk]))}"${kk==='w'||kk==='h'?' data-min="0"':''}></td>`).join('')+`<td class="n"><button class="sb" data-act="delOpen" data-i="${i}">×</button></td></tr>`;});
+      h+='</table>';
+    }else h+='<p class="hint">Rectangular cut-outs for chimneys, skylights, curbs, windows and doors.</p>';
+  }
+  $('#inputs').innerHTML=h;
+}
+
+// ---- preview ------------------------------------------------------------------------
+let lastTx=null;
+function renderMain(keepTx){
+  const f=curF(),L=f&&R.L.get(f.id),tab=S.tab;
+  for(const b of ['layout','cut','qty','warn'])$(`#tabs [data-tab="${b}"]`).className=b===tab?'on':'';
+  $('#tabs [data-tab="warn"]').innerHTML='Warnings'+(R.warn.length?`<u>${R.warn.length}</u>`:'');
+  $('#stage').hidden=tab!=='layout';$('#pane').hidden=tab==='layout';
+  $('#stage').style.display=tab==='layout'?'':'none';
+  $('#edgePop').hidden=true;
+  if(tab!=='layout'){$('#info').innerHTML='';$('#pane').innerHTML=tab==='cut'?cutHTML():tab==='qty'?qtyHTML():warnHTML();return;}
+  const st=$('#stage'),w=st.clientWidth||900,h=st.clientHeight||600;
+  if(!L){$('#info').innerHTML='Add a facet to start.';$('#cv').innerHTML='';return;}
+  const q=L.q,plan=facetPlan(L,w,h,{tx:keepTx}),nw=L.warn.length;
+  lastTx=plan.tx;
+  $('#info').innerHTML=`<b>${esc(f.mark)}</b>${f.name?' '+esc(f.name):''} · ${esc(L.e.profile.name)} · ${q.strips} strips, ${q.count} pieces · ${fmtRun(q.lf)} · ${f.kind} <b>${fmtArea(q.slope)}</b> · coverage <b>${fmtArea(q.cover)}</b> · waste <b>${fmtPct(wasteOf(q).pct)}</b>${nw?` · <a data-tab="warn" style="color:var(--warn);cursor:pointer">${nw} warning${nw>1?'s':''}</a>`:''}`;
+  let hs='';
+  if(plan.tx){
+    const {s,ox,oy,xmin,ymax}=plan.tx,X=x=>ox+(x-xmin)*s,Y=y=>oy+(ymax-y)*s;
+    // Wide invisible lines over each edge, so a tap anywhere near one picks it.
+    for(const e of L.edges)hs+=`<line class="eh${S.edge===e.i?' on':''}" data-edge="${e.i}" x1="${n2(X(e.x1))}" y1="${n2(Y(e.y1))}" x2="${n2(X(e.x2))}" y2="${n2(Y(e.y2))}"><title>Edge ${e.i+1}: ${EDGE[e.type]}. Click to change.</title></line>`;
+    if(f.template==='custom'&&f.custom==='xy'){
+      L.pts.forEach((p,i)=>{const c=L.pts[(i+1)%L.pts.length];hs+=`<circle class="hm" data-m="${i}" cx="${n2(X((p[0]+c[0])/2))}" cy="${n2(Y((p[1]+c[1])/2))}" r="5"/>`;});
+      L.pts.forEach((p,i)=>{hs+=`<circle class="h" data-v="${i}" cx="${n2(X(p[0]))}" cy="${n2(Y(p[1]))}" r="6"/>`;});
+    }
+  }
+  $('#cv').setAttribute('viewBox',`0 0 ${w} ${h}`);
+  $('#cv').innerHTML=planSVG(plan.ops)+hs;
+  if(S.edge!=null&&L.edges[S.edge]){
+    const e=L.edges[S.edge],ed=f.edges[e.i]||{},pop=$('#edgePop');
+    pop.innerHTML=`<b>Edge ${e.i+1}<button class="sb" data-act="closeEdge">×</button></b><label>Type<select data-b="e.${e.i}.type" data-t="selnull">${opt({'':`${EDGE[e.auto]} (auto)`,...Object.fromEntries(KIND_EDGES[f.kind].map(t=>[t,EDGE[t]]))},ed.type)}</select></label><label>${ALLOW_LABEL[e.type]}<em></em><input data-b="e.${e.i}.allow" data-t="lenopt" value="${esc(len(ed.allow))}" placeholder="${esc(fmtField(L.e.allow[e.type]||0))} from package"></label>`;
+    pop.style.left=Math.max(6,Math.min(w-220,S.edgeXY[0]))+'px';pop.style.top=Math.max(6,Math.min(h-150,S.edgeXY[1]))+'px';pop.hidden=false;
+  }
+}
+function cutHTML(){
+  const views={loc:'By location',len:'By length (production)',sum:'Summary'};
+  let h=`<div class="seg">${Object.entries(views).map(([k,l])=>`<button data-act="cutView" data-v="${k}" class="${S.cut===k?'on':''}">${l}</button>`).join('')}</div>`;
+  for(const g of R.pk){
+    h+=`<h3>${esc(g.pk.name)}</h3>`;
+    if(!piecesOf(g).length){h+='<p class="spec">No pieces yet.</p>';continue;}
+    if(S.cut==='loc'){
+      h+=`<table class="t"><tr><th>ID</th><th>Facet</th><th class="r">Length</th><th class="r">Short side</th><th class="r">Angle</th><th class="r">Lap top / bottom</th><th>Splice</th><th class="r">Rip width</th></tr>`;
+      for(const f of g.facets)for(const p of R.L.get(f.id).pieces)h+=`<tr><td class="id">${esc(p.id)}</td><td>${esc([f.mark,f.name].filter(Boolean).join(' '))}</td><td class="r">${fmtLen(p.len)}</td><td class="r">${p.square?'':fmtLen(p.short)}</td><td class="r">${angleText(p)}</td><td class="r">${lapText(p)}</td><td class="spl">${p.splice?'REQUIRES SPLICE':''}</td><td class="r">${p.rip!=null?fmtLen(p.rip):''}</td></tr>`;
+      h+='</table>';
+    }else if(S.cut==='len'){
+      h+=`<table class="t"><tr><th class="r">Qty</th><th class="r">Length</th><th>Mark with ID</th><th>Profile</th><th>Colour</th></tr>`;
+      for(const r of production([g]))h+=`<tr><td class="r">${r.qty}</td><td class="r">${fmtLen(r.len)}</td><td class="mk">${esc(r.ids)}</td><td>${esc(r.profile)}</td><td>${esc(r.color)}</td></tr>`;
+      h+=`<tr class="tot"><td class="r">${g.q.count}</td><td class="r">${fmtRun(g.q.lf)}</td><td></td><td></td><td></td></tr></table>`;
+    }else{
+      h+=`<table class="t"><tr><th>Profile</th><th>Colour</th><th class="r">Pieces</th><th class="r">Linear length</th><th class="r">Coverage area</th><th class="r">Gross area</th></tr>`;
+      for(const r of purchasing([g]))h+=`<tr><td class="id">${esc(r.profile)}</td><td>${esc(r.color)}</td><td class="r">${r.count}</td><td class="r">${fmtRun(r.lf)}</td><td class="r">${fmtArea(r.cover)}</td><td class="r">${fmtArea(r.gross)}</td></tr>`;
+      h+='</table>';
+    }
+  }
+  return h;
+}
+function qtyHTML(){
+  const kp=q=>{const w=wasteOf(q);return `<div class="kpis"><div class="kpi"><span>Roof area, slope</span><b>${fmtArea(q.slope)}</b>${q.planKnown?`<i>plan ${fmtArea(q.plan)}</i>`:''}</div><div class="kpi"><span>Coverage area</span><b>${fmtArea(q.cover)}</b><i>gross ${fmtArea(q.gross)}</i></div><div class="kpi"><span>Waste</span><b>${fmtPct(w.pct)}</b><i>${fmtArea(w.sf)}</i></div><div class="kpi"><span>Pieces</span><b>${q.count}</b><i>${fmtRun(q.lf)}</i></div></div>`;};
+  const row=(a,q,cls='')=>{const w=wasteOf(q);return `<tr class="${cls}"><td class="id">${esc(a)}</td><td class="r">${fmtArea(q.slope)}</td><td class="r">${q.planKnown?fmtArea(q.plan):'–'}</td><td class="r">${fmtArea(q.cover)}</td><td class="r">${fmtArea(q.gross)}</td><td class="r">${fmtArea(w.sf)}</td><td class="r">${fmtPct(w.pct)}</td>${WASTE.map(([k])=>`<td class="r">${fmtArea(q[k])}</td>`).join('')}</tr>`;};
+  let h=`<h3>${esc(P.name)}</h3>`+(R.pk.length>1?kp(R.total):'');
+  for(const g of R.pk){
+    h+=`<h3>${esc(g.pk.name)}</h3>${kp(g.q)}<table class="t"><tr><th>Facet</th><th class="r">Roof, slope</th><th class="r">Roof, plan</th><th class="r">Coverage</th><th class="r">Gross</th><th class="r">Waste</th><th class="r">%</th>${WASTE.map(([,l])=>`<th class="r">${l}</th>`).join('')}</tr>`;
+    for(const f of g.facets)h+=row([f.mark,f.name].filter(Boolean).join(' '),R.L.get(f.id).q);
+    h+=row('Package total',g.q,'tot')+'</table>';
+    const tr=Object.keys(g.q.trim).filter(k=>g.q.trim[k]>0.01);
+    if(tr.length)h+=`<h4>Trim, linear length by edge type</h4><p class="spec">${tr.map(k=>`${EDGE[k]} ${fmtRun(g.q.trim[k])}`).join(' · ')}<br>Each facet is counted on its own, so a ridge, hip or valley shared by two facets is in here twice.</p>`;
+    if(g.q.splices)h+=`<p class="spec">Splice locations to price: ${g.q.splices}.</p>`;
+  }
+  return h+`<p class="spec" style="margin-top:18px">Waste is coverage area less roof slope area, and the five causes add up to it. Gross area is sheet width times ordered length.</p>`;
+}
+function warnHTML(){
+  if(!R.warn.length)return '<p class="spec">Nothing to flag.</p>';
+  return `<ul class="wl">${R.warn.map(w=>`<li><a data-act="sel" data-t="facet" data-id="${esc(w.fid)}" data-go="layout">${esc(w.mark)}</a><span>${esc(w.m)}</span></li>`).join('')}</ul><p class="spec" style="margin-top:14px">Warnings never block output. Click a facet ID to go to it.</p>`;
+}
+function renderFoot(){
+  const q=R.total;
+  $('#foot').innerHTML=`<span><b>${esc(P.name)}</b></span><span>${P.facets.length} facets in ${P.packages.length} package${P.packages.length>1?'s':''}</span><span>Roof <b>${fmtArea(q.slope)}</b></span><span>Coverage <b>${fmtArea(q.cover)}</b></span><span>Waste <b>${fmtPct(wasteOf(q).pct)}</b></span><span>${q.count} pieces, ${fmtRun(q.lf)}</span>`;
+}
+
+// ---- state changes ----------------------------------------------------------------------
+let undo=[],redo=[],last='',asT;
+function autosave(){clearTimeout(asT);asT=setTimeout(()=>{try{localStorage.setItem('panels.autosave',ser());}catch(e){}},400);}
+function refresh(){
+  if(!P.packages.some(k=>k.id===S.pk))S.pk=P.packages[0].id;
+  if(!curF()||pkgOf(curF()).id!==S.pk)S.f=curPk().facetIds[0]||null;
+  if(S.t==='facet'&&!curF())S.t='package';
+  compute();
+  // Rebuilding the pane would drop the caret, and Tab has usually already moved it to the next field.
+  const a=document.activeElement,key=a&&a.dataset&&a.dataset.b,top=$('#inputs').scrollTop;
+  renderTree();renderInputs();renderMain();renderFoot();
+  $('#inputs').scrollTop=top;
+  if(key){const el=$(`#inputs [data-b="${key}"]`);if(el&&el.focus){el.focus();if(el.select&&el.tagName==='INPUT')el.select();}}
+}
+function changed(){undo.push(last);if(undo.length>200)undo.shift();redo=[];last=ser();refresh();autosave();}
+function loadProject(raw){P=checkProject(raw);S.pk=P.packages[0].id;S.f=null;S.t=P.facets.length?'facet':'package';S.edge=null;undo=[];redo=[];last=ser();refresh();autosave();}
+function step(from,to){if(!from.length)return;to.push(last);last=from.pop();P=JSON.parse(last);refresh();autosave();}
+let toastT;function toast(m){const t=$('#toast');t.textContent=m;t.className='on';clearTimeout(toastT);toastT=setTimeout(()=>{t.className='';},3400);}
+// Keep whatever the facet already is when its template changes, so switching is a refinement
+// rather than a reset.
+function reshape(f,template){
+  const k=slopeK(f),pts=facetPts(f).map(p=>[p[0],p[1]/k]),xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]),x0=Math.min(...xs),y0=Math.min(...ys),m=f.params;
+  if(template==='custom'){f.custom='xy';f.pts=pts.map(p=>[p[0]-x0,p[1]-y0]);}
+  else{m.w=Math.max(Math.max(...xs)-x0,1);m.h=Math.max(Math.max(...ys)-y0,1);m.top=Math.min(m.top,m.w);m.inset=m.apex=null;if(template==='gable'||template==='shed')m.h2=Math.max(m.h2,m.h+12);f.edges=[];}
+  f.template=template;
+}
+function toWalk(pts){
+  const n=pts.length,a=i=>Math.atan2(pts[(i+1)%n][1]-pts[i][1],pts[(i+1)%n][0]-pts[i][0])/DEG;
+  return pts.map((p,i)=>{let t=a((i+1)%n)-a(i);while(t>180)t-=360;while(t<=-180)t+=360;return {len:Math.hypot(pts[(i+1)%n][0]-p[0],pts[(i+1)%n][1]-p[1]),turn:+t.toFixed(4)};});
+}
+// Reads one field and writes it into the project. Returns an error to show, 'view' when only
+// the selection moved, or nothing when the project changed.
+function applyField(el){
+  const b=el.dataset.b,t=el.dataset.t,raw=el.value,blank=!String(raw??'').trim();let v=raw;
+  if(t==='chk')v=el.checked;
+  else if(t==='num'||t==='int'||t==='float'){v=t==='int'?parseInt(raw,10):parseFloat(raw);if(!Number.isFinite(v))return 'That is not a number.';}
+  else if(t==='len'||t==='lenopt'){
+    if(blank&&t==='lenopt')v=null;
+    else{v=parseLen(raw);if(!Number.isFinite(v))return `Could not read “${raw}” as a length.`;}
+  }else if(t==='pitch'){
+    if(blank)v=null;else{v=parsePitch(raw);if(!Number.isFinite(v))return `Could not read “${raw}” as a pitch. Try 6:12, 26.6 deg or 50%.`;}
+  }else if(t==='selnull')v=raw===''?null:raw;
+  else if(t==='text')v=String(raw).slice(0,200);
+  if(typeof v==='number'&&el.dataset.min!=null&&v<+el.dataset.min)return `That needs to be at least ${el.dataset.min}.`;
+  if(b==='s.prof'){S.prof=v;return 'view';}
+  const f=curF(),pk=curPk(),ks=b.split('.'),root=ks.shift(),i=+ks[0];
+  if(b==='f.template')reshape(f,v);
+  else if(b==='f.mark'){if(!v.trim())return 'A facet needs an ID.';f.mark=v.trim().slice(0,4);}
+  else if(b==='f.kind'){
+    if(f.kind===v)return;
+    if(/^[RW]\d+$/.test(f.mark)){f.mark='';f.mark=nextMark(P,v);}
+    f.kind=v;f.edges=[];
+    if(v==='wall'){f.inputMode='slope';f.pitch=null;}
+    if(!TEMPLATES[f.template][1].includes(v[0]))reshape(f,'rect');
+  }else if(b==='f.$pk'){pk.facetIds=pk.facetIds.filter(x=>x!==f.id);P.packages.find(k=>k.id===v).facetIds.push(f.id);S.pk=v;}
+  else if(b==='f.custom'){
+    if(f.custom===v)return;
+    if(v==='walk')f.walk=toWalk(f.pts);else f.pts=walkPts(f.walk).map(p=>[+p[0].toFixed(4),+p[1].toFixed(4)]);
+    f.custom=v;
+  }else if(root==='e'){while(f.edges.length<=i)f.edges.push({type:null,allow:null});f.edges[i][ks[1]]=v;}
+  else if(root==='pt')f.pts[i][+ks[1]]=v;
+  else if(root==='wk')f.walk[i][ks[1]]=v;
+  else if(root==='op')f.openings[i][ks[1]]=v;
+  else if(root==='o'){if(v==null)delete f.ov[ks[0]];else f.ov[ks[0]]=v;}
+  else if(b==='k.prefix')pk.prefix=v.trim().slice(0,3);
+  else{
+    let o={p:P,u:P.units,k:pk,d:pk.def,f,y:f&&f.layout,m:f&&f.params,q:curProf()}[root];
+    for(const kk of ks.slice(0,-1))o=o[kk];
+    o[ks[ks.length-1]]=v;
+  }
+}
+// Every keystroke redraws the preview; only leaving the field commits it to undo.
+function onType(e){
+  const el=e.target;if(!el.dataset||!el.dataset.b||el.tagName!=='INPUT'||el.type==='checkbox')return;
+  const r=applyField(el),em=el.parentNode&&el.parentNode.querySelector&&el.parentNode.querySelector('em'),t=el.dataset.t;
+  if(el.classList)el.classList.toggle('bad',!!r&&r!=='view');
+  if(em&&(t==='len'||t==='lenopt'||t==='pitch')){
+    const v=t==='pitch'?parsePitch(el.value):parseLen(el.value),fm=P.units.fmt;
+    em.className=r?'bad':'';
+    em.textContent=!String(el.value).trim()?'':r?'?':t==='pitch'?fmtPitch(v):fmtLen(v)+(fm==='frac'||fm==='dec'?' in':fm==='mm'?' mm':'');
+  }
+  if(!r){compute();renderMain();renderFoot();}
+}
+function onCommit(e){
+  const el=e.target;if(!el.dataset||!el.dataset.b)return;
+  const r=applyField(el);
+  if(r==='view')refresh();
+  // Earlier keystrokes may already have moved the project, so a refusal puts it back.
+  else if(r){P=JSON.parse(last);toast(r);refresh();}
+  else changed();
+}
+for(const id of ['#inputs','#edgePop']){$(id).addEventListener('input',onType);$(id).addEventListener('change',onCommit);}
+function mirrorFacet(c){
+  const m=c.params,pts=facetPts({...c,inputMode:'slope'}),x0=Math.min(...pts.map(p=>p[0])),x1=Math.max(...pts.map(p=>p[0])),n=pts.length,blank={type:null,allow:null};
+  if(c.template==='trap')m.inset=m.inset==null?null:m.w-m.top-m.inset;
+  if(c.template==='tri'||c.template==='gable')m.apex=m.apex==null?null:m.w-m.apex;
+  if(c.template==='para')m.skew=-m.skew;
+  if(c.template==='angled'||c.template==='shed')m.side=m.side==='left'?'right':'left';
+  if(c.template==='custom'){
+    // Reflected and re-walked the other way round, so the outline keeps its direction.
+    c.pts=pts.map(p=>[x0+x1-p[0],p[1]]).reverse();c.custom='xy';
+    c.edges=c.pts.map((_,i)=>c.edges[(2*n-2-i)%n]||{...blank});
+  }else{
+    const order=n===3?[0,2,1]:n===5?[0,4,3,2,1]:[0,3,2,1];
+    c.edges=order.map(i=>c.edges[i]||{...blank});
+  }
+  c.openings=c.openings.map(o=>({...o,x:x0+x1-o.x-o.w}));
+  const y=c.layout;
+  if(y.start==='left'||y.start==='right')y.start=y.start==='left'?'right':'left';else y.offset=-y.offset;
+  y.angle=-y.angle;
+  return c;
+}
+function copyFacet(mirror){
+  const f=curF(),pk=pkgOf(f),c=JSON.parse(JSON.stringify(f));
+  c.id='f'+P.seq++;c.mark=nextMark(P,c.kind);
+  if(mirror){mirrorFacet(c);if(c.name)c.name+=' (mirror)';}
+  P.facets.push(c);pk.facetIds.splice(pk.facetIds.indexOf(f.id)+1,0,c.id);S.f=c.id;
+}
+function moveFacet(dn){
+  const ids=curPk().facetIds,i=ids.indexOf(S.f),j=i+dn;
+  if(i<0||j<0||j>=ids.length)return false;
+  [ids[i],ids[j]]=[ids[j],ids[i]];
+}
+const ACT={
+  sel(el){
+    const t=el.dataset.t,id=el.dataset.id;S.t=t;S.edge=null;
+    if(t==='package'){S.pk=id;if(!curPk().facetIds.includes(S.f))S.f=curPk().facetIds[0]||null;}
+    if(t==='facet'){S.f=id;S.pk=pkgOf(curF()).id;}
+    if(el.dataset.go)S.tab=el.dataset.go;
+    if(document.body.dataset)document.body.dataset.pane=t==='facet'&&el.dataset.go?'view':'inputs';
+    refresh();return false;
+  },
+  addPackage(){const k={id:'k'+P.seq++,name:'Package '+(P.packages.length+1),prefix:'',facetIds:[],def:{...newDefaults(),profileId:curPk().def.profileId}};P.packages.push(k);S.pk=k.id;S.t='package';},
+  delPackage(){
+    const k=curPk(),n=k.facetIds.length;if(P.packages.length<2||(n&&!confirm(`Delete ${k.name} and its ${n} facet${n>1?'s':''}?`)))return false;
+    P.facets=P.facets.filter(f=>!k.facetIds.includes(f.id));P.packages=P.packages.filter(x=>x!==k);S.t='package';
+  },
+  addFacet(el){const k=P.packages.find(x=>x.id===(el&&el.dataset.id))||curPk(),fs=facetsOf(k),kind=fs.length&&fs.every(f=>f.kind==='wall')?'wall':'roof';S.pk=k.id;S.f=newFacet(P,k,{kind}).id;S.t='facet';},
+  dupFacet(){copyFacet(false);},mirFacet(){copyFacet(true);},
+  delFacet(){const f=curF();P.facets=P.facets.filter(x=>x!==f);for(const k of P.packages)k.facetIds=k.facetIds.filter(x=>x!==f.id);},
+  upFacet(){return moveFacet(-1);},downFacet(){return moveFacet(1);},
+  addRow(){const f=curF();if(f.custom==='walk')f.walk.push({len:60,turn:90});else{const a=f.pts[f.pts.length-1],b=f.pts[0];f.pts.push([(a[0]+b[0])/2,(a[1]+b[1])/2]);}},
+  delRow(el){const f=curF(),i=+el.dataset.i,list=f.custom==='walk'?f.walk:f.pts;if(list.length<=3)return false;list.splice(i,1);f.edges.splice(i,1);},
+  addOpen(){curF().openings.push({x:36,y:36,w:36,h:48});},
+  delOpen(el){curF().openings.splice(+el.dataset.i,1);},
+  cloneProfile(){const q=curProf(),c={...q,id:'p'+P.seq++,name:q.name+' (copy)',mfr:q.mfr.replace(/^Generic starter, verify with manufacturer$/,'')};P.profiles.push(c);S.prof=c.id;},
+  delProfile(){
+    const q=curProf();if(P.profiles.length<2)return false;
+    P.profiles=P.profiles.filter(x=>x!==q);const fb=P.profiles[0].id;
+    for(const k of P.packages)if(k.def.profileId===q.id)k.def.profileId=fb;
+    for(const f of P.facets)if(f.ov.profileId===q.id)delete f.ov.profileId;
+    S.prof=fb;
+  },
+  expProfiles(){download(fileBase()+'-profiles.json',JSON.stringify({app:'zbcad-panel-profiles',v:1,profiles:P.profiles},null,1),'application/json');return false;},
+  impProfiles(){$('#libIn').click();return false;},
+  pkgPdf(){CMD.pdf(curPk().id);return false;},
+  cutView(el){S.cut=el.dataset.v;renderMain();return false;},
+  closeEdge(){S.edge=null;renderMain();return false;},
+};
+function onAct(e){
+  const el=e.target.closest&&e.target.closest('[data-act]');if(!el)return;
+  if(ACT[el.dataset.act](el)!==false)changed();
+}
+for(const id of ['#tree','#inputs','#pane','#edgePop'])$(id).addEventListener('click',onAct);
+const onTab=e=>{const t=e.target.closest&&e.target.closest('[data-tab]');if(t){S.tab=t.dataset.tab;renderMain();}};
+$('#tabs').addEventListener('click',onTab);$('#info').addEventListener('click',onTab);
+$('#panes').addEventListener('click',e=>{const p=e.target.dataset&&e.target.dataset.pane;if(p){document.body.dataset.pane=p;renderMain();}});
+
+// ---- the drawing: picking edges and dragging corners ------------------------------------------
+let drag=null;
+const cv=$('#cv');
+cv.addEventListener('pointerdown',e=>{
+  const d=e.target.dataset||{},f=curF();if(!f||(d.v==null&&d.m==null))return;
+  let i=+d.v,moved=false;
+  if(d.m!=null){
+    const a=f.pts[+d.m],b=f.pts[(+d.m+1)%f.pts.length];i=+d.m+1;
+    f.pts.splice(i,0,[(a[0]+b[0])/2,(a[1]+b[1])/2]);
+    while(f.edges.length<f.pts.length-1)f.edges.push({type:null,allow:null});
+    // The new corner splits edge m in two; both halves keep what that edge was.
+    f.edges.splice(i,0,{...(f.edges[+d.m]||{type:null,allow:null})});moved=true;
+  }
+  S.edge=null;drag={i,tx:lastTx,moved};cv.setPointerCapture(e.pointerId);e.preventDefault();
+});
+cv.addEventListener('pointermove',e=>{
+  if(!drag)return;
+  const r=cv.getBoundingClientRect(),{s,ox,oy,xmin,ymax,k}=drag.tx,f=curF();
+  let x=xmin+(e.clientX-r.left-ox)/s,y=(ymax-(e.clientY-r.top-oy)/s)/k;
+  // Snap to the inch unless Alt is held.
+  if(!e.altKey){x=Math.round(x);y=Math.round(y);}
+  f.pts[drag.i]=[x,y];drag.moved=true;
+  compute();renderMain(drag.tx);
+});
+const endDrag=()=>{if(!drag)return;const m=drag.moved;drag=null;if(m)changed();};
+cv.addEventListener('pointerup',endDrag);cv.addEventListener('pointercancel',endDrag);
+cv.addEventListener('dblclick',e=>{
+  const d=e.target.dataset||{},f=curF();if(d.v==null||!f||f.pts.length<=3)return;
+  f.pts.splice(+d.v,1);f.edges.splice(+d.v,1);changed();
+});
+cv.addEventListener('click',e=>{
+  const d=e.target.dataset||{};if(d.edge==null)return;
+  const r=cv.getBoundingClientRect();S.edge=+d.edge;S.edgeXY=[e.clientX-r.left+10,e.clientY-r.top+10];renderMain();
+});
+
+// ---- commands ----------------------------------------------------------------------------
+function download(name,text,type){const b=new Blob([text],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);}
+const fileBase=()=>(P.name.replace(/[^\w.-]+/g,'-').replace(/^-+|-+$/g,'')||'panel-layout');
+const today=()=>new Date().toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'});
+const CMD={
+  new(){if(P.facets.length&&!confirm('Start a new project? Save first if you want to keep this one.'))return;const p=newProject();newFacet(p,p.packages[0]);loadProject(p);},
+  sample(){if(P.facets.length&&!confirm('Replace this project with the sample roof?'))return;loadProject(sampleProject());},
+  open(){$('#fileIn').click();},
+  save(){download(fileBase()+'.json',JSON.stringify(P,null,1),'application/json');},
+  undo(){step(undo,redo);},redo(){step(redo,undo);},
+  pdf(only){
+    if(!compute().total.count){toast('There are no panels to put in a PDF yet.');return;}
+    download(fileBase()+(only?'-'+curPk().name.replace(/[^\w.-]+/g,'-'):'')+'.pdf',buildPDF(today(),only),'application/pdf');
+  },
+  // The same sheets as the PDF, as SVG under a print stylesheet, for the browser's own dialog.
+  print(){
+    const pages=reportPages(today()),{w,h}=pages[0];
+    $('#pagesize').textContent=`@page{size:${w/72}in ${h/72}in;margin:0}`;
+    $('#print').innerHTML=pages.map(p=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w/72}in" height="${h/72}in">${planSVG(p.ops,PRINTC)}</svg>`).join('');
+    setTimeout(()=>window.print(),50);
+  },
+  csvLoc(){download(fileBase()+'-cut-list-by-location.csv',buildCSV('loc'),'text/csv');},
+  csvLen(){download(fileBase()+'-cut-list-by-length.csv',buildCSV('len'),'text/csv');},
+  help(){$('#dlgHelp').showModal();},
+};
+$('#toolbar').addEventListener('click',e=>{const c=e.target.dataset&&e.target.dataset.cmd;if(c)CMD[c]();});
+function readFile(input,fn){
+  input.addEventListener('change',e=>{
+    const file=e.target.files[0];if(!file)return;
+    const fr=new FileReader();
+    fr.onload=()=>{try{fn(JSON.parse(fr.result),file.name);}catch(err){toast(err instanceof SyntaxError?'That file is not valid JSON.':err.message);}};
+    fr.readAsText(file);e.target.value='';
+  });
+}
+readFile($('#fileIn'),(raw,name)=>{loadProject(raw);toast('Opened '+name);});
+function importProfiles(raw){
+  const got=checkProfiles(raw&&raw.profiles,()=>'p'+P.seq++);
+  if(!got.length)throw new Error('That file has no profiles in it.');
+  P.profiles.push(...got);S.prof=got[0].id;changed();
+  return got.length;
+}
+readFile($('#libIn'),raw=>{const n=importProfiles(raw);toast(`Added ${n} profile${n>1?'s':''}.`);});
+window.addEventListener('keydown',e=>{
+  if(!(e.ctrlKey||e.metaKey))return;
+  const k=e.key.toLowerCase(),typing=/^(INPUT|SELECT|TEXTAREA)$/.test((e.target&&e.target.tagName)||'');
+  const c=k==='s'?'save':k==='o'?'open':k==='p'?'print':!typing&&k==='z'?(e.shiftKey?'redo':'undo'):!typing&&k==='y'?'redo':null;
+  if(c){e.preventDefault();CMD[c]();}
+});
+window.addEventListener('resize',()=>{if(S.tab==='layout')renderMain();});
+window.addEventListener('afterprint',()=>{$('#print').innerHTML='';});
+window.addEventListener('beforeunload',()=>{try{localStorage.setItem('panels.autosave',ser());}catch(e){}});
+
+// ---- boot ----------------------------------------------------------------------------------
+(()=>{
+  let raw=null;try{raw=JSON.parse(localStorage.getItem('panels.autosave'));}catch(e){}
+  try{loadProject(raw||sampleProject());}
+  catch(e){loadProject(sampleProject());}
+})();
+</script>
+</body>
+</html>

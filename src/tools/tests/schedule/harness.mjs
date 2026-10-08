@@ -14,7 +14,7 @@ export const DEFAULT_PAGE = path.resolve(HERE, '../../../../schedule.html');
 
 // Unknown properties become child stubs, which is what lets `form.dur.value` work without
 // listing every field the dialogs have.
-function makeEl(tag) {
+export function makeEl(tag) {
   const listeners = {}, kids = {};
   const base = {
     tagName: tag, innerHTML: '', textContent: '', value: '', returnValue: '', open: false,
