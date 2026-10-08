@@ -168,4 +168,22 @@ const base = (tasks, extra = {}) => ({ v: 1, name: 'f', start: '2026-10-12', sta
   choose(opt[1]); cell(h.P.tasks[2], 'trade', 'General');
   t.eq([ev('fTrade'), names().length], ['', 4], 'and so does assigning the last untraded task');
 }
+
+// ---- the template picker greets a first visit, and only a first visit
+{
+  const first = boot(page), dlg = first.$('#dlgNew');
+  t.ok(dlg.open && /Blank schedule/.test(first.$('#tplList').innerHTML), 'no autosave: the picker opens at boot');
+  const sample = first.P.name;
+  dlg.returnValue = 'cancel'; dlg.onclose();
+  t.eq(first.P.name, sample, 'dismissing it keeps the sample');
+  const id = first.ev('TEMPLATES')[1].id;
+  dlg.returnValue = id; dlg.onclose();
+  t.ok(first.P.name !== sample && first.P.tasks.length > 0 && first.confirms.length === 0, 'picking a template loads it without a discard warning');
+
+  first.ev('openNew')(); dlg.returnValue = 'blank'; dlg.onclose();
+  t.eq(first.confirms.length, 1, 'from the New button the warning still stands');
+
+  const back = boot(page, { autosave: base([{ uid: 1, name: 'mine', dur: 2 }]) });
+  t.ok(!back.$('#dlgNew').open && back.P.tasks[0].name === 'mine', 'an autosaved schedule opens straight to the work');
+}
 t.done();
