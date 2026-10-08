@@ -206,6 +206,7 @@ menu button{border:1px solid var(--rule2);background:var(--bg);border-radius:5px
     <p><b>Panel IDs</b> read <code>R2-07</code>: facet R2, its seventh different panel counting from the start edge. Panels in a facet that can be swapped for one another share an ID, and the cut list gives how many to make: same length, same rip, same end cuts and laps. A mirror-image cut is a different panel.</p>
     <p><b>Long runs</b> are split when they pass the profile's maximum length, and the pieces together are longer than the run by one lap per joint. On standing seam every transverse seam is marked as needing a splice. Laps can line up across the facet, stagger on alternate strips, or snap to purlin lines.</p>
     <p><b>Waste</b> is coverage area less roof area, broken down by where it comes from: allowances, laps, angle cuts and notches, edge rips, and rounding.</p>
+    <p><b>Extra panels</b> are spares: set a number in the project settings and each package orders that many more of its longest panel in each profile and color, marked EXTRA.</p>
     <p><b>Coil order</b>, a view of the cut list, is what to buy for the roll former: the linear length, area and weight of each coil width, gauge and color. Set a maximum coil length or weight in the project settings and it gives the number of coils and the length to order each at.</p>
     <p><b>Packages</b> group facets ordered together, each with its own subtotal and PDF. Profile, laps and allowances are set once as project defaults, and a facet can override them. <b>Profiles</b> are a project library; the starter set is generic and must be checked against the manufacturer.</p>
     <p>The project is kept in this browser as you work. <b>Save</b> writes a file to keep or send. Nothing here checks structure, wind uplift, clips or fasteners.</p>
@@ -275,8 +276,8 @@ function fmtField(v){
 }
 // For a length inside a sentence, where there is no column heading or units note to lean on.
 const fmtU=v=>fmtLen(v)+({frac:'"',dec:'"',mm:' mm'}[P.units.fmt]||'');
-const FMTS={frac:'Fractional inches, 126 1/2',dec:'Decimal inches, 126.50',ftin:'Feet-inches, 10\'-6 1/2"',ft:"Decimal feet, 10.54'",mm:'Millimetres, 3213'};
-const UNIT_NOTE={dec:'decimal inches',frac:'inches',ftin:'feet and inches',ft:'decimal feet',mm:'millimetres'};
+const FMTS={frac:'Fractional inches, 126 1/2',dec:'Decimal inches, 126.50',ftin:'Feet-inches, 10\'-6 1/2"',ft:"Decimal feet, 10.54'",mm:'Millimeters, 3213'};
+const UNIT_NOTE={dec:'decimal inches',frac:'inches',ftin:'feet and inches',ft:'decimal feet',mm:'millimeters'};
 function fmtArea(sf){
   const a=P.units.area;
   return a==='sq'?(sf/100).toFixed(2)+' sq':a==='m2'?(sf*0.09290304).toFixed(1)+' m²':Math.round(sf).toLocaleString('en-US')+' sf';
@@ -309,7 +310,7 @@ const KIND_EDGES={roof:['eave','rake','ridge','hip','valley','headwall','sidewal
 const OUTWARD={eave:1,valley:1,base:1};
 const ALLOW_LABEL={eave:'Eave overhang / hook',ridge:'Ridge cutback',headwall:'Headwall cutback',hip:'Hip cutback',valley:'Valley extension',rake:'Rake inset',sidewall:'Sidewall inset',base:'Base extension',top:'Top cutback',jamb:'Jamb inset',corner:'Corner inset'};
 const TEMPLATES={rect:['Rectangle','rw'],trap:['Trapezoid (hip roof side)','r'],tri:['Triangle (hip end)','r'],para:['Parallelogram','r'],angled:['One angled side (valley or hip)','r'],gable:['Rectangle with gable top','w'],shed:['Rectangle with shed top','w'],custom:['Custom perimeter','rw']};
-const STARTS={left:'Left edge',right:'Right edge','center-panel':'Centred panel','center-seam':'Centred seam'};
+const STARTS={left:'Left edge',right:'Right edge','center-panel':'Centered panel','center-seam':'Centered seam'};
 const SPLITS={max:'Max length + remainder at top',equal:'Equal pieces',eave:'Remainder at eave'};
 const LAPMODES={aligned:'Aligned across the facet',stagger:'Staggered on alternate strips',purlin:'Snap to purlins'};
 
@@ -328,7 +329,7 @@ const newDefaults=()=>({profileId:'p2',color:'',allow:{eave:1},split:'max',lap:n
 // and a percentage over the cut list for leaders, tails and set-up scrap.
 const newCoil=()=>({maxFt:null,maxLb:null,extra:0});
 function newProject(){
-  const p={app:'zbcad-panels',v:1,name:'Untitled project',jobNo:'',address:'',units:{bare:'in',fmt:'frac',prec:16,area:'sf',pdf:null,csv:null},sheet:'letter',idMax:10,seq:10,profiles:starterProfiles(),def:newDefaults(),coil:newCoil(),packages:[],facets:[]};
+  const p={app:'zbcad-panels',v:1,name:'Untitled project',jobNo:'',address:'',units:{bare:'in',fmt:'frac',prec:16,area:'sf',pdf:null,csv:null},sheet:'letter',idMax:10,extraPanels:0,seq:10,profiles:starterProfiles(),def:newDefaults(),coil:newCoil(),packages:[],facets:[]};
   p.packages.push({id:'k'+p.seq++,name:'Main roof',prefix:'',facetIds:[]});
   return p;
 }
@@ -363,7 +364,7 @@ function checkProject(raw){
   const u=obj(raw.units),c=obj(raw.coil);
   const p={app:'zbcad-panels',v:1,name:str(raw.name,'Untitled project'),jobNo:str(raw.jobNo),address:str(raw.address),
     units:{bare:pick(u.bare,{in:1,ft:1,mm:1},'in'),fmt:pick(u.fmt,UNIT_NOTE,'frac'),prec:[2,4,8,16].includes(u.prec)?u.prec:16,area:pick(u.area,{sf:1,sq:1,m2:1},'sf'),pdf:pick(u.pdf,UNIT_NOTE,null),csv:pick(u.csv,UNIT_NOTE,null)},
-    sheet:raw.sheet==='tabloid'?'tabloid':'letter',idMax:num(raw.idMax,10,4,40),seq:1,profiles:[],def:null,coil:{maxFt:num(c.maxFt,null,1,1e6),maxLb:num(c.maxLb,null,1,1e7),extra:num(c.extra,0,0,1000)},packages:[],facets:[]};
+    sheet:raw.sheet==='tabloid'?'tabloid':'letter',idMax:num(raw.idMax,10,4,40),extraPanels:Math.round(num(raw.extraPanels,0,0,9999)),seq:1,profiles:[],def:null,coil:{maxFt:num(c.maxFt,null,1,1e6),maxLb:num(c.maxLb,null,1,1e7),extra:num(c.extra,0,0,1000)},packages:[],facets:[]};
   const ids=new Set(),fresh=v=>{let id=str(v);while(!id||ids.has(id))id='x'+p.seq++;ids.add(id);return id;};
   p.profiles=checkProfiles(raw.profiles,fresh);
   if(!p.profiles.length)p.profiles=starterProfiles().map(q=>({...q,id:fresh(q.id)}));
@@ -484,7 +485,7 @@ function autoType(dx,dy,lower,kind){
   if(kind==='wall')return plumb?'corner':lower?'base':'top';
   return plumb?'rake':level?(lower?'eave':'ridge'):(lower?'valley':'hip');
 }
-// Move every edge out (or in) by its own distance and re-find each corner where neighbouring
+// Move every edge out (or in) by its own distance and re-find each corner where neighboring
 // offset lines cross. Two edges in one line with different offsets have no crossing, so that
 // corner becomes a step.
 function offsetPoly(pts,edges){
@@ -556,7 +557,7 @@ function splitRun(b,t,o){
     while(t-y>M+EPS){
       let top=y+M;
       if(o.mode==='purlin'&&o.purlinSp>0){
-        // Centre the lap on the highest purlin the piece can reach.
+        // Center the lap on the highest purlin the piece can reach.
         const line=o.purlin0+Math.floor((top-lap/2-o.purlin0)/o.purlinSp+1e-9)*o.purlinSp+lap/2;
         if(line-y>=Math.max(minLen,lap+1)-EPS)top=line;else res.unsnapped++;
       }else top=o.datum+Math.floor((y-o.datum)/step+1e-9)*step+M;
@@ -564,7 +565,7 @@ function splitRun(b,t,o){
     }
     cuts.push([y,t]);
   }
-  // A piece too short to rollform borrows length from its neighbour by moving their shared lap.
+  // A piece too short to rollform borrows length from its neighbor by moving their shared lap.
   const fix=(si,oi)=>{
     const s=cuts[si],ot=cuts[oi],need=minLen-(s[1]-s[0]);
     if(need>EPS&&ot[1]-ot[0]-need>=minLen-EPS){if(si>oi){s[0]-=need;ot[1]-=need;}else{s[1]+=need;ot[0]+=need;}res.rebalanced=true;}
@@ -630,7 +631,7 @@ function layoutFacet(f,e){
   const xs0=rings[0].map(p=>p[0]),xr=pts.map(p=>rot(p,th)[0]),xmin=Math.max(Math.min(...xs0),Math.min(...xr)),xmax=Math.min(Math.max(...xs0),Math.max(...xr));
   if((xmax-xmin)/W>4000){warn.push('That is more than 4,000 strips on one facet. Check the coverage width.');return L;}
   const vx=[...new Set(rings.flat().map(p=>p[0]))].sort((a,b)=>a-b),runs=[];
-  // Between two neighbouring corner positions no edge starts or ends, so the metal inside a
+  // Between two neighboring corner positions no edge starts or ends, so the metal inside a
   // strip is a stack of plain quads there. Every length and area below is exact for that reason,
   // concave facets and openings included, with nothing sampled.
   for(const st of stripsFor(xmin,xmax,W,y,e.ripMin)){
@@ -749,10 +750,25 @@ function compute(){
       R.L.set(f.id,L);addQ(q,L.q);
       for(const m of L.warn)R.warn.push({fid:f.id,mark:f.mark,m});
     }
-    R.pk.push({pk,facets:fs,q});addQ(R.total,q);
+    const g={pk,facets:fs,q};g.extra=extrasOf(g);
+    R.pk.push(g);addQ(R.total,q);
   }
   return R;
 }
+// Spares against a mistake or damage: so many more of the longest panel in each profile and
+// color a package orders, since a long panel can be cut down to stand in for any shorter one.
+// They are bought, so the cut list, the summary and the coil order carry them; they are not
+// roof, so the quantities and waste of the layout do not.
+function extrasOf(g){
+  const m=new Map();
+  if(P.extraPanels>0)for(const f of g.facets){
+    const L=R.L.get(f.id),k=profKey(L);
+    for(const p of L.pieces)if(!m.has(k)||p.len>m.get(k).len)m.set(k,{key:k,prof:L.e.profile,color:L.e.color,len:p.len,qty:P.extraPanels});
+  }
+  return [...m.values()];
+}
+const ordered=g=>({count:g.q.count+g.extra.reduce((a,x)=>a+x.qty,0),lf:g.q.lf+g.extra.reduce((a,x)=>a+x.qty*x.len/12,0)});
+const extraNote=gs=>{const n=gs.reduce((a,g)=>a+g.extra.reduce((b,x)=>b+x.qty,0),0);return n?`Includes ${n} extra panel${n>1?'s':''}: ${P.extraPanels} at the longest length of each profile and color in a package.`:'';};
 const scopePks=only=>R.pk.filter(g=>!only||g.pk.id===only);
 const piecesOf=g=>g.facets.flatMap(f=>R.L.get(f.id).pieces);
 const profKey=L=>L.e.profile.name+(L.e.color?' / '+L.e.color:'');
@@ -775,7 +791,13 @@ function production(gs){
       m.get(k).pieces.push(p);
     }
   }
-  return [...m.values()].sort((a,b)=>a.profile.localeCompare(b.profile)||a.color.localeCompare(b.color)||b.len-a.len).map(r=>({...r,qty:r.pieces.length,ids:idCounts(r.pieces)}));
+  for(const g of gs)for(const x of g.extra){
+    const k='extra|'+x.key+'|'+x.len.toFixed(4);
+    if(!m.has(k))m.set(k,{len:x.len,profile:x.prof.name,color:x.color,pieces:[],extra:0});
+    m.get(k).extra+=x.qty;
+  }
+  return [...m.values()].sort((a,b)=>a.profile.localeCompare(b.profile)||a.color.localeCompare(b.color)||b.len-a.len||(a.extra||0)-(b.extra||0))
+    .map(r=>r.extra?{...r,qty:r.extra,ids:'EXTRA'}:{...r,qty:r.pieces.length,ids:idCounts(r.pieces)});
 }
 function purchasing(gs){
   const m=new Map();
@@ -783,6 +805,10 @@ function purchasing(gs){
     const L=R.L.get(f.id),k=profKey(L);
     if(!m.has(k))m.set(k,{profile:L.e.profile.name,color:L.e.color,count:0,lf:0,cover:0,gross:0});
     const r=m.get(k);r.count+=L.q.count;r.lf+=L.q.lf;r.cover+=L.q.cover;r.gross+=L.q.gross;
+  }
+  for(const g of gs)for(const x of g.extra){
+    const r=m.get(x.key),lf=x.qty*x.len/12;
+    r.count+=x.qty;r.lf+=lf;r.cover+=x.prof.cover*lf/12;r.gross+=x.prof.sheetW*lf/12;
   }
   return [...m.values()];
 }
@@ -798,12 +824,16 @@ const coilPsf=p=>p.psf??GAUGE_PSF[(/^\s*(\d+)\s*(?:ga|$)/i.exec(p.gauge)||[])[1]
 // every piece.
 function coilOrder(gs){
   const m=new Map(),c=P.coil,k=1+c.extra/100;
-  for(const g of gs)for(const f of g.facets){
-    const L=R.L.get(f.id),p=L.e.profile,psf=coilPsf(p),key=[p.sheetW,p.gauge,L.e.color,psf].join('|');
-    if(!m.has(key))m.set(key,{width:p.sheetW,gauge:p.gauge,color:L.e.color,psf,profiles:[],lens:[]});
+  const add=(p,color,lens)=>{
+    const psf=coilPsf(p),key=[p.sheetW,p.gauge,color,psf].join('|');
+    if(!m.has(key))m.set(key,{width:p.sheetW,gauge:p.gauge,color,psf,profiles:[],lens:[]});
     const r=m.get(key);
     if(!r.profiles.includes(p.name))r.profiles.push(p.name);
-    for(const x of L.pieces)r.lens.push(x.len/12);
+    r.lens.push(...lens);
+  };
+  for(const g of gs){
+    for(const f of g.facets){const L=R.L.get(f.id);add(L.e.profile,L.e.color,L.pieces.map(x=>x.len/12));}
+    for(const x of g.extra)add(x.prof,x.color,Array(x.qty).fill(x.len/12));
   }
   return [...m.values()].filter(r=>r.lens.length).map(({lens,...r})=>{
     // plf: pounds per foot of this coil. Without a weight, a weight limit cannot be applied.
@@ -1024,7 +1054,14 @@ function reportSheets(date,only){
   const gs=scopePks(only),[PW,PH]=P.sheet==='tabloid'?[1224,792]:[792,612],M=36,BOT=PH-M-24,pages=[],z=PW/792;let pg,y,title;
   const T=(x,yy,s,o={})=>pg.ops.push({k:'text',x,y:yy,s:String(s),size:9,...o});
   const rule=(yy,xa=M,xb=PW-M,lw=0.5)=>pg.ops.push({k:'line',x1:xa,y1:yy,x2:xb,y2:yy,stroke:'rule',lw});
-  const page=t=>{title=t??title;pg={w:PW,h:PH,ops:[],title};pages.push(pg);T(M,M+8,title,{size:14,bold:true});rule(M+16,M,PW-M,0.8);y=M+38;};
+  // Every sheet is signed top right: the mark, the name, and where the tool lives.
+  const TAG='Metal Panel Layout · zbcad.com',BX=PW-M-textW(TAG,7.5)-8-textW('zbCAD',11)*1.06-16,BY=M-2;
+  const brand=()=>{
+    pg.ops.push({k:'poly',pts:[[BX,BY],[BX+12,BY],[BX+12,BY+12],[BX,BY+12]],fill:'ink'});
+    for(const [a,b,c,d] of [[9,10,23,10],[23,10,9,22],[9,22,23,22]])pg.ops.push({k:'line',x1:BX+a*0.375,y1:BY+b*0.375,x2:BX+c*0.375,y2:BY+d*0.375,stroke:'bg',lw:1});
+    T(BX+16,M+8,'zbCAD',{size:11,bold:true});T(PW-M,M+8,TAG,{size:7.5,anchor:'end',color:'muted'});
+  };
+  const page=t=>{title=t??title;pg={w:PW,h:PH,ops:[],title};pages.push(pg);T(M,M+8,fitText(title,14,(BX-M-12)/1.06),{size:14,bold:true});brand();rule(M+16,M,PW-M,0.8);y=M+38;};
   const sub=(s,size=8.5)=>{for(const l of wrapText(s,size,PW-2*M)){T(M,y,l,{size,color:'muted'});y+=size+2.5;}y+=4;};
   const table=(cols,rows,o={})=>{
     const size=o.size||8.5,lh=size+3,tw=cols.reduce((a,c)=>a+c.w,0);let x0=o.x??M;
@@ -1049,8 +1086,24 @@ function reportSheets(date,only){
   y+=14;
   const tq=gs.reduce((a,g)=>addQ(a,g.q),q0());
   table([{h:'Package',w:150*z,b:1},{h:'Profile and color',w:230*z,wrap:1},{h:'Facets',w:50*z,r:1},{h:'Pieces',w:50*z,r:1},{h:'Linear length',w:80*z,r:1},{h:'Roof area',w:80*z,r:1},{h:'Waste',w:80*z,r:1}],
-    [...gs.map(g=>({cells:[g.pk.name,purchasing([g]).map(r=>r.profile+(r.color?' / '+r.color:'')).join('; '),g.facets.length,g.q.count,fmtRun(g.q.lf),fmtArea(g.q.slope),fmtPct(wasteOf(g.q).pct)]})),
-     ...(gs.length>1?[{tot:1,cells:['Total','',gs.reduce((a,g)=>a+g.facets.length,0),tq.count,fmtRun(tq.lf),fmtArea(tq.slope),fmtPct(wasteOf(tq).pct)]}]:[])]);
+    [...gs.map(g=>({cells:[g.pk.name,purchasing([g]).map(r=>r.profile+(r.color?' / '+r.color:'')).join('; '),g.facets.length,ordered(g).count,fmtRun(ordered(g).lf),fmtArea(g.q.slope),fmtPct(wasteOf(g.q).pct)]})),
+     ...(gs.length>1?[{tot:1,cells:['Total','',gs.reduce((a,g)=>a+g.facets.length,0),gs.reduce((a,g)=>a+ordered(g).count,0),fmtRun(gs.reduce((a,g)=>a+ordered(g).lf,0)),fmtArea(tq.slope),fmtPct(wasteOf(tq).pct)]}]:[])]);
+  if(extraNote(gs))sub(extraNote(gs),8);
+  // Quantities and waste, on the cover under the packages it totals.
+  y+=6;T(M,y,'Quantities and waste',{size:13,bold:true});y+=20;
+  const qCols=[{h:'Facet',w:92*z,b:1},{h:'Roof (slope)',w:66*z,r:1},{h:'Roof (plan)',w:62*z,r:1},{h:'Coverage',w:62*z,r:1},{h:'Gross',w:62*z,r:1},{h:'Waste',w:58*z,r:1},{h:'%',w:44*z,r:1},
+    ...WASTE.map(([,l])=>({h:l.replace(' and notches',''),w:54.8*z,r:1}))];
+  const qRow=(label,q,tot)=>{const w=wasteOf(q);return {tot,cells:[label,fmtArea(q.slope),q.planKnown?fmtArea(q.plan):'–',fmtArea(q.cover),fmtArea(q.gross),fmtArea(w.sf),fmtPct(w.pct),...WASTE.map(([k])=>fmtArea(q[k]))]};};
+  for(const g of gs){
+    if(y+60>BOT)page();
+    T(M,y,g.pk.name,{size:11,bold:true});y+=16;
+    table(qCols,[...g.facets.map(f=>qRow([f.mark,f.name].filter(Boolean).join(' '),R.L.get(f.id).q)),qRow('Package total',g.q,1)],{size:8});
+    const tr=Object.keys(g.q.trim).filter(k=>g.q.trim[k]>0.01);
+    if(tr.length)sub('Trim, linear length by edge type, each facet counted on its own (a ridge, hip or valley shared by two facets is in here twice): '+tr.map(k=>`${EDGE[k].toLowerCase()} ${fmtRun(g.q.trim[k])}`).join(', ')+'.',8);
+    if(g.q.splices)sub(`Splice locations: ${g.facets.filter(f=>R.L.get(f.id).q.splices).map(f=>`${f.mark} ${R.L.get(f.id).q.splices}`).join(', ')}; ${g.q.splices} in all.`,8);
+  }
+  if(gs.length>1)table(qCols,[qRow('Project total',tq,1)],{size:8});
+  sub('Waste is coverage area less roof slope area. Gross area is the stretch out times ordered length: the metal bought.',8);
   sub('Starter profiles are generic. Verify coverage, lengths, laps and minimum slope with the panel manufacturer. This package does not check structure, wind uplift, clips or fasteners.',8);
   // Overview: every facet as a tile.
   for(const g of gs){
@@ -1104,20 +1157,6 @@ function reportSheets(date,only){
     if(gs.length>1)for(const g of gs)if(g.q.count)coilTable(g.pk.name,coilOrder([g]));
     for(const l of coilNotes(all))sub(l,8);
   }
-  // Quantities and waste.
-  page('Quantities and waste');
-  const qCols=[{h:'Facet',w:92*z,b:1},{h:'Roof (slope)',w:66*z,r:1},{h:'Roof (plan)',w:62*z,r:1},{h:'Coverage',w:62*z,r:1},{h:'Gross',w:62*z,r:1},{h:'Waste',w:58*z,r:1},{h:'%',w:44*z,r:1},
-    ...WASTE.map(([,l])=>({h:l.replace(' and notches',''),w:54.8*z,r:1}))];
-  const qRow=(label,q,tot)=>{const w=wasteOf(q);return {tot,cells:[label,fmtArea(q.slope),q.planKnown?fmtArea(q.plan):'–',fmtArea(q.cover),fmtArea(q.gross),fmtArea(w.sf),fmtPct(w.pct),...WASTE.map(([k])=>fmtArea(q[k]))]};};
-  for(const g of gs){
-    T(M,y,g.pk.name,{size:11,bold:true});y+=16;
-    table(qCols,[...g.facets.map(f=>qRow([f.mark,f.name].filter(Boolean).join(' '),R.L.get(f.id).q)),qRow('Package total',g.q,1)],{size:8});
-    const tr=Object.keys(g.q.trim).filter(k=>g.q.trim[k]>0.01);
-    if(tr.length)sub('Trim, linear length by edge type, each facet counted on its own (a ridge, hip or valley shared by two facets is in here twice): '+tr.map(k=>`${EDGE[k].toLowerCase()} ${fmtRun(g.q.trim[k])}`).join(', ')+'.',8);
-    if(g.q.splices)sub(`Splice locations: ${g.facets.filter(f=>R.L.get(f.id).q.splices).map(f=>`${f.mark} ${R.L.get(f.id).q.splices}`).join(', ')}; ${g.q.splices} in all.`,8);
-  }
-  if(gs.length>1)table(qCols,[qRow('Project total',tq,1)],{size:8});
-  sub('Waste is coverage area less roof slope area. Gross area is the stretch out times ordered length: the metal bought.',8);
   // Title blocks last, once the sheet count is known.
   pages.forEach((p,i)=>{
     pg=p;rule(PH-M-12,M,PW-M,0.8);
@@ -1167,13 +1206,14 @@ function renderInputs(){
   const pk=curPk(),f=curF(),d=P.def;let h='';
   if(S.t==='project'){
     h+=`<h2>Project</h2>${fld('Project name','p.name','text',P.name)}<div class="two">${fld('Job number','p.jobNo','text',P.jobNo)}${sel('Sheet size','p.sheet',{letter:'Letter landscape',tabloid:'Tabloid landscape'},P.sheet)}</div>${fld('Address','p.address','text',P.address)}`;
-    h+=`<h2>Units</h2><div class="two">${sel('A bare number means','u.bare',{in:'Inches',ft:'Feet',mm:'Millimetres'},P.units.bare)}${sel('Show lengths as','u.fmt',FMTS,P.units.fmt)}`;
-    h+=`${sel('Fraction precision','u.prec',[[16,'1/16'],[8,'1/8'],[4,'1/4'],[2,'1/2']],P.units.prec,'int')}${sel('Show areas as','u.area',{sf:'Square feet',sq:'Roofing squares',m2:'Square metres'},P.units.area)}</div>`;
+    h+=`<h2>Units</h2><div class="two">${sel('A bare number means','u.bare',{in:'Inches',ft:'Feet',mm:'Millimeters'},P.units.bare)}${sel('Show lengths as','u.fmt',FMTS,P.units.fmt)}`;
+    h+=`${sel('Fraction precision','u.prec',[[16,'1/16'],[8,'1/8'],[4,'1/4'],[2,'1/2']],P.units.prec,'int')}${sel('Show areas as','u.area',{sf:'Square feet',sq:'Roofing squares',m2:'Square meters'},P.units.area)}</div>`;
     h+=`<p class="hint">Any field takes any format whatever is chosen here: <code>10'-6 1/2"</code>, <code>10.5 ft</code>, <code>3.2 m</code>, <code>=96+24</code>.</p>`;
     h+=`<h2>Reports</h2><div class="two">${sel('PDF and print lengths','u.pdf',{'':'Same as the screen',...FMTS},P.units.pdf,'selnull')}${sel('CSV lengths','u.csv',{'':'Same as the screen',...FMTS},P.units.csv,'selnull')}</div><p class="hint">CSV files always carry decimal inches as well.</p>`;
     h+=`<h2>Coil order</h2><div class="three">${fld('Max coil length, ft','c.maxFt','numopt',P.coil.maxFt??'','data-min="1" placeholder="no limit"')}${fld('Max coil weight, lb','c.maxLb','numopt',P.coil.maxLb??'','data-min="1" placeholder="no limit"')}${fld('Extra per coil, %','c.extra','num',P.coil.extra,'data-min="0"')}</div>`;
     h+=`<p class="hint">The cut list's Coil order view splits each coil to stay under both limits. Weight comes from the profile's gauge.</p>`;
-    h+=`<h2>Panel IDs</h2>${fld('Longest ID the rollformer can mark','p.idMax','int',P.idMax,'inputmode="numeric" data-min="4"')}<p class="hint">IDs read facet-panel, e.g. R2-07. Identical panels in a facet share one. Anything longer than this is flagged.</p>`;
+    h+=`<h2>Extra panels</h2>${fld('Extra panels to order','p.extraPanels','int',P.extraPanels,'inputmode="numeric" data-min="0"')}<p class="hint">Spares against a mistake or damage: this many more of the longest panel, for each profile and color in each package. They are added to the cut list by length, the summary and the coil order, marked EXTRA.</p>`;
+    h+=`<h2>Panel IDs</h2>${fld('Longest ID the roll former can mark','p.idMax','int',P.idMax,'inputmode="numeric" data-min="4"')}<p class="hint">IDs read facet-panel, e.g. R2-07. Identical panels in a facet share one. Anything longer than this is flagged.</p>`;
     const prof=P.profiles.find(x=>x.id===d.profileId)||P.profiles[0],kinds=new Set(P.facets.map(x=>x.kind));
     h+=`<h2>Defaults for every facet</h2>${sel('Profile','d.profileId',Object.fromEntries(P.profiles.map(x=>[x.id,x.name])),d.profileId)}`;
     h+=`<div class="two">${fld('Color','d.color','text',d.color,`placeholder="${esc(prof.color||'from profile')}"`)}${fld('End lap','d.lap','lenopt',len(d.lap),`data-min="0" placeholder="${esc(fmtField(prof.lap))} from profile"`)}</div>`;
@@ -1214,10 +1254,10 @@ function renderInputs(){
     const side=sel(f.template==='shed'?'High side':'Angled side','m.side',{left:'Left',right:'Right'},m.side);
     if(f.template==='rect')h+=`<div class="two">${w}${hh}</div>`;
     if(f.template==='trap')h+=`<div class="two">${w}${fld('Ridge length','m.top','len',len(m.top),'data-min="0"')}${hh}${fld('Left inset','m.inset','lenopt',len(m.inset),'placeholder="symmetric"')}</div>`;
-    if(f.template==='tri')h+=`<div class="three">${w}${hh}${fld('Apex from left','m.apex','lenopt',len(m.apex),'placeholder="centred"')}</div>`;
+    if(f.template==='tri')h+=`<div class="three">${w}${hh}${fld('Apex from left','m.apex','lenopt',len(m.apex),'placeholder="centered"')}</div>`;
     if(f.template==='para')h+=`<div class="three">${w}${hh}${fld('Skew offset','m.skew','len',len(m.skew))}</div>`;
     if(f.template==='angled')h+=`<div class="two">${w}${fld('Top length','m.top','len',len(m.top),'data-min="0"')}${hh}${side}</div>`;
-    if(f.template==='gable')h+=`<div class="two">${w}${fld('Eave height','m.h','len',len(m.h),'data-min="1"')}${fld('Peak height','m.h2','len',len(m.h2),'data-min="1"')}${fld('Peak from left','m.apex','lenopt',len(m.apex),'placeholder="centred"')}</div>`;
+    if(f.template==='gable')h+=`<div class="two">${w}${fld('Eave height','m.h','len',len(m.h),'data-min="1"')}${fld('Peak height','m.h2','len',len(m.h2),'data-min="1"')}${fld('Peak from left','m.apex','lenopt',len(m.apex),'placeholder="centered"')}</div>`;
     if(f.template==='shed')h+=`<div class="three">${w}${fld('Low height','m.h','len',len(m.h),'data-min="1"')}${fld('High height','m.h2','len',len(m.h2),'data-min="1"')}</div>${side}`;
     if(f.template==='custom'){
       h+=sel('Enter the perimeter as','f.custom',{xy:'X / Y points',walk:'Walk the edges: length + turn'},f.custom);
@@ -1329,7 +1369,7 @@ function cutHTML(){
     }else if(S.cut==='len'){
       h+=`<table class="t"><tr><th class="r">Qty</th><th class="r">Length</th><th>Mark with ID</th><th>Profile</th><th>Color</th></tr>`;
       for(const r of production([g]))h+=`<tr><td class="r">${r.qty}</td><td class="r">${fmtLen(r.len)}</td><td class="mk">${esc(r.ids)}</td><td>${esc(r.profile)}</td><td>${esc(r.color)}</td></tr>`;
-      h+=`<tr class="tot"><td class="r">${g.q.count}</td><td class="r">${fmtRun(g.q.lf)}</td><td></td><td></td><td></td></tr></table>`;
+      h+=`<tr class="tot"><td class="r">${ordered(g).count}</td><td class="r">${fmtRun(ordered(g).lf)}</td><td></td><td></td><td></td></tr></table>`;
     }else{
       h+=`<table class="t"><tr><th>Profile</th><th>Color</th><th class="r">Pieces</th><th class="r">Linear length</th><th class="r">Coverage area</th><th class="r">Gross area</th></tr>`;
       for(const r of purchasing([g]))h+=`<tr><td class="id">${esc(r.profile)}</td><td>${esc(r.color)}</td><td class="r">${r.count}</td><td class="r">${fmtRun(r.lf)}</td><td class="r">${fmtArea(r.cover)}</td><td class="r">${fmtArea(r.gross)}</td></tr>`;

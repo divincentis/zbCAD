@@ -97,8 +97,11 @@ const DATE = 'Oct 8, 2026';
   const pages = app.ev('reportPages')(DATE), titles = pages.map(x => x.title), pdf = app.ev('buildPDF')(DATE);
   t.ok(pages.every(x => x.w === 792 && x.h === 612), 'Letter landscape');
   t.eq(titles[0], 'Hip roof (test)', 'sheet 1 is the cover');
-  const order = ['Overview: Main roof', 'Facet R1: Front', 'Production cut list: Main roof', 'Quantities and waste'].map(x => titles.indexOf(x));
-  t.ok(order.every((x, i) => x > 0 && (!i || x > order[i - 1])), 'then overview, facet sheets, production list, quantities');
+  const order = ['Overview: Main roof', 'Facet R1: Front', 'Production cut list: Main roof', 'Coil order'].map(x => titles.indexOf(x));
+  t.ok(order.every((x, i) => x > 0 && (!i || x > order[i - 1])), 'then overview, facet sheets, production list, coil order');
+  const cover = pages[0].ops.filter(o => o.k === 'text'), at = x => cover.find(o => o.s === x);
+  t.ok(at('Quantities and waste') && at('Package total') && at('Quantities and waste').y > at('Package').y && at('Package total').y > at('Quantities and waste').y && !titles.includes('Quantities and waste'), 'quantities and waste are on the cover, under the package list');
+  t.ok(pages.every(pg => pg.ops.some(o => o.s === 'zbCAD' && o.bold) && pg.ops.some(o => /zbcad\.com/.test(o.s)) && pg.ops.filter(o => o.k === 'line' && o.stroke === 'bg').length === 3), 'every sheet carries the zbCAD mark and name');
   t.ok(app.P.facets.every(f => titles.some(x => x.startsWith('Facet ' + f.mark))), 'a sheet for every facet');
   const text = pg => pg.ops.filter(o => o.k === 'text').map(o => o.s);
   t.ok(pages.every((pg, i) => text(pg).includes(`Page ${i + 1} of ${pages.length}`) && text(pg).some(x => /lengths in inches · Verify all dimensions in field\./.test(x)) && text(pg).some(x => /Hip roof \(test\) · Job 26-114/.test(x))), 'title block on every sheet: project, units note, verify note, page x of y');
@@ -236,7 +239,7 @@ const DATE = 'Oct 8, 2026';
   app.type('f.kind', 'sel', 'roof');
   t.eq(app.P.facets[0].mark, 'R1', 'and back');
 
-  // Mirror duplicate: the opposite hand of an off-centre facet.
+  // Mirror duplicate: the opposite hand of an off-center facet.
   app.type('f.template', 'sel', 'trap'); app.type('m.top', 'len', '100'); app.type('m.inset', 'lenopt', '60'); app.type('y.start', 'sel', 'left');
   app.type('e.1.type', 'selnull', 'valley');
   app.ev('ACT').mirFacet(); app.ev('changed')();
@@ -295,9 +298,31 @@ const DATE = 'Oct 8, 2026';
   const csv = app.ev('buildCSV')('coil').trim().split('\r\n');
   t.ok(csv.length === 3 && csv[0].startsWith('Coil width (in),Gauge,Color,Profiles,Panel length (ft)') && csv[1].startsWith('20,24 ga,,"16"" SSMR snap-lock",150,250,289,3,50,'), 'coil order CSV');
   const pages = app.ev('reportPages')(DATE), pg = pages.find(x => x.title === 'Coil order'), txt = pg.ops.filter(o => o.k === 'text').map(o => o.s);
-  t.ok(pages.findIndex(x => x.title === 'Coil order') < pages.findIndex(x => x.title === 'Quantities and waste') && txt.includes('Length each') && txt.includes('50 ft') && txt.some(x => /No coil is over 100 lb/.test(x)), 'the package carries a coil order sheet');
+  t.ok(txt.includes('Length each') && txt.includes('50 ft') && txt.some(x => /No coil is over 100 lb/.test(x)), 'the package carries a coil order sheet');
   app.ev('S').tab = 'cut'; app.ev('ACT').cutView({ dataset: { v: 'coil' } });
   t.ok(/Coil order/.test(app.$('#pane').innerHTML) && /<td class="r">50 ft<\/td>/.test(app.$('#pane').innerHTML), 'and the cut list has a coil order view');
   app.ev('S').tab = 'layout'; app.ev('S').cut = 'loc';
+}
+
+// ===== extra panels =====
+{
+  // Fifteen 10 ft panels and, on a second facet, fifteen 8 ft ones: the spares are 10 ft.
+  const plain = { profile: { cover: 16, sheetW: 20, maxLen: 0, minLen: 0, lap: 6, type: 'exposed' }, def: { allow: {}, round: 0.25, ripMin: 0 } };
+  app.make(plain, [{ template: 'rect', params: { w: 240, h: 120 } }, { template: 'rect', params: { w: 240, h: 96 } }]);
+  const R0 = app.ev('compute')(), waste = app.ev('wasteOf')(R0.total).pct;
+  t.eq(app.ev('production')(R0.pk).map(r => [r.qty, r.len, r.ids]), [[15, 120, 'R1-01 ×15'], [15, 96, 'R2-01 ×15']], 'no extras unless asked for');
+  t.eq(app.type('p.extraPanels', 'int', '3'), undefined, 'extra panels are a project setting');
+  const R = app.ev('compute')(), g = R.pk[0];
+  t.eq(app.ev('production')(R.pk).map(r => [r.qty, r.len, r.ids]), [[15, 120, 'R1-01 ×15'], [3, 120, 'EXTRA'], [15, 96, 'R2-01 ×15']], 'that many more of the longest panel, marked EXTRA');
+  const buy = app.ev('purchasing')(R.pk)[0];
+  t.ok(buy.count === 33 && near(buy.lf, 150 + 120 + 30) && near(buy.gross, 300 * 20 / 12), 'the summary counts them as bought');
+  t.ok(near(app.ev('coilOrder')(R.pk)[0].lf, 300), 'and so does the coil order');
+  t.ok(R.total.count === 30 && near(app.ev('wasteOf')(R.total).pct, waste), 'but they are not roof: layout quantities and waste do not move');
+  t.eq(app.ev('ordered')(g), { count: 33, lf: 300 }, 'ordered pieces and length include them');
+  t.ok(app.ev('buildCSV')('len').split('\r\n')[2].startsWith('3,120,120,EXTRA,'), 'the production CSV lists them');
+  t.ok(app.ev('reportPages')(DATE)[0].ops.some(o => /Includes 3 extra panels/.test(o.s)), 'and the cover says so');
+  app.ev('newFacet')(app.P, app.P.packages[0], { ov: { profileId: 'p7' }, params: { ...app.ev('newParams')(), w: 72, h: 60 } });
+  t.eq(app.ev('production')(app.ev('compute')().pk).filter(r => r.ids === 'EXTRA').map(r => [r.qty, r.len, r.profile]), [[3, 120, '16" SSMR snap-lock'], [3, 60, '36" exposed fastener (R / PBR)']], 'each profile gets its own, at its own longest length');
+  t.eq(app.ev('checkProject')(JSON.parse(JSON.stringify(app.P))).extraPanels, 3, 'saved with the project');
 }
 t.done();
