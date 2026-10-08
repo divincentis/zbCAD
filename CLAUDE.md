@@ -59,6 +59,14 @@ sh src/tools/tests/run-tests.sh
 sh src/tools/tests/run-tests.sh "$PWD/cad.html"
 ```
 
+`schedule.html` (the CPM scheduler) is not part of this build: it is a hand-edited single file with its own suites, which boot its inline script against a stubbed DOM and need no build step first:
+
+```sh
+sh src/tools/tests/schedule/run.sh
+```
+
+Anything a file, an import or the autosave brings in goes through `checkProject` before it can become the open schedule; add new task fields there as well as in `newTask`, or they are dropped on load.
+
 `src/tools/tests/harness.mjs` boots the built single-file bundle inside a Node `vm` with a stubbed DOM, canvas and localStorage, and returns `window.__cadPrototype` (see `testHook.js`). Its `Image`/`FileReader` stubs resolve asynchronously, but they cannot decode anything: the image re-encode path is only meaningfully exercised in a real browser, so keep the pure parts (placement, calibration, transforms) callable with a plain descriptor. That hook exists precisely so the app can be driven and inspected without real DOM events. Prefer driving real commands (`startCommand`, `commitPoint`, `submitCommandText`) over seeding `state` directly, so a test exercises what a user's clicks actually produce.
 
 **Test with realistic inputs, not just canonical ones.** Points that happen to land on a quadrant, an endpoint, or an axis take different code paths from the arbitrary points users actually produce with a NEAREST snap — a past associative-dimension bug survived a green suite for exactly this reason. Assert geometric *properties* (tangency, sweep, reflection) rather than only precomputed coordinates.
