@@ -109,6 +109,12 @@ fieldset input{display:inline;width:auto;margin:0}
 .hb button,menu button{border:1px solid var(--rule2);background:var(--bg);border-radius:5px;padding:6px 12px;cursor:pointer}
 menu{display:flex;justify-content:flex-end;gap:8px;margin:16px 0 0;padding:0}
 menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.tpl{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tpl button{display:flex;flex-direction:column;gap:3px;text-align:left;border:1px solid var(--rule2);background:var(--bg);color:var(--text);border-radius:6px;padding:9px 11px;cursor:pointer;font:13px var(--sans)}
+.tpl button:hover,.tpl button:focus-visible{border-color:var(--accent)}
+.tpl .wide{grid-column:1/-1}
+.tpl span{font-size:12px;color:var(--muted);line-height:1.35}
+.tpl i{font-style:normal;font-size:11px;color:var(--muted);margin-top:auto;padding-top:3px}
 .facts{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
 .facts td{padding:3px 0;border-bottom:1px solid var(--rule)}
 .facts td:nth-child(even){text-align:right;padding-right:14px}
@@ -135,7 +141,7 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
 <header class="bar" id="toolbar">
   <div class="brand"><a href="/">zbCAD</a><span class="sep">/</span>CPM Scheduler</div>
   <div class="grp"><span>File</span>
-    <button data-cmd="new" title="New (Ctrl+Alt+N)">New</button>
+    <button data-cmd="new" title="New schedule, blank or from a template (Ctrl+Alt+N)">New</button>
     <button data-cmd="open" title="Open .json or MS Project .xml (Ctrl+O)">Open</button>
     <button data-cmd="save" title="Save (Ctrl+S)">Save</button>
     <button data-cmd="csv" title="Export CSV">CSV</button>
@@ -210,6 +216,13 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
   <menu><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="pri">Save</button></menu>
 </form></dialog>
 
+<dialog id="dlgNew"><form method="dialog">
+  <h3>New schedule</h3>
+  <p style="font-size:12px;color:var(--muted);margin:-6px 0 12px">Pick a starting point. Template durations and logic are typical placeholders — adjust them to your job.</p>
+  <div class="tpl" id="tplList"></div>
+  <menu><button value="cancel" formnovalidate>Cancel</button></menu>
+</form></dialog>
+
 <dialog id="dlgInfo"><form method="dialog">
   <h3>Task information</h3>
   <div class="two" style="grid-template-columns:2fr 1fr"><label>Name <input name="name"></label><label>Trade <input name="trade" list="tradeList"></label></div>
@@ -248,6 +261,7 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
   <p><b>Trace</b> highlights the chain of tasks that sets the selected task's start. Info and the bar tooltip also say what drives each start.</p>
   <p><b>Float</b> is total float in workdays; tasks with zero or negative float are critical and shown in red. Summary tasks span their subtasks, with % done weighted by duration, and are never critical themselves; their dates, duration and % can't be typed over.</p>
   <p><b>Baseline</b>: Set baseline saves every task's current dates, and gray bars show them from then on. Re-setting overwrites the old one; Clear removes it. Duplicated tasks start without progress or baseline.</p>
+  <p><b>New</b> offers a blank schedule or a template for a common job type. A template is only a starting point: check its durations and links against your own job.</p>
   <p><b>Files</b>: Save writes a .json file that keeps everything. MSP XML exports to MS Project (File › Open there) and Open reads Project XML back in. Check the calendar after an import, since Project calendars carry more detail than this tool uses. CSV is a one-way export for spreadsheets.</p>
   <table>
     <tr><td><code>Enter</code></td><td>Commit and move down</td></tr>
@@ -622,21 +636,87 @@ function exportCSV(){
   return rows.map(r=>r.map(q).join(',')).join('\r\n');
 }
 
-/* ===== Sample ===== */
-function sampleProject(){
-  P=blankProject();P.name='Reroof - Building 2';P.start='2026-10-12';
-  P.calendar.holidays=[...holidaySet('con',2026),...holidaySet('con',2027)].map(([n,d])=>({d:isoOf(d),n}));
-  const rows=[
-    [0,'Preconstruction'],[1,'Notice to proceed',0,''],[1,'Submittals & shop drawings',10,'2'],[1,'Architect submittal review',10,'3'],
-    [1,'Material procurement & delivery',15,'4'],[1,'Mobilize & set up staging',2,'5FS-2d'],
-    [0,'Roof Area A'],[1,'Tear-off & dry-in',5,'6'],[1,'Deck repairs',3,'8SS+2d'],[1,'Tapered insulation',6,'8, 9'],[1,'TPO membrane',7,'10SS+2d'],[1,'Perimeter flashings',4,'11FF+2d'],
-    [0,'Roof Area B'],[1,'Tear-off & dry-in',6,'8'],[1,'Deck repairs',3,'14SS+2d'],[1,'Tapered insulation',7,'14, 15, 10'],[1,'TPO membrane',8,'16SS+2d, 11'],[1,'Perimeter flashings',4,'17FF+2d'],
-    [0,'Sheet metal'],[1,'Fabricate coping & edge metal',8,'4FS+5d'],[1,'Install coping',5,'20, 12'],[1,'Gutters & downspouts',3,'21SS+2d, 18'],
-    [0,'Closeout'],[1,'Punch list walk',1,'18, 22'],[1,'Punch list completion',4,'24'],[1,'Final inspection',1,'25'],[1,'Substantial completion',0,'26'],[1,'O&M manuals & warranties',5,'27']];
-  const TR=[[/submittal|review|procure|notice|mobilize|punch|inspection|completion|manual/i,'General'],[/deck/i,'Carpentry'],[/coping|edge metal|gutter/i,'Sheet metal'],[/tear|insul|tpo|flashing/i,'Roofing']];
-  P.tasks=rows.map(r=>{const t=newTask(r[1],r[0]);t.dur=r[2]??1;if(r.length>2){const m=TR.find(x=>x[0].test(r[1]));if(m)t.trade=m[1];}return t;});
+/* ===== Templates ===== */
+// Rows are [level, name, workdays, predecessors, trade]; a row with only a level and a name is a summary.
+// Predecessors are typed exactly as in the table, so they count rows from 1 with the summaries included.
+const TEMPLATES=[
+ {id:'reroof',name:'Commercial reroof',pname:'Reroof - Building 2',blurb:'Tear-off and replace in two roof areas, with sheet metal and closeout.',rows:[
+  [0,'Preconstruction'],[1,'Notice to proceed',0,'','General'],[1,'Submittals & shop drawings',10,'2','General'],[1,'Architect submittal review',10,'3','General'],
+  [1,'Material procurement & delivery',15,'4','General'],[1,'Mobilize & set up staging',2,'5FS-2d','General'],
+  [0,'Roof Area A'],[1,'Tear-off & dry-in',5,'6','Roofing'],[1,'Deck repairs',3,'8SS+2d','Carpentry'],[1,'Tapered insulation',6,'8, 9','Roofing'],[1,'TPO membrane',7,'10SS+2d','Roofing'],[1,'Perimeter flashings',4,'11FF+2d','Roofing'],
+  [0,'Roof Area B'],[1,'Tear-off & dry-in',6,'8','Roofing'],[1,'Deck repairs',3,'14SS+2d','Carpentry'],[1,'Tapered insulation',7,'14, 15, 10','Roofing'],[1,'TPO membrane',8,'16SS+2d, 11','Roofing'],[1,'Perimeter flashings',4,'17FF+2d','Roofing'],
+  [0,'Sheet metal'],[1,'Fabricate coping & edge metal',8,'4FS+5d','Sheet metal'],[1,'Install coping',5,'20, 12','Sheet metal'],[1,'Gutters & downspouts',3,'21SS+2d, 18','Sheet metal'],
+  [0,'Closeout'],[1,'Punch list walk',1,'18, 22','General'],[1,'Punch list completion',4,'24','General'],[1,'Final inspection',1,'25','General'],[1,'Substantial completion',0,'26','General'],[1,'O&M manuals & warranties',5,'27','General']]},
+ {id:'newroof',name:'New-construction low-slope roof',blurb:'Roofing sub on a new building: deck release, work by other trades, roof, warranty inspection.',rows:[
+  [0,'Preconstruction'],[1,'Contract award',0,'','General'],[1,'Submittals & shop drawings',10,'2','General'],[1,'Architect submittal review',10,'3','General'],
+  [1,'Material procurement & delivery',20,'4','General'],[1,'Pre-roofing conference',1,'4','General'],
+  [0,'Deck release'],[1,'Roof deck complete & released',0,'2FS+30d','General'],[1,'Curbs & equipment supports set',3,'8','Mechanical'],[1,'Roof drains & penetrations roughed in',3,'8','Plumbing'],
+  [1,'Wood blocking & nailers',4,'8','Carpentry'],[1,'Mobilize & load roof',2,'5, 8','Roofing'],
+  [0,'Roofing'],[1,'Vapor barrier / temporary roof',4,'12, 11SS+2d','Roofing'],[1,'Insulation & cover board',8,'14, 9, 10','Roofing'],[1,'Membrane',8,'15SS+3d','Roofing'],
+  [1,'Curb, wall & penetration flashings',6,'16SS+3d','Roofing'],[1,'Drain flashings & walkway pads',2,'16, 17','Roofing'],
+  [0,'Sheet metal'],[1,'Fabricate coping & edge metal',8,'4FS+5d','Sheet metal'],[1,'Install coping & edge metal',5,'20, 17','Sheet metal'],[1,'Counterflashing & expansion joints',3,'21SS+2d','Sheet metal'],
+  [0,'Closeout'],[1,'Roofing punch list',2,'18, 22','Roofing'],[1,'Manufacturer warranty inspection',1,'24FS+5d','General'],[1,'Inspection corrections',2,'25','Roofing'],
+  [1,'Warranty issued',0,'26FS+10d','General'],[1,'Closeout documents',3,'26','General']]},
+ {id:'steep',name:'Steep-slope residential reroof',blurb:'Shingle tear-off and replace on a house, from contract to warranty.',rows:[
+  [0,'Before the job'],[1,'Contract signed',0,'','General'],[1,'Color & material selection',2,'2','General'],[1,'Permit',5,'2','General'],[1,'Order materials',5,'3','General'],
+  [1,'Schedule dumpster & delivery',1,'4, 5','General'],
+  [0,'Tear-off & deck'],[1,'Protect landscaping & set dumpster',1,'6','Roofing'],[1,'Tear off existing roofing',1,'8','Roofing'],[1,'Inspect & replace damaged decking',1,'9SS','Carpentry'],
+  [0,'Roofing'],[1,'Drip edge, ice barrier & underlayment',1,'9, 10','Roofing'],[1,'Dry-in inspection',1,'12','General'],[1,'Valley, step & pipe flashings',1,'12','Roofing'],
+  [1,'Shingles',2,'13, 14','Roofing'],[1,'Ridge vent & caps',1,'15','Roofing'],
+  [0,'Gutters & closeout'],[1,'Gutters & downspouts',1,'16','Sheet metal'],[1,'Cleanup, magnet sweep & haul-off',1,'16','Roofing'],[1,'Final inspection',1,'18, 19','General'],
+  [1,'Owner walkthrough & final payment',0,'20','General'],[1,'Warranty registration',1,'21','General']]},
+ {id:'ti',name:'Tenant improvement / interior fit-out',blurb:'Demo, framing, MEP rough-in, inspections, finishes and turnover.',rows:[
+  [0,'Preconstruction'],[1,'Notice to proceed',0,'','General'],[1,'Permit',15,'2','General'],[1,'Submittals & approvals',10,'2','General'],[1,'Long-lead procurement (doors, lights, HVAC)',25,'4','General'],
+  [0,'Demo & rough-in'],[1,'Demolition',4,'3','Demolition'],[1,'Layout & metal stud framing',6,'7','Framing'],[1,'Door frames',2,'8SS+3d','Carpentry'],[1,'Plumbing rough-in',4,'8SS+2d','Plumbing'],
+  [1,'HVAC rough-in',6,'8SS+2d','Mechanical'],[1,'Electrical & low-voltage rough-in',6,'8SS+3d','Electrical'],[1,'Fire sprinkler modifications',4,'8','Fire protection'],[1,'In-wall inspections',1,'10, 11, 12','General'],
+  [0,'Walls & ceilings'],[1,'Insulation',2,'14','Drywall'],[1,'Hang drywall',5,'16, 9','Drywall'],[1,'Tape & finish',6,'17','Drywall'],[1,'Prime & first coat',3,'18','Painting'],
+  [1,'Ceiling grid',4,'19, 13','Ceilings'],[1,'Above-ceiling inspection',1,'20','General'],
+  [0,'Finishes'],[1,'Light fixtures, diffusers & sprinkler heads',4,'21, 5','Electrical'],[1,'Ceiling tile',2,'23','Ceilings'],[1,'Millwork & casework',5,'19, 5','Carpentry'],[1,'Flooring',5,'24, 25','Flooring'],
+  [1,'Doors & hardware',3,'26, 5','Carpentry'],[1,'Plumbing & electrical trim',3,'25','Electrical'],[1,'Final paint & touch-up',3,'27, 28','Painting'],
+  [0,'Closeout'],[1,'Final cleaning',2,'29','General'],[1,'Final inspections',2,'29','General'],[1,'Certificate of occupancy',0,'32','General'],[1,'Punch list',4,'31','General'],[1,'Turnover to tenant',0,'33, 34','General']]},
+ {id:'shell',name:'Ground-up small commercial building',blurb:'Sitework, foundations, steel, envelope, MEP, interiors and certificate of occupancy.',rows:[
+  [0,'Preconstruction'],[1,'Notice to proceed',0,'','General'],[1,'Permits',20,'2','General'],[1,'Submittals & shop drawings',15,'2','General'],[1,'Steel fabrication & delivery',30,'4','Steel'],
+  [0,'Sitework'],[1,'Mobilize, erosion control & survey',3,'3','General'],[1,'Clear & mass grade',6,'7','Sitework'],[1,'Underground utilities',10,'8','Sitework'],[1,'Building pad',3,'8','Sitework'],
+  [0,'Foundations & slab'],[1,'Footings & foundation walls',10,'10','Concrete'],[1,'Underslab plumbing & electrical',5,'12','Plumbing'],[1,'Slab on grade',5,'13','Concrete'],
+  [0,'Structure'],[1,'Steel erection',10,'14FS+7ed, 5','Steel'],[1,'Roof deck',4,'16','Steel'],
+  [0,'Envelope'],[1,'Exterior framing & sheathing',10,'16','Framing'],[1,'Roofing',8,'17','Roofing'],[1,'Air barrier & exterior cladding',15,'19','Exterior'],[1,'Storefront & glazing',6,'19FS+5d','Glazing'],
+  [1,'Building dried in',0,'20, 22','General'],
+  [0,'MEP & interiors'],[1,'MEP rough-in',15,'20SS+3d','MEP'],[1,'Rooftop units set',2,'20','MEP'],[1,'Interior framing & drywall',15,'23, 25SS+5d','Drywall'],[1,'Interior finishes',15,'27','Finishes'],
+  [1,'MEP trim & startup',8,'28SS+5d, 26','MEP'],
+  [0,'Site finishes'],[1,'Curbs, gutters & sidewalks',8,'9, 21SS+5d','Concrete'],[1,'Paving & striping',5,'31','Paving'],[1,'Landscaping & irrigation',6,'31','Landscaping'],
+  [0,'Closeout'],[1,'Final inspections',3,'29, 32','General'],[1,'Certificate of occupancy',0,'35','General'],[1,'Punch list',8,'28, 33','General'],[1,'Substantial completion',0,'36, 37','General']]},
+ {id:'house',name:'New single-family home',blurb:'Foundation, framing, dry-in, rough-ins, drywall, finishes and closing.',rows:[
+  [0,'Preconstruction'],[1,'Contract & financing closed',0,'','General'],[1,'Building permit',15,'2','General'],[1,'Selections & long-lead orders (windows, trusses, cabinets)',20,'2','General'],
+  [0,'Site & foundation'],[1,'Stake out, clear & excavate',3,'3','Excavation'],[1,'Footings',3,'6','Concrete'],[1,'Foundation walls',5,'7','Concrete'],
+  [1,'Waterproofing, drain tile & backfill',3,'8FS+7ed','Excavation'],[1,'Underslab plumbing & slab',4,'9','Concrete'],
+  [0,'Framing & dry-in'],[1,'Frame floors & walls',12,'9','Framing'],[1,'Roof trusses & sheathing',5,'12, 4','Framing'],[1,'Windows & exterior doors',3,'13','Framing'],[1,'Roofing',3,'13','Roofing'],
+  [1,'Siding & exterior trim',10,'14','Siding'],
+  [0,'Rough-ins'],[1,'Plumbing rough-in',5,'15, 10','Plumbing'],[1,'HVAC rough-in',5,'15','HVAC'],[1,'Electrical rough-in',5,'18SS+2d, 19SS+2d','Electrical'],[1,'Rough inspections',2,'14, 18, 19, 20','General'],
+  [0,'Interior'],[1,'Insulation',3,'21','Insulation'],[1,'Drywall hang & finish',12,'23','Drywall'],[1,'Prime & paint',6,'24','Painting'],[1,'Cabinets & interior trim',8,'25','Carpentry'],
+  [1,'Countertops',3,'26FS+7d','Countertops'],[1,'Flooring & tile',8,'26','Flooring'],[1,'Plumbing & electrical trim, HVAC startup',5,'27, 28','Electrical'],[1,'Final paint & hardware',3,'29','Painting'],
+  [0,'Exterior & closeout'],[1,'Driveway, walks & final grade',5,'16','Concrete'],[1,'Landscaping',4,'32','Landscaping'],[1,'Final inspection',1,'30, 32','General'],[1,'Certificate of occupancy',0,'34','General'],
+  [1,'Homeowner walkthrough & punch list',4,'34','General'],[1,'Closing',0,'35, 36','General']]},
+ {id:'remodel',name:'Kitchen / bath remodel',blurb:'Design, long-lead orders, demo, rough-in, cabinets, countertops and finish.',rows:[
+  [0,'Design & ordering'],[1,'Contract signed',0,'','General'],[1,'Final measurements & design sign-off',5,'2','General'],[1,'Permit',10,'3','General'],[1,'Order cabinets',25,'3','General'],
+  [1,'Order tile, fixtures & appliances',15,'3','General'],
+  [0,'Demo & rough-in'],[1,'Site protection & demolition',3,'4, 5FS-5d','Demolition'],[1,'Framing changes & blocking',2,'8','Carpentry'],[1,'Plumbing rough-in',3,'9','Plumbing'],[1,'Electrical rough-in',3,'9','Electrical'],
+  [1,'HVAC & vent changes',1,'9','HVAC'],[1,'Rough inspections',1,'10, 11, 12','General'],
+  [0,'Walls & floors'],[1,'Insulation & drywall',4,'13','Drywall'],[1,'Tape, finish & prime',4,'15','Drywall'],[1,'Flooring / floor tile',3,'16, 6','Tile'],
+  [0,'Cabinets & tops'],[1,'Install cabinets',3,'17, 5','Carpentry'],[1,'Template countertops',1,'19','Countertops'],[1,'Fabricate countertops',8,'20','Countertops'],[1,'Install countertops',1,'21','Countertops'],
+  [0,'Finish'],[1,'Backsplash / wall tile',3,'22','Tile'],[1,'Plumbing trim & fixtures',2,'22','Plumbing'],[1,'Electrical trim & appliances',2,'24','Electrical'],[1,'Paint & finish carpentry',3,'24','Painting'],
+  [1,'Final inspection',1,'25, 26','General'],[1,'Punch list & final clean',2,'27, 28','General'],[1,'Complete',0,'29','General']]},
+ {id:'phases',name:'Phase skeleton',blurb:'Just the usual phases and milestones, for anything else. Rename and fill in.',rows:[
+  [0,'Preconstruction'],[1,'Notice to proceed',0,''],[1,'Submittals & approvals',10,'2'],[1,'Permits',10,'2'],
+  [0,'Procurement'],[1,'Long-lead materials',15,'3'],[1,'Mobilize',2,'4, 6FS-2d'],
+  [0,'Construction'],[1,'Phase 1',10,'7'],[1,'Phase 2',10,'9'],[1,'Phase 3',10,'10'],
+  [0,'Closeout'],[1,'Punch list',5,'11'],[1,'Final inspection',1,'13'],[1,'Substantial completion',0,'14'],[1,'Closeout documents',5,'15']]}];
+function buildTemplate(tpl){
+  P=blankProject();P.name=tpl.pname||tpl.name;
+  const y=+P.start.slice(0,4);
+  P.calendar.holidays=[...holidaySet('con',y),...holidaySet('con',y+1)].map(([n,d])=>({d:isoOf(d),n}));
+  P.tasks=tpl.rows.map(r=>{const t=newTask(r[1],r[0]);t.dur=r[2]??1;t.trade=r[4]||'';return t;});
   schedule();
-  rows.forEach((r,i)=>{if(r[3]){const res=parsePreds(r[3],P.tasks[i]);if(res.preds)P.tasks[i].preds=res.preds;}});
+  tpl.rows.forEach((r,i)=>{if(r[3]){const res=parsePreds(r[3],P.tasks[i]);if(res.preds)P.tasks[i].preds=res.preds;}});
   return P;
 }
 /* ===== UI state ===== */
@@ -1110,12 +1190,31 @@ function topSel(){ // selected indices whose ancestors are not selected
   for(const i of selIdx()){let lv=T[i].level,anc=false;for(let j=i-1;j>=0&&lv>0;j--){if(T[j].level<lv){if(sel.has(T[j].uid)){anc=true;break;}lv=T[j].level;}}if(!anc)out.push(i);}
   return out;
 }
+// The picker's duration figures come from really scheduling each template, which means borrowing P for a moment.
+function templateStats(){
+  const keep=P;
+  for(const t of TEMPLATES){buildTemplate(t);schedule();t._n=t.rows.filter(r=>r.length>2).length;t._d=S.days;}
+  P=keep;schedule();
+}
+function openNew(){
+  const dlg=$('#dlgNew');
+  if(!TEMPLATES[0]._n)templateStats();
+  $('#tplList').innerHTML=`<button value="blank" class="wide"><b>Blank schedule</b><span>Start from an empty table.</span></button>`+
+    TEMPLATES.map(t=>`<button value="${t.id}"><b>${esc(t.name)}</b><span>${esc(t.blurb)}</span><i>${t._n} tasks · about ${t._d} workdays</i></button>`).join('');
+  dlg.onclose=()=>{
+    const v=dlg.returnValue;if(!v||v==='cancel')return;
+    if(P.tasks.length&&!confirm('Start a new schedule? Unsaved changes in this one will be lost.'))return;
+    const b=ser(),t=TEMPLATES.find(x=>x.id===v);
+    loadProject(t?buildTemplate(t):blankProject());undoS=[b];openProject();
+  };
+  dlg.returnValue='';dlg.showModal();
+}
 const need=()=>{if(!sel.size){toast('Select a task first — click its row number.');return false;}return true;};
 function download(name,text,type){const b=new Blob([text],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);}
 const fname=ext=>(P.name||'schedule').replace(/[\\/:*?"<>|]+/g,'').trim()+ext;
 function loadProject(p,msg){P=sanitize(p);sel=new Set();anchor=null;undoS=[];redoS=[];refresh();setTimeout(()=>scrollToDate(S.start-7),0);if(msg)toast(msg);}
 const CMD={
-  new(){if(P.tasks.length&&!confirm('Start a new schedule? Unsaved changes in this one will be lost.'))return;const b=ser();loadProject(blankProject());undoS=[b];openProject();},
+  new(){openNew();},
   open(){$('#fileIn').click();},
   save(){download(fname('.cpm.json'),ser(),'application/json');saved=true;renderFoot();},
   csv(){download(fname('.csv'),exportCSV(),'text/csv');},
@@ -1355,7 +1454,7 @@ if(innerWidth<900&&!prefs.narrowOk){$('#narrow').style.display='flex';}
 $('#narrowGo').onclick=()=>{$('#narrow').style.display='none';prefs.narrowOk=true;savePrefs();};
 (function boot(){
   let p=null;try{const s=localStorage.getItem('cpm.autosave');if(s)p=JSON.parse(s);}catch(e){}
-  if(p&&Array.isArray(p.tasks)){P=sanitize(p);}else{sampleProject();}
+  if(p&&Array.isArray(p.tasks)){P=sanitize(p);}else{buildTemplate(TEMPLATES[0]);}
   refresh();setTimeout(()=>scrollToDate(S.start-7),0);
 })();
 </script>
