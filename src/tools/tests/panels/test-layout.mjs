@@ -207,6 +207,20 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   t.ok(L.pieces.length === 0 && L.warn.some(w => /crosses itself/.test(w)), 'a self-crossing outline is refused');
   mk({}, [{ template: 'trap', params: { w: 300, top: 9, h: 120 } }]);
   t.ok(app.layout('R1').warn.some(w => /shorter than one/.test(w)), 'an edge shorter than the coverage width is flagged');
+
+  // The inputs are told which dimensions each of those is about.
+  const bf = () => app.ev('badFields')(app.layout('R1')).sort();
+  t.eq(bf(), ['m.top'], 'a short ridge points at the ridge length');
+  mk({}, [{ template: 'rect', params: { w: 300, h: 9 } }]);
+  t.eq(bf(), ['m.h'], 'a short rake points at the slope height');
+  mk({}, [{ template: 'custom', pts: [[0, 0], [200, 100], [200, 0], [0, 150]] }]);
+  t.eq(bf(), ['m.', 'pt.', 'wk.'], 'a self-crossing outline points at every shape dimension');
+  mk({}, [{ template: 'custom', pts: [[0, 0], [200, 0], [200, 100], [195, 100], [0, 100]] }]);
+  t.eq(bf(), ['pt.2.', 'pt.3.'], 'a short edge of a custom outline points at its two corners');
+  mk({}, [{ template: 'custom', custom: 'walk', walk: [{ len: 200, turn: 90 }, { len: 100, turn: 90 }, { len: 150, turn: 90 }, { len: 100, turn: 90 }] }]);
+  t.eq(bf(), ['wk.'], 'a perimeter that does not close points at the walk');
+  mk({}, [{ template: 'rect' }]);
+  t.eq(bf(), [], 'a sound facet points at nothing');
 }
 
 // ===== panel direction =====
