@@ -209,7 +209,7 @@ menu button{border:1px solid var(--rule2);background:var(--bg);border-radius:5px
   <div class="help">
     <p><b>Enter each facet from field dimensions.</b> A facet is one flat face of roof or wall, seen from in front with the eave or base at the bottom. Pick a template and type its sizes; the preview follows every keystroke. <b>Slope</b> mode takes dimensions as taped on the roof. <b>Plan + pitch</b> takes horizontal dimensions and stretches everything square to the eave by the slope factor.</p>
     <p><b>Lengths</b> can be typed any way: <code>126</code>, <code>126 1/2</code>, <code>10'-6 1/2"</code>, <code>10.5 ft</code>, <code>3.2 m</code>, or a sum like <code>=96+24</code>. What a bare number means, and how lengths and areas are shown, are project settings. Pitch takes <code>6:12</code>, <code>26.6 deg</code> or <code>50%</code>.</p>
-    <p><b>Edges</b> are typed from the shape and can be changed by clicking the edge on the drawing. Each type takes its allowance from the project defaults, and any one edge can override it. Eave, valley and wall-base allowances push the panel past the line; ridge, headwall, hip and top allowances cut it back; rake, sidewall, jamb and corner allowances pull the layout in from the edge, which changes the edge rip and not the length. The dashed line on the drawing is where the metal ends.</p>
+    <p><b>Edges</b> are typed from the shape and can be changed by clicking the edge on the drawing. A length typed there sets the dimension that edge belongs to; on a hip or a rake it solves the height and leaves the lengths along the eave alone. Each type takes its allowance from the project defaults, and any one edge can override it. Eave, valley and wall-base allowances push the panel past the line; ridge, headwall, hip and top allowances cut it back; rake, sidewall, jamb and corner allowances pull the layout in from the edge, which changes the edge rip and not the length. The dashed line on the drawing is where the metal ends.</p>
     <p><b>Panel IDs</b> read <code>R2-07</code>: facet R2, its seventh different panel counting from the start edge. Panels in a facet that can be swapped for one another share an ID, and the cut list gives how many to make: same length, same rip, same end cuts and laps. A mirror-image cut is a different panel.</p>
     <p><b>Long runs</b> are split when they pass the profile's maximum length, and the pieces together are longer than the run by one lap per joint. On standing seam every transverse seam is marked as needing a splice. Laps can line up across the facet, stagger on alternate strips, or snap to purlin lines.</p>
     <p><b>Waste</b> is coverage area less roof area, broken down by where it comes from: allowances, laps, angle cuts and notches, edge rips, and rounding.</p>
@@ -344,7 +344,7 @@ function starterProfiles(){
   out.push({...mkProfile('p'+(out.length+1),'36" exposed fastener (R / PBR)','exposed',36,38,1.25,1),gauge:'26 ga'});
   return out;
 }
-const newDefaults=()=>({profileId:'p2',color:'',allow:{eave:1},split:'max',lap:null,lapMode:'aligned',stagger:24,purlinSp:60,purlin0:0,round:0.25,ripMin:6});
+const newDefaults=()=>({profileId:'p2',color:'',allow:{eave:4},split:'max',lap:null,lapMode:'aligned',stagger:24,purlinSp:60,purlin0:0,round:0.25,ripMin:6});
 // What a coil can be ordered at: the supplier's or the decoiler's limit, in feet and pounds,
 // and a percentage over the cut list for leaders, tails and set-up scrap.
 const newCoil=()=>({maxFt:null,maxLb:null,extra:0});
@@ -1378,7 +1378,7 @@ function markBad(){
 }
 
 // ---- preview ------------------------------------------------------------------------
-let lastTx=null;
+let lastTx=null,typingPop=false;
 function renderMain(keepTx){
   const f=curF(),L=f&&R.L.get(f.id),tab=S.tab;
   for(const b of ['layout','cut','qty','warn'])$(`#tabs [data-tab="${b}"]`).className=b===tab?'on':'';
@@ -1406,8 +1406,10 @@ function renderMain(keepTx){
   $('#cv').innerHTML=planSVG(plan.ops)+hs;
   if(S.edge!=null&&L.edges[S.edge]){
     const e=L.edges[S.edge],ed=f.edges[e.i]||{},pop=$('#edgePop');
-    pop.innerHTML=`<b>Edge ${e.i+1}<button class="sb" data-act="closeEdge">×</button></b><label>Type<select data-b="e.${e.i}.type" data-t="selnull">${opt({'':`${EDGE[e.auto]} (auto)`,...Object.fromEntries(KIND_EDGES[f.kind].map(t=>[t,EDGE[t]]))},ed.type)}</select></label><label>${ALLOW_LABEL[e.type]}<em></em><input data-b="e.${e.i}.allow" data-t="lenopt" value="${esc(len(ed.allow))}" placeholder="${esc(fmtField(L.e.allow[e.type]||0))} from project"></label>`;
-    pop.style.left=Math.max(6,Math.min(w-220,S.edgeXY[0]))+'px';pop.style.top=Math.max(6,Math.min(h-150,S.edgeXY[1]))+'px';pop.hidden=false;
+    // Every keystroke comes through here, and rebuilding the field being typed in would drop the caret.
+    if(typingPop){pop.hidden=false;return;}
+    pop.innerHTML=`<b>Edge ${e.i+1}<button class="sb" data-act="closeEdge">×</button></b>${fld('Length','e.'+e.i+'.len','len',fmtField(e.len),'data-min="1"')}<p class="hint">${edgeLenNote(f,e.i)}</p><label>Type<select data-b="e.${e.i}.type" data-t="selnull">${opt({'':`${EDGE[e.auto]} (auto)`,...Object.fromEntries(KIND_EDGES[f.kind].map(t=>[t,EDGE[t]]))},ed.type)}</select></label><label>${ALLOW_LABEL[e.type]}<em></em><input data-b="e.${e.i}.allow" data-t="lenopt" value="${esc(len(ed.allow))}" placeholder="${esc(fmtField(L.e.allow[e.type]||0))} from project"></label>`;
+    pop.style.left=Math.max(6,Math.min(w-220,S.edgeXY[0]))+'px';pop.style.top=Math.max(6,Math.min(h-250,S.edgeXY[1]))+'px';pop.hidden=false;
   }
 }
 function cutHTML(){
@@ -1489,6 +1491,47 @@ function reshape(f,template){
   else{m.w=Math.max(Math.max(...xs)-x0,1);m.h=Math.max(Math.max(...ys)-y0,1);m.top=Math.min(m.top,m.w);m.inset=m.apex=null;if(template==='gable'||template==='shed')m.h2=Math.max(m.h2,m.h+12);f.edges=[];}
   f.template=template;
 }
+// Typing an edge's length on the drawing writes the facet's own inputs; nothing new is stored.
+// A length belongs to one input where the edge is level, so the question is only what gives
+// when it is not: the dimensions along the eave are held and the height is solved, which is
+// what taping a hip or a rake in the field measures. edgeDrives names the input an edge sets.
+function edgeDrives(f,i){
+  const m=f.params,t=f.template;
+  if(t==='custom')return f.custom;
+  if(i===0)return 'w';
+  if(t==='rect'||t==='para')return i===2?'w':'h';
+  if(t==='trap')return i===2&&m.top>EPS?'top':'h';
+  if(t==='angled')return i===2?'top':'h';
+  if(t==='gable')return i===2||i===3?'rise':'h';
+  if(t==='shed')return i===2?'rise':(i===1)===(m.side==='right')?'h2':'h';
+  return 'h';
+}
+function edgeLenNote(f,i){
+  const wall=f.kind==='wall',plan=f.inputMode==='plan',n=facetPts(f).length,d=edgeDrives(f,i);
+  const hgt=wall?'height':plan?'plan run':'slope height',along=wall?'base':'eave';
+  return {w:`Sets the ${along} length.`,top:`Sets the ${f.template==='trap'?'ridge':'top'} length.`,
+    h:f.template==='gable'?'Sets the eave height.':f.template==='shed'?'Sets the low height.':`Sets the ${hgt}, holding the lengths along the ${along}${f.template==='trap'&&f.params.top>EPS||f.template==='tri'||f.template==='para'?'; the opposite edge moves with it':''}.`,
+    h2:'Sets the high height.',rise:`Sets the ${f.template==='gable'?'peak':'high'} height, holding the ${along} length.`,
+    walk:'Sets this edge in the walk. Check that the perimeter still closes.',xy:`Moves corner ${(i+1)%n+1} along this edge.`}[d];
+}
+function setEdgeLen(f,i,len){
+  const m=f.params,k=slopeK(f),d=edgeDrives(f,i),r4=v=>+v.toFixed(4);
+  if(d==='walk'){
+    // Walk lengths are typed in plan when the facet is; the drawing's are on the slope.
+    let a=0;for(let j=0;j<i;j++)a+=f.walk[j].turn;
+    f.walk[i].len=r4(len/Math.hypot(Math.cos(a*DEG),k*Math.sin(a*DEG)));return;
+  }
+  const q=facetPts(f).map(p=>[p[0],p[1]/k]),n=q.length,a=q[i],b=q[(i+1)%n],dx=Math.abs(b[0]-a[0]);
+  if(d==='xy'){
+    const ux=b[0]-a[0],uy=(b[1]-a[1])*k,l=Math.hypot(ux,uy);
+    if(l<EPS)return 'That edge has no direction to stretch along. Move a corner instead.';
+    f.pts[(i+1)%n]=[r4(a[0]+ux/l*len),r4(a[1]+uy/l*len/k)];return;
+  }
+  if(d==='w'||d==='top'){m[d]=len;return;}
+  if(len<=dx+EPS)return `That is no longer than the ${fmtLen(dx)} this edge covers along the ${f.kind==='wall'?'base':'eave'}.`;
+  const dy=r4(Math.sqrt(len*len-dx*dx)/k);
+  if(d==='rise')m.h2=r4(m.h+(m.h2>=m.h?dy:-dy));else m[d]=dy;
+}
 function toWalk(pts){
   const n=pts.length,a=i=>Math.atan2(pts[(i+1)%n][1]-pts[i][1],pts[(i+1)%n][0]-pts[i][0])/DEG;
   return pts.map((p,i)=>{let t=a((i+1)%n)-a(i);while(t>180)t-=360;while(t<=-180)t+=360;return {len:Math.hypot(pts[(i+1)%n][0]-p[0],pts[(i+1)%n][1]-p[1]),turn:+t.toFixed(4)};});
@@ -1524,7 +1567,8 @@ function applyField(el){
     if(f.custom===v)return;
     if(v==='walk')f.walk=toWalk(f.pts);else f.pts=walkPts(f.walk).map(p=>[+p[0].toFixed(4),+p[1].toFixed(4)]);
     f.custom=v;
-  }else if(root==='e'){while(f.edges.length<=i)f.edges.push({type:null,allow:null});f.edges[i][ks[1]]=v;}
+  }else if(root==='e'&&ks[1]==='len'){const r=setEdgeLen(f,i,v);if(r)return r;}
+  else if(root==='e'){while(f.edges.length<=i)f.edges.push({type:null,allow:null});f.edges[i][ks[1]]=v;}
   else if(root==='pt')f.pts[i][+ks[1]]=v;
   else if(root==='wk')f.walk[i][ks[1]]=v;
   else if(root==='op')f.openings[i][ks[1]]=v;
@@ -1546,7 +1590,7 @@ function onType(e){
     em.className=r?'bad':'';
     em.textContent=!String(el.value).trim()?'':r?'?':t==='pitch'?fmtPitch(v):fmtLen(v)+(fm==='frac'||fm==='dec'?' in':fm==='mm'?' mm':'');
   }
-  if(!r){compute();renderMain();renderFoot();markBad();}
+  if(!r){compute();typingPop=!!(el.closest&&el.closest('#edgePop'));renderMain();typingPop=false;renderFoot();markBad();}
 }
 function onCommit(e){
   const el=e.target;if(!el.dataset||!el.dataset.b)return;
