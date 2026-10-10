@@ -23,7 +23,7 @@ export function boot(page = process.argv[2] || DEFAULT_PAGE, { autosave = null }
     console, document, confirm: () => true,
     localStorage: { getItem: k => (store.has(k) ? store.get(k) : null), setItem: (k, v) => { store.set(k, String(v)); }, removeItem: k => store.delete(k) },
     setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout() {},
-    addEventListener() {}, Blob: class {}, URL: { createObjectURL: () => '', revokeObjectURL() {} }, FileReader: class {},
+    addEventListener() {}, print() {}, Blob: class {}, URL: { createObjectURL: () => '', revokeObjectURL() {} }, FileReader: class {},
   };
   sandbox.window = sandbox;
   const ctx = vm.createContext(sandbox);

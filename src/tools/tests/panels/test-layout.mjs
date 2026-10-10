@@ -64,6 +64,7 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
     t.ok(near(parse(s), v), `parse ${s}`);
   for (const s of ['', 'abc', '=96+', '=alert(1)', "10'x", '1/0'])t.ok(Number.isNaN(parse(s)), `"${s}" is refused`);
   t.eq([parse('10', 'ft'), +parse('3200', 'mm').toFixed(3)], [120, 125.984], 'a bare number takes the chosen unit');
+  t.eq([parse('=10+2', 'ft'), +parse('=2500+700', 'mm').toFixed(3), parse('=96+24', 'in')], [144, 125.984, 120], 'and so do the numbers in a sum');
   t.eq([fmt(126.5, 'dec'), fmt(126.5, 'frac'), fmt(126.5, 'ftin'), fmt(126.5, 'ft'), fmt(126.5, 'mm')], ['126.50', '126 1/2', `10'-6 1/2"`, "10.54'", '3213'], 'the five output formats');
   t.eq([fmt(126.3, 'frac', 16), fmt(126.3, 'frac', 8), fmt(126.3, 'frac', 4), fmt(126.3, 'frac', 2)], ['126 5/16', '126 1/4', '126 1/4', '126 1/2'], 'fraction precision');
   t.eq(fmt(143.99, 'ftin', 16), `12'-0"`, 'a rounded-up inch carries into the feet');
@@ -174,6 +175,14 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   L = app.layout('W2');
   t.ok(near(L.q.slope * 144, 240 * (96 + 144) / 2) && near(L.pieces[L.pieces.length - 1].raw, 144), 'shed wall rises to the high side');
   t.eq(app.P.facets.map(f => f.mark), ['R1', 'R2', 'R3', 'W1', 'W2'], 'roofs are R, walls are W');
+  // One angled side with no top left is a triangle, and has to lay out as the triangle it is.
+  mk({ def: { allow: { eave: 2, hip: 2, rake: 1 } } }, [{ template: 'angled', params: { w: 240, h: 180, top: 0, side: 'right' } }, { template: 'tri', params: { w: 240, h: 180, apex: 0 } },
+    { template: 'angled', params: { w: 240, h: 180, top: 0, side: 'left' } }]);
+  const A = app.layout('R1'), T = app.layout('R2');
+  t.eq([A.pts, A.edges.map(e => e.type)], [T.pts, ['eave', 'hip', 'rake']], 'an angled side with no top has three corners, not two in one place');
+  t.ok(A.off.every((q, i) => near(q[0], T.off[i][0]) && near(q[1], T.off[i][1])) && A.q.count === T.q.count && near(A.q.lf, T.q.lf), 'so its allowances meet in a corner and it orders what the triangle does');
+  t.ok(!A.warn.some(w => /shorter than one/.test(w)), 'with no edge of no length to warn about');
+  t.eq([app.layout('R3').pts, [1, 2].map(i => app.ev('edgeDrives')(app.P.facets[0], i))], [[[0, 0], [240, 0], [240, 180]], ['h', 'h']], 'either way round, and both remaining edges set the height');
 }
 
 // ===== custom perimeters =====
@@ -202,6 +211,20 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   t.ok(near(app.layout('R1').q.slope * 144, 200 * 100 + 150 * 57.735027, 1e-2), 'switching to X/Y points keeps the shape');
   app.type('f.custom', 'sel', 'walk');
   t.ok(app.P.facets[0].walk.every((w, i) => near(w.len, walk[i].len, 1e-3) && near(w.turn, walk[i].turn, 1e-3)), 'and back to the same walk');
+  t.eq(app.P.facets[0].walk0, 0, 'which sets off along the eave');
+  // Points need not start at the origin or along the eave, and a walk says neither where it
+  // starts nor which way it sets off.
+  mk({}, [{ template: 'custom', pts: [[10, 20], [210, 60], [210, 160], [10, 160]], openings: [{ x: 60, y: 90, w: 30, h: 30 }] }]);
+  const P0 = app.layout('R1'); app.select('R1'); app.type('f.custom', 'sel', 'walk');
+  const W0 = app.layout('R1'), wf = app.P.facets[0];
+  t.ok(W0.pts.every((q, i) => near(q[0], P0.pts[i][0] - 10, 1e-3) && near(q[1], P0.pts[i][1] - 20, 1e-3)), 'an outline whose first edge is not level is walked as it lies, not turned onto the eave');
+  t.ok(near(wf.walk0, Math.atan2(40, 200) * 180 / Math.PI, 1e-3) && wf.openings[0].x === 50 && wf.openings[0].y === 70, 'the heading is kept beside the walk, and the openings move with the outline to its start');
+  t.ok(W0.q.count === P0.q.count && near(W0.q.lf, P0.q.lf) && near(W0.q.slope, P0.q.slope, 1e-3), 'so the layout is the one it was');
+  t.eq(app.ev('checkProject')(JSON.parse(JSON.stringify(app.P))).facets[0].walk0, wf.walk0, 'the heading is saved with the facet');
+  app.type('e.1.len', 'len', '150');
+  t.ok(near(app.layout('R1').edges[1].len, 150, 1e-3), 'a walked edge still takes a typed length');
+  app.type('wk.1.len', 'len', '100'); app.type('f.custom', 'sel', 'xy');
+  t.ok(app.P.facets[0].pts.every((q, i) => near(q[0], [0, 200, 200, 0][i], 1e-3) && near(q[1], [0, 40, 140, 140][i], 1e-3)), 'and back to the same points');
   mk({}, [{ template: 'custom', pts: [[0, 0], [200, 100], [200, 0], [0, 150]] }]);
   L = app.layout('R1');
   t.ok(L.pieces.length === 0 && L.warn.some(w => /crosses itself/.test(w)), 'a self-crossing outline is refused');
@@ -238,6 +261,16 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   app.select('R1'); app.type('y.dir', 'sel', 'angle'); app.type('y.angle', 'num', '20');
   L = app.layout('R1');
   t.ok(near(L.theta, 20 * Math.PI / 180) && near(sum(L.pieces, p => sum(p.polys, shoelace)), 192 * 150, 1e-6), 'a typed angle');
+  // Mirroring renumbers the edges, and "parallel to edge 2" has to follow the edge, not the number.
+  mk({}, [{ template: 'trap', params: { w: 300, top: 100, h: 150, inset: 40 }, layout: { dir: 'edge', dirEdge: 1 } }]);
+  L = app.layout('R1'); app.select('R1'); app.ev('copyFacet')(true); app.ev('changed')();
+  let M = app.layout('R2');
+  t.eq([app.P.facets[1].layout.dirEdge, +M.theta.toFixed(9), M.q.count, +M.q.lf.toFixed(6)], [3, +(-L.theta).toFixed(9), L.q.count, +L.q.lf.toFixed(6)], 'a mirrored facet runs parallel to the mirror of the same edge');
+  mk({}, [{ template: 'custom', pts: [[0, 0], [200, 0], [240, 120], [30, 120], [0, 60]], layout: { dir: 'edge', dirEdge: 1 }, edges: [null, { type: 'valley', allow: 3 }] }]);
+  L = app.layout('R1'); app.select('R1'); app.ev('copyFacet')(true); app.ev('changed')();
+  M = app.layout('R2');
+  const twin = app.P.facets[1].layout.dirEdge;
+  t.ok(near(M.theta, -L.theta) && M.edges[twin].type === 'valley' && M.edges[twin].val === 3 && near(M.q.lf, L.q.lf, 1e-6), 'and so does a mirrored custom outline, with the edge\'s own type and allowance');
 }
 
 // ===== multi-piece runs =====
@@ -295,6 +328,15 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   app.type('o.lap', 'lenopt', '9');
   L = app.layout('R1');
   t.ok(mid()[0].lapTop === 9 && near(mid()[0].y1 - mid()[1].y0, 9), 'a facet lap override is used in the lengths');
+  // Equal pieces decides where the laps go, so a placement that cannot be honoured is said out loud.
+  const notUsed = () => app.layout('R1').warn.filter(w => /equal pieces set their own lap lines/.test(w));
+  mk({ profile: { maxLen: 240 }, def: { split: 'equal', lapMode: 'stagger', stagger: 24 } }, [{ template: 'rect', params: { w: 160, h: 400 } }]);
+  t.eq(notUsed(), ['Runs split into equal pieces set their own lap lines, so the stagger is not used.'], 'equal pieces with a stagger: flagged');
+  app.select('R1'); app.type('d.lapMode', 'sel', 'purlin');
+  t.ok(/purlin lines are not used/.test(notUsed()[0]), 'equal pieces with purlins: flagged');
+  app.type('d.lapMode', 'sel', 'aligned'); t.eq(notUsed(), [], 'equal pieces on their own: nothing to say');
+  app.type('d.lapMode', 'sel', 'stagger'); app.type('d.split', 'sel', 'max'); t.eq(notUsed(), [], 'and a stagger that is being used is not flagged');
+  app.type('d.split', 'sel', 'equal'); app.type('m.h', 'len', '200'); t.eq(notUsed(), [], 'nor one on a facet with no run long enough to split');
 
   // Pieces that cannot be fixed are flagged, not hidden.
   mk({ profile: { maxLen: 100, lap: 100 } }, [{ template: 'rect', params: { w: 64, h: 300 } }]);
@@ -331,6 +373,26 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   t.ok(app.layout('NORT').warn.some(w => /8-character limit/.test(w)), 'IDs over the marking limit are flagged');
   mk({}, [{ template: 'rect', mark: 'R1' }, { template: 'rect', mark: 'R1' }]);
   t.ok(app.layout('R1').warn.some(w => /more than one facet/.test(w)), 'duplicate facet IDs are flagged');
+  // A prefix is part of the ID: it neither excuses two facets that share one nor condemns two that do not.
+  const dup = () => app.ev('compute')().warn.filter(w => /more than one facet/.test(w.m)).map(w => w.m);
+  app.select('R1'); app.type('k.prefix', 'text', 'A');
+  t.eq(dup(), Array(2).fill('ID A-R1 is used by more than one facet, so panel IDs repeat.'), 'two facets with one ID still repeat under a package prefix');
+  app.ev('ACT').addPackage(); app.P.packages[1].facetIds.push(app.P.packages[0].facetIds.pop()); app.ev('changed')();
+  t.eq([app.P.facets.map(f => app.ev('R').L.get(f.id).pieces[0].id), dup()], [['A-R1-01', 'R1-01'], []], 'and do not when the prefix is what tells them apart');
+
+  // A ripped edge strip is not the panel beside it, and the two edges are not each other's.
+  mk({}, [{ template: 'rect', params: { w: 100, h: 120 } }]);
+  L = app.layout('R1');
+  t.eq(L.pieces.map(p => p.id), [...Array(6).fill('R1-01'), 'R1-02'], 'the ripped last strip takes an ID of its own');
+  t.eq(app.ev('byMark')(L.pieces).map(r => [r.p.id, r.qty, r.p.rip]), [['R1-01', 6, null], ['R1-02', 1, 4]], 'so the cut list gives six whole panels and one ripped to 4');
+  app.select('R1'); app.type('y.start', 'sel', 'center-seam');
+  L = app.layout('R1');
+  t.eq(L.pieces.map(p => p.id), ['R1-01', ...Array(6).fill('R1-02'), 'R1-03'], 'equal rips at the two edges come off opposite legs, so they are two IDs');
+  app.type('y.start', 'sel', 'right'); app.type('d.ripMin', 'len', '6');
+  L = app.layout('R1');
+  t.ok(L.warn.some(w => /Edge rip under/.test(w) && /at R1-02\./.test(w)), 'and a rip that is too thin is named by the one panel it is');
+  mk({}, [{ template: 'rect', params: { w: 96, h: 120 } }, { template: 'rect', params: { w: 104, h: 120 }, layout: { start: 'center-panel' } }]);
+  t.eq(['R1', 'R2'].map(m => [...new Set(app.layout(m).pieces.map(p => p.id))].length), [1, 3], 'whole panels are one ID; a centered panel with a rip at each edge makes three');
 }
 
 // ===== openings =====
@@ -349,6 +411,19 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   wasteAdds(L, 'openings');
   app.select('W1'); app.type('d.allow.base', 'len', '1');
   t.ok(app.layout('W1').pieces.filter(p => p.ca >= 61 && p.cb <= 99).length === 2, 'a base extension does not conjure a piece in the doorway');
+  // An opening has to lie on the facet and clear of the others, or the layout is not one to use.
+  const roof = openings => { mk({}, [{ template: 'rect', params: { w: 240, h: 144 }, openings }]); return app.layout('R1'); };
+  let B = roof([{ x: 100, y: 120, w: 32, h: 48 }]);
+  t.ok(B.pieces.length === 0 && B.warn.some(w => /^Opening 1 is not wholly on the facet/.test(w)), 'an opening that runs past the outline stops the layout, where it used to draw metal above the ridge');
+  t.eq(app.ev('badFields')(B), ['op.0.'], 'and points at its row in the inputs');
+  B = roof([{ x: 40, y: 40, w: 48, h: 48 }, { x: 300, y: 0, w: 0, h: 10 }, { x: 64, y: 64, w: 48, h: 48 }]);
+  t.ok(B.pieces.length === 0 && B.warn.some(w => /^Openings 1 and 3 overlap/.test(w)) && !B.warn.some(w => /not wholly/.test(w)), 'two that overlap are named by their rows, past one with no size');
+  t.eq(app.ev('badFields')(B).sort(), ['op.0.', 'op.2.'], 'and both rows are pointed at');
+  B = roof([{ x: 40, y: 40, w: 48, h: 48 }, { x: 88, y: 40, w: 24, h: 48 }, { x: 0, y: 96, w: 30, h: 48 }, { x: 210, y: 0, w: 30, h: 20 }]);
+  t.ok(B.pieces.length > 0 && !B.warn.some(w => /Opening/.test(w)) && near(B.q.slope * 144, 240 * 144 - 72 * 48 - 30 * 48 - 30 * 20), 'side by side, or hard into a corner, is neither');
+  wasteAdds(B, 'openings that touch');
+  mk({}, [{ template: 'custom', pts: [[0, 0], [240, 0], [240, 144], [140, 144], [140, 72], [100, 72], [100, 144], [0, 144]], openings: [{ x: 80, y: 90, w: 80, h: 30 }] }]);
+  t.ok(app.layout('R1').warn.some(w => /^Opening 1 is not wholly/.test(w)), 'an opening across a notch is off the facet though all four of its corners are on it');
 }
 
 // ===== warnings about profile and wind =====

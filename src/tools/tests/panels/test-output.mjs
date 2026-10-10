@@ -216,11 +216,27 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
   }
   app.load(odd);
   t.ok(app.ev('compute')().total.count > 0, 'and the result lays out');
+  t.eq(check({ ...saved, facets: [{ ...saved.facets[0], layout: { dir: 'edge', dirEdge: 1.5 } }] }).facets[0].layout.dirEdge, 2, 'an edge is named by a whole number, whatever the file says');
+  // A project can check out field by field and still be one the engine cannot draw. It must
+  // not take the open project's place before that is known.
+  const open = app.P.name;
+  app.ev('globalThis.realLayout = layoutFacet; layoutFacet = (f, e) => { if (P.name === "Trouble") throw new Error("boom"); return realLayout(f, e); }');
+  t.throws(() => app.load({ ...saved, name: 'Trouble' }), /could not be laid out/, 'a project the engine cannot draw is refused');
+  t.ok(app.P.name === open && app.ev('R').L.size === app.P.facets.length && app.ev('R').total.count > 0, 'and the one that was open is still open, and still laid out');
+  app.ev('layoutFacet = realLayout');
 
   const fresh = boot(undefined, { autosave: saved });
   t.eq(fresh.P.facets.length, 5, 'autosave is restored on boot');
   t.eq(boot(undefined, { autosave: '{not json' }).P.facets.length, 1, 'a corrupt autosave falls back to a new project');
   t.eq(boot(undefined, { autosave: { groups: [], facets: [] } }).P.facets.length, 1, 'and so does one in another format');
+  // The new project's autosave is about to land on the same key, so what could not be opened is set aside first.
+  const future = boot(undefined, { autosave: { ...saved, v: 2 } });
+  t.eq([future.P.facets.length, JSON.parse(future.store.get('panels.autosave.bad')).v], [1, 2], 'an autosave from a newer version is set aside, not written over');
+  t.ok(/could not be opened/.test(future.$('#toast').textContent), 'and the page says a new project was started');
+  future.flush();
+  t.eq([JSON.parse(future.store.get('panels.autosave')).v, JSON.parse(future.store.get('panels.autosave.bad')).facets.length], [1, 5], 'it is still there once the new project has autosaved');
+  t.eq(boot(undefined, { autosave: '{not json' }).store.get('panels.autosave.bad'), '{not json', 'a corrupt one is set aside as it was');
+  t.ok(!fresh.store.has('panels.autosave.bad') && !boot().store.has('panels.autosave.bad'), 'a good autosave, or none, leaves nothing behind');
 
   // Profile libraries travel between projects.
   app.load(app.ev('sampleProject')());
@@ -300,6 +316,64 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
   t.eq(app.ev('compute')().pk[1].q.count, app.layout('R1').q.count, 'and its totals go with it');
 }
 
+// ===== what a field takes, and when the panes are redrawn =====
+{
+  app.load(app.ev('sampleProject')()); app.select('R1'); app.ev('S').t = 'facet'; app.ev('refresh')();
+  const pane = () => app.$('#inputs').innerHTML, S = app.ev('S'), check = app.ev('checkProject');
+  t.ok(/not a number/.test(app.type('c.extra', 'num', '12 ft')) && /whole number/.test(app.type('p.idMax', 'int', '7.5')) && app.type('c.extra', 'num', ' 12.5 ') === undefined && app.P.coil.extra === 12.5,
+    'a number field takes a number, and not one with something after it');
+
+  // A commit changes the project at once. The panes are redrawn when the keystroke or click that
+  // caused it is over: redrawn sooner, they take the next field or the pressed button away with them.
+  const depth = app.ev('undo').length, was = pane(), typed = value => ({ target: { dataset: { b: 'm.w', t: 'len', min: '1' }, tagName: 'INPUT', type: 'text', value } });
+  app.$('#inputs').fire('change', typed('500'));
+  t.eq([app.P.facets[0].params.w, app.ev('undo').length, pane() === was], [500, depth + 1, true], 'a committed field changes the project and its history at once, and leaves the pane as it is');
+  app.ev('CMD').undo(); app.ev('CMD').redo();
+  t.eq(app.P.facets[0].params.w, 500, 'undo and redo see it straight away');
+  app.$('#inputs').fire('change', typed('510')); app.flush();
+  t.ok(pane().includes('data-b="m.w" data-t="len" value="510&quot;"'), 'the pane is redrawn once the gesture is over');
+  app.$('#inputs').fire('change', typed('wide'));
+  t.eq([app.P.facets[0].params.w, app.ev('undo').length], [510, depth + 2], 'a refused commit changes neither');
+  t.ok(/Could not read/.test(app.$('#toast').textContent), 'and says why');
+  app.flush();
+
+  // Whatever a field takes has to be there the next time the project opens, so each one's limits
+  // are checkProject's own. Every number in every view is put at each end of its range and
+  // read back through a save; then one past each end is refused.
+  const at = (p, b) => {
+    const ks = b.split('.'), root = ks.shift(), f = p.facets.find(x => x.id === S.f), i = +ks[0];
+    const o = { p, u: p.units, c: p.coil, k: p.packages.find(k => k.id === S.pk), d: p.def, f, y: f.layout, m: f.params, o: f.ov, q: p.profiles.find(q => q.id === S.prof) || p.profiles[0],
+      e: f.edges[i], pt: f.pts[i], wk: f.walk[i], op: f.openings[i] }[root];
+    return (/^(e|pt|wk|op)$/.test(root) ? ks.slice(1) : ks).reduce((a, k) => a == null ? a : a[k], o);
+  };
+  const fields = () => [...pane().matchAll(/<input ([^>]*)>/g)].map(m => Object.fromEntries([...m[1].matchAll(/data-(\w+)="([^"]*)"/g)].map(a => [a[1], a[2]]))).filter(d => /^(len|lenopt|num|numopt|int|pitch)$/.test(d.t));
+  const seen = new Set();
+  const sweep = view => {
+    for (const d of fields()) {
+      seen.add(d.b.replace(/\.\d+(?=\.|$)/g, '.N'));
+      for (const v of [d.max ?? '5000', d.min].filter(x => x != null)) {
+        const r = app.type(d.b, d.t, v, d), now = at(app.P, d.b), back = at(check(JSON.parse(JSON.stringify(app.P))), d.b);
+        t.ok(r === undefined && now === +v && back === now, `${view}: ${d.b} takes ${v} and keeps it through a save (${r ?? now}, then ${back})`);
+      }
+      for (const v of [d.max != null && String(+d.max + 1), d.min != null && String(+d.min - 1)].filter(Boolean)) t.ok(!!app.type(d.b, d.t, v, d), `${view}: ${d.b} refuses ${v}`);
+    }
+  };
+  const view = (name, set) => { set(); app.ev('refresh')(); sweep(name); };
+  Object.assign(S.open, { layout: true, ov: true, op: true });
+  view('trapezoid', () => { app.type('y.dir', 'sel', 'angle'); app.type('o.lapMode', 'selnull', 'stagger'); app.ev('ACT').addOpen(); app.ev('changed')(); });
+  for (const tp of ['tri', 'para', 'angled']) view(tp, () => app.type('f.template', 'sel', tp));
+  view('custom points', () => app.type('f.template', 'sel', 'custom'));
+  view('custom walk', () => { app.type('pt.1.1', 'len', '40'); app.type('f.custom', 'sel', 'walk'); });
+  for (const tp of ['gable', 'shed']) view(tp, () => { app.type('f.kind', 'sel', 'wall'); app.type('f.template', 'sel', tp); });
+  view('package', () => { S.t = 'package'; });
+  view('profile', () => { S.t = 'profiles'; });
+  view('project, staggered', () => { S.t = 'project'; app.type('d.lapMode', 'sel', 'stagger'); });
+  view('project, purlins', () => app.type('d.lapMode', 'sel', 'purlin'));
+  for (const b of ['m.w', 'm.h', 'm.top', 'm.inset', 'm.apex', 'm.skew', 'm.h2', 'pt.N.N', 'wk.N.len', 'wk.N.turn', 'f.walk0', 'e.N.allow', 'op.N.x', 'op.N.w', 'y.angle', 'y.offset', 'f.north', 'f.pitch', 'o.lap', 'o.stagger', 'k.extraPanels',
+    'q.cover', 'q.sheetW', 'q.rib', 'q.maxLen', 'q.minLen', 'q.lap', 'q.minSlope', 'q.psf', 'c.maxFt', 'c.maxLb', 'c.extra', 'p.idMax', 'd.lap', 'd.stagger', 'd.purlinSp', 'd.purlin0', 'd.ripMin', 'd.allow.eave', 'd.allow.jamb'])
+    t.ok(seen.has(b), `the sweep reached ${b}`);
+}
+
 // ===== review and output =====
 {
   const p = app.ev('sampleProject')();
@@ -324,6 +398,34 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
   app.ev('download = realDownload');
   app.P.packages.pop(); app.P.facets.pop(); app.ev('changed')();
   t.ok(app.ev('outScope')() === null && !pane().includes('data-b="s.out"'), 'with one package there is nothing to choose');
+
+  // A report in its own units leaves the screen's alone, warnings included.
+  app.make({ units: { fmt: 'ftin', pdf: 'dec', csv: 'mm' }, def: { ripMin: 6 } }, [{ template: 'rect', mark: 'R10', params: { w: 92, h: 120 } }]);
+  const warned = () => app.ev('R').warn.map(w => w.m).join(' '), onScreen = warned();
+  t.ok(/Edge rip under the 0'-6" minimum/.test(onScreen), 'a warning words its lengths the way the screen shows them');
+  app.ev('buildPDF')(DATE); t.eq(warned(), onScreen, 'and still does after a PDF in decimal inches');
+  app.ev('buildCSV')('loc'); t.eq(warned(), onScreen, 'or a CSV in millimeters');
+  // The ID is what a piece is marked with: its column widens for a long one and never cuts it short.
+  app.select('R10'); app.type('k.prefix', 'text', 'ABC');
+  const sheet = app.ev('reportPages')(DATE).find(pg => /^Facet R10/.test(pg.title)), listed = sheet.ops.filter(o => o.k === 'text' && !o.id && /^ABC/.test(o.s));
+  t.eq([...new Set(listed.map(o => o.s))], ['ABC-R10-01', 'ABC-R10-02'], 'a ten-character ID is printed whole in the facet\'s cut list');
+  const idX = listed[0].x, next = Math.min(...sheet.ops.filter(o => o.k === 'text' && o.size === 7.5 && o.y === listed[0].y && o.x > idX).map(o => o.x - (o.anchor === 'end' ? app.ev('textW')(o.s, 7.5) : 0)));
+  t.ok(idX + app.ev('textW')('ABC-R10-01', 7.5) * 1.06 < next, 'and does not run into the quantity beside it');
+  // A PDF of one package asks whether that package has anything in it.
+  app.ev('ACT').addPackage(); app.ev('changed')();
+  const shots = app.ev('var realDl = download, made = []; download = name => { made.push(name); }; made'), say = () => app.$('#toast').textContent;
+  app.$('#toast').textContent = ''; app.ev('CMD').pdf(app.P.packages[1].id);
+  t.ok(shots.length === 0 && /no panels/.test(say()), 'a package with no panels makes no PDF, though the project has some');
+  app.$('#toast').textContent = ''; app.ev('CMD').pdf(app.P.packages[0].id); app.ev('CMD').pdf();
+  t.ok(shots.length === 2 && say() === '', 'the package that has them does, and so does the project');
+  app.ev('download = realDl');
+  // Two profiles can carry one name; they are still two profiles to buy.
+  app.make({}, [{ template: 'rect', params: { w: 240, h: 120 } }, { template: 'rect', params: { w: 240, h: 96 } }]);
+  app.ev('S').prof = 'p2'; app.ev('ACT').cloneProfile(); app.type('q.name', 'text', SNAP); app.type('q.cover', 'len', '12');
+  app.select('R2'); app.type('o.profileId', 'selnull', app.ev('S').prof);
+  t.eq(app.ev('purchasing')(app.ev('compute')().pk).map(r => [r.profile, r.count]), [[SNAP, 14], [SNAP, 20]], 'profiles that share a name are bought as the two they are');
+  app.select('R1'); app.type('k.extraPanels', 'int', '9999', { max: '9999' });
+  t.ok(app.ev('coilOrder')(app.ev('compute')().pk).reduce((a, r) => a + r.lf, 0) > 9999 * 2 * 8, 'and the coil order copes with as many extra panels as a package can ask for');
 }
 
 // ===== coil order =====
