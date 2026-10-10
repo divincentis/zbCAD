@@ -4,6 +4,8 @@ import {boot, suite} from './harness.mjs';
 const t = suite(), app = boot();
 const near = (a, b, tol = 1e-6) => Math.abs(a - b) <= tol;
 const DATE = 'Oct 8, 2026';
+// The project default, p2, and what its 24" coil (23-7/8" as slit) covers once the seams are formed.
+const SNAP = '1-3/4" snap-lock, 17-3/4" on 24" coil';
 
 // ===== first visit opens the sample =====
 {
@@ -21,10 +23,17 @@ const DATE = 'Oct 8, 2026';
   const q = R.total, parts = q.wAllow + q.wLap + q.wAngle + q.wRip + q.wRound;
   t.ok(Math.abs(parts - (q.cover - q.slope)) < 0.01, 'acceptance: waste components sum to the waste total within 0.01 sf');
   t.ok(near(app.ev('wasteOf')(q).sf, q.cover - q.slope) && q.gross > q.cover, 'waste is coverage less roof; gross is more than coverage');
-  t.ok(near(q.cover, q.lf * 16 / 12) && near(q.gross, q.lf * 20 / 12), 'coverage and gross are linear length x coverage and sheet width');
+  t.ok(near(q.cover, q.lf * 17.75 / 12) && near(q.gross, q.lf * 23.875 / 12), 'coverage and gross are linear length x coverage and sheet width');
   app.flush();
   t.ok(JSON.parse(app.store.get('panels.autosave')).facets.length === 4, 'and it is autosaved');
-  t.eq(app.P.profiles.map(p => p.cover), [12, 16, 18, 12, 16, 18, 36], 'starter profiles: 12/16/18 SSMR in both seam types and 36" exposed');
+  // Coverage is the stock coil less the seam's material, so it is the coil that is round, not the panel.
+  t.eq(app.P.profiles.map(p => [p.type, p.sheetW, p.sheetW - p.cover]), [
+    ['ssmr-snap', 20, 6.125], ['ssmr-snap', 23.875, 6.125], ['ssmr-snap', 20, 5.125], ['ssmr-snap', 23.875, 5.125], ['ssmr-snap', 20, 5.3125], ['ssmr-snap', 23.875, 5.3125],
+    ['ssmr-mech', 16, 4], ['ssmr-mech', 20, 4], ['ssmr-mech', 23.875, 4], ['ssmr-mech', 20, 5.8125], ['ssmr-mech', 23.875, 5.8125],
+    ['flush', 16, 4], ['flush', 20, 4], ['flush', 23.875, 4], ['flush', 20, 5], ['flush', 23.875, 5], ['exposed', 38, 2]], 'starter profiles: each seam on the stock coils that leave it 12" or more of coverage, and 36" exposed');
+  const dflt = app.P.profiles.find(p => p.id === app.P.def.profileId);
+  t.eq([dflt.name, dflt.cover, dflt.rib], [SNAP, 17.75, 1.75], 'the default is the 1-3/4" snap-lock on a 24" coil');
+  t.ok(new Set(app.P.profiles.map(p => p.name)).size === app.P.profiles.length, 'every starter has a name of its own');
   t.ok(app.P.profiles.every(p => /verify with manufacturer/.test(p.mfr)), 'each marked to verify with the manufacturer');
 }
 
@@ -34,8 +43,8 @@ const DATE = 'Oct 8, 2026';
   p.name = 'Hip roof (test)'; p.jobNo = '26-114'; p.address = '12 Mill Rd';
   p.profiles.find(q => q.id === 'p2').maxLen = 180;
   p.packages.push({ id: 'kw', name: 'East wall', prefix: '', facetIds: [] });
-  p.profiles.find(q => q.id === 'p7').color = 'Galvalume'; p.def.allow.base = 1;
-  const wall = app.ev('newFacet')(p, p.packages[1], { kind: 'wall', name: 'North gable', template: 'gable', ov: { profileId: 'p7' } });
+  p.profiles.find(q => q.id === 'p17').color = 'Galvalume'; p.def.allow.base = 1;
+  const wall = app.ev('newFacet')(p, p.packages[1], { kind: 'wall', name: 'North gable', template: 'gable', ov: { profileId: 'p17' } });
   Object.assign(wall.params, { w: 360, h: 120, h2: 210 });
   wall.openings.push({ x: 61, y: 0, w: 38, h: 84 });
   app.load(p);
@@ -53,11 +62,11 @@ const DATE = 'Oct 8, 2026';
   t.ok(prod.every((x, i) => !i || x.len < prod[i - 1].len), 'production rows run longest first, one per ordered length');
   t.eq(prod.reduce((s, x) => s + x.qty, 0), roof.q.count, 'and account for every piece');
   t.ok(/R1-\d+ ×\d+/.test(prod[0].ids) && /R2-\d+ ×\d+/.test(prod[0].ids), 'a row lists each ID to mark and how many of it');
-  t.ok(prod.every(r => r.profile === '16" SSMR snap-lock'), 'each row names its profile');
+  t.ok(prod.every(r => r.profile === SNAP), 'each row names its profile');
   const both = app.ev('production')(R.pk);
   t.ok(both.some(r => r.color === 'Galvalume' && /^W1-/.test(r.ids)) && both.filter(r => r.color === 'Galvalume').every(r => !/R\d/.test(r.ids)), 'different profile and color never share a row');
   const buy = app.ev('purchasing')(R.pk);
-  t.eq(buy.map(r => [r.profile, r.color]), [['16" SSMR snap-lock', ''], ['36" exposed fastener (R / PBR)', 'Galvalume']], 'purchasing summary by profile and color');
+  t.eq(buy.map(r => [r.profile, r.color]), [[SNAP, ''], ['36" exposed fastener (R / PBR)', 'Galvalume']], 'purchasing summary by profile and color');
   t.ok(near(buy[0].count, roof.q.count) && near(buy[1].gross, walls.q.gross), 'with piece count and gross area');
 
   // The drawing plan.
@@ -132,7 +141,7 @@ const DATE = 'Oct 8, 2026';
   // CSV.
   const loc = app.ev('buildCSV')('loc').trim().split('\r\n'), len = app.ev('buildCSV')('len').trim().split('\r\n');
   t.ok(loc.length === 1 + app.P.facets.reduce((a, f) => a + app.ev('byMark')(R.L.get(f.id).pieces).length, 0) && loc.slice(1).reduce((a, r) => a + +r.split(',')[1], 0) === R.total.count, 'facet CSV: one row per ID, with quantities that account for every piece');
-  t.ok(loc[1].startsWith('R1-01,1,Main roof,R1 Front,"16"" SSMR snap-lock",,'), 'with ID, quantity, package, facet and profile');
+  t.ok(loc[1].startsWith('R1-01,1,Main roof,R1 Front,"1-3/4"" snap-lock, 17-3/4"" on 24"" coil",,'), 'with ID, quantity, package, facet and profile');
   t.ok(loc.some(r => /REQUIRES SPLICE/.test(r)), 'and the splice flag');
   t.eq(len.length, 1 + app.ev('production')(R.pk).length, 'production CSV: one row per length');
   t.ok(/^\d+,180,180,/.test(len[1]), 'with the length as displayed and in decimal inches');
@@ -199,8 +208,8 @@ const DATE = 'Oct 8, 2026';
   // Profile libraries travel between projects.
   app.load(app.ev('sampleProject')());
   t.eq(app.ev('importProfiles')({ profiles: [{ name: 'Acme 16', cover: 16, sheetW: 21, type: 'ssmr-mech', lap: 8 }, { id: 'p1', name: 'Acme 24', cover: 24 }] }), 2, 'importing a library adds its profiles');
-  t.eq(app.P.profiles.length, 9, 'alongside the ones already there');
-  t.ok(new Set(app.P.profiles.map(q => q.id)).size === 9, 'under ids of their own');
+  t.eq(app.P.profiles.length, 19, 'alongside the ones already there');
+  t.ok(new Set(app.P.profiles.map(q => q.id)).size === 19, 'under ids of their own');
   t.throws(() => app.ev('importProfiles')({ profiles: [] }), /no profiles/, 'an empty library is refused');
 }
 
@@ -223,10 +232,10 @@ const DATE = 'Oct 8, 2026';
   app.type('f.pitch', 'pitch', '6:12');
 
   // A profile switch on the package reaches every facet that does not override it.
-  app.type('d.profileId', 'sel', 'p7');
+  app.type('d.profileId', 'sel', 'p17');
   t.ok(app.layout('R1').e.W === 36 && app.layout('R3').e.W === 36, 'the package profile drives its facets');
   app.type('o.profileId', 'selnull', 'p1');
-  t.ok(app.layout('R1').e.W === 12 && app.layout('R3').e.W === 36, 'unless a facet overrides it');
+  t.ok(app.layout('R1').e.W === 13.875 && app.layout('R3').e.W === 36, 'unless a facet overrides it');
   app.ev('S').prof = 'p1'; app.ev('ACT').delProfile(); app.ev('changed')();
   t.ok(!('profileId' in app.P.facets[0].ov) && app.layout('R1').e.W === 36, 'deleting a profile drops the overrides that used it');
   app.ev('ACT').cloneProfile(); app.ev('changed')();
@@ -293,13 +302,13 @@ const DATE = 'Oct 8, 2026';
   t.eq(['24 ga', '26ga G90', '22', '0.032'].map(gauge => app.ev('coilPsf')({ gauge })), [1.156, 0.906, 1.406, null], 'gauge text is read loosely');
   // A second profile is a second coil.
   app.P.profiles.find(q => q.id === 'p2').gauge = '24 ga';
-  app.ev('newFacet')(app.P, app.P.packages[0], { ov: { profileId: 'p7' } });
+  app.ev('newFacet')(app.P, app.P.packages[0], { ov: { profileId: 'p17' } });
   t.eq(coils().map(r => [r.width, r.gauge]), [[20, '24 ga'], [38, '26 ga']], 'a coil per stretch out and gauge, narrowest first');
   const back = app.ev('checkProject')(JSON.parse(JSON.stringify({ ...app.P, coil: { maxFt: 500, maxLb: 'x', extra: 3 }, profiles: [{ ...app.P.profiles[0], psf: 1.2 }] })));
   t.eq([back.coil, back.profiles[0].psf], [{ maxFt: 500, maxLb: null, extra: 3 }, 1.2], 'coil limits and coil weight are saved with the project');
   t.eq(app.ev('checkProject')({ packages: [], facets: [] }).coil, { maxFt: null, maxLb: null, extra: 0 }, 'and an older file opens with no limits');
   const csv = app.ev('buildCSV')('coil').trim().split('\r\n');
-  t.ok(csv.length === 3 && csv[0].startsWith('Coil width (in),Gauge,Color,Profiles,Panel length (ft)') && csv[1].startsWith('20,24 ga,,"16"" SSMR snap-lock",150,250,289,3,50,'), 'coil order CSV');
+  t.ok(csv.length === 3 && csv[0].startsWith('Coil width (in),Gauge,Color,Profiles,Panel length (ft)') && csv[1].startsWith('20,24 ga,,"1-3/4"" snap-lock, 17-3/4"" on 24"" coil",150,250,289,3,50,'), 'coil order CSV');
   const pages = app.ev('reportPages')(DATE), pg = pages.find(x => x.title === 'Coil order'), txt = pg.ops.filter(o => o.k === 'text').map(o => o.s);
   t.ok(txt.includes('Length each') && txt.includes('50 ft') && txt.some(x => /No coil is over 100 lb/.test(x)), 'the package carries a coil order sheet');
   app.ev('S').tab = 'cut'; app.ev('ACT').cutView({ dataset: { v: 'coil' } });
@@ -324,8 +333,8 @@ const DATE = 'Oct 8, 2026';
   t.eq(app.ev('ordered')(g), { count: 33, lf: 300 }, 'ordered pieces and length include them');
   t.ok(app.ev('buildCSV')('len').split('\r\n')[2].startsWith('3,120,120,EXTRA,'), 'the production CSV lists them');
   t.ok(app.ev('reportPages')(DATE)[0].ops.some(o => /Includes 3 extra panels/.test(o.s)), 'and the cover says so');
-  app.ev('newFacet')(app.P, app.P.packages[0], { ov: { profileId: 'p7' }, params: { ...app.ev('newParams')(), w: 72, h: 60 } });
-  t.eq(app.ev('production')(app.ev('compute')().pk).filter(r => r.ids === 'EXTRA').map(r => [r.qty, r.len, r.profile]), [[3, 120, '16" SSMR snap-lock'], [3, 60, '36" exposed fastener (R / PBR)']], 'each profile gets its own, at its own longest length');
+  app.ev('newFacet')(app.P, app.P.packages[0], { ov: { profileId: 'p17' }, params: { ...app.ev('newParams')(), w: 72, h: 60 } });
+  t.eq(app.ev('production')(app.ev('compute')().pk).filter(r => r.ids === 'EXTRA').map(r => [r.qty, r.len, r.profile]), [[3, 120, SNAP], [3, 60, '36" exposed fastener (R / PBR)']], 'each profile gets its own, at its own longest length');
   t.eq(app.ev('checkProject')(JSON.parse(JSON.stringify(app.P))).extraPanels, 3, 'saved with the project');
 }
 t.done();
