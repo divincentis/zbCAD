@@ -5,7 +5,7 @@ const t = suite(), app = boot();
 const near = (a, b, tol = 1e-6) => Math.abs(a - b) <= tol;
 const DATE = 'Oct 8, 2026';
 // The project default, p2, and what its 24" coil (23-7/8" as slit) covers once the seams are formed.
-const SNAP = '1-3/4" snap-lock, 17-3/4" on 24" coil';
+const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
 
 // ===== first visit opens the sample =====
 {
@@ -32,7 +32,7 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 24" coil';
     ['ssmr-mech', 16, 4], ['ssmr-mech', 20, 4], ['ssmr-mech', 23.875, 4], ['ssmr-mech', 20, 5.8125], ['ssmr-mech', 23.875, 5.8125],
     ['flush', 16, 4], ['flush', 20, 4], ['flush', 23.875, 4], ['flush', 20, 5], ['flush', 23.875, 5], ['exposed', 38, 2]], 'starter profiles: each seam on the stock coils that leave it 12" or more of coverage, and 36" exposed');
   const dflt = app.P.profiles.find(p => p.id === app.P.def.profileId);
-  t.eq([dflt.name, dflt.cover, dflt.rib], [SNAP, 17.75, 1.75], 'the default is the 1-3/4" snap-lock on a 24" coil');
+  t.eq([dflt.name, dflt.cover, dflt.rib], [SNAP, 17.75, 1.75], 'the default is the 1-3/4" snap-lock on a nominal 24" coil');
   t.ok(new Set(app.P.profiles.map(p => p.name)).size === app.P.profiles.length, 'every starter has a name of its own');
   t.ok(app.P.profiles.every(p => /verify with manufacturer/.test(p.mfr)), 'each marked to verify with the manufacturer');
 }
@@ -141,7 +141,7 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 24" coil';
   // CSV.
   const loc = app.ev('buildCSV')('loc').trim().split('\r\n'), len = app.ev('buildCSV')('len').trim().split('\r\n');
   t.ok(loc.length === 1 + app.P.facets.reduce((a, f) => a + app.ev('byMark')(R.L.get(f.id).pieces).length, 0) && loc.slice(1).reduce((a, r) => a + +r.split(',')[1], 0) === R.total.count, 'facet CSV: one row per ID, with quantities that account for every piece');
-  t.ok(loc[1].startsWith('R1-01,1,Main roof,R1 Front,"1-3/4"" snap-lock, 17-3/4"" on 24"" coil",,'), 'with ID, quantity, package, facet and profile');
+  t.ok(loc[1].startsWith('R1-01,1,Main roof,R1 Front,"1-3/4"" snap-lock, 17-3/4"" on 23-7/8"" coil",,'), 'with ID, quantity, package, facet and profile');
   t.ok(loc.some(r => /REQUIRES SPLICE/.test(r)), 'and the splice flag');
   t.eq(len.length, 1 + app.ev('production')(R.pk).length, 'production CSV: one row per length');
   t.ok(/^\d+,180,180,/.test(len[1]), 'with the length as displayed and in decimal inches');
@@ -308,7 +308,7 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 24" coil';
   t.eq([back.coil, back.profiles[0].psf], [{ maxFt: 500, maxLb: null, extra: 3 }, 1.2], 'coil limits and coil weight are saved with the project');
   t.eq(app.ev('checkProject')({ packages: [], facets: [] }).coil, { maxFt: null, maxLb: null, extra: 0 }, 'and an older file opens with no limits');
   const csv = app.ev('buildCSV')('coil').trim().split('\r\n');
-  t.ok(csv.length === 3 && csv[0].startsWith('Coil width (in),Gauge,Color,Profiles,Panel length (ft)') && csv[1].startsWith('20,24 ga,,"1-3/4"" snap-lock, 17-3/4"" on 24"" coil",150,250,289,3,50,'), 'coil order CSV');
+  t.ok(csv.length === 3 && csv[0].startsWith('Coil width (in),Gauge,Color,Profiles,Panel length (ft)') && csv[1].startsWith('20,24 ga,,"1-3/4"" snap-lock, 17-3/4"" on 23-7/8"" coil",150,250,289,3,50,'), 'coil order CSV');
   const pages = app.ev('reportPages')(DATE), pg = pages.find(x => x.title === 'Coil order'), txt = pg.ops.filter(o => o.k === 'text').map(o => o.s);
   t.ok(txt.includes('Length each') && txt.includes('50 ft') && txt.some(x => /No coil is over 100 lb/.test(x)), 'the package carries a coil order sheet');
   app.ev('S').tab = 'cut'; app.ev('ACT').cutView({ dataset: { v: 'coil' } });

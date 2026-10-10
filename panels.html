@@ -322,16 +322,17 @@ function mkProfile(id,name,type,cover,sheetW,rib,minSlope){
 // The starter set is built from the coil a shop stocks, not from a round coverage: a panel covers
 // whatever its coil leaves once the seams are formed, so the seam's material is the fixed number
 // and coverage falls out of it. A "24 inch" coil is 23-7/8", half of a 48" master less the 1/4"
-// the slitter drops. A coil is left out where it would cover less than the 12" a roll former makes.
-const COILS=[[16,16],[20,20],[24,23.875]];
+// the slitter drops, and it is named by that width because that is what gets ordered and measured.
+// A coil is left out where it would cover less than the 12" a roll former makes.
+const COILS=[16,20,23.875];
 const SEAMS=[['ssmr-snap','1-3/4" snap-lock',1.75,6.125,3],['ssmr-snap','1-1/2" snap-lock',1.5,5.125,3],
   ['ssmr-snap','1-1/2" snap-lock with fastener flange',1.5,5.3125,3],['ssmr-mech','1-1/2" mechanical seam',1.5,4,0.5],['ssmr-mech','2" mechanical seam',2,5.8125,0.5],
   ['flush','1" flush wall / soffit',1,4,0],['flush','1-1/2" flush wall / soffit',1.5,5,0]];
 const inFrac=v=>{const n=Math.round(v*16),w=Math.floor(n/16),r=n%16,g=r&&[8,4,2,1].find(k=>r%k===0);return (w||!r?w:'')+(w&&r?'-':'')+(r?`${r/g}/${16/g}`:'')+'"';};
 function starterProfiles(){
   const out=[];
-  for(const [type,label,rib,seam,minSlope] of SEAMS)for(const [nominal,sheetW] of COILS)
-    if(sheetW-seam>=12)out.push(mkProfile('p'+(out.length+1),`${label}, ${inFrac(sheetW-seam)} on ${nominal}" coil`,type,sheetW-seam,sheetW,rib,minSlope));
+  for(const [type,label,rib,seam,minSlope] of SEAMS)for(const sheetW of COILS)
+    if(sheetW-seam>=12)out.push(mkProfile('p'+(out.length+1),`${label}, ${inFrac(sheetW-seam)} on ${inFrac(sheetW)} coil`,type,sheetW-seam,sheetW,rib,minSlope));
   out.push({...mkProfile('p'+(out.length+1),'36" exposed fastener (R / PBR)','exposed',36,38,1.25,1),gauge:'26 ga'});
   return out;
 }
@@ -1245,7 +1246,7 @@ function renderInputs(){
     h+=`${fld('Max length','q.maxLen','len',len(q.maxLen),'data-min="0"')}${fld('Min length','q.minLen','len',len(q.minLen),'data-min="0"')}${fld('End lap','q.lap','len',len(q.lap),'data-min="0"')}</div>`;
     h+=`<div class="two">${sel('Lays from','q.hand',{either:'Either edge',left:'Left edge only',right:'Right edge only'},q.hand)}${fld('Min slope, rise in 12','q.minSlope','num',q.minSlope,'data-min="0"')}</div>`;
     h+=fld('Coil weight, lb per sq ft (optional)','q.psf','numopt',q.psf??'',`data-min="0.01" placeholder="${coilPsf({gauge:q.gauge})?coilPsf({gauge:q.gauge})+' from the gauge':'gauge not recognized, enter a weight'}"`);
-    h+=`<p class="hint">A max length of 0 means no limit. The starter profiles are generic: check every number with the manufacturer. Each covers what its stock coil leaves after the seams, and a 24" coil is 23-7/8" as slit.</p>`;
+    h+=`<p class="hint">A max length of 0 means no limit. The starter profiles are generic: check every number with the manufacturer. Each covers what its stock coil leaves after the seams, and a nominal 24" coil is 23-7/8" as slit.</p>`;
     h+=`<h2>Share<span><button class="sb" data-act="expProfiles">Export library</button><button class="sb" data-act="impProfiles">Import library</button></span></h2><p class="hint">A library is a JSON file. Importing adds its profiles to this project.</p>`;
   }else if(S.t==='package'||!f){
     h+=`<h2>Package<span><button class="sb" data-act="pkgPdf" title="PDF of this package alone">PDF</button>${P.packages.length>1?'<button class="sb" data-act="delPackage">Delete</button>':''}</span></h2>`;
