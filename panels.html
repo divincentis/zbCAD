@@ -58,6 +58,10 @@ button,input,select,textarea{font:inherit;color:inherit}
 #inputs h2.fold>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #inputs h2.fold>i{font-style:normal;text-transform:none;letter-spacing:0;font-size:11px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #inputs h2.fold.shut{margin-bottom:0}
+#inputs .outs{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center;margin:4px 0 10px}
+#inputs .outs .sb{white-space:nowrap}
+#inputs .outs span{font-size:11px;color:var(--muted);line-height:1.35}
+.tn.out{font-weight:650;margin-top:8px;border-top:1px solid var(--rule);padding-top:9px}
 #inputs button.go{display:block;width:100%;margin:14px 0 10px;padding:8px 10px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:5px;cursor:pointer;font-size:13px}
 label{display:block;font-size:11px;color:var(--muted);margin:0 0 8px;min-width:0}
 label em{font-style:normal;float:right;color:var(--muted);opacity:.85}
@@ -171,11 +175,8 @@ menu button{border:1px solid var(--rule2);background:var(--bg);border-radius:5px
     <button data-cmd="redo" title="Redo (Ctrl+Y)">Redo</button>
   </div>
   <div class="grp"><span>Output</span>
-    <button data-cmd="pdf" class="pri" title="Download the PDF package in one click">PDF</button>
-    <button data-cmd="print" title="Open the same package in the browser's print dialog (Ctrl+P)">Print</button>
-    <button data-cmd="csvLoc" title="Cut list by facet as CSV">CSV by facet</button>
-    <button data-cmd="csvLen" title="Production cut list as CSV">CSV by length</button>
-    <button data-cmd="csvCoil" title="Coil order for the roll former as CSV">CSV coils</button>
+    <button data-cmd="pdf" class="pri" title="Download the PDF package for the whole project in one click">PDF</button>
+    <button data-cmd="output" title="Print, CSV files, and output for one package (Ctrl+P prints)">More…</button>
   </div>
   <div class="grp"><button data-cmd="help">Help</button></div>
 </header>
@@ -212,6 +213,7 @@ menu button{border:1px solid var(--rule2);background:var(--bg);border-radius:5px
     <p><b>Panel IDs</b> read <code>R2-07</code>: facet R2, its seventh different panel counting from the start edge. Panels in a facet that can be swapped for one another share an ID, and the cut list gives how many to make: same length, same rip, same end cuts and laps. A mirror-image cut is a different panel.</p>
     <p><b>Long runs</b> are split when they pass the profile's maximum length, and the pieces together are longer than the run by one lap per joint. On standing seam every transverse seam is marked as needing a splice. Laps can line up across the facet, stagger on alternate strips, or snap to purlin lines.</p>
     <p><b>Waste</b> is coverage area less roof area, broken down by where it comes from: allowances, laps, angle cuts and notches, edge rips, and rounding.</p>
+    <p><b>Output</b> is one click on PDF for the whole project. <b>Review and output</b>, the last row of the project tree, has print and the CSV files as well, and can limit any of them to one package.</p>
     <p><b>Extra panels</b> are spares: set a number on a package and it orders that many more of its longest panel in each profile and color, marked EXTRA.</p>
     <p><b>Coil order</b>, a view of the cut list, is what to buy for the roll former: the linear length, area and weight of each coil width, gauge and color. Set a maximum coil length or weight in the project settings and it gives the number of coils and the length to order each at.</p>
     <p><b>Packages</b> group facets ordered together, each with its own subtotal and PDF. Profile, laps and allowances are set once as project defaults, and a facet can override them. <b>Profiles</b> are a project library; the starter set is generic and must be checked against the manufacturer.</p>
@@ -364,10 +366,12 @@ function newFacet(p,pk,o={}){
   p.facets.push(f);pk.facetIds.push(f.id);
   return f;
 }
+// A finished job should open without a warning on it: at 9:12 the slope height is a round 17'-6",
+// and each facet starts where its hip corners come out longer than the profile's minimum.
 function sampleProject(){
   const p=newProject();p.name='Sample: 40 x 28 hip roof';
   for(const [name,template,w] of [['Front','trap',480],['Back','trap',480],['Left hip','tri',336],['Right hip','tri',336]])
-    newFacet(p,p.packages[0],{name,template,pitch:6,layout:{...newLayout(),start:'center-seam'},params:{...newParams(),w,top:144,h:187.8125}});
+    newFacet(p,p.packages[0],{name,template,pitch:9,layout:{...newLayout(),start:template==='tri'?'center-panel':'center-seam'},params:{...newParams(),w,top:144,h:210}});
   return p;
 }
 // Anything a file or the autosave brings in passes through here before it can become the open
@@ -1211,7 +1215,8 @@ function renderTree(){
     for(const f of g.facets)h+=`<div class="tn fc${on('facet',f.id)}" data-act="sel" data-t="facet" data-id="${esc(f.id)}"><b>${esc(f.mark)}</b><span>${esc(f.name||TEMPLATES[f.template][0].split(' (')[0])}</span>${bad.has(f.id)?'<u title="Has warnings">!</u>':''}<i>${R.L.get(f.id).q.count}</i></div>`;
     h+=`<div class="tn fc add" data-act="addFacet" data-id="${esc(g.pk.id)}">+ Facet</div>`;
   }
-  $('#tree').innerHTML=h+'<div class="tn pk add" data-act="addPackage">+ Package</div>';
+  h+='<div class="tn pk add" data-act="addPackage">+ Package</div>';
+  $('#tree').innerHTML=h+`<div class="tn out${on('output')}" data-act="sel" data-t="output"><span>Review and output</span>${R.warn.length?`<u title="Has warnings">!</u><i>${R.warn.length}</i>`:''}</div>`;
 }
 
 // ---- inputs -------------------------------------------------------------------------
@@ -1226,6 +1231,8 @@ const profSel=(label,b,v)=>`<label>${label}<select data-b="${b}" data-t="sel">${
 const sel=(label,b,o,v,t='sel')=>`<label>${label}<select data-b="${b}" data-t="${t}">${opt(o,v)}</select></label>`;
 const len=v=>v==null?'':fmtField(v);
 const OV='<u title="Overrides the project default">●</u>';
+// The package the output pane is limited to, or null for the whole project.
+const outScope=()=>P.packages.length>1&&P.packages.some(k=>k.id===S.out)?S.out:null;
 // The facet form keeps what is typed for every facet in view and folds the rest away under a
 // line saying what it is set to, so a closed section still answers "is this the usual?".
 // Which ones are open is how the pane is being used, not part of the project.
@@ -1240,6 +1247,17 @@ function renderInputs(){
       h+=`<button class="go" data-act="sel" data-t="facet" data-id="${esc(f.id)}">Enter its dimensions</button>`;
     }
     h+=`<p class="hint">Or <button class="sb" data-act="sample">load the sample hip roof</button> to see a finished job.</p>`;
+  }else if(S.t==='output'){
+    // One place that says what is going out and of which packages, so a file is never a guess.
+    const gs=scopePks(outScope()),q=q0();for(const g of gs)addQ(q,g.q);
+    const n=gs.reduce((a,g)=>a+ordered(g).count,0),lf=gs.reduce((a,g)=>a+ordered(g).lf,0),ws=R.warn.filter(w=>gs.some(g=>g.facets.some(x=>x.id===w.fid))).length;
+    h+=`<h2>Review and output</h2>`;
+    if(P.packages.length>1)h+=sel('Include','s.out',{'':`Whole project, ${P.packages.length} packages`,...Object.fromEntries(P.packages.map(k=>[k.id,k.name+' only']))},outScope()||'','selnull');
+    h+=`<p class="hint">${n?`${n} panels to make, ${fmtRun(lf)}, ${fmtArea(q.slope)} of ${[...new Set(gs.flatMap(g=>g.facets.map(x=>x.kind)))].join(' and ')}, ${fmtPct(wasteOf(q).pct)} waste.`:'No panels yet.'} ${ws?`<button class="sb" data-act="tab" data-v="warn">${ws} warning${ws>1?'s':''}</button> to read first; they never block output.`:'No warnings.'}</p>`;
+    h+=`<div class="outs">`;
+    for(const [k,label,what] of [['pdf','PDF package','Cover, a sheet per facet, the production cut list, the coil order and quantities.'],['print','Print','The same sheets, through the browser\'s print dialog.'],['csvLoc','CSV by facet','One row per panel ID, in facet order: for marking and checking.'],['csvLen','CSV by length','One row per length, longest first: for the roll former.'],['csvCoil','CSV coil order','What to buy: each coil width, gauge and color.']])
+      h+=`<button class="sb" data-act="out" data-k="${k}">${label}</button><span>${what}</span>`;
+    h+=`</div><p class="hint">How lengths read in these, and the sheet size, are <button class="sb" data-act="sel" data-t="project">project settings</button>.</p>`;
   }else if(S.t==='project'){
     h+=`<h2>Project</h2>${fld('Project name','p.name','text',P.name)}<div class="two">${fld('Job number','p.jobNo','text',P.jobNo)}${sel('Sheet size','p.sheet',{letter:'Letter landscape',tabloid:'Tabloid landscape'},P.sheet)}</div>${fld('Address','p.address','text',P.address)}`;
     h+=`<h2>Units</h2><div class="two">${sel('A bare number means','u.bare',{in:'Inches',ft:'Feet',mm:'Millimeters'},P.units.bare)}${sel('Show lengths as','u.fmt',FMTS,P.units.fmt)}`;
@@ -1491,6 +1509,7 @@ function applyField(el){
   else if(t==='text')v=String(raw).slice(0,200);
   if(typeof v==='number'&&el.dataset.min!=null&&v<+el.dataset.min)return `That needs to be at least ${el.dataset.min}.`;
   if(b==='s.prof'){S.prof=v;return 'view';}
+  if(b==='s.out'){S.out=v;return 'view';}
   const f=curF(),pk=curPk(),ks=b.split('.'),root=ks.shift(),i=+ks[0];
   if(b==='f.template')reshape(f,v);
   else if(b==='f.mark'){if(!v.trim())return 'A facet needs an ID.';f.mark=v.trim().slice(0,4);}
@@ -1581,6 +1600,8 @@ const ACT={
   },
   fold(el){const k=el.dataset.k;S.open[k]=!S.open[k];refresh();return false;},
   sample(){CMD.sample();return false;},
+  out(el){CMD[el.dataset.k](outScope());return false;},
+  tab(el){S.tab=el.dataset.v;if(document.body.dataset)document.body.dataset.pane='view';renderMain();return false;},
   addPackage(){const k={id:'k'+P.seq++,name:'Package '+(P.packages.length+1),prefix:'',extraPanels:0,facetIds:[]};P.packages.push(k);S.pk=k.id;S.t='package';},
   delPackage(){
     const k=curPk(),n=k.facetIds.length;if(P.packages.length<2||(n&&!confirm(`Delete ${k.name} and its ${n} facet${n>1?'s':''}?`)))return false;
@@ -1669,6 +1690,8 @@ function fillPrint(date,only){
 function startProject(){const p=newProject();newFacet(p,p.packages[0]);loadProject(p,'setup');}
 // Nothing to lose yet, so replacing it needs no question.
 const untouched=()=>S.t==='setup'&&!undo.length;
+// A file for one package carries the package's name, so two downloads never overwrite each other.
+const outBase=only=>fileBase()+(only?'-'+P.packages.find(k=>k.id===only).name.replace(/[^\w.-]+/g,'-'):'');
 const CMD={
   new(){if(!untouched()&&P.facets.length&&!confirm('Start a new project? Save first if you want to keep this one.'))return;startProject();},
   sample(){if(!untouched()&&P.facets.length&&!confirm('Replace this project with the sample roof?'))return;loadProject(sampleProject());},
@@ -1677,12 +1700,13 @@ const CMD={
   undo(){step(undo,redo);},redo(){step(redo,undo);},
   pdf(only){
     if(!compute().total.count){toast('There are no panels to put in a PDF yet.');return;}
-    download(fileBase()+(only?'-'+curPk().name.replace(/[^\w.-]+/g,'-'):'')+'.pdf',buildPDF(today(),only),'application/pdf');
+    download(outBase(only)+'.pdf',buildPDF(today(),only),'application/pdf');
   },
-  print(){fillPrint(today());setTimeout(()=>window.print(),50);},
-  csvLoc(){download(fileBase()+'-cut-list-by-facet.csv',buildCSV('loc'),'text/csv');},
-  csvLen(){download(fileBase()+'-cut-list-by-length.csv',buildCSV('len'),'text/csv');},
-  csvCoil(){download(fileBase()+'-coil-order.csv',buildCSV('coil'),'text/csv');},
+  print(only){fillPrint(today(),only);setTimeout(()=>window.print(),50);},
+  csvLoc(only){download(outBase(only)+'-cut-list-by-facet.csv',buildCSV('loc',only),'text/csv');},
+  csvLen(only){download(outBase(only)+'-cut-list-by-length.csv',buildCSV('len',only),'text/csv');},
+  csvCoil(only){download(outBase(only)+'-coil-order.csv',buildCSV('coil',only),'text/csv');},
+  output(){S.t='output';S.edge=null;if(document.body.dataset)document.body.dataset.pane='inputs';refresh();},
   help(){$('#dlgHelp').showModal();},
 };
 $('#toolbar').addEventListener('click',e=>{const c=e.target.dataset&&e.target.dataset.cmd;if(c)CMD[c]();});
