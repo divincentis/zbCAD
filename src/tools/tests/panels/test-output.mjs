@@ -9,8 +9,11 @@ const DATE = 'Oct 8, 2026';
 {
   const R = app.ev('compute')();
   t.eq(app.P.facets.map(f => f.mark), ['R1', 'R2', 'R3', 'R4'], 'sample facets are R1-R4');
-  // A 40 x 28 hip roof has 1,120 sf of plan area whatever its facets look like.
-  t.ok(near(R.total.plan, 40 * 28, 1e-6) && near(R.total.slope, 40 * 28 * Math.hypot(12, 6) / 12, 1e-6), 'sample: plan area is the footprint, slope area is that over cos(pitch)');
+  // A 40 x 28 hip roof has 1,120 sf of plan area whatever its facets look like. The sample is
+  // entered the way a roof is taped, on the slope to a sixteenth, so the footprint comes back
+  // to within that rounding rather than exactly.
+  t.ok(app.P.facets.every(f => f.inputMode === 'slope'), 'sample: dimensions are on the slope');
+  t.ok(near(R.total.plan, 40 * 28, 0.2) && near(R.total.slope, R.total.plan * Math.hypot(12, 6) / 12, 1e-6), 'sample: plan area is the footprint, slope area is that over cos(pitch)');
   const marks = R.pk[0].facets.flatMap(f => app.ev('byMark')(R.L.get(f.id).pieces));
   t.ok(marks.length > 0 && new Set(marks.map(r => r.p.id)).size === marks.length && marks.reduce((a, r) => a + r.qty, 0) === R.total.count, 'IDs are unique across the project, and their quantities account for every piece');
   const front = app.ev('byMark')(R.L.get(app.P.facets[0].id).pieces);
@@ -233,7 +236,7 @@ const DATE = 'Oct 8, 2026';
   app.type('f.template', 'sel', 'custom');
   t.eq(app.layout('R1').pts.map(p => p.map(v => +v.toFixed(6))), before, 'converting to a custom perimeter keeps the shape');
   app.type('f.template', 'sel', 'rect');
-  t.eq([app.P.facets[0].params.w, app.P.facets[0].params.h], [480, 168], 'and back to a rectangle keeps its extents');
+  t.eq([app.P.facets[0].params.w, app.P.facets[0].params.h], [480, 187.8125], 'and back to a rectangle keeps its extents');
   app.type('f.kind', 'sel', 'wall');
   t.eq([app.P.facets[0].mark, app.P.facets[0].inputMode, app.P.facets[0].pitch], ['W1', 'slope', null], 'a roof made a wall becomes W1, in slope mode');
   app.type('f.kind', 'sel', 'roof');
