@@ -1211,6 +1211,10 @@ const opt=(o,v)=>(Array.isArray(o)?o:Object.entries(o)).map(([k,l])=>`<option va
 // data-b is the path a field writes to; data-t says how to read what was typed. The <em> is
 // where the parsed value is echoed while typing, so a slip shows before it is committed.
 const fld=(label,b,t,v,x='')=>`<label>${label}<em></em><input data-b="${b}" data-t="${t}" value="${esc(v)}" ${x}></label>`;
+// Profiles are listed under their type: a library is a couple of dozen long names, and the type is
+// the first thing anyone looks for in it.
+const profOpt=(v,first)=>(first?opt(first,v):'')+Object.entries(PTYPES).map(([t,l])=>{const g=P.profiles.filter(x=>x.type===t);return g.length?`<optgroup label="${l}">${opt(g.map(x=>[x.id,x.name]),v)}</optgroup>`:'';}).join('');
+const profSel=(label,b,v)=>`<label>${label}<select data-b="${b}" data-t="sel">${profOpt(v)}</select></label>`;
 const sel=(label,b,o,v,t='sel')=>`<label>${label}<select data-b="${b}" data-t="${t}">${opt(o,v)}</select></label>`;
 const len=v=>v==null?'':fmtField(v);
 const OV='<u title="Overrides the project default">●</u>';
@@ -1227,7 +1231,7 @@ function renderInputs(){
     h+=`<h2>Extra panels</h2>${fld('Extra panels to order','p.extraPanels','int',P.extraPanels,'inputmode="numeric" data-min="0"')}<p class="hint">Spares against a mistake or damage: this many more of the longest panel, for each profile and color in each package. They are added to the cut list by length, the summary and the coil order, marked EXTRA.</p>`;
     h+=`<h2>Panel IDs</h2>${fld('Longest ID the roll former can mark','p.idMax','int',P.idMax,'inputmode="numeric" data-min="4"')}<p class="hint">IDs read facet-panel, e.g. R2-07. Identical panels in a facet share one. Anything longer than this is flagged.</p>`;
     const prof=P.profiles.find(x=>x.id===d.profileId)||P.profiles[0],kinds=new Set(P.facets.map(x=>x.kind));
-    h+=`<h2>Defaults for every facet</h2>${sel('Profile','d.profileId',Object.fromEntries(P.profiles.map(x=>[x.id,x.name])),d.profileId)}`;
+    h+=`<h2>Defaults for every facet</h2>${profSel('Profile','d.profileId',d.profileId)}`;
     h+=`<div class="two">${fld('Color','d.color','text',d.color,`placeholder="${esc(prof.color||'from profile')}"`)}${fld('End lap','d.lap','lenopt',len(d.lap),`data-min="0" placeholder="${esc(fmtField(prof.lap))} from profile"`)}</div>`;
     h+=`<div class="two">${sel('Split long runs','d.split',SPLITS,d.split)}${sel('Lap placement','d.lapMode',LAPMODES,d.lapMode)}</div>`;
     if(d.lapMode==='stagger')h+=fld('Stagger alternate strips by','d.stagger','len',len(d.stagger),'data-min="0"');
@@ -1239,7 +1243,7 @@ function renderInputs(){
   }else if(S.t==='profiles'){
     const q=curProf();
     h+=`<h2>Profile library<span><button class="sb" data-act="cloneProfile">Clone</button>${P.profiles.length>1?'<button class="sb" data-act="delProfile">Delete</button>':''}</span></h2>`;
-    h+=sel('Profile','s.prof',Object.fromEntries(P.profiles.map(x=>[x.id,x.name])),q.id);
+    h+=profSel('Profile','s.prof',q.id);
     h+=`${fld('Name','q.name','text',q.name)}${fld('Manufacturer','q.mfr','text',q.mfr)}<div class="two">${fld('Gauge','q.gauge','text',q.gauge)}${fld('Color','q.color','text',q.color)}</div>`;
     h+=sel('Type','q.type',PTYPES,q.type);
     h+=`<div class="three">${fld('Coverage width','q.cover','len',len(q.cover),'data-min="1"')}${fld('Stretch out','q.sheetW','len',len(q.sheetW),'data-min="1"')}${fld('Rib height','q.rib','len',len(q.rib),'data-min="0"')}`;
@@ -1293,7 +1297,7 @@ function renderInputs(){
     h+=fld('North arrow, degrees clockwise from straight up the drawing (optional)','f.north','numopt',f.north??'','placeholder="none"');
     if(y.start==='left'||y.start==='right')h+=`<label class="chk"><input type="checkbox" data-b="y.balance" data-t="chk"${y.balance?' checked':''}>Balance the two edge rips</label>`;
     h+=`<h2>Overrides of the project defaults</h2>`;
-    h+=`<label>Profile${mark('profileId')}<select data-b="o.profileId" data-t="selnull">${opt({'':`Project default: ${(P.profiles.find(x=>x.id===d.profileId)||P.profiles[0]).name}`,...Object.fromEntries(P.profiles.map(x=>[x.id,x.name]))},o.profileId)}</select></label>`;
+    h+=`<label>Profile${mark('profileId')}<select data-b="o.profileId" data-t="selnull">${profOpt(o.profileId,{'':`Project default: ${(P.profiles.find(x=>x.id===d.profileId)||P.profiles[0]).name}`})}</select></label>`;
     h+=`<div class="two"><label>Split long runs${mark('split')}<select data-b="o.split" data-t="selnull">${opt({'':'Project default',...SPLITS},o.split)}</select></label><label>Lap placement${mark('lapMode')}<select data-b="o.lapMode" data-t="selnull">${opt({'':'Project default',...LAPMODES},o.lapMode)}</select></label>`;
     h+=`<label>End lap${mark('lap')}<em></em><input data-b="o.lap" data-t="lenopt" data-min="0" value="${esc(len(o.lap))}" placeholder="${esc(fmtField(d.lap??e.profile.lap))}"></label>${e.lapMode==='stagger'?`<label>Stagger${mark('stagger')}<em></em><input data-b="o.stagger" data-t="lenopt" data-min="0" value="${esc(len(o.stagger))}" placeholder="${esc(fmtField(d.stagger))}"></label>`:''}</div>`;
     h+=`<h2>Openings<span><button class="sb" data-act="addOpen">+ Opening</button></span></h2>`;
