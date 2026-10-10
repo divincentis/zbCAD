@@ -194,7 +194,7 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
     const was = { profiles: saved.profiles, facets: [{ id: 'a' }, { id: 'b' }, { id: 'c', ov: { split: 'eave' } }],
       packages: [{ facetIds: ['a'], def: { profileId: 'p2', split: 'max', lap: 4, allow: { eave: 2 } } }, { facetIds: ['b', 'c'], def: { profileId: 'p7', split: 'equal', allow: { eave: 9 } } }] };
     const now = check(was), [a, b, c] = now.facets;
-    t.eq([now.def.profileId, now.def.lap, now.def.allow, now.packages.map(k => Object.keys(k).sort())], ['p2', 4, { eave: 2 }, [['facetIds', 'id', 'name', 'prefix'], ['facetIds', 'id', 'name', 'prefix']]], 'older file: the first package\'s defaults become the project\'s');
+    t.eq([now.def.profileId, now.def.lap, now.def.allow, now.packages.map(k => Object.keys(k).sort())], ['p2', 4, { eave: 2 }, [['extraPanels', 'facetIds', 'id', 'name', 'prefix'], ['extraPanels', 'facetIds', 'id', 'name', 'prefix']]], 'older file: the first package\'s defaults become the project\'s');
     t.eq([a.ov, b.ov, c.ov], [{}, { profileId: 'p7', split: 'equal', lap: 6 }, { split: 'eave', profileId: 'p7', lap: 6 }], 'older file: a later package\'s profile, split and lap carry over as facet overrides');
   }
   app.load(odd);
@@ -323,7 +323,7 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
   app.make(plain, [{ template: 'rect', params: { w: 240, h: 120 } }, { template: 'rect', params: { w: 240, h: 96 } }]);
   const R0 = app.ev('compute')(), waste = app.ev('wasteOf')(R0.total).pct;
   t.eq(app.ev('production')(R0.pk).map(r => [r.qty, r.len, r.ids]), [[15, 120, 'R1-01 ×15'], [15, 96, 'R2-01 ×15']], 'no extras unless asked for');
-  t.eq(app.type('p.extraPanels', 'int', '3'), undefined, 'extra panels are a project setting');
+  t.eq(app.type('k.extraPanels', 'int', '3'), undefined, 'extra panels are a package setting');
   const R = app.ev('compute')(), g = R.pk[0];
   t.eq(app.ev('production')(R.pk).map(r => [r.qty, r.len, r.ids]), [[15, 120, 'R1-01 ×15'], [3, 120, 'EXTRA'], [15, 96, 'R2-01 ×15']], 'that many more of the longest panel, marked EXTRA');
   const buy = app.ev('purchasing')(R.pk)[0];
@@ -335,6 +335,14 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
   t.ok(app.ev('reportPages')(DATE)[0].ops.some(o => /Includes 3 extra panels/.test(o.s)), 'and the cover says so');
   app.ev('newFacet')(app.P, app.P.packages[0], { ov: { profileId: 'p17' }, params: { ...app.ev('newParams')(), w: 72, h: 60 } });
   t.eq(app.ev('production')(app.ev('compute')().pk).filter(r => r.ids === 'EXTRA').map(r => [r.qty, r.len, r.profile]), [[3, 120, SNAP], [3, 60, '36" exposed fastener (R / PBR)']], 'each profile gets its own, at its own longest length');
-  t.eq(app.ev('checkProject')(JSON.parse(JSON.stringify(app.P))).extraPanels, 3, 'saved with the project');
+  t.eq(app.ev('checkProject')(JSON.parse(JSON.stringify(app.P))).packages[0].extraPanels, 3, 'saved with the package');
+  // A second package orders its own number, or none.
+  app.ev('ACT').addPackage(); app.ev('newFacet')(app.P, app.P.packages[1], { params: { ...app.ev('newParams')(), w: 240, h: 72 } }); app.ev('changed')();
+  t.eq(app.ev('compute')().pk.map(g => g.extra.map(x => [x.qty, x.len])), [[[3, 120], [3, 60]], []], 'a package with none set orders none');
+  app.type('k.extraPanels', 'int', '5');
+  t.eq(app.ev('compute')().pk[1].extra.map(x => [x.qty, x.len]), [[5, 72]], 'and each package orders its own number');
+  t.ok(app.ev('reportPages')(DATE)[0].ops.some(o => /Includes 11 extra panels: each package's own number/.test(o.s)), 'the cover totals them');
+  const old = JSON.parse(JSON.stringify(app.P)); for (const k of old.packages) delete k.extraPanels; old.extraPanels = 2;
+  t.eq(app.ev('checkProject')(old).packages.map(k => k.extraPanels), [2, 2], 'an older file\'s project-wide number carries to each package');
 }
 t.done();
