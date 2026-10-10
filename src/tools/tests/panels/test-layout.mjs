@@ -373,4 +373,50 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   const thin = app.ev('layoutFacet')(app.P.facets[0], { ...app.ev('eff')(app.P.facets[0]), W: 0.02 });
   t.ok(thin.pieces.length === 0 && thin.warn.length > 0, 'a silly width yields a warning, not a hang');
 }
+// ===== an edge's length typed on the drawing =====
+{
+  // Whatever is typed, the edge then measures that, and the facet's own inputs are what moved.
+  const lens = () => app.layout(app.P.facets[0].mark).edges.map(e => +e.len.toFixed(3)), m = () => app.P.facets[0].params;
+  const set = (i, v) => app.type(`e.${i}.len`, 'len', String(v), { min: '1' });
+  mk({}, [{ template: 'trap', params: { w: 480, top: 144, h: 168 } }]);
+  set(1, 260);
+  t.ok(near(lens()[1], 260) && near(lens()[3], 260) && near(m().h, Math.sqrt(260 * 260 - 168 * 168), 1e-3) && m().w === 480 && m().top === 144, 'a hip solves the slope height and holds the eave and ridge; the other hip moves with it');
+  set(0, 500); set(2, 100);
+  t.eq([m().w, m().top], [500, 100], 'level edges are the eave and the ridge');
+  t.ok(/no longer than/.test(set(1, 150)) && near(lens()[1], Math.hypot(200, m().h), 1e-3), 'a hip no longer than its run along the eave is refused, and nothing moves');
+  t.ok(/at least/.test(set(0, 0)), 'and so is a zero length');
+
+  mk({}, [{ template: 'trap', inputMode: 'plan', pitch: 9, params: { w: 480, top: 144, h: 168 } }]);
+  set(3, 300);
+  t.ok(near(lens()[3], 300) && near(m().h, Math.sqrt(300 * 300 - 168 * 168) / 1.25, 1e-3), 'in plan + pitch the typed length is still on the slope, and the plan run is what is solved');
+
+  mk({}, [{ template: 'rect', params: { w: 240, h: 144 } }]);
+  set(1, 100); set(2, 200);
+  t.eq([m().w, m().h], [200, 100], 'rectangle: sides are the height, top and bottom the width');
+  mk({}, [{ template: 'tri', params: { w: 336, h: 168 } }]);
+  set(2, 250);
+  t.ok(near(lens()[1], 250) && near(lens()[2], 250) && m().w === 336, 'triangle: either hip sets the height');
+  mk({}, [{ template: 'para', params: { w: 240, h: 144, skew: 24 } }]);
+  set(3, 150); set(2, 200);
+  t.ok(near(lens()[1], 150) && m().w === 200 && m().skew === 24, 'parallelogram: a rake sets the height and keeps the skew');
+  mk({}, [{ template: 'angled', params: { w: 240, top: 96, h: 144, side: 'right' } }]);
+  set(2, 120); set(1, 240);
+  t.ok(near(lens()[1], 240) && near(lens()[3], m().h, 1e-3) && near(m().h, Math.sqrt(240 * 240 - 120 * 120), 1e-3) && m().top === 120, 'one angled side: the angled edge sets the height, the top its own length');
+  mk({}, [{ kind: 'wall', template: 'gable', params: { w: 240, h: 96, h2: 192 } }]);
+  set(2, 150); set(4, 100);
+  t.ok(near(lens()[2], Math.hypot(120, m().h2 - 100), 1e-3) && near(m().h2, 96 + 90, 1e-3) && m().h === 100, 'gable: a rake sets the peak height, a side the eave height');
+  mk({}, [{ kind: 'wall', template: 'shed', params: { w: 240, h: 96, h2: 192, side: 'right' } }]);
+  set(2, 250); t.ok(near(m().h2, 96 + 70, 1e-3), 'shed: the top sets the high height');
+  set(1, 180); set(3, 90);
+  t.eq([m().h2, m().h], [180, 90], 'and each side its own');
+
+  mk({}, [{ template: 'custom', custom: 'xy', pts: [[0, 0], [240, 0], [240, 120], [0, 120]] }]);
+  set(1, 150);
+  t.eq(app.P.facets[0].pts, [[0, 0], [240, 0], [240, 150], [0, 120]], 'custom points: the far corner slides along the edge');
+  mk({}, [{ template: 'custom', custom: 'walk', walk: [{ len: 240, turn: 90 }, { len: 120, turn: 90 }, { len: 240, turn: 90 }, { len: 120, turn: 90 }] }]);
+  set(1, 150);
+  t.ok(app.P.facets[0].walk[1].len === 150 && app.layout('R1').warn.some(x => /close/.test(x)), 'custom walk: the edge is set, and the open perimeter is flagged as before');
+  t.eq(['trap', 'gable', 'custom'].map(tp => { mk({}, [{ kind: tp === 'gable' ? 'wall' : 'roof', template: tp, pts: [[0, 0], [9, 0], [9, 9]] }]); return app.ev('edgeLenNote')(app.P.facets[0], 1); }),
+    ['Sets the slope height, holding the lengths along the eave; the opposite edge moves with it.', 'Sets the eave height.', 'Moves corner 3 along this edge.'], 'the dialog says what a length will move');
+}
 t.done();

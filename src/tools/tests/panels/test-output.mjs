@@ -10,6 +10,7 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
 // ===== first visit opens a new project at its setup step =====
 {
   t.eq([app.ev('S').t, app.P.facets.map(f => [f.mark, f.kind, f.template, f.inputMode]), app.P.name], ['setup', [['R1', 'roof', 'rect', 'slope']], 'Untitled project'], 'a first visit starts a project: one rectangle of roof, on the setup step');
+  t.eq(app.P.def.allow, { eave: 4 }, 'with a 4" eave overhang as the one allowance set');
   const html = () => app.$('#inputs').innerHTML;
   t.ok(['p.name', 'p.jobNo', 'd.profileId', 'f.kind', 'f.template'].every(b => html().includes(`data-b="${b}"`)) && !html().includes('data-b="m.w"'), 'which asks for the job, the profile and the first facet, and no dimensions yet');
   app.type('f.kind', 'sel', 'wall');
