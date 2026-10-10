@@ -249,7 +249,9 @@ function calc(expr){
 }
 function parseLen(str,bare){
   let s=String(str??'').trim().toLowerCase();if(!s)return NaN;
-  if(s[0]==='=')return calc(s.slice(1));
+  // What a bare number is worth. A sum is made of bare numbers as much as a single figure is.
+  const k={in:1,ft:12,mm:1/MM}[bare||P.units.bare];
+  if(s[0]==='=')return calc(s.slice(1))*k;
   const m=s.match(/^(-?\d*\.?\d+)\s*(mm|cm|m)$/);
   if(m)return m[1]*{mm:1,cm:10,m:1000}[m[2]]/MM;
   s=s.replace(/feet|foot|ft\.?/g,"'").replace(/inches|inch|in\.?/g,'"').replace(/[’′]/g,"'").replace(/[”″]/g,'"');
@@ -263,7 +265,7 @@ function parseLen(str,bare){
   let v;const q=s.indexOf("'");
   if(q>=0)v=num(s.slice(0,q))*12+num(s.slice(q+1).replace(/"/g,'').replace(/^[\s-]+/,''));
   else if(s.includes('"'))v=num(s.replace(/"/g,''));
-  else v=num(s)*{in:1,ft:12,mm:1/MM}[bare||P.units.bare];
+  else v=num(s)*k;
   return neg?-v:v;
 }
 function fmtLen(v,fmt=P.units.fmt,prec=P.units.prec){
@@ -362,7 +364,7 @@ const newLayout=()=>({dir:'eave',dirEdge:0,angle:0,start:'left',offset:0,balance
 function newFacet(p,pk,o={}){
   const kind=o.kind||'roof';
   const f=Object.assign({id:'f'+p.seq++,mark:nextMark(p,kind),name:'',kind,inputMode:'slope',pitch:null,template:'rect',params:newParams(),
-    custom:'xy',pts:[],walk:[],edges:[],openings:[],ov:{},north:null,layout:newLayout()},o);
+    custom:'xy',pts:[],walk:[],walk0:0,edges:[],openings:[],ov:{},north:null,layout:newLayout()},o);
   p.facets.push(f);pk.facetIds.push(f.id);
   return f;
 }
@@ -405,9 +407,9 @@ function checkProject(raw){
     if(num(o.stagger,null,0,6000)!==null)ov.stagger=+o.stagger;
     facets.set(str(f.id),{id:fresh(f.id),mark:str(f.mark).trim().slice(0,4)||'?',name:str(f.name),kind,inputMode:kind==='roof'&&f.inputMode==='plan'?'plan':'slope',pitch:num(f.pitch,null,0,120),template,
       params:{w:num(m.w,n0.w,1),h:num(m.h,n0.h,1),top:num(m.top,n0.top,0),inset:num(m.inset,null),apex:num(m.apex,null),skew:num(m.skew,n0.skew),side:m.side==='left'?'left':'right',h2:num(m.h2,n0.h2,1)},
-      custom,pts,walk,edges:(Array.isArray(f.edges)?f.edges:[]).map(e=>({type:pick(obj(e).type,EDGE,null),allow:num(obj(e).allow,null,-600,600)})),
+      custom,pts,walk,walk0:num(f.walk0,0,-360,360),edges:(Array.isArray(f.edges)?f.edges:[]).map(e=>({type:pick(obj(e).type,EDGE,null),allow:num(obj(e).allow,null,-600,600)})),
       openings:arr(f.openings).map(q=>({x:num(q.x,0),y:num(q.y,0),w:num(q.w,36,0),h:num(q.h,36,0)})),ov,north:num(f.north,null,-360,360),
-      layout:{dir:pick(y.dir,{eave:1,edge:1,angle:1},'eave'),dirEdge:num(y.dirEdge,0,0,999),angle:num(y.angle,0,-89,89),start:pick(y.start,STARTS,'left'),offset:num(y.offset,0),balance:!!y.balance,wind:pick(y.wind,WIND,'')}});
+      layout:{dir:pick(y.dir,{eave:1,edge:1,angle:1},'eave'),dirEdge:Math.round(num(y.dirEdge,0,0,999)),angle:num(y.angle,0,-89,89),start:pick(y.start,STARTS,'left'),offset:num(y.offset,0),balance:!!y.balance,wind:pick(y.wind,WIND,'')}});
   }
   const checkDef=d0=>{
     const d=obj(d0),n0=newDefaults(),allow={};
@@ -468,8 +470,8 @@ function eff(f){
 // Plan dimensions square to the eave grow by 1/cos(pitch); those along it do not change.
 const slopeK=f=>f.inputMode==='plan'&&f.pitch!=null?Math.hypot(12,f.pitch)/12:1;
 const rot=(p,a)=>{const c=Math.cos(a),s=Math.sin(a);return [p[0]*c-p[1]*s,p[0]*s+p[1]*c];};
-function walkPts(walk){
-  let x=0,y=0,a=0;const pts=[];
+function walkPts(walk,a0=0){
+  let x=0,y=0,a=a0;const pts=[];
   walk.forEach(e=>{pts.push([x,y]);x+=e.len*Math.cos(a*DEG);y+=e.len*Math.sin(a*DEG);a+=e.turn;});
   // How far the last edge ends from where the first began: zero for a perimeter that closes.
   pts.gap=Math.hypot(x,y);
@@ -482,24 +484,44 @@ function facetPts(f){
     case 'trap':{const i=m.inset??(w-m.top)/2;pts=m.top>EPS?[[0,0],[w,0],[i+m.top,h],[i,h]]:[[0,0],[w,0],[i,h]];break;}
     case 'tri':pts=[[0,0],[w,0],[m.apex??w/2,h]];break;
     case 'para':pts=[[0,0],[w,0],[w+m.skew,h],[m.skew,h]];break;
-    case 'angled':pts=m.side==='right'?[[0,0],[w,0],[m.top,h],[0,h]]:[[0,0],[w,0],[w,h],[w-m.top,h]];break;
+    // With no top left it is a triangle, and has to be three corners: two in one place would be
+    // an edge of no length, with no direction to offset.
+    case 'angled':pts=m.side==='right'?[[0,0],[w,0],...(m.top>EPS?[[m.top,h]]:[]),[0,h]]:[[0,0],[w,0],[w,h],...(m.top>EPS?[[w-m.top,h]]:[])];break;
     case 'gable':pts=[[0,0],[w,0],[w,h],[m.apex??w/2,m.h2],[0,h]];break;
     case 'shed':pts=m.side==='right'?[[0,0],[w,0],[w,m.h2],[0,h]]:[[0,0],[w,0],[w,h],[0,m.h2]];break;
-    case 'custom':pts=f.custom==='walk'?walkPts(f.walk):f.pts;break;
+    case 'custom':pts=f.custom==='walk'?walkPts(f.walk,f.walk0):f.pts;break;
     default:pts=[[0,0],[w,0],[w,h],[0,h]];
   }
   const out=pts.map(([x,y])=>[x,y*k]);out.gap=pts.gap||0;
   return out;
 }
 function signedArea(pts){let a=0;for(let i=0;i<pts.length;i++){const p=pts[i],q=pts[(i+1)%pts.length];a+=p[0]*q[1]-q[0]*p[1];}return a/2;}
+// Two segments that pass through each other. Touching, or lying along one another, is not crossing.
+function segsCross(a,b,c,d){
+  const side=(p,q,r)=>(q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]);
+  return side(a,b,c)*side(a,b,d)<-EPS&&side(c,d,a)*side(c,d,b)<-EPS;
+}
 function selfIntersects(pts){
-  const n=pts.length,side=(a,b,c)=>(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+  const n=pts.length;
   for(let i=0;i<n;i++)for(let j=i+2;j<n;j++){
     if(i===0&&j===n-1)continue;
-    const a=pts[i],b=pts[i+1],c=pts[j],d=pts[(j+1)%n];
-    if(side(a,b,c)*side(a,b,d)<-EPS&&side(c,d,a)*side(c,d,b)<-EPS)return true;
+    if(segsCross(pts[i],pts[i+1],pts[j],pts[(j+1)%n]))return true;
   }
   return false;
+}
+function inPoly(p,pts){
+  let c=false;
+  for(let i=0,j=pts.length-1;i<pts.length;j=i++){
+    const a=pts[i],b=pts[j];
+    if((a[1]>p[1])!==(b[1]>p[1])&&p[0]<a[0]+(p[1]-a[1])*(b[0]-a[0])/(b[1]-a[1]))c=!c;
+  }
+  return c;
+}
+// Whether a rectangle lies on the facet. It is tested a hundredth in from its own edges, so one
+// drawn hard against the outline (a door at the base) is on it and one that pokes past is not.
+function rectOnFacet(r,pts){
+  const d=0.01,q=[[r[0][0]+d,r[0][1]+d],[r[1][0]-d,r[1][1]+d],[r[2][0]-d,r[2][1]-d],[r[3][0]+d,r[3][1]-d]];
+  return q.every(p=>inPoly(p,pts))&&!q.some((a,i)=>pts.some((c,j)=>segsCross(a,q[(i+1)%4],c,pts[(j+1)%pts.length])));
 }
 // An edge the panels start on has the roof above it; one they die into has the roof below.
 // That one fact, plus whether the edge is level, plumb or neither, is the whole default.
@@ -554,8 +576,10 @@ function stripsFor(xmin,xmax,W,y,ripMin){
   const k0=Math.floor((xmin-anchor)/W+1e-9),k1=Math.ceil((xmax-anchor)/W-1e-9),out=[];
   for(let k=k0;k<k1;k++){
     const a=Math.max(xmin,anchor+k*W),b=Math.min(xmax,anchor+(k+1)*W);
-    // A sliver thinner than this is rounding, not a panel anyone would cut.
-    if(b-a>0.01)out.push({a,b});
+    // A sliver thinner than this is rounding, not a panel anyone would cut. ga and gb are the
+    // whole panel the strip is cut from: at an edge the strip stops short of one of them, and
+    // which one says which leg was ripped off.
+    if(b-a>0.01)out.push({a,b,ga:anchor+k*W,gb:anchor+(k+1)*W});
   }
   return y.start==='right'?out.reverse():out;
 }
@@ -615,15 +639,28 @@ function layoutFacet(f,e){
     const type=ed.type||auto,val=ed.allow??e.allow[type]??0;
     return {i,x1:p[0],y1:p[1],x2:c[0],y2:c[1],len:Math.hypot(dx,dy),auto,type,val,d:(OUTWARD[type]?1:-1)*val,ux:dx/len,uy:dy/len,nx:dy/len*orient,ny:-dx/len*orient};
   });
-  const holes=f.openings.filter(o=>o.w>EPS&&o.h>EPS).map(o=>[[o.x,o.y*k],[o.x+o.w,o.y*k],[o.x+o.w,(o.y+o.h)*k],[o.x,(o.y+o.h)*k]]);
+  // `rows` keeps each opening's row in the inputs, which is what a warning has to name.
+  const rows=f.openings.map((o,i)=>i).filter(i=>f.openings[i].w>EPS&&f.openings[i].h>EPS);
+  const holes=rows.map(i=>f.openings[i]).map(o=>[[o.x,o.y*k],[o.x+o.w,o.y*k],[o.x+o.w,(o.y+o.h)*k],[o.x,(o.y+o.h)*k]]);
   const holeArea=holes.reduce((s,r)=>s+Math.abs(signedArea(r)),0),area=Math.max(Math.abs(A)-holeArea,0);
   // `bad` says which dimensions a geometry warning is about, so the inputs can point at them.
-  const bad={cross:false,gap:false,short:[]},L={f,e,k,pts,edges,holes,off:pts,theta:0,strips:[],pieces:[],seams:[],laps:[],warn,q,bad};
+  const bad={cross:false,gap:false,short:[],open:[]},L={f,e,k,pts,edges,holes,off:pts,theta:0,strips:[],pieces:[],seams:[],laps:[],warn,q,bad};
   q.slope=area/144;q.planKnown=f.pitch!=null;q.plan=q.planKnown?q.slope*12/Math.hypot(12,f.pitch):0;
   for(const ed of edges)q.trim[ed.type]=(q.trim[ed.type]||0)+ed.len/12;
   if(n<3||area<1){warn.push('This facet has no area yet.');return L;}
   if(pts.gap>0.5){bad.gap=true;warn.push(`The custom perimeter does not close: the last edge ends ${fmtU(pts.gap)} from the start.`);}
   if(selfIntersects(pts)){bad.cross=true;warn.push('The outline crosses itself. Fix the dimensions before using this layout.');return L;}
+  // An opening has to lie on the facet and clear of the others. The strips below pair edges off
+  // from the bottom up, so one that pokes past the outline, or into another opening, would be
+  // paired with the wrong edge and come out as metal standing where there is no roof.
+  const astray=rows.filter((i,j)=>!rectOnFacet(holes[j],pts));
+  if(astray.length)warn.push(`Opening ${astray.map(i=>i+1).join(', ')} is not wholly on the facet. Fix the openings before using this layout.`);
+  bad.open.push(...astray);
+  holes.forEach((a,i)=>holes.forEach((b,j)=>{
+    if(j<=i||Math.min(a[2][0],b[2][0])-Math.max(a[0][0],b[0][0])<=0.01||Math.min(a[2][1],b[2][1])-Math.max(a[0][1],b[0][1])<=0.01)return;
+    bad.open.push(rows[i],rows[j]);warn.push(`Openings ${rows[i]+1} and ${rows[j]+1} overlap. Fix the openings before using this layout.`);
+  }));
+  if(bad.open.length)return L;
   if(!(W>=1)){warn.push('The profile coverage width must be at least 1".');return L;}
   const shortE=edges.filter(ed=>ed.len<W-EPS);
   bad.short=shortE.map(ed=>ed.i);
@@ -680,18 +717,18 @@ function layoutFacet(f,e){
     }
     for(const pc of pcs){pc.ca=Math.min(...pc.slabs.map(s=>s.xa));pc.cb=Math.max(...pc.slabs.map(s=>s.xb));pc.mat=pc.slabs.reduce((a,s)=>a+s.area,0);}
     const live=pcs.filter(pc=>pc.t-pc.b>0.01);
-    if(live.length)runs.push({a:st.a,b:st.b,pcs:live});
+    if(live.length)runs.push({...st,pcs:live});
   }
   if(!runs.length)return L;
   const all=runs.flatMap(r=>r.pcs),B0=Math.min(...all.map(pc=>pc.b)),T0=Math.max(...all.map(pc=>pc.t));
-  const eaveY=Math.min(...pts.map(p=>rot(p,th)[1])),ssmr=isSSMR(e.profile),flag={short:[],long:[],rip:[],rebal:0,unsnap:0};
+  const eaveY=Math.min(...pts.map(p=>rot(p,th)[1])),ssmr=isSSMR(e.profile),flag={short:[],long:[],rip:[],rebal:0,unsnap:0,split:0};
   let mat=0;
   runs.forEach((run,ri)=>{
     // Alternate strips get a shorter first piece, which moves their lap line without adding a joint.
     const made=[],sh=e.lapMode==='stagger'&&ri%2?e.stagger:0;
     for(const pc of run.pcs){
       const r=splitRun(pc.b,pc.t,{M:e.maxLen,lap:e.lap,minLen:e.minLen,rule:e.split,mode:e.lapMode,datum:B0-sh,datumTop:T0+sh,purlinSp:e.purlinSp,purlin0:eaveY+e.purlin0}),cuts=r.cuts,Lrun=pc.t-pc.b,cw=pc.cb-pc.ca;
-      flag.unsnap+=r.unsnapped;if(r.rebalanced)flag.rebal++;
+      flag.unsnap+=r.unsnapped;if(r.rebalanced)flag.rebal++;if(cuts.length>1)flag.split++;
       const Ls=pc.slabs.filter(s=>s.xa<=pc.ca+EPS),Rs=pc.slabs.filter(s=>s.xb>=pc.cb-EPS),one=pc.slabs.length===1?pc.slabs[0]:null;
       const bL=Math.min(...Ls.map(s=>s.loA)),tL=Math.max(...Ls.map(s=>s.hiA)),bR=Math.min(...Rs.map(s=>s.loB)),tR=Math.max(...Rs.map(s=>s.hiB));
       // Cut angle off square, at the bottom and top of the run, where the run is one plain quad.
@@ -709,7 +746,7 @@ function layoutFacet(f,e){
         const lenL=Math.max(0,Math.min(tL,y1)-Math.max(bL,y0)),lenR=Math.max(0,Math.min(tR,y1)-Math.max(bR,y0));
         // An angled end belongs to whichever piece it actually runs through, which on a steep hip can be two.
         const angB=one&&Math.abs(ang[0])>0.05&&y0<Math.max(one.loA,one.loB)-EPS?ang[0]:null,angT=one&&Math.abs(ang[1])>0.05&&y1>Math.min(one.hiA,one.hiB)+EPS?ang[1]:null;
-        made.push({facetId:f.id,strip:ri+1,x0:run.a,x1:run.b,ca:pc.ca,cb:pc.cb,y0,y1,raw,len,polys,slabs:pc.slabs,lenL,lenR,short:Math.min(lenL,lenR),square,angB,angT,
+        made.push({facetId:f.id,strip:ri+1,x0:run.a,x1:run.b,ga:run.ga,gb:run.gb,ca:pc.ca,cb:pc.cb,y0,y1,raw,len,polys,slabs:pc.slabs,lenL,lenR,short:Math.min(lenL,lenR),square,angB,angT,
           shape:!square&&angB==null&&angT==null,rip:cw<W-0.01?cw:null,lapTop:ci<cuts.length-1?e.lap:0,lapBot:ci>0?e.lap:0,splice:ssmr&&cuts.length>1});
         q.wRound+=W*(len-raw);
         if(ci){
@@ -731,9 +768,12 @@ function layoutFacet(f,e){
   // swappable two pieces need the same ordered length, the same rip off the same leg, the
   // same end cuts leaning the same way (a mirror image is a different panel, because the
   // seam legs are handed), and the same laps. A notched piece is always one of a kind.
-  const n3=v=>v==null?'':v.toFixed(3),marks=new Map();
+  // The rip is measured from the whole panel, not from the strip: an edge strip is already cut
+  // back to the facet, so against itself it would look like a full one. Rounding first keeps a
+  // hair under zero from reading as a different panel.
+  const n3=v=>v==null?'':(Math.round(v*1000)/1000+0).toFixed(3),marks=new Map();
   for(const p of L.pieces){
-    const k=p.shape?'shape'+marks.size:[p.len.toFixed(4),n3(p.ca-p.x0),n3(p.x1-p.cb),p.square?'':[p.lenL.toFixed(2),p.lenR.toFixed(2),n3(p.angB),n3(p.angT)],p.lapTop,p.lapBot].join('|');
+    const k=p.shape?'shape'+marks.size:[p.len.toFixed(4),n3(p.ca-p.ga),n3(p.gb-p.cb),p.square?'':[p.lenL.toFixed(2),p.lenR.toFixed(2),n3(p.angB),n3(p.angT)],p.lapTop,p.lapBot].join('|');
     if(!marks.has(k))marks.set(k,marks.size+1);
     p.mark=marks.get(k);
   }
@@ -753,6 +793,8 @@ function layoutFacet(f,e){
   if(flag.rip.length)warn.push(`Edge rip under the ${fmtU(e.ripMin)} minimum at ${list(flag.rip)}. Balance the edge rips or change the start.`);
   if(q.splices)warn.push(`${q.splices} transverse seam${q.splices>1?'s':''} on a standing seam profile: each REQUIRES SPLICE.`);
   if(flag.unsnap)warn.push(`${flag.unsnap} lap${flag.unsnap>1?'s':''} could not be snapped to a purlin line.`);
+  // Equal pieces puts each lap where the run's own length says, so it cannot also be asked where.
+  if(flag.split&&e.split==='equal'&&e.lapMode!=='aligned')warn.push(`Runs split into equal pieces set their own lap lines, so ${e.lapMode==='stagger'?'the stagger is':'the purlin lines are'} not used.`);
   if(L.pieces.some(p=>p.id.length>e.idMax))warn.push(`Panel IDs here run longer than the ${e.idMax}-character limit set for the project.`);
   const side=y.start==='left'||y.start==='right'?y.start:null;
   if(side&&e.profile.hand!=='either'&&e.profile.hand!==side)warn.push(`This profile lays from the ${e.profile.hand}, but the layout starts at the ${side} edge.`);
@@ -764,12 +806,15 @@ function layoutFacet(f,e){
 let R;
 function compute(){
   R={L:new Map(),pk:[],total:q0(),warn:[]};
-  const marks={};for(const f of P.facets)marks[f.mark]=(marks[f.mark]||0)+1;
+  // Two facets repeat each other's panel IDs when what those open with is the same, and that is
+  // the package's prefix as much as the facet's own ID.
+  const head=(pk,f)=>(pk.prefix?pk.prefix+'-':'')+f.mark,heads=new Map();
+  for(const pk of P.packages)for(const f of facetsOf(pk))heads.set(head(pk,f),(heads.get(head(pk,f))||0)+1);
   for(const pk of P.packages){
     const fs=facetsOf(pk),q=q0();
     for(const f of fs){
       const L=layoutFacet(f,eff(f));
-      if(marks[f.mark]>1&&!pk.prefix)L.warn.push(`ID ${f.mark} is used by more than one facet, so panel IDs repeat.`);
+      if(heads.get(head(pk,f))>1)L.warn.push(`ID ${head(pk,f)} is used by more than one facet, so panel IDs repeat.`);
       R.L.set(f.id,L);addQ(q,L.q);
       for(const m of L.warn)R.warn.push({fid:f.id,mark:f.mark,m});
     }
@@ -795,7 +840,7 @@ const extraNote=gs=>{const n=gs.reduce((a,g)=>a+g.extra.reduce((b,x)=>b+x.qty,0)
   return n?`Includes ${n} extra panel${n>1?'s':''}: ${each.length>1?'each package\'s own number':each[0]} at the longest length of each profile and color in a package.`:'';};
 const scopePks=only=>R.pk.filter(g=>!only||g.pk.id===only);
 const piecesOf=g=>g.facets.flatMap(f=>R.L.get(f.id).pieces);
-const profKey=L=>L.e.profile.name+(L.e.color?' / '+L.e.color:'');
+const profKey=L=>L.e.profile.id+' / '+L.e.color;
 // One row per ID: the first piece that carries it stands for them all, with how many there are.
 function byMark(ps){
   const m=new Map();
@@ -853,7 +898,7 @@ function coilOrder(gs){
     if(!m.has(key))m.set(key,{width:p.sheetW,gauge:p.gauge,color,psf,profiles:[],lens:[]});
     const r=m.get(key);
     if(!r.profiles.includes(p.name))r.profiles.push(p.name);
-    r.lens.push(...lens);
+    for(const l of lens)r.lens.push(l);
   };
   for(const g of gs){
     for(const f of g.facets){const L=R.L.get(f.id);add(L.e.profile,L.e.color,L.pieces.map(x=>x.len/12));}
@@ -862,7 +907,7 @@ function coilOrder(gs){
   return [...m.values()].filter(r=>r.lens.length).map(({lens,...r})=>{
     // plf: pounds per foot of this coil. Without a weight, a weight limit cannot be applied.
     const lf=lens.reduce((a,b)=>a+b,0),plf=r.psf==null?null:r.psf*r.width/12,byWt=plf&&c.maxLb?c.maxLb/plf:Infinity;
-    const cap=Math.min(c.maxFt||Infinity,byWt),longest=Math.max(...lens),over=longest*k>cap+EPS,room=over?longest:cap/k;
+    const cap=Math.min(c.maxFt||Infinity,byWt),longest=lens.reduce((a,b)=>Math.max(a,b),0),over=longest*k>cap+EPS,room=over?longest:cap/k;
     let n=1,each=lf;
     if(cap<Infinity){
       // First fit, longest first, settles how many coils it takes. Dealing the same pieces to
@@ -1072,9 +1117,10 @@ function fitText(s,size,maxW){
 // ---- the package --------------------------------------------------------------------
 // Cover, overview, a sheet per facet, the production list, then quantities. `only` limits it
 // to one package. Returns pages of plan primitives for print and PDF to draw.
-function reportPages(date,only){return withFmt(P.units.pdf,()=>reportSheets(date,only));}
+// The layout is worked out before the report's units are borrowed: compute() words its warnings
+// as it goes, and those stay on the screen long after the report has gone.
+function reportPages(date,only){compute();return withFmt(P.units.pdf,()=>reportSheets(date,only));}
 function reportSheets(date,only){
-  compute();
   const gs=scopePks(only),[PW,PH]=P.sheet==='tabloid'?[1224,792]:[792,612],M=36,BOT=PH-M-24,pages=[],z=PW/792;let pg,y,title;
   const T=(x,yy,s,o={})=>pg.ops.push({k:'text',x,y:yy,s:String(s),size:9,...o});
   const rule=(yy,xa=M,xb=PW-M,lw=0.5)=>pg.ops.push({k:'line',x1:xa,y1:yy,x2:xb,y2:yy,stroke:'rule',lw});
@@ -1153,10 +1199,12 @@ function reportSheets(date,only){
     sub(`${g.pk.name} · ${specLine(L)}`);
     T(M,y,[`${q.strips} strips, ${q.count} pieces`,fmtRun(q.lf),`${f.kind} ${fmtArea(q.slope)}`,`waste ${fmtPct(wasteOf(q).pct)}`,f.pitch!=null&&'pitch '+fmtPitch(f.pitch),f.inputMode==='plan'&&'entered as plan + pitch',`laid from the ${STARTS[f.layout.start].toLowerCase()}`,q.splices&&`${q.splices} splices required`].filter(Boolean).join(' · '),{size:8.5});
     y+=10;
-    const tabW=locCols.reduce((a,c)=>a+c.w,0),dw=PW-2*M-tabW-16,top=y;
+    // An ID is what the piece is marked with, so its column widens for a long one and never cuts it short.
+    const rows=byMark(L.pieces),cols=[{...locCols[0],w:rows.reduce((a,r)=>Math.max(a,textW(r.p.id,7.5)*1.06+8),locCols[0].w)},...locCols.slice(1)];
+    const tabW=cols.reduce((a,c)=>a+c.w,0),dw=PW-2*M-tabW-16,top=y;
     pg.ops.push(...facetPlan(L,dw,BOT-top,{x:M,y:top}).ops);
     y=top+12;
-    table(locCols,byMark(L.pieces).map(locRow),{x:M+dw+16,size:7.5});
+    table(cols,rows.map(locRow),{x:M+dw+16,size:7.5});
   }
   // Production cut list.
   for(const g of gs){
@@ -1191,9 +1239,8 @@ function reportSheets(date,only){
   return pages;
 }
 const buildPDF=(date,only)=>pdfBuild(reportPages(date,only),P.name);
-function buildCSV(kind,only){return withFmt(P.units.csv,()=>csvRows(kind,only));}
+function buildCSV(kind,only){compute();return withFmt(P.units.csv,()=>csvRows(kind,only));}
 function csvRows(kind,only){
-  compute();
   const q=v=>/[",\n]/.test(v=String(v??''))?'"'+v.replace(/"/g,'""')+'"':v,gs=scopePks(only),d=v=>+v.toFixed(4);
   const rows=kind==='coil'
     ?[['Coil width (in)','Gauge','Color','Profiles','Panel length (ft)','Coil area (sf)','Weight (lb)','Coils','Length each (ft)','Weight each (lb)','Order length (ft)','Order area (sf)','Order weight (lb)'],
@@ -1224,6 +1271,9 @@ const opt=(o,v)=>(Array.isArray(o)?o:Object.entries(o)).map(([k,l])=>`<option va
 // data-b is the path a field writes to; data-t says how to read what was typed. The <em> is
 // where the parsed value is echoed while typing, so a slip shows before it is committed.
 const fld=(label,b,t,v,x='')=>`<label>${label}<em></em><input data-b="${b}" data-t="${t}" value="${esc(v)}" ${x}></label>`;
+// The range a number has to stay in. These are checkProject's own limits: a value it would not
+// take back is one that would be gone the next time the project opened.
+const lim=(a,b)=>`data-min="${a}" data-max="${b}"`;
 // Profiles are listed under their type: a library is a couple of dozen long names, and the type is
 // the first thing anyone looks for in it.
 const profOpt=(v,first)=>(first?opt(first,v):'')+Object.entries(PTYPES).map(([t,l])=>{const g=P.profiles.filter(x=>x.type===t);return g.length?`<optgroup label="${l}">${opt(g.map(x=>[x.id,x.name]),v)}</optgroup>`:'';}).join('');
@@ -1264,18 +1314,18 @@ function renderInputs(){
     h+=`${sel('Fraction precision','u.prec',[[16,'1/16'],[8,'1/8'],[4,'1/4'],[2,'1/2']],P.units.prec,'int')}${sel('Show areas as','u.area',{sf:'Square feet',sq:'Roofing squares',m2:'Square meters'},P.units.area)}</div>`;
     h+=`<p class="hint">Any field takes any format whatever is chosen here: <code>10'-6 1/2"</code>, <code>10.5 ft</code>, <code>3.2 m</code>, <code>=96+24</code>.</p>`;
     h+=`<h2>Reports</h2><div class="two">${sel('PDF and print lengths','u.pdf',{'':'Same as the screen',...FMTS},P.units.pdf,'selnull')}${sel('CSV lengths','u.csv',{'':'Same as the screen',...FMTS},P.units.csv,'selnull')}</div><p class="hint">CSV files always carry decimal inches as well.</p>`;
-    h+=`<h2>Coil order</h2><div class="three">${fld('Max coil length, ft','c.maxFt','numopt',P.coil.maxFt??'','data-min="1" placeholder="no limit"')}${fld('Max coil weight, lb','c.maxLb','numopt',P.coil.maxLb??'','data-min="1" placeholder="no limit"')}${fld('Extra per coil, %','c.extra','num',P.coil.extra,'data-min="0"')}</div>`;
+    h+=`<h2>Coil order</h2><div class="three">${fld('Max coil length, ft','c.maxFt','numopt',P.coil.maxFt??'',lim(1,1e6)+' placeholder="no limit"')}${fld('Max coil weight, lb','c.maxLb','numopt',P.coil.maxLb??'',lim(1,1e7)+' placeholder="no limit"')}${fld('Extra per coil, %','c.extra','num',P.coil.extra,lim(0,1000))}</div>`;
     h+=`<p class="hint">The cut list's Coil order view splits each coil to stay under both limits. Weight comes from the profile's gauge.</p>`;
-    h+=`<h2>Panel IDs</h2>${fld('Longest ID the roll former can mark','p.idMax','int',P.idMax,'inputmode="numeric" data-min="4"')}<p class="hint">IDs read facet-panel, e.g. R2-07. Identical panels in a facet share one. Anything longer than this is flagged.</p>`;
+    h+=`<h2>Panel IDs</h2>${fld('Longest ID the roll former can mark','p.idMax','int',P.idMax,'inputmode="numeric" '+lim(4,40))}<p class="hint">IDs read facet-panel, e.g. R2-07. Identical panels in a facet share one. Anything longer than this is flagged.</p>`;
     const prof=P.profiles.find(x=>x.id===d.profileId)||P.profiles[0],kinds=new Set(P.facets.map(x=>x.kind));
     h+=`<h2>Defaults for every facet</h2>${profSel('Profile','d.profileId',d.profileId)}`;
-    h+=`<div class="two">${fld('Color','d.color','text',d.color,`placeholder="${esc(prof.color||'from profile')}"`)}${fld('End lap','d.lap','lenopt',len(d.lap),`data-min="0" placeholder="${esc(fmtField(prof.lap))} from profile"`)}</div>`;
+    h+=`<div class="two">${fld('Color','d.color','text',d.color,`placeholder="${esc(prof.color||'from profile')}"`)}${fld('End lap','d.lap','lenopt',len(d.lap),`${lim(0,600)} placeholder="${esc(fmtField(prof.lap))} from profile"`)}</div>`;
     h+=`<div class="two">${sel('Split long runs','d.split',SPLITS,d.split)}${sel('Lap placement','d.lapMode',LAPMODES,d.lapMode)}</div>`;
-    if(d.lapMode==='stagger')h+=fld('Stagger alternate strips by','d.stagger','len',len(d.stagger),'data-min="0"');
-    if(d.lapMode==='purlin')h+=`<div class="two">${fld('Purlin spacing','d.purlinSp','len',len(d.purlinSp),'data-min="1"')}${fld('First purlin above eave','d.purlin0','len',len(d.purlin0))}</div>`;
-    h+=`<div class="two">${sel('Round cuts up to','d.round',[[0.125,'1/8"'],[0.25,'1/4"'],[0.5,'1/2"'],[1,'1"']],d.round,'float')}${fld('Min edge rip','d.ripMin','len',len(d.ripMin),'data-min="0"')}</div>`;
+    if(d.lapMode==='stagger')h+=fld('Stagger alternate strips by','d.stagger','len',len(d.stagger),lim(0,6000));
+    if(d.lapMode==='purlin')h+=`<div class="two">${fld('Purlin spacing','d.purlinSp','len',len(d.purlinSp),lim(1,6000))}${fld('First purlin above eave','d.purlin0','len',len(d.purlin0),lim(-6000,6000))}</div>`;
+    h+=`<div class="two">${sel('Round cuts up to','d.round',[[0.125,'1/8"'],[0.25,'1/4"'],[0.5,'1/2"'],[1,'1"']],d.round,'float')}${fld('Min edge rip','d.ripMin','len',len(d.ripMin),lim(0,600))}</div>`;
     h+=`<h2>Edge allowances</h2><div class="two">`;
-    for(const t of [...(kinds.has('wall')&&!kinds.has('roof')?[]:KIND_EDGES.roof),...(kinds.has('wall')?KIND_EDGES.wall:[])])h+=fld(ALLOW_LABEL[t],'d.allow.'+t,'len',len(d.allow[t]||0));
+    for(const t of [...(kinds.has('wall')&&!kinds.has('roof')?[]:KIND_EDGES.roof),...(kinds.has('wall')?KIND_EDGES.wall:[])])h+=fld(ALLOW_LABEL[t],'d.allow.'+t,'len',len(d.allow[t]||0),lim(-600,600));
     h+=`</div><p class="hint">Every edge of that type in the project takes this unless the edge itself overrides it. Overhangs and extensions lengthen the panel; cutbacks shorten it; insets move the layout limit and change the edge rip.</p>`;
   }else if(S.t==='profiles'){
     const q=curProf();
@@ -1283,17 +1333,17 @@ function renderInputs(){
     h+=profSel('Profile','s.prof',q.id);
     h+=`${fld('Name','q.name','text',q.name)}${fld('Manufacturer','q.mfr','text',q.mfr)}<div class="two">${fld('Gauge','q.gauge','text',q.gauge)}${fld('Color','q.color','text',q.color)}</div>`;
     h+=sel('Type','q.type',PTYPES,q.type);
-    h+=`<div class="three">${fld('Coverage width','q.cover','len',len(q.cover),'data-min="1"')}${fld('Stretch out','q.sheetW','len',len(q.sheetW),'data-min="1"')}${fld('Rib height','q.rib','len',len(q.rib),'data-min="0"')}`;
-    h+=`${fld('Max length','q.maxLen','len',len(q.maxLen),'data-min="0"')}${fld('Min length','q.minLen','len',len(q.minLen),'data-min="0"')}${fld('End lap','q.lap','len',len(q.lap),'data-min="0"')}</div>`;
-    h+=`<div class="two">${sel('Lays from','q.hand',{either:'Either edge',left:'Left edge only',right:'Right edge only'},q.hand)}${fld('Min slope, rise in 12','q.minSlope','num',q.minSlope,'data-min="0"')}</div>`;
-    h+=fld('Coil weight, lb per sq ft (optional)','q.psf','numopt',q.psf??'',`data-min="0.01" placeholder="${coilPsf({gauge:q.gauge})?coilPsf({gauge:q.gauge})+' from the gauge':'gauge not recognized, enter a weight'}"`);
+    h+=`<div class="three">${fld('Coverage width','q.cover','len',len(q.cover),lim(1,600))}${fld('Stretch out','q.sheetW','len',len(q.sheetW),lim(1,600))}${fld('Rib height','q.rib','len',len(q.rib),lim(0,24))}`;
+    h+=`${fld('Max length','q.maxLen','len',len(q.maxLen),lim(0,12000))}${fld('Min length','q.minLen','len',len(q.minLen),lim(0,600))}${fld('End lap','q.lap','len',len(q.lap),lim(0,600))}</div>`;
+    h+=`<div class="two">${sel('Lays from','q.hand',{either:'Either edge',left:'Left edge only',right:'Right edge only'},q.hand)}${fld('Min slope, rise in 12','q.minSlope','num',q.minSlope,lim(0,24))}</div>`;
+    h+=fld('Coil weight, lb per sq ft (optional)','q.psf','numopt',q.psf??'',`${lim(0.01,50)} placeholder="${coilPsf({gauge:q.gauge})?coilPsf({gauge:q.gauge})+' from the gauge':'gauge not recognized, enter a weight'}"`);
     h+=`<p class="hint">A max length of 0 means no limit. The starter profiles are generic: check every number with the manufacturer. Each covers what its stock coil leaves after the seams, and a nominal 24" coil is 23-7/8" as slit.</p>`;
     h+=`<h2>Share<span><button class="sb" data-act="expProfiles">Export library</button><button class="sb" data-act="impProfiles">Import library</button></span></h2><p class="hint">A library is a JSON file. Importing adds its profiles to this project.</p>`;
   }else if(S.t==='package'||!f){
     h+=`<h2>Package<span><button class="sb" data-act="pkgPdf" title="PDF of this package alone">PDF</button>${P.packages.length>1?'<button class="sb" data-act="delPackage">Delete</button>':''}</span></h2>`;
     h+=`<div class="two">${fld('Name','k.name','text',pk.name)}${fld('ID prefix (optional)','k.prefix','text',pk.prefix,'maxlength="3" placeholder="e.g. B"')}</div>`;
     h+=`<p class="hint">A package groups facets that are ordered together: it gets its own subtotal and its own PDF. Profile, laps and edge allowances are <button class="sb" data-act="sel" data-t="project">project defaults</button>, and any facet can override them.</p>`;
-    h+=`<h2>Extra panels</h2>${fld('Extra panels to order','k.extraPanels','int',pk.extraPanels,'inputmode="numeric" data-min="0"')}<p class="hint">Spares against a mistake or damage: this many more of the longest panel, for each profile and color in this package. They are added to the cut list by length, the summary and the coil order, marked EXTRA.</p>`;
+    h+=`<h2>Extra panels</h2>${fld('Extra panels to order','k.extraPanels','int',pk.extraPanels,'inputmode="numeric" '+lim(0,9999))}<p class="hint">Spares against a mistake or damage: this many more of the longest panel, for each profile and color in this package. They are added to the cut list by length, the summary and the coil order, marked EXTRA.</p>`;
     if(!f)h+=`<p class="hint">This package has no facets yet. <button class="sb" data-act="addFacet" data-id="${esc(pk.id)}">+ Facet</button></p>`;
   }else{
     const L=R.L.get(f.id),m=f.params,wall=f.kind==='wall',y=f.layout,e=L.e,o=f.ov,hl=wall?'height':f.inputMode==='plan'?'plan run':'slope';
@@ -1301,7 +1351,7 @@ function renderInputs(){
     h+=`<h2>Facet <span class="badge${f.inputMode==='plan'?' plan':''}">${f.inputMode==='plan'?'plan + pitch':'slope'}</span><span><button class="sb" data-act="dupFacet">Duplicate</button><button class="sb" data-act="mirFacet" title="Duplicate as a mirror image, for the opposite side">Mirror</button><button class="sb" data-act="upFacet">↑</button><button class="sb" data-act="downFacet">↓</button><button class="sb" data-act="delFacet">Delete</button></span></h2>`;
     h+=`<div class="three">${fld('ID','f.mark','text',f.mark,'maxlength="4"')}<span style="grid-column:span 2">${fld('Name','f.name','text',f.name,'placeholder="e.g. Front slope"')}</span></div>`;
     h+=`<div class="two">${sel('Surface','f.kind',{roof:'Roof',wall:'Wall'},f.kind)}${P.packages.length>1?sel('Package','f.$pk',Object.fromEntries(P.packages.map(x=>[x.id,x.name])),pk.id):''}</div>`;
-    if(!wall)h+=`<div class="two">${sel('Dimensions are','f.inputMode',{slope:'Slope, as taped on the roof',plan:'Plan + pitch, from drawings'},f.inputMode)}${fld('Pitch'+(f.inputMode==='plan'?'':' (optional)'),'f.pitch','pitch',f.pitch==null?'':`${+f.pitch.toFixed(3)}:12`,'placeholder="6:12, 26.6 deg, 50%"')}</div>`;
+    if(!wall)h+=`<div class="two">${sel('Dimensions are','f.inputMode',{slope:'Slope, as taped on the roof',plan:'Plan + pitch, from drawings'},f.inputMode)}${fld('Pitch'+(f.inputMode==='plan'?'':' (optional)'),'f.pitch','pitch',f.pitch==null?'':`${+f.pitch.toFixed(3)}:12`,lim(0,120)+' placeholder="6:12, 26.6 deg, 50%"')}</div>`;
     if(f.inputMode==='plan'&&f.pitch!=null)h+=`<p class="hint">Dimensions square to the eave are multiplied by ${L.k.toFixed(4)}; dimensions along it are left alone.</p>`;
     h+=`<label>Profile${mark('profileId')}<select data-b="o.profileId" data-t="selnull">${profOpt(o.profileId,{'':`Project default: ${(P.profiles.find(x=>x.id===d.profileId)||P.profiles[0]).name}`})}</select></label>`;
     h+=`<p class="hint">The default is one of the <button class="sb" data-act="sel" data-t="project">project settings</button>.</p>`;
@@ -1319,8 +1369,10 @@ function renderInputs(){
       h+=sel('Enter the perimeter as','f.custom',{xy:'X / Y points',walk:'Walk the edges: length + turn'},f.custom);
       if(f.custom==='walk'){
         h+=`<table class="mini"><tr><th></th><th>Edge length</th><th>Then turn, degrees</th><th></th></tr>`;
-        f.walk.forEach((s,i)=>{h+=`<tr><td class="n">${i+1}</td><td><input data-b="wk.${i}.len" data-t="len" data-min="0" value="${esc(len(s.len))}"></td><td><input data-b="wk.${i}.turn" data-t="num" value="${esc(s.turn)}"></td><td class="n">${f.walk.length>3?`<button class="sb" data-act="delRow" data-i="${i}">×</button>`:''}</td></tr>`;});
-        h+=`</table><button class="sb" data-act="addRow">+ Edge</button><p class="hint" style="margin-top:6px">Start at the left end of the eave heading right. A positive turn is to the left (counter-clockwise); a square corner is 90.${f.inputMode==='plan'?' Lengths here are in plan.':''}</p>`;
+        f.walk.forEach((s,i)=>{h+=`<tr><td class="n">${i+1}</td><td><input data-b="wk.${i}.len" data-t="len" data-min="0" value="${esc(len(s.len))}"></td><td><input data-b="wk.${i}.turn" data-t="num" ${lim(-360,360)} value="${esc(s.turn)}"></td><td class="n">${f.walk.length>3?`<button class="sb" data-act="delRow" data-i="${i}">×</button>`:''}</td></tr>`;});
+        h+=`</table><button class="sb" data-act="addRow">+ Edge</button><p class="hint" style="margin-top:6px">${f.walk0?'The first edge sets off at the heading below':'Start at the left end of the eave heading right'}. A positive turn is to the left (counter-clockwise); a square corner is 90.${f.inputMode==='plan'?' Lengths here are in plan.':''}</p>`;
+        // Only an outline that came from points can set off any way but along the eave.
+        if(f.walk0)h+=fld('First edge heads, degrees up from the eave','f.walk0','num',f.walk0,lim(-360,360));
       }else{
         h+=`<table class="mini"><tr><th></th><th>X, along eave</th><th>Y, ${hl}</th><th></th></tr>`;
         f.pts.forEach((p,i)=>{h+=`<tr><td class="n">${i+1}</td><td><input data-b="pt.${i}.0" data-t="len" value="${esc(len(p[0]))}"></td><td><input data-b="pt.${i}.1" data-t="len" value="${esc(len(p[1]))}"></td><td class="n">${f.pts.length>3?`<button class="sb" data-act="delRow" data-i="${i}">×</button>`:''}</td></tr>`;});
@@ -1328,23 +1380,23 @@ function renderInputs(){
       }
     }
     h+=`<p class="hint bad" id="shapeMsg"></p><h2>Edges</h2><table class="mini"><tr><th></th><th>Length</th><th>Type</th><th>Allowance</th></tr>`;
-    for(const ed of L.edges)h+=`<tr><td class="n">${ed.i+1}</td><td class="n">${fmtLen(ed.len)}</td><td><select data-b="e.${ed.i}.type" data-t="selnull">${opt({'':`${EDGE[ed.auto]} (auto)`,...Object.fromEntries(KIND_EDGES[f.kind].map(t=>[t,EDGE[t]]))},(f.edges[ed.i]||{}).type)}</select></td><td><input data-b="e.${ed.i}.allow" data-t="lenopt" value="${esc(len((f.edges[ed.i]||{}).allow))}" placeholder="${esc(fmtField(e.allow[ed.type]||0))}"></td></tr>`;
+    for(const ed of L.edges)h+=`<tr><td class="n">${ed.i+1}</td><td class="n">${fmtLen(ed.len)}</td><td><select data-b="e.${ed.i}.type" data-t="selnull">${opt({'':`${EDGE[ed.auto]} (auto)`,...Object.fromEntries(KIND_EDGES[f.kind].map(t=>[t,EDGE[t]]))},(f.edges[ed.i]||{}).type)}</select></td><td><input data-b="e.${ed.i}.allow" data-t="lenopt" ${lim(-600,600)} value="${esc(len((f.edges[ed.i]||{}).allow))}" placeholder="${esc(fmtField(e.allow[ed.type]||0))}"></td></tr>`;
     h+=`</table><p class="hint">Or click an edge on the drawing. A blank allowance takes the project's value for that edge type.</p>`;
     const runs=y.dir==='edge'?`Parallel to edge ${y.dirEdge+1}`:y.dir==='angle'?`${y.angle}° off square`:'Square to the eave';
     h+=fold('layout','Layout',[runs,'from the '+STARTS[y.start].toLowerCase(),Math.abs(y.offset)>EPS&&'offset '+fmtLen(y.offset),y.balance&&y.start!=='center-panel'&&y.start!=='center-seam'&&'rips balanced',y.wind&&'wind from the '+y.wind].filter(Boolean).join(' · '));
     if(S.open.layout){
     h+=`<div class="two">${sel('Panels run','y.dir',{eave:'Square to the eave',edge:'Parallel to an edge',angle:'At an angle off square'},y.dir)}`;
-    h+=y.dir==='edge'?sel('Which edge','y.dirEdge',L.edges.map(ed=>[ed.i,`${ed.i+1} ${EDGE[ed.type]}`]),y.dirEdge,'int'):y.dir==='angle'?fld('Angle, degrees','y.angle','num',y.angle,'data-min="-89"'):'<span></span>';
+    h+=y.dir==='edge'?sel('Which edge','y.dirEdge',L.edges.map(ed=>[ed.i,`${ed.i+1} ${EDGE[ed.type]}`]),y.dirEdge,'int'):y.dir==='angle'?fld('Angle, degrees','y.angle','num',y.angle,lim(-89,89)):'<span></span>';
     h+=`${sel('Start at','y.start',STARTS,y.start)}${fld('Offset','y.offset','len',len(y.offset))}</div>`;
     h+=sel('Prevailing wind, as this facet is drawn','y.wind',{'':'Not given',left:'From the left',right:'From the right'},y.wind);
-    h+=fld('North arrow, degrees clockwise from straight up the drawing (optional)','f.north','numopt',f.north??'','placeholder="none"');
+    h+=fld('North arrow, degrees clockwise from straight up the drawing (optional)','f.north','numopt',f.north??'',lim(-360,360)+' placeholder="none"');
     if(y.start==='left'||y.start==='right')h+=`<label class="chk"><input type="checkbox" data-b="y.balance" data-t="chk"${y.balance?' checked':''}>Balance the two edge rips</label>`;
     }
     const OVS={split:'split',lapMode:'lap placement',lap:'end lap',stagger:'stagger'},own=Object.keys(OVS).filter(k=>o[k]!=null).map(k=>OVS[k]);
     h+=fold('ov','Laps and splits',own.length?'this facet\'s own '+own.join(', '):'project defaults');
     if(S.open.ov){
     h+=`<div class="two"><label>Split long runs${mark('split')}<select data-b="o.split" data-t="selnull">${opt({'':'Project default',...SPLITS},o.split)}</select></label><label>Lap placement${mark('lapMode')}<select data-b="o.lapMode" data-t="selnull">${opt({'':'Project default',...LAPMODES},o.lapMode)}</select></label>`;
-    h+=`<label>End lap${mark('lap')}<em></em><input data-b="o.lap" data-t="lenopt" data-min="0" value="${esc(len(o.lap))}" placeholder="${esc(fmtField(d.lap??e.profile.lap))}"></label>${e.lapMode==='stagger'?`<label>Stagger${mark('stagger')}<em></em><input data-b="o.stagger" data-t="lenopt" data-min="0" value="${esc(len(o.stagger))}" placeholder="${esc(fmtField(d.stagger))}"></label>`:''}</div>`;
+    h+=`<label>End lap${mark('lap')}<em></em><input data-b="o.lap" data-t="lenopt" ${lim(0,600)} value="${esc(len(o.lap))}" placeholder="${esc(fmtField(d.lap??e.profile.lap))}"></label>${e.lapMode==='stagger'?`<label>Stagger${mark('stagger')}<em></em><input data-b="o.stagger" data-t="lenopt" ${lim(0,6000)} value="${esc(len(o.stagger))}" placeholder="${esc(fmtField(d.stagger))}"></label>`:''}</div>`;
     }
     h+=fold('op','Openings',f.openings.length?`${f.openings.length} cut out`:'none','<span><button class="sb" data-act="addOpen">+ Opening</button></span>');
     if(S.open.op&&f.openings.length){
@@ -1362,6 +1414,7 @@ function badFields(L){
   const f=L.f,out=new Set(),n=L.pts.length,xy=f.template==='custom'&&f.custom==='xy',walk=f.template==='custom'&&f.custom==='walk';
   if(L.bad.cross)for(const k of ['m.','pt.','wk.'])out.add(k);
   if(L.bad.gap)out.add('wk.');
+  for(const i of L.bad.open)out.add(`op.${i}.`);
   for(const i of L.bad.short){
     const e=L.edges[i],level=Math.abs(e.uy)<0.01;
     if(xy){out.add(`pt.${i}.`);out.add(`pt.${(i+1)%n}.`);}
@@ -1373,7 +1426,7 @@ function badFields(L){
 // Runs after every redraw of the preview, so a dimension turns red while it is still being typed.
 function markBad(){
   const f=curF(),L=f&&R.L.get(f.id),pre=L?badFields(L):[],msg=$('#shapeMsg');
-  for(const el of $('#inputs').querySelectorAll('[data-b]'))if(el.classList&&/^(m|pt|wk)\./.test(el.dataset.b))el.classList.toggle('bad',pre.some(k=>el.dataset.b.startsWith(k)));
+  for(const el of $('#inputs').querySelectorAll('[data-b]'))if(el.classList&&/^(m|pt|wk|op)\./.test(el.dataset.b))el.classList.toggle('bad',pre.some(k=>el.dataset.b.startsWith(k)));
   if(msg)msg.textContent=L?L.warn.filter(w=>/crosses itself|does not close|shorter than one/.test(w)).join(' '):'';
 }
 
@@ -1408,7 +1461,7 @@ function renderMain(keepTx){
     const e=L.edges[S.edge],ed=f.edges[e.i]||{},pop=$('#edgePop');
     // Every keystroke comes through here, and rebuilding the field being typed in would drop the caret.
     if(typingPop){pop.hidden=false;return;}
-    pop.innerHTML=`<b>Edge ${e.i+1}<button class="sb" data-act="closeEdge">×</button></b>${fld('Length','e.'+e.i+'.len','len',fmtField(e.len),'data-min="1"')}<p class="hint">${edgeLenNote(f,e.i)}</p><label>Type<select data-b="e.${e.i}.type" data-t="selnull">${opt({'':`${EDGE[e.auto]} (auto)`,...Object.fromEntries(KIND_EDGES[f.kind].map(t=>[t,EDGE[t]]))},ed.type)}</select></label><label>${ALLOW_LABEL[e.type]}<em></em><input data-b="e.${e.i}.allow" data-t="lenopt" value="${esc(len(ed.allow))}" placeholder="${esc(fmtField(L.e.allow[e.type]||0))} from project"></label>`;
+    pop.innerHTML=`<b>Edge ${e.i+1}<button class="sb" data-act="closeEdge">×</button></b>${fld('Length','e.'+e.i+'.len','len',fmtField(e.len),'data-min="1"')}<p class="hint">${edgeLenNote(f,e.i)}</p><label>Type<select data-b="e.${e.i}.type" data-t="selnull">${opt({'':`${EDGE[e.auto]} (auto)`,...Object.fromEntries(KIND_EDGES[f.kind].map(t=>[t,EDGE[t]]))},ed.type)}</select></label><label>${ALLOW_LABEL[e.type]}<em></em><input data-b="e.${e.i}.allow" data-t="lenopt" ${lim(-600,600)} value="${esc(len(ed.allow))}" placeholder="${esc(fmtField(L.e.allow[e.type]||0))} from project"></label>`;
     pop.style.left=Math.max(6,Math.min(w-220,S.edgeXY[0]))+'px';pop.style.top=Math.max(6,Math.min(h-250,S.edgeXY[1]))+'px';pop.hidden=false;
   }
 }
@@ -1472,15 +1525,38 @@ function refresh(){
   if(!P.packages.some(k=>k.id===S.pk))S.pk=P.packages[0].id;
   if(!curF()||pkgOf(curF()).id!==S.pk)S.f=curPk().facetIds[0]||null;
   if(S.t==='facet'&&!curF())S.t='package';
-  compute();
-  // Rebuilding the pane would drop the caret, and Tab has usually already moved it to the next field.
-  const a=document.activeElement,key=a&&a.dataset&&a.dataset.b,top=$('#inputs').scrollTop;
+  owed=false;compute();
+  // Rebuilding a pane drops the caret, so it goes back into the field it was in, in whichever of
+  // the pane and the edge popup that was. A field that reads the same keeps its selection too.
+  const a=document.activeElement,key=a&&a.dataset&&a.dataset.b,box=key&&a.closest&&a.closest('#edgePop')?'#edgePop':'#inputs',top=$('#inputs').scrollTop;
+  const text=key&&a.tagName==='INPUT'&&a.type!=='checkbox',was=text?[a.value,a.selectionStart,a.selectionEnd]:null;
   renderTree();renderInputs();renderMain();renderFoot();
   $('#inputs').scrollTop=top;
-  if(key){const el=$(`#inputs [data-b="${key}"]`);if(el&&el.focus){el.focus();if(el.select&&el.tagName==='INPUT')el.select();}}
+  const el=key&&$(`${box} [data-b="${key}"]`);
+  if(el&&el.focus){el.focus();if(text&&el.value===was[0]&&el.setSelectionRange)el.setSelectionRange(was[1],was[2]);else if(el.select&&el.tagName==='INPUT')el.select();}
 }
-function changed(){undo.push(last);if(undo.length>200)undo.shift();redo=[];last=ser();refresh();autosave();}
-function loadProject(raw,t){P=checkProject(raw);S.pk=P.packages[0].id;S.f=null;S.t=t||(P.facets.length?'facet':'package');S.edge=null;undo=[];redo=[];last=ser();refresh();autosave();}
+// A field commits while the browser is part-way through something: moving focus on to the next
+// field, or waiting for the release of the press that took focus away. Rebuilding the panes at
+// that moment detaches whatever was about to be focused or clicked, so Tab would land nowhere
+// and the click would never arrive. A commit therefore changes the project at once and leaves
+// the redraw until the gesture is over. Any redraw in the meantime is the one that was owed.
+let owed=false,held=false;
+const settle=()=>{if(owed)refresh();};
+// A press whose release never arrives must not hold the redraw back for good.
+function redrawSoon(gesture){owed=true;setTimeout(settle,gesture&&held?1000:0);}
+window.addEventListener('pointerdown',()=>{held=true;},true);
+window.addEventListener('keydown',()=>{held=false;},true);
+for(const t of ['pointerup','pointercancel'])window.addEventListener(t,()=>{held=false;if(owed)setTimeout(settle,0);},true);
+function commit(){undo.push(last);if(undo.length>200)undo.shift();redo=[];last=ser();autosave();}
+function changed(){commit();refresh();}
+// The newcomer does not replace what is open until the engine has been through it. A file can
+// check out field by field and still be one the layout cannot draw, and finding that out
+// after the swap would leave neither project on the screen.
+function loadProject(raw,t){
+  const was=P;P=checkProject(raw);
+  try{compute();}catch(e){P=was;if(was)compute();throw new Error('That project could not be laid out, so it was not opened.');}
+  S.pk=P.packages[0].id;S.f=null;S.t=t||(P.facets.length?'facet':'package');S.edge=null;undo=[];redo=[];last=ser();refresh();autosave();
+}
 function step(from,to){if(!from.length)return;to.push(last);last=from.pop();P=JSON.parse(last);refresh();autosave();}
 let toastT;function toast(m){const t=$('#toast');t.textContent=m;t.className='on';clearTimeout(toastT);toastT=setTimeout(()=>{t.className='';},3400);}
 // Keep whatever the facet already is when its template changes, so switching is a refinement
@@ -1501,7 +1577,7 @@ function edgeDrives(f,i){
   if(i===0)return 'w';
   if(t==='rect'||t==='para')return i===2?'w':'h';
   if(t==='trap')return i===2&&m.top>EPS?'top':'h';
-  if(t==='angled')return i===2?'top':'h';
+  if(t==='angled')return i===2&&m.top>EPS?'top':'h';
   if(t==='gable')return i===2||i===3?'rise':'h';
   if(t==='shed')return i===2?'rise':(i===1)===(m.side==='right')?'h2':'h';
   return 'h';
@@ -1518,7 +1594,7 @@ function setEdgeLen(f,i,len){
   const m=f.params,k=slopeK(f),d=edgeDrives(f,i),r4=v=>+v.toFixed(4);
   if(d==='walk'){
     // Walk lengths are typed in plan when the facet is; the drawing's are on the slope.
-    let a=0;for(let j=0;j<i;j++)a+=f.walk[j].turn;
+    let a=f.walk0;for(let j=0;j<i;j++)a+=f.walk[j].turn;
     f.walk[i].len=r4(len/Math.hypot(Math.cos(a*DEG),k*Math.sin(a*DEG)));return;
   }
   const q=facetPts(f).map(p=>[p[0],p[1]/k]),n=q.length,a=q[i],b=q[(i+1)%n],dx=Math.abs(b[0]-a[0]);
@@ -1541,8 +1617,11 @@ function toWalk(pts){
 function applyField(el){
   const b=el.dataset.b,t=el.dataset.t,raw=el.value,blank=!String(raw??'').trim();let v=raw;
   if(t==='chk')v=el.checked;
-  else if(t==='num'||t==='int'||t==='float'){v=t==='int'?parseInt(raw,10):parseFloat(raw);if(!Number.isFinite(v))return 'That is not a number.';}
-  else if(t==='numopt'){if(blank)v=null;else{v=parseFloat(raw);if(!Number.isFinite(v))return 'That is not a number.';}}
+  // parseFloat would take the 12 off the front of `12 ft` and say nothing about the rest.
+  else if(t==='num'||t==='int'||t==='float'||t==='numopt'){
+    if(blank&&t==='numopt')v=null;
+    else{v=(t==='int'?/^[-+]?\d+$/:/^[-+]?(\d+\.?\d*|\.\d+)$/).test(String(raw).trim())?+raw:NaN;if(!Number.isFinite(v))return t==='int'?'That needs to be a whole number.':'That is not a number.';}
+  }
   else if(t==='len'||t==='lenopt'){
     if(blank&&t==='lenopt')v=null;
     else{v=parseLen(raw);if(!Number.isFinite(v))return `Could not read “${raw}” as a length.`;}
@@ -1551,6 +1630,7 @@ function applyField(el){
   }else if(t==='selnull')v=raw===''?null:raw;
   else if(t==='text')v=String(raw).slice(0,200);
   if(typeof v==='number'&&el.dataset.min!=null&&v<+el.dataset.min)return `That needs to be at least ${el.dataset.min}.`;
+  if(typeof v==='number'&&el.dataset.max!=null&&v>+el.dataset.max)return `That needs to be at most ${el.dataset.max}.`;
   if(b==='s.prof'){S.prof=v;return 'view';}
   if(b==='s.out'){S.out=v;return 'view';}
   const f=curF(),pk=curPk(),ks=b.split('.'),root=ks.shift(),i=+ks[0];
@@ -1565,7 +1645,13 @@ function applyField(el){
   }else if(b==='f.$pk'){pk.facetIds=pk.facetIds.filter(x=>x!==f.id);P.packages.find(k=>k.id===v).facetIds.push(f.id);S.pk=v;}
   else if(b==='f.custom'){
     if(f.custom===v)return;
-    if(v==='walk')f.walk=toWalk(f.pts);else f.pts=walkPts(f.walk).map(p=>[+p[0].toFixed(4),+p[1].toFixed(4)]);
+    if(v==='walk'){
+      // A walk has no corner to start from and says nothing of which way it sets off. The first
+      // is made up by moving the openings with the outline; the second is kept beside the walk.
+      const [a,b]=f.pts;
+      f.walk=toWalk(f.pts);f.walk0=+(Math.atan2(b[1]-a[1],b[0]-a[0])/DEG).toFixed(4);
+      for(const o of f.openings){o.x=+(o.x-a[0]).toFixed(4);o.y=+(o.y-a[1]).toFixed(4);}
+    }else f.pts=walkPts(f.walk,f.walk0).map(p=>[+p[0].toFixed(4),+p[1].toFixed(4)]);
     f.custom=v;
   }else if(root==='e'&&ks[1]==='len'){const r=setEdgeLen(f,i,v);if(r)return r;}
   else if(root==='e'){while(f.edges.length<=i)f.edges.push({type:null,allow:null});f.edges[i][ks[1]]=v;}
@@ -1595,10 +1681,11 @@ function onType(e){
 function onCommit(e){
   const el=e.target;if(!el.dataset||!el.dataset.b)return;
   const r=applyField(el);
-  if(r==='view')refresh();
   // Earlier keystrokes may already have moved the project, so a refusal puts it back.
-  else if(r){P=JSON.parse(last);toast(r);refresh();}
-  else changed();
+  if(r&&r!=='view'){P=JSON.parse(last);toast(r);}
+  else if(!r)commit();
+  // Only a typed field commits by losing focus; a list or a checkbox changes where the caret already is.
+  redrawSoon(el.tagName==='INPUT'&&el.type!=='checkbox');
 }
 for(const id of ['#inputs','#edgePop']){$(id).addEventListener('input',onType);$(id).addEventListener('change',onCommit);}
 function mirrorFacet(c){
@@ -1607,16 +1694,13 @@ function mirrorFacet(c){
   if(c.template==='tri'||c.template==='gable')m.apex=m.apex==null?null:m.w-m.apex;
   if(c.template==='para')m.skew=-m.skew;
   if(c.template==='angled'||c.template==='shed')m.side=m.side==='left'?'right':'left';
-  if(c.template==='custom'){
-    // Reflected and re-walked the other way round, so the outline keeps its direction.
-    c.pts=pts.map(p=>[x0+x1-p[0],p[1]]).reverse();c.custom='xy';
-    c.edges=c.pts.map((_,i)=>c.edges[(2*n-2-i)%n]||{...blank});
-  }else{
-    const order=n===3?[0,2,1]:n===5?[0,4,3,2,1]:[0,3,2,1];
-    c.edges=order.map(i=>c.edges[i]||{...blank});
-  }
+  // Reflected and re-walked the other way round, so the outline keeps its direction.
+  if(c.template==='custom'){c.pts=pts.map(p=>[x0+x1-p[0],p[1]]).reverse();c.custom='xy';}
+  // Which of the old edges each new one was. Whatever names an edge by number follows it.
+  const from=c.template==='custom'?pts.map((_,i)=>(2*n-2-i)%n):n===3?[0,2,1]:n===5?[0,4,3,2,1]:[0,3,2,1],y=c.layout;
+  c.edges=from.map(i=>c.edges[i]||{...blank});
+  y.dirEdge=Math.max(0,from.indexOf(y.dirEdge%n));
   c.openings=c.openings.map(o=>({...o,x:x0+x1-o.x-o.w}));
-  const y=c.layout;
   if(y.start==='left'||y.start==='right')y.start=y.start==='left'?'right':'left';else y.offset=-y.offset;
   if(y.wind)y.wind=y.wind==='left'?'right':'left';
   y.angle=-y.angle;if(c.north!=null)c.north=-c.north;
@@ -1695,10 +1779,12 @@ cv.addEventListener('pointerdown',e=>{
     // The new corner splits edge m in two; both halves keep what that edge was.
     f.edges.splice(i,0,{...(f.edges[+d.m]||{type:null,allow:null})});moved=true;
   }
-  S.edge=null;drag={i,tx:lastTx,moved};cv.setPointerCapture(e.pointerId);e.preventDefault();
+  S.edge=null;drag={i,tx:lastTx,moved,x:e.clientX,y:e.clientY};cv.setPointerCapture(e.pointerId);e.preventDefault();
 });
 cv.addEventListener('pointermove',e=>{
   if(!drag)return;
+  // A press that hardly moves is a click, and a click must not pull the corner onto the inch.
+  if(!drag.moved&&Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<4)return;
   const r=cv.getBoundingClientRect(),{s,ox,oy,xmin,ymax,k}=drag.tx,f=curF();
   let x=xmin+(e.clientX-r.left-ox)/s,y=(ymax-(e.clientY-r.top-oy)/s)/k;
   // Snap to the inch unless Alt is held.
@@ -1743,7 +1829,8 @@ const CMD={
   save(){download(fileBase()+'.json',JSON.stringify(P,null,1),'application/json');},
   undo(){step(undo,redo);},redo(){step(redo,undo);},
   pdf(only){
-    if(!compute().total.count){toast('There are no panels to put in a PDF yet.');return;}
+    compute();
+    if(!scopePks(only).some(g=>g.q.count)){toast('There are no panels to put in a PDF yet.');return;}
     download(outBase(only)+'.pdf',buildPDF(today(),only),'application/pdf');
   },
   print(only){fillPrint(today(),only);setTimeout(()=>window.print(),50);},
@@ -1762,7 +1849,13 @@ function readFile(input,fn){
     fr.readAsText(file);e.target.value='';
   });
 }
-readFile($('#fileIn'),(raw,name)=>{loadProject(raw);toast('Opened '+name);});
+// Open asks as New and Sample do, but once the file is in hand: a browser can refuse to show
+// the picker for a click that has gone stale behind a question.
+readFile($('#fileIn'),(raw,name)=>{
+  checkProject(raw);
+  if(!untouched()&&P.facets.length&&!confirm(`Replace this project with ${name}? Save first if you want to keep it.`))return;
+  loadProject(raw);toast('Opened '+name);
+});
 function importProfiles(raw){
   const got=checkProfiles(raw&&raw.profiles,()=>'p'+P.seq++);
   if(!got.length)throw new Error('That file has no profiles in it.');
@@ -1776,15 +1869,24 @@ window.addEventListener('keydown',e=>{
   const c=k==='s'?'save':k==='o'?'open':k==='p'?'print':!typing&&k==='z'?(e.shiftKey?'redo':'undo'):!typing&&k==='y'?'redo':null;
   if(c){e.preventDefault();CMD[c]();}
 });
-window.addEventListener('resize',()=>{if(S.tab==='layout')renderMain();});
+// A phone's keyboard opening is a resize as well, and the popup's field has to outlive it.
+window.addEventListener('resize',()=>{
+  if(S.tab!=='layout')return;
+  const a=document.activeElement;typingPop=!!(a&&a.closest&&a.closest('#edgePop'));renderMain();typingPop=false;
+});
 window.addEventListener('afterprint',()=>{$('#print').innerHTML='';});
 window.addEventListener('beforeunload',()=>{try{localStorage.setItem('panels.autosave',ser());}catch(e){}});
 
 // ---- boot ----------------------------------------------------------------------------------
 (()=>{
-  let raw=null;try{raw=JSON.parse(localStorage.getItem('panels.autosave'));}catch(e){}
-  try{if(raw)loadProject(raw);else startProject();}
-  catch(e){startProject();}
+  let s=null;try{s=localStorage.getItem('panels.autosave');}catch(e){}
+  try{const raw=s&&JSON.parse(s);if(raw)loadProject(raw);else startProject();}
+  catch(e){
+    // A new project is about to be autosaved over it, so what could not be opened is parked
+    // where it can still be fished out.
+    try{localStorage.setItem('panels.autosave.bad',s);}catch(e2){}
+    startProject();toast('The project kept in this browser could not be opened, so a new one was started. Open your last saved file instead.');
+  }
 })();
 </script>
 </body>
