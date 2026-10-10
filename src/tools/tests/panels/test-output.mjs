@@ -7,8 +7,24 @@ const DATE = 'Oct 8, 2026';
 // The project default, p2, and what its 24" coil (23-7/8" as slit) covers once the seams are formed.
 const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
 
-// ===== first visit opens the sample =====
+// ===== first visit opens a new project at its setup step =====
 {
+  t.eq([app.ev('S').t, app.P.facets.map(f => [f.mark, f.kind, f.template, f.inputMode]), app.P.name], ['setup', [['R1', 'roof', 'rect', 'slope']], 'Untitled project'], 'a first visit starts a project: one rectangle of roof, on the setup step');
+  const html = () => app.$('#inputs').innerHTML;
+  t.ok(['p.name', 'p.jobNo', 'd.profileId', 'f.kind', 'f.template'].every(b => html().includes(`data-b="${b}"`)) && !html().includes('data-b="m.w"'), 'which asks for the job, the profile and the first facet, and no dimensions yet');
+  app.type('f.kind', 'sel', 'wall');
+  t.eq([app.ev('S').t, app.P.facets[0].mark], ['setup', 'W1'], 'answering it stays on the step');
+  t.ok(app.ev('untouched')() === false, 'and the project now has something to lose');
+  app.ev('ACT').sel({ dataset: { t: 'facet', id: app.P.facets[0].id } });
+  t.ok(app.ev('S').t === 'facet' && html().includes('data-b="m.w"'), 'its button goes on to the facet\'s dimensions');
+  app.ev('CMD').new();
+  t.eq([app.ev('S').t, app.P.facets.length, app.ev('untouched')()], ['setup', 1, true], 'New starts the same way');
+  t.ok(/data-act="sel" data-t="project"><span>Project settings/.test(app.$('#tree').innerHTML), 'project settings have a row of their own in the tree');
+}
+
+// ===== the sample =====
+{
+  app.ev('ACT').sample();
   const R = app.ev('compute')();
   t.eq(app.P.facets.map(f => f.mark), ['R1', 'R2', 'R3', 'R4'], 'sample facets are R1-R4');
   // A 40 x 28 hip roof has 1,120 sf of plan area whatever its facets look like. The sample is
@@ -202,8 +218,8 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
 
   const fresh = boot(undefined, { autosave: saved });
   t.eq(fresh.P.facets.length, 5, 'autosave is restored on boot');
-  t.eq(boot(undefined, { autosave: '{not json' }).P.facets.length, 4, 'a corrupt autosave falls back to the sample');
-  t.eq(boot(undefined, { autosave: { groups: [], facets: [] } }).P.facets.length, 4, 'and so does one in another format');
+  t.eq(boot(undefined, { autosave: '{not json' }).P.facets.length, 1, 'a corrupt autosave falls back to a new project');
+  t.eq(boot(undefined, { autosave: { groups: [], facets: [] } }).P.facets.length, 1, 'and so does one in another format');
 
   // Profile libraries travel between projects.
   app.load(app.ev('sampleProject')());
@@ -230,6 +246,19 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
   app.type('f.pitch', 'pitch', '30 deg');
   t.ok(near(app.P.facets[0].pitch, 12 * Math.tan(Math.PI / 6)), 'pitch can be typed in degrees');
   app.type('f.pitch', 'pitch', '6:12');
+
+  // The facet form folds away what is not typed for every facet, under a line saying how it is set.
+  const pane = () => app.$('#inputs').innerHTML, fold = k => app.ev('ACT').fold({ dataset: { k } });
+  app.ev('S').t = 'facet'; app.ev('refresh')();
+  t.ok(['m.w', 'e.0.type', 'o.profileId'].every(b => pane().includes(`data-b="${b}"`)) && ['y.start', 'o.split', 'op.0.x'].every(b => !pane().includes(`data-b="${b}"`)), 'shape, edges and profile are in view; layout, laps and openings are folded');
+  t.ok(pane().includes('Square to the eave · from the centered seam') && pane().includes('project defaults') && />none</.test(pane()), 'a folded section says what it is set to');
+  const depth = app.ev('undo').length;
+  fold('layout');
+  t.ok(pane().includes('data-b="y.start"') && app.ev('undo').length === depth, 'unfolding one shows its fields, and is not an edit');
+  fold('layout');
+  app.type('o.split', 'selnull', 'equal'); app.ev('ACT').addOpen(); app.ev('changed')();
+  t.ok(pane().includes("this facet's own split") && pane().includes('data-b="op.0.x"'), 'an override shows in the summary, and adding an opening unfolds the openings');
+  app.ev('CMD').undo(); app.ev('CMD').undo(); fold('op');
 
   // A profile switch on the package reaches every facet that does not override it.
   app.type('d.profileId', 'sel', 'p17');
