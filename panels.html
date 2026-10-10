@@ -349,7 +349,7 @@ function newFacet(p,pk,o={}){
 function sampleProject(){
   const p=newProject();p.name='Sample: 40 x 28 hip roof';
   for(const [name,template,w] of [['Front','trap',480],['Back','trap',480],['Left hip','tri',336],['Right hip','tri',336]])
-    newFacet(p,p.packages[0],{name,template,inputMode:'plan',pitch:6,layout:{...newLayout(),start:'center-seam'},params:{...newParams(),w,top:144,h:168}});
+    newFacet(p,p.packages[0],{name,template,pitch:6,layout:{...newLayout(),start:'center-seam'},params:{...newParams(),w,top:144,h:187.8125}});
   return p;
 }
 // Anything a file or the autosave brings in passes through here before it can become the open
