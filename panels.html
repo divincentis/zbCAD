@@ -206,7 +206,7 @@ menu button{border:1px solid var(--rule2);background:var(--bg);border-radius:5px
     <p><b>Panel IDs</b> read <code>R2-07</code>: facet R2, its seventh different panel counting from the start edge. Panels in a facet that can be swapped for one another share an ID, and the cut list gives how many to make: same length, same rip, same end cuts and laps. A mirror-image cut is a different panel.</p>
     <p><b>Long runs</b> are split when they pass the profile's maximum length, and the pieces together are longer than the run by one lap per joint. On standing seam every transverse seam is marked as needing a splice. Laps can line up across the facet, stagger on alternate strips, or snap to purlin lines.</p>
     <p><b>Waste</b> is coverage area less roof area, broken down by where it comes from: allowances, laps, angle cuts and notches, edge rips, and rounding.</p>
-    <p><b>Extra panels</b> are spares: set a number in the project settings and each package orders that many more of its longest panel in each profile and color, marked EXTRA.</p>
+    <p><b>Extra panels</b> are spares: set a number on a package and it orders that many more of its longest panel in each profile and color, marked EXTRA.</p>
     <p><b>Coil order</b>, a view of the cut list, is what to buy for the roll former: the linear length, area and weight of each coil width, gauge and color. Set a maximum coil length or weight in the project settings and it gives the number of coils and the length to order each at.</p>
     <p><b>Packages</b> group facets ordered together, each with its own subtotal and PDF. Profile, laps and allowances are set once as project defaults, and a facet can override them. <b>Profiles</b> are a project library; the starter set is generic and must be checked against the manufacturer.</p>
     <p>The project is kept in this browser as you work. <b>Save</b> writes a file to keep or send. Nothing here checks structure, wind uplift, clips or fasteners.</p>
@@ -341,8 +341,8 @@ const newDefaults=()=>({profileId:'p2',color:'',allow:{eave:1},split:'max',lap:n
 // and a percentage over the cut list for leaders, tails and set-up scrap.
 const newCoil=()=>({maxFt:null,maxLb:null,extra:0});
 function newProject(){
-  const p={app:'zbcad-panels',v:1,name:'Untitled project',jobNo:'',address:'',units:{bare:'in',fmt:'frac',prec:16,area:'sf',pdf:null,csv:null},sheet:'letter',idMax:10,extraPanels:0,seq:30,profiles:starterProfiles(),def:newDefaults(),coil:newCoil(),packages:[],facets:[]};
-  p.packages.push({id:'k'+p.seq++,name:'Main roof',prefix:'',facetIds:[]});
+  const p={app:'zbcad-panels',v:1,name:'Untitled project',jobNo:'',address:'',units:{bare:'in',fmt:'frac',prec:16,area:'sf',pdf:null,csv:null},sheet:'letter',idMax:10,seq:30,profiles:starterProfiles(),def:newDefaults(),coil:newCoil(),packages:[],facets:[]};
+  p.packages.push({id:'k'+p.seq++,name:'Main roof',prefix:'',extraPanels:0,facetIds:[]});
   return p;
 }
 function nextMark(p,kind){
@@ -376,7 +376,7 @@ function checkProject(raw){
   const u=obj(raw.units),c=obj(raw.coil);
   const p={app:'zbcad-panels',v:1,name:str(raw.name,'Untitled project'),jobNo:str(raw.jobNo),address:str(raw.address),
     units:{bare:pick(u.bare,{in:1,ft:1,mm:1},'in'),fmt:pick(u.fmt,UNIT_NOTE,'frac'),prec:[2,4,8,16].includes(u.prec)?u.prec:16,area:pick(u.area,{sf:1,sq:1,m2:1},'sf'),pdf:pick(u.pdf,UNIT_NOTE,null),csv:pick(u.csv,UNIT_NOTE,null)},
-    sheet:raw.sheet==='tabloid'?'tabloid':'letter',idMax:num(raw.idMax,10,4,40),extraPanels:Math.round(num(raw.extraPanels,0,0,9999)),seq:1,profiles:[],def:null,coil:{maxFt:num(c.maxFt,null,1,1e6),maxLb:num(c.maxLb,null,1,1e7),extra:num(c.extra,0,0,1000)},packages:[],facets:[]};
+    sheet:raw.sheet==='tabloid'?'tabloid':'letter',idMax:num(raw.idMax,10,4,40),seq:1,profiles:[],def:null,coil:{maxFt:num(c.maxFt,null,1,1e6),maxLb:num(c.maxLb,null,1,1e7),extra:num(c.extra,0,0,1000)},packages:[],facets:[]};
   const ids=new Set(),fresh=v=>{let id=str(v);while(!id||ids.has(id))id='x'+p.seq++;ids.add(id);return id;};
   p.profiles=checkProfiles(raw.profiles,fresh);
   if(!p.profiles.length)p.profiles=starterProfiles().map(q=>({...q,id:fresh(q.id)}));
@@ -423,10 +423,11 @@ function checkProject(raw){
       for(const key of ['profileId','split','lapMode','stagger'])if(f.ov[key]==null&&kd[key]!==p.def[key])f.ov[key]=kd[key];
       if(was!==lapOf(p.def))f.ov.lap=was;
     }
-    p.packages.push({id:fresh(k.id),name:str(k.name,'Package'),prefix:str(k.prefix,'',3),facetIds});
+    // Extra panels were once one number for the project, applied to each package.
+    p.packages.push({id:fresh(k.id),name:str(k.name,'Package'),prefix:str(k.prefix,'',3),extraPanels:Math.round(num(k.extraPanels,num(raw.extraPanels,0,0,9999),0,9999)),facetIds});
   }
   if(!p.def)p.def=checkDef();
-  if(!p.packages.length)p.packages.push({id:fresh(''),name:'Main roof',prefix:'',facetIds:[]});
+  if(!p.packages.length)p.packages.push({id:fresh(''),name:'Main roof',prefix:'',extraPanels:0,facetIds:[]});
   // A facet no package claims is still someone's work; it lands in the first package.
   for(const [k,f] of facets){p.facets.push(f);if(!placed.has(k))p.packages[0].facetIds.push(f.id);}
   // New ids are a letter plus seq, so seq has to clear every number already in use.
@@ -773,14 +774,15 @@ function compute(){
 // roof, so the quantities and waste of the layout do not.
 function extrasOf(g){
   const m=new Map();
-  if(P.extraPanels>0)for(const f of g.facets){
+  if(g.pk.extraPanels>0)for(const f of g.facets){
     const L=R.L.get(f.id),k=profKey(L);
-    for(const p of L.pieces)if(!m.has(k)||p.len>m.get(k).len)m.set(k,{key:k,prof:L.e.profile,color:L.e.color,len:p.len,qty:P.extraPanels});
+    for(const p of L.pieces)if(!m.has(k)||p.len>m.get(k).len)m.set(k,{key:k,prof:L.e.profile,color:L.e.color,len:p.len,qty:g.pk.extraPanels});
   }
   return [...m.values()];
 }
 const ordered=g=>({count:g.q.count+g.extra.reduce((a,x)=>a+x.qty,0),lf:g.q.lf+g.extra.reduce((a,x)=>a+x.qty*x.len/12,0)});
-const extraNote=gs=>{const n=gs.reduce((a,g)=>a+g.extra.reduce((b,x)=>b+x.qty,0),0);return n?`Includes ${n} extra panel${n>1?'s':''}: ${P.extraPanels} at the longest length of each profile and color in a package.`:'';};
+const extraNote=gs=>{const n=gs.reduce((a,g)=>a+g.extra.reduce((b,x)=>b+x.qty,0),0),each=[...new Set(gs.filter(g=>g.extra.length).map(g=>g.pk.extraPanels))];
+  return n?`Includes ${n} extra panel${n>1?'s':''}: ${each.length>1?'each package\'s own number':each[0]} at the longest length of each profile and color in a package.`:'';};
 const scopePks=only=>R.pk.filter(g=>!only||g.pk.id===only);
 const piecesOf=g=>g.facets.flatMap(f=>R.L.get(f.id).pieces);
 const profKey=L=>L.e.profile.name+(L.e.color?' / '+L.e.color:'');
@@ -1228,7 +1230,6 @@ function renderInputs(){
     h+=`<h2>Reports</h2><div class="two">${sel('PDF and print lengths','u.pdf',{'':'Same as the screen',...FMTS},P.units.pdf,'selnull')}${sel('CSV lengths','u.csv',{'':'Same as the screen',...FMTS},P.units.csv,'selnull')}</div><p class="hint">CSV files always carry decimal inches as well.</p>`;
     h+=`<h2>Coil order</h2><div class="three">${fld('Max coil length, ft','c.maxFt','numopt',P.coil.maxFt??'','data-min="1" placeholder="no limit"')}${fld('Max coil weight, lb','c.maxLb','numopt',P.coil.maxLb??'','data-min="1" placeholder="no limit"')}${fld('Extra per coil, %','c.extra','num',P.coil.extra,'data-min="0"')}</div>`;
     h+=`<p class="hint">The cut list's Coil order view splits each coil to stay under both limits. Weight comes from the profile's gauge.</p>`;
-    h+=`<h2>Extra panels</h2>${fld('Extra panels to order','p.extraPanels','int',P.extraPanels,'inputmode="numeric" data-min="0"')}<p class="hint">Spares against a mistake or damage: this many more of the longest panel, for each profile and color in each package. They are added to the cut list by length, the summary and the coil order, marked EXTRA.</p>`;
     h+=`<h2>Panel IDs</h2>${fld('Longest ID the roll former can mark','p.idMax','int',P.idMax,'inputmode="numeric" data-min="4"')}<p class="hint">IDs read facet-panel, e.g. R2-07. Identical panels in a facet share one. Anything longer than this is flagged.</p>`;
     const prof=P.profiles.find(x=>x.id===d.profileId)||P.profiles[0],kinds=new Set(P.facets.map(x=>x.kind));
     h+=`<h2>Defaults for every facet</h2>${profSel('Profile','d.profileId',d.profileId)}`;
@@ -1256,6 +1257,7 @@ function renderInputs(){
     h+=`<h2>Package<span><button class="sb" data-act="pkgPdf" title="PDF of this package alone">PDF</button>${P.packages.length>1?'<button class="sb" data-act="delPackage">Delete</button>':''}</span></h2>`;
     h+=`<div class="two">${fld('Name','k.name','text',pk.name)}${fld('ID prefix (optional)','k.prefix','text',pk.prefix,'maxlength="3" placeholder="e.g. B"')}</div>`;
     h+=`<p class="hint">A package groups facets that are ordered together: it gets its own subtotal and its own PDF. Profile, laps and edge allowances are <button class="sb" data-act="sel" data-t="project">project defaults</button>, and any facet can override them.</p>`;
+    h+=`<h2>Extra panels</h2>${fld('Extra panels to order','k.extraPanels','int',pk.extraPanels,'inputmode="numeric" data-min="0"')}<p class="hint">Spares against a mistake or damage: this many more of the longest panel, for each profile and color in this package. They are added to the cut list by length, the summary and the coil order, marked EXTRA.</p>`;
     if(!f)h+=`<p class="hint">This package has no facets yet. <button class="sb" data-act="addFacet" data-id="${esc(pk.id)}">+ Facet</button></p>`;
   }else{
     const L=R.L.get(f.id),m=f.params,wall=f.kind==='wall',y=f.layout,e=L.e,o=f.ov,hl=wall?'height':f.inputMode==='plan'?'plan run':'slope';
@@ -1551,7 +1553,7 @@ const ACT={
     if(document.body.dataset)document.body.dataset.pane=t==='facet'&&el.dataset.go?'view':'inputs';
     refresh();return false;
   },
-  addPackage(){const k={id:'k'+P.seq++,name:'Package '+(P.packages.length+1),prefix:'',facetIds:[]};P.packages.push(k);S.pk=k.id;S.t='package';},
+  addPackage(){const k={id:'k'+P.seq++,name:'Package '+(P.packages.length+1),prefix:'',extraPanels:0,facetIds:[]};P.packages.push(k);S.pk=k.id;S.t='package';},
   delPackage(){
     const k=curPk(),n=k.facetIds.length;if(P.packages.length<2||(n&&!confirm(`Delete ${k.name} and its ${n} facet${n>1?'s':''}?`)))return false;
     P.facets=P.facets.filter(f=>!k.facetIds.includes(f.id));P.packages=P.packages.filter(x=>x!==k);S.t='package';
