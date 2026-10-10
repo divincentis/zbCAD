@@ -44,7 +44,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .tn span{overflow:hidden;text-overflow:ellipsis}
 .tn i{font-style:normal;color:var(--muted);font-size:11px;margin-left:auto;padding-left:6px}
 .tn u{text-decoration:none;color:var(--warn);font-weight:700}
-.tn.pj{font-weight:700}
+.tn.pj{font-weight:700;cursor:default}.tn.pj:hover{background:none}
 .tn.pk{font-weight:650;margin-top:8px;border-top:1px solid var(--rule);padding-top:9px}
 .tn.fc{padding-left:22px}
 .tn.fc b{min-width:26px}
@@ -53,6 +53,12 @@ button,input,select,textarea{font:inherit;color:inherit}
 #inputs h2{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center;gap:6px}
 #inputs h2:first-child{border-top:0;padding-top:0}
 #inputs h2 span{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+#inputs h2.fold{cursor:pointer;justify-content:flex-start}
+#inputs h2.fold>button{all:unset;cursor:pointer;white-space:nowrap}
+#inputs h2.fold>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#inputs h2.fold>i{font-style:normal;text-transform:none;letter-spacing:0;font-size:11px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#inputs h2.fold.shut{margin-bottom:0}
+#inputs button.go{display:block;width:100%;margin:14px 0 10px;padding:8px 10px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:5px;cursor:pointer;font-size:13px}
 label{display:block;font-size:11px;color:var(--muted);margin:0 0 8px;min-width:0}
 label em{font-style:normal;float:right;color:var(--muted);opacity:.85}
 label em.bad{color:var(--warn);opacity:1}
@@ -315,7 +321,7 @@ const SPLITS={max:'Max length + remainder at top',equal:'Equal pieces',eave:'Rem
 const LAPMODES={aligned:'Aligned across the facet',stagger:'Staggered on alternate strips',purlin:'Snap to purlins'};
 
 // ---- document -------------------------------------------------------------------
-let P,S={t:'facet',pk:null,f:null,prof:null,tab:'layout',cut:'loc',edge:null,edgeXY:[0,0]};
+let P,S={open:{},t:'facet',pk:null,f:null,prof:null,tab:'layout',cut:'loc',edge:null,edgeXY:[0,0]};
 function mkProfile(id,name,type,cover,sheetW,rib,minSlope){
   return {id,name,mfr:'Generic starter, verify with manufacturer',gauge:'24 ga',color:'',type,cover,sheetW,rib,psf:null,maxLen:480,minLen:12,lap:6,hand:'either',minSlope};
 }
@@ -1199,7 +1205,7 @@ function csvRows(kind,only){
 // ---- tree ---------------------------------------------------------------------------
 function renderTree(){
   const on=(t,id)=>S.t===t&&(id==null||id===(t==='package'?S.pk:S.f))?' on':'',bad=new Set(R.warn.map(w=>w.fid));
-  let h=`<div class="tn pj${on('project')}" data-act="sel" data-t="project"><span>${esc(P.name)}</span></div><div class="tn${on('profiles')}" data-act="sel" data-t="profiles"><span>Profile library</span><i>${P.profiles.length}</i></div>`;
+  let h=`<div class="tn pj"><span>${esc(P.name)}</span></div><div class="tn${on('project')}" data-act="sel" data-t="project"><span>Project settings</span></div><div class="tn${on('profiles')}" data-act="sel" data-t="profiles"><span>Profile library</span><i>${P.profiles.length}</i></div>`;
   for(const g of R.pk){
     h+=`<div class="tn pk${on('package',g.pk.id)}" data-act="sel" data-t="package" data-id="${esc(g.pk.id)}"><span>${esc(g.pk.name)}</span><i>${fmtArea(g.q.slope)}</i></div>`;
     for(const f of g.facets)h+=`<div class="tn fc${on('facet',f.id)}" data-act="sel" data-t="facet" data-id="${esc(f.id)}"><b>${esc(f.mark)}</b><span>${esc(f.name||TEMPLATES[f.template][0].split(' (')[0])}</span>${bad.has(f.id)?'<u title="Has warnings">!</u>':''}<i>${R.L.get(f.id).q.count}</i></div>`;
@@ -1220,9 +1226,21 @@ const profSel=(label,b,v)=>`<label>${label}<select data-b="${b}" data-t="sel">${
 const sel=(label,b,o,v,t='sel')=>`<label>${label}<select data-b="${b}" data-t="${t}">${opt(o,v)}</select></label>`;
 const len=v=>v==null?'':fmtField(v);
 const OV='<u title="Overrides the project default">●</u>';
+// The facet form keeps what is typed for every facet in view and folds the rest away under a
+// line saying what it is set to, so a closed section still answers "is this the usual?".
+// Which ones are open is how the pane is being used, not part of the project.
+const fold=(k,title,sum,x='')=>`<h2 class="fold${S.open[k]?'':' shut'}" data-act="fold" data-k="${k}"><button aria-expanded="${!!S.open[k]}">${S.open[k]?'▾':'▸'} ${title}</button><i>${S.open[k]?'':esc(sum)}</i>${x}</h2>`;
 function renderInputs(){
   const pk=curPk(),f=curF(),d=P.def;let h='';
-  if(S.t==='project'){
+  if(S.t==='setup'){
+    h+=`<h2>New project</h2>${fld('Project name','p.name','text',P.name)}<div class="two">${fld('Job number','p.jobNo','text',P.jobNo)}${fld('Address','p.address','text',P.address)}</div>`;
+    h+=`<h2>Panel</h2>${profSel('Profile','d.profileId',d.profileId)}<p class="hint">Every facet uses this unless it is given its own. Laps, allowances and units are in <button class="sb" data-act="sel" data-t="project">project settings</button>.</p>`;
+    if(f){
+      h+=`<h2>First facet</h2><div class="two">${sel('Surface','f.kind',{roof:'Roof',wall:'Wall'},f.kind)}${sel('Shape','f.template',Object.entries(TEMPLATES).filter(([,v])=>v[1].includes(f.kind[0])).map(([k,v])=>[k,v[0]]),f.template)}</div>`;
+      h+=`<button class="go" data-act="sel" data-t="facet" data-id="${esc(f.id)}">Enter its dimensions</button>`;
+    }
+    h+=`<p class="hint">Or <button class="sb" data-act="sample">load the sample hip roof</button> to see a finished job.</p>`;
+  }else if(S.t==='project'){
     h+=`<h2>Project</h2>${fld('Project name','p.name','text',P.name)}<div class="two">${fld('Job number','p.jobNo','text',P.jobNo)}${sel('Sheet size','p.sheet',{letter:'Letter landscape',tabloid:'Tabloid landscape'},P.sheet)}</div>${fld('Address','p.address','text',P.address)}`;
     h+=`<h2>Units</h2><div class="two">${sel('A bare number means','u.bare',{in:'Inches',ft:'Feet',mm:'Millimeters'},P.units.bare)}${sel('Show lengths as','u.fmt',FMTS,P.units.fmt)}`;
     h+=`${sel('Fraction precision','u.prec',[[16,'1/16'],[8,'1/8'],[4,'1/4'],[2,'1/2']],P.units.prec,'int')}${sel('Show areas as','u.area',{sf:'Square feet',sq:'Roofing squares',m2:'Square meters'},P.units.area)}</div>`;
@@ -1267,6 +1285,8 @@ function renderInputs(){
     h+=`<div class="two">${sel('Surface','f.kind',{roof:'Roof',wall:'Wall'},f.kind)}${P.packages.length>1?sel('Package','f.$pk',Object.fromEntries(P.packages.map(x=>[x.id,x.name])),pk.id):''}</div>`;
     if(!wall)h+=`<div class="two">${sel('Dimensions are','f.inputMode',{slope:'Slope, as taped on the roof',plan:'Plan + pitch, from drawings'},f.inputMode)}${fld('Pitch'+(f.inputMode==='plan'?'':' (optional)'),'f.pitch','pitch',f.pitch==null?'':`${+f.pitch.toFixed(3)}:12`,'placeholder="6:12, 26.6 deg, 50%"')}</div>`;
     if(f.inputMode==='plan'&&f.pitch!=null)h+=`<p class="hint">Dimensions square to the eave are multiplied by ${L.k.toFixed(4)}; dimensions along it are left alone.</p>`;
+    h+=`<label>Profile${mark('profileId')}<select data-b="o.profileId" data-t="selnull">${profOpt(o.profileId,{'':`Project default: ${(P.profiles.find(x=>x.id===d.profileId)||P.profiles[0]).name}`})}</select></label>`;
+    h+=`<p class="hint">The default is one of the <button class="sb" data-act="sel" data-t="project">project settings</button>.</p>`;
     h+=`<h2>Shape</h2>${sel('Template','f.template',Object.entries(TEMPLATES).filter(([,v])=>v[1].includes(f.kind[0])).map(([k,v])=>[k,v[0]]),f.template)}`;
     const w=fld(wall?'Base length':'Eave length','m.w','len',len(m.w),'data-min="1"'),hh=fld(wall?'Height':f.inputMode==='plan'?'Plan run':'Slope height','m.h','len',len(m.h),'data-min="1"');
     const side=sel(f.template==='shed'?'High side':'Angled side','m.side',{left:'Left',right:'Right'},m.side);
@@ -1292,22 +1312,28 @@ function renderInputs(){
     h+=`<p class="hint bad" id="shapeMsg"></p><h2>Edges</h2><table class="mini"><tr><th></th><th>Length</th><th>Type</th><th>Allowance</th></tr>`;
     for(const ed of L.edges)h+=`<tr><td class="n">${ed.i+1}</td><td class="n">${fmtLen(ed.len)}</td><td><select data-b="e.${ed.i}.type" data-t="selnull">${opt({'':`${EDGE[ed.auto]} (auto)`,...Object.fromEntries(KIND_EDGES[f.kind].map(t=>[t,EDGE[t]]))},(f.edges[ed.i]||{}).type)}</select></td><td><input data-b="e.${ed.i}.allow" data-t="lenopt" value="${esc(len((f.edges[ed.i]||{}).allow))}" placeholder="${esc(fmtField(e.allow[ed.type]||0))}"></td></tr>`;
     h+=`</table><p class="hint">Or click an edge on the drawing. A blank allowance takes the project's value for that edge type.</p>`;
-    h+=`<h2>Layout</h2><div class="two">${sel('Panels run','y.dir',{eave:'Square to the eave',edge:'Parallel to an edge',angle:'At an angle off square'},y.dir)}`;
+    const runs=y.dir==='edge'?`Parallel to edge ${y.dirEdge+1}`:y.dir==='angle'?`${y.angle}° off square`:'Square to the eave';
+    h+=fold('layout','Layout',[runs,'from the '+STARTS[y.start].toLowerCase(),Math.abs(y.offset)>EPS&&'offset '+fmtLen(y.offset),y.balance&&y.start!=='center-panel'&&y.start!=='center-seam'&&'rips balanced',y.wind&&'wind from the '+y.wind].filter(Boolean).join(' · '));
+    if(S.open.layout){
+    h+=`<div class="two">${sel('Panels run','y.dir',{eave:'Square to the eave',edge:'Parallel to an edge',angle:'At an angle off square'},y.dir)}`;
     h+=y.dir==='edge'?sel('Which edge','y.dirEdge',L.edges.map(ed=>[ed.i,`${ed.i+1} ${EDGE[ed.type]}`]),y.dirEdge,'int'):y.dir==='angle'?fld('Angle, degrees','y.angle','num',y.angle,'data-min="-89"'):'<span></span>';
     h+=`${sel('Start at','y.start',STARTS,y.start)}${fld('Offset','y.offset','len',len(y.offset))}</div>`;
     h+=sel('Prevailing wind, as this facet is drawn','y.wind',{'':'Not given',left:'From the left',right:'From the right'},y.wind);
     h+=fld('North arrow, degrees clockwise from straight up the drawing (optional)','f.north','numopt',f.north??'','placeholder="none"');
     if(y.start==='left'||y.start==='right')h+=`<label class="chk"><input type="checkbox" data-b="y.balance" data-t="chk"${y.balance?' checked':''}>Balance the two edge rips</label>`;
-    h+=`<h2>Overrides of the project defaults</h2>`;
-    h+=`<label>Profile${mark('profileId')}<select data-b="o.profileId" data-t="selnull">${profOpt(o.profileId,{'':`Project default: ${(P.profiles.find(x=>x.id===d.profileId)||P.profiles[0]).name}`})}</select></label>`;
+    }
+    const OVS={split:'split',lapMode:'lap placement',lap:'end lap',stagger:'stagger'},own=Object.keys(OVS).filter(k=>o[k]!=null).map(k=>OVS[k]);
+    h+=fold('ov','Laps and splits',own.length?'this facet\'s own '+own.join(', '):'project defaults');
+    if(S.open.ov){
     h+=`<div class="two"><label>Split long runs${mark('split')}<select data-b="o.split" data-t="selnull">${opt({'':'Project default',...SPLITS},o.split)}</select></label><label>Lap placement${mark('lapMode')}<select data-b="o.lapMode" data-t="selnull">${opt({'':'Project default',...LAPMODES},o.lapMode)}</select></label>`;
     h+=`<label>End lap${mark('lap')}<em></em><input data-b="o.lap" data-t="lenopt" data-min="0" value="${esc(len(o.lap))}" placeholder="${esc(fmtField(d.lap??e.profile.lap))}"></label>${e.lapMode==='stagger'?`<label>Stagger${mark('stagger')}<em></em><input data-b="o.stagger" data-t="lenopt" data-min="0" value="${esc(len(o.stagger))}" placeholder="${esc(fmtField(d.stagger))}"></label>`:''}</div>`;
-    h+=`<h2>Openings<span><button class="sb" data-act="addOpen">+ Opening</button></span></h2>`;
-    if(f.openings.length){
+    }
+    h+=fold('op','Openings',f.openings.length?`${f.openings.length} cut out`:'none','<span><button class="sb" data-act="addOpen">+ Opening</button></span>');
+    if(S.open.op&&f.openings.length){
       h+=`<table class="mini"><tr><th>From left</th><th>From bottom</th><th>Width</th><th>Height</th><th></th></tr>`;
       f.openings.forEach((q,i)=>{h+='<tr>'+['x','y','w','h'].map(kk=>`<td><input data-b="op.${i}.${kk}" data-t="len" value="${esc(len(q[kk]))}"${kk==='w'||kk==='h'?' data-min="0"':''}></td>`).join('')+`<td class="n"><button class="sb" data-act="delOpen" data-i="${i}">×</button></td></tr>`;});
       h+='</table>';
-    }else h+='<p class="hint">Rectangular cut-outs for chimneys, skylights, curbs, windows and doors.</p>';
+    }else if(S.open.op)h+='<p class="hint">Rectangular cut-outs for chimneys, skylights, curbs, windows and doors.</p>';
   }
   $('#inputs').innerHTML=h;
   markBad();
@@ -1434,7 +1460,7 @@ function refresh(){
   if(key){const el=$(`#inputs [data-b="${key}"]`);if(el&&el.focus){el.focus();if(el.select&&el.tagName==='INPUT')el.select();}}
 }
 function changed(){undo.push(last);if(undo.length>200)undo.shift();redo=[];last=ser();refresh();autosave();}
-function loadProject(raw){P=checkProject(raw);S.pk=P.packages[0].id;S.f=null;S.t=P.facets.length?'facet':'package';S.edge=null;undo=[];redo=[];last=ser();refresh();autosave();}
+function loadProject(raw,t){P=checkProject(raw);S.pk=P.packages[0].id;S.f=null;S.t=t||(P.facets.length?'facet':'package');S.edge=null;undo=[];redo=[];last=ser();refresh();autosave();}
 function step(from,to){if(!from.length)return;to.push(last);last=from.pop();P=JSON.parse(last);refresh();autosave();}
 let toastT;function toast(m){const t=$('#toast');t.textContent=m;t.className='on';clearTimeout(toastT);toastT=setTimeout(()=>{t.className='';},3400);}
 // Keep whatever the facet already is when its template changes, so switching is a refinement
@@ -1553,6 +1579,8 @@ const ACT={
     if(document.body.dataset)document.body.dataset.pane=t==='facet'&&el.dataset.go?'view':'inputs';
     refresh();return false;
   },
+  fold(el){const k=el.dataset.k;S.open[k]=!S.open[k];refresh();return false;},
+  sample(){CMD.sample();return false;},
   addPackage(){const k={id:'k'+P.seq++,name:'Package '+(P.packages.length+1),prefix:'',extraPanels:0,facetIds:[]};P.packages.push(k);S.pk=k.id;S.t='package';},
   delPackage(){
     const k=curPk(),n=k.facetIds.length;if(P.packages.length<2||(n&&!confirm(`Delete ${k.name} and its ${n} facet${n>1?'s':''}?`)))return false;
@@ -1564,7 +1592,7 @@ const ACT={
   upFacet(){return moveFacet(-1);},downFacet(){return moveFacet(1);},
   addRow(){const f=curF();if(f.custom==='walk')f.walk.push({len:60,turn:90});else{const a=f.pts[f.pts.length-1],b=f.pts[0];f.pts.push([(a[0]+b[0])/2,(a[1]+b[1])/2]);}},
   delRow(el){const f=curF(),i=+el.dataset.i,list=f.custom==='walk'?f.walk:f.pts;if(list.length<=3)return false;list.splice(i,1);f.edges.splice(i,1);},
-  addOpen(){curF().openings.push({x:36,y:36,w:36,h:48});},
+  addOpen(){curF().openings.push({x:36,y:36,w:36,h:48});S.open.op=true;},
   delOpen(el){curF().openings.splice(+el.dataset.i,1);},
   cloneProfile(){const q=curProf(),c={...q,id:'p'+P.seq++,name:q.name+' (copy)',mfr:q.mfr.replace(/^Generic starter, verify with manufacturer$/,'')};P.profiles.push(c);S.prof=c.id;},
   delProfile(){
@@ -1635,9 +1663,15 @@ function fillPrint(date,only){
   $('#print').innerHTML=pages.map(p=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w/72}in" height="${h/72}in">${planSVG(p.ops,PRINTC)}</svg>`).join('');
   return pages.length;
 }
+// A new project opens on the few things that have to be decided before a dimension means
+// anything: what the job is, which panel, roof or wall. They are the project's ordinary fields,
+// shown first, so the step is a view of the project and nothing has to be carried out of it.
+function startProject(){const p=newProject();newFacet(p,p.packages[0]);loadProject(p,'setup');}
+// Nothing to lose yet, so replacing it needs no question.
+const untouched=()=>S.t==='setup'&&!undo.length;
 const CMD={
-  new(){if(P.facets.length&&!confirm('Start a new project? Save first if you want to keep this one.'))return;const p=newProject();newFacet(p,p.packages[0]);loadProject(p);},
-  sample(){if(P.facets.length&&!confirm('Replace this project with the sample roof?'))return;loadProject(sampleProject());},
+  new(){if(!untouched()&&P.facets.length&&!confirm('Start a new project? Save first if you want to keep this one.'))return;startProject();},
+  sample(){if(!untouched()&&P.facets.length&&!confirm('Replace this project with the sample roof?'))return;loadProject(sampleProject());},
   open(){$('#fileIn').click();},
   save(){download(fileBase()+'.json',JSON.stringify(P,null,1),'application/json');},
   undo(){step(undo,redo);},redo(){step(redo,undo);},
@@ -1681,8 +1715,8 @@ window.addEventListener('beforeunload',()=>{try{localStorage.setItem('panels.aut
 // ---- boot ----------------------------------------------------------------------------------
 (()=>{
   let raw=null;try{raw=JSON.parse(localStorage.getItem('panels.autosave'));}catch(e){}
-  try{loadProject(raw||sampleProject());}
-  catch(e){loadProject(sampleProject());}
+  try{if(raw)loadProject(raw);else startProject();}
+  catch(e){startProject();}
 })();
 </script>
 </body>
