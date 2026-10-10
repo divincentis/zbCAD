@@ -28,10 +28,10 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
   const R = app.ev('compute')();
   t.eq(app.P.facets.map(f => f.mark), ['R1', 'R2', 'R3', 'R4'], 'sample facets are R1-R4');
   // A 40 x 28 hip roof has 1,120 sf of plan area whatever its facets look like. The sample is
-  // entered the way a roof is taped, on the slope to a sixteenth, so the footprint comes back
-  // to within that rounding rather than exactly.
+  // entered the way a roof is taped, on the slope: 17'-6" at 9:12 is 14' of run.
+  t.eq(R.warn, [], 'the sample opens without a warning');
   t.ok(app.P.facets.every(f => f.inputMode === 'slope'), 'sample: dimensions are on the slope');
-  t.ok(near(R.total.plan, 40 * 28, 0.2) && near(R.total.slope, R.total.plan * Math.hypot(12, 6) / 12, 1e-6), 'sample: plan area is the footprint, slope area is that over cos(pitch)');
+  t.ok(near(R.total.plan, 40 * 28, 1e-6) && near(R.total.slope, 40 * 28 * Math.hypot(12, 9) / 12, 1e-6), 'sample: plan area is the footprint, slope area is that over cos(pitch)');
   const marks = R.pk[0].facets.flatMap(f => app.ev('byMark')(R.L.get(f.id).pieces));
   t.ok(marks.length > 0 && new Set(marks.map(r => r.p.id)).size === marks.length && marks.reduce((a, r) => a + r.qty, 0) === R.total.count, 'IDs are unique across the project, and their quantities account for every piece');
   const front = app.ev('byMark')(R.L.get(app.P.facets[0].id).pieces);
@@ -274,7 +274,7 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
   app.type('f.template', 'sel', 'custom');
   t.eq(app.layout('R1').pts.map(p => p.map(v => +v.toFixed(6))), before, 'converting to a custom perimeter keeps the shape');
   app.type('f.template', 'sel', 'rect');
-  t.eq([app.P.facets[0].params.w, app.P.facets[0].params.h], [480, 187.8125], 'and back to a rectangle keeps its extents');
+  t.eq([app.P.facets[0].params.w, app.P.facets[0].params.h], [480, 210], 'and back to a rectangle keeps its extents');
   app.type('f.kind', 'sel', 'wall');
   t.eq([app.P.facets[0].mark, app.P.facets[0].inputMode, app.P.facets[0].pitch], ['W1', 'slope', null], 'a roof made a wall becomes W1, in slope mode');
   app.type('f.kind', 'sel', 'roof');
@@ -297,6 +297,32 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
   app.select('R1'); app.type('f.$pk', 'sel', app.P.packages[1].id);
   t.eq(app.P.packages.map(k => k.facetIds.length), [3, 1], 'a facet can be moved to another package');
   t.eq(app.ev('compute')().pk[1].q.count, app.layout('R1').q.count, 'and its totals go with it');
+}
+
+// ===== review and output =====
+{
+  const p = app.ev('sampleProject')();
+  p.packages.push({ id: 'kw', name: 'East wall', prefix: '', facetIds: [] });
+  app.ev('newFacet')(p, p.packages[1], { kind: 'wall', params: { ...app.ev('newParams')(), w: 240, h: 6 } });
+  app.load(p);
+  const pane = () => app.$('#inputs').innerHTML;
+  // Catch what would be downloaded, inside the page, and put the real thing back afterwards.
+  const files = app.ev('var realDownload = download, outFiles = []; download = (name, text) => { outFiles.push([name, text.length]); }; outFiles');
+  t.ok(/data-t="output"><span>Review and output<\/span><u[^>]*>!<\/u><i>3<\/i>/.test(app.$('#tree').innerHTML), 'the tree ends in a review and output row carrying the warning count');
+  app.ev('CMD').output();
+  t.ok(app.ev('S').t === 'output' && ['pdf', 'print', 'csvLoc', 'csvLen', 'csvCoil'].every(k => pane().includes(`data-k="${k}"`)), 'it lists every output in one place');
+  t.ok(pane().includes('Whole project, 2 packages') && pane().includes('East wall only') && />3 warnings</.test(pane()), 'says what it covers, and how many warnings that carries');
+  const all = app.ev('compute')().pk.reduce((a, g) => a + g.q.count, 0), roof = app.ev('compute')().pk[0].q.count;
+  t.ok(pane().includes(`${all} panels to make`), 'and how many panels');
+  app.ev('ACT').out({ dataset: { k: 'csvLen' } });
+  app.type('s.out', 'selnull', p.packages[0].id); app.ev('refresh')();
+  t.ok(pane().includes(`${roof} panels to make`) && pane().includes('No warnings.'), 'limited to a package, the count and the warnings are that package\'s');
+  app.ev('ACT').out({ dataset: { k: 'csvLen' } }); app.ev('ACT').out({ dataset: { k: 'pdf' } });
+  t.eq(files.map(x => x[0]), ['Sample-40-x-28-hip-roof-cut-list-by-length.csv', 'Sample-40-x-28-hip-roof-Main-roof-cut-list-by-length.csv', 'Sample-40-x-28-hip-roof-Main-roof.pdf'], 'a package\'s files carry its name');
+  t.ok(files[1][1] < files[0][1], 'and hold only that package');
+  app.ev('download = realDownload');
+  app.P.packages.pop(); app.P.facets.pop(); app.ev('changed')();
+  t.ok(app.ev('outScope')() === null && !pane().includes('data-b="s.out"'), 'with one package there is nothing to choose');
 }
 
 // ===== coil order =====
