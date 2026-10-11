@@ -4,11 +4,55 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wind Zone Visualizer</title>
+    <meta name="description" content="Roof and wall wind zones drawn to a building's actual dimensions, from the FM Global Data Sheet 1-28 zone figures: 3D view, dimensioned plan, zone areas and a PDF." />
+    <meta property="og:title" content="Wind Zone Visualizer" />
+    <meta property="og:description" content="Roof and wall wind zones drawn to a building's actual dimensions, with zone areas and a PDF." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://zbcad.com/zones/" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#161614" media="(prefers-color-scheme: dark)" />
+    <!-- The zbCAD mark, the same one every page of the site carries. -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c1b19'/%3E%3Cpath d='M9 10h14L9 22h14' fill='none' stroke='%23f4f1ea' stroke-width='2.5' stroke-linecap='square'/%3E%3C/svg%3E" />
+    <!-- Something on the page before the script has arrived. It lives inside
+         #root, so the app replaces it the moment it mounts; it is styled here
+         rather than in the stylesheet so that it needs nothing but this file. -->
+    <style>
+      .boot {
+        display: grid;
+        place-content: center;
+        height: 100%;
+        text-align: center;
+        font: 14px system-ui, -apple-system, 'Segoe UI', sans-serif;
+        color: #6b675f;
+      }
+      .boot strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 16px;
+        color: #1c1b19;
+      }
+      @media (prefers-color-scheme: dark) {
+        .boot {
+          color: #b5ad9e;
+        }
+        .boot strong {
+          color: #e9e5dc;
+        }
+      }
+    </style>
     <script type="module" crossorigin src="/zones/assets/index.js"></script>
+    <link rel="modulepreload" crossorigin href="/zones/assets/rolldown-runtime-hePW80VL.js">
     <link rel="stylesheet" crossorigin href="/zones/assets/index.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot">
+        <strong>Wind Zone Visualizer</strong>
+        Loading&hellip;
+        <noscript><br />This tool needs JavaScript turned on.</noscript>
+      </div>
+    </div>
     <script data-goatcounter="https://zbfraser.goatcounter.com/count"
         async src="//gc.zgo.at/count.js"></script>
   </body>
