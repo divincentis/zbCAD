@@ -136,7 +136,7 @@
   <nav class="toc">
     <a class="back" href="cad.html" id="back-link">&larr; Close &amp; return to zbCAD</a>
     <p class="brand"><a href="/" style="color:inherit;text-decoration:none">zbCAD</a></p>
-    <span class="version">Documentation &middot; v0.31.0</span>
+    <span class="version">Documentation &middot; v0.32.0</span>
     <div class="search-box">
       <input type="search" id="doc-search" placeholder="Search docs&hellip;" autocomplete="off" spellcheck="false" aria-label="Search documentation" />
       <button type="button" class="clear" id="doc-search-clear" hidden aria-label="Clear search">&times;</button>
@@ -478,6 +478,30 @@
         dimension turns up.
       </p>
       <p>
+        <strong>PDF</strong> places a page of a PDF the same way, with two differences that come from
+        what a PDF is. First, a drawing that was plotted or exported from CAD is line work, and it is
+        kept as line work: the page stays sharp however far you zoom in, and
+        <a href="#snap">object snap</a> finds the ends, midpoints and crossings of its lines, so what
+        you trace lands exactly on the original rather than near it. Second, a PDF knows the size of
+        its sheet, so the page comes in at true paper size and the number to type before placing it is
+        the scale the sheet was drawn at &mdash; <code>48</code>, <code>1:100</code> or
+        <code>1/4"=1'</code> (no spaces) &mdash; after which the building is full size and nothing
+        needs calibrating. A file with several pages asks which one first, and stays open afterwards:
+        type <code>PDF</code> again to place the next sheet of the same set.
+      </p>
+      <p>
+        The page is shown in its own colours turned over for the dark drawing area &mdash; black ink
+        draws white, coloured lines keep their colour &mdash; and plots in the colours it came with.
+        Its text is real text, in the right place at the right size, set in a stand-in typeface
+        stretched to the width the original occupied; the fonts themselves are not read, so lettering
+        will not look identical. Pictures on the page (logos, shaded views, photographs) are left out,
+        as are pattern and gradient fills, and the prompt says how many when it places the page. A
+        page that is nothing but a scan comes in as an image instead, and is then subject to the same
+        2400px cap as any other image; a scan stored as fax-compressed black and white (CCITT or
+        JBIG2, the usual output of a large-format scanner) cannot be read and has to be saved as a PNG
+        or JPEG first. Password-protected PDFs are refused.
+      </p>
+      <p>
         An underlay lives on a layer like any other object, so its visibility, lock, and
         <a href="#layers">printable</a> state come from the ordinary layer controls rather than a
         separate system &mdash; hide, lock, or leave a traced-over image off the plotted sheet the same
@@ -596,6 +620,13 @@
         <p class="steps">Started from the toolbar's <strong>Image</strong> button, which opens a file picker first (there is no plain typed invocation without a file already chosen). Then click the bottom-left corner to place it, or type a width to set its initial scale before placing.</p>
         <p class="keys">A typed number before placing sets the image's width (and scales it proportionally); the image places at one drawing unit per pixel otherwise, to be corrected with CALIBRATE.</p>
       </div>
+
+      <div class="cmd-card">
+        <h4><span class="name">PDFATTACH</span><span class="aliases">alias PDF</span></h4>
+        <p>Places one page of a PDF as an underlay, as line work at its true scale. See <a href="#images">Images &amp; underlays</a>.</p>
+        <p class="steps">Started from the toolbar's <strong>PDF</strong> button, which opens a file picker. If the file has more than one page, type the page number (Enter takes the one offered). Then type the scale the sheet was drawn at, if it is not full size, and click the bottom-left corner to place it.</p>
+        <p class="keys">The scale can be typed as <code>48</code>, <code>1:48</code> or <code>1/4"=1'</code>, and the last one used is offered again for the next page. After a multi-page file, typing <code>PDF</code> places another page of it without choosing the file again.</p>
+      </div>
     </section>
 
     <section id="cmd-modify">
@@ -641,7 +672,7 @@
         <h4><span class="name">CALIBRATE</span><span class="aliases">alias CAL</span></h4>
         <p>Sets an image underlay's true scale from a known distance. See <a href="#images">Images &amp; underlays</a>.</p>
         <p class="steps">Select the image first, or the command asks you to click one. Click two points on it a known distance apart, then type (or click to measure) the true distance between them.</p>
-        <p class="keys">The image is rescaled about the first point, so it stays put and everything else on it moves to match. Picks are unsnapped (a raster has no snappable geometry of its own).</p>
+        <p class="keys">The image is rescaled about the first point, so it stays put and everything else on it moves to match. Picks on an image are unsnapped (a raster has no snappable geometry of its own); picks on a PDF page snap to its line work, so a dimension line's two ends can be picked exactly.</p>
       </div>
     </section>
 
@@ -762,6 +793,7 @@
         <tr><td>ZOOMEXTENTS</td><td><code>Z</code>, <code>ZE</code></td><td>Fits the view to the drawing extents (same as the Zoom Extents toolbar button).</td></tr>
         <tr><td>UNITS</td><td><code>UN</code>, <code>DDUNITS</code></td><td>Opens the Units dialog.</td></tr>
         <tr><td>PLOT</td><td><code>PLT</code>, <code>PRINT</code></td><td>Opens the Plot to PDF dialog. See <a href="#plotting">Plotting to PDF</a>.</td></tr>
+        <tr><td>PDFATTACH</td><td><code>PDF</code></td><td>Places a page of the PDF last chosen with the toolbar's <strong>PDF</strong> button. See <a href="#images">Images &amp; underlays</a>.</td></tr>
         <tr><td>UNDERLAY</td><td><code>IP</code></td><td>Opens the Image Properties dialog for the selected image (fade, lock, layer). See <a href="#images">Images &amp; underlays</a>. Also reachable via the toolbar's <strong>Image Props</strong> button.</td></tr>
         <tr><td>DXFOUT</td><td><code>DXF</code>, <code>DXFEXPORT</code></td><td>Exports the drawing as an AutoCAD DXF file. See <a href="#dxf">DXF import &amp; export</a>.</td></tr>
         <tr><td>DXFIN</td><td><code>DXFIMPORT</code></td><td>Imports an AutoCAD DXF file, replacing the current drawing. See <a href="#dxf">DXF import &amp; export</a>.</td></tr>

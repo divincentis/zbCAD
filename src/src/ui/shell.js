@@ -1,14 +1,15 @@
 import { commandCapturesSpace, commandLiveValue, navigateHistory, startCommand } from '../commands/registry.js';
 import { LAYER_BASIC_COLORS } from '../core/constants.js';
 import { LENGTH_FORMATS } from '../core/units.js';
-import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, dxfInput, engineStatus, imageInput, layerColorMenu, layerColorPicker, layerList, layerPanel, layerPanelHandle, layersSection, layersSectionToggle, openInput, orthoBtn, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, propertiesFields, propertiesLayerSelect, propertiesSection, propertiesSectionToggle, snapBtn, snapDialog, snapStatus, toolbarAutohideBtn, topbar, underlayApplyBtn, underlayCancelBtn, underlayDeleteBtn, underlayDialog, underlayFadeInput, underlayLockedCheck, underlayPlotCheck, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog, workspace } from '../dom.js';
+import { addLayerBtn, assignLayerBtn, canvas, commandInput, currentLayerSelect, dimArrowSizeInput, dimArrowTypeSelect, dimPrecisionSelect, dimScaleInput, dimScalePresetSelect, dimStyleDialog, dimTextHeightInput, dxfInput, engineStatus, imageInput, layerColorMenu, layerColorPicker, layerList, layerPanel, layerPanelHandle, layersSection, layersSectionToggle, openInput, orthoBtn, pdfInput, plotAreaSelect, plotCenterCheck, plotColorSelect, plotDialog, plotLineweightsCheck, plotOrientationSelect, plotPaperSelect, plotScaleInput, plotScaleModeSelect, plotScalePresetSelect, plotWindowBtn, polarBtn, polarDialog, polarIncrementSelect, polarStatus, propertiesFields, propertiesLayerSelect, propertiesSection, propertiesSectionToggle, snapBtn, snapDialog, snapStatus, toolbarAutohideBtn, topbar, underlayApplyBtn, underlayCancelBtn, underlayDeleteBtn, underlayDialog, underlayFadeInput, underlayLockedCheck, underlayPlotCheck, unitDrawingUnitSelect, unitFormatSelect, unitPrecisionSelect, unitRescaleCheck, unitStatus, unitsDialog, workspace } from '../dom.js';
 import { submitCommandInput } from '../interaction/pointer.js';
 import { writeAutosaveOnUnload } from '../model/dirty.js';
 import { assignSelectionToLayer, createLayer, deleteLayer, renameLayer, setCurrentLayer, setLayerColor, setLayerLinetype, setLayerLineweight, toggleLayerLock, toggleLayerPrintable, toggleLayerVisibility } from '../model/layers.js';
 import { chooseOpenFile, loadDocumentText, newDrawing, restoreAutosave, saveDrawing } from '../model/persistence.js';
 import { chooseDxfFile, exportDxf, loadDxfText } from './dialogs/dxf.js';
-import { startImagePlacement } from '../commands/underlay.js';
+import { startImagePlacement, startPdfPlacement } from '../commands/underlay.js';
 import { underlayDescriptorFromFile } from '../model/imageImport.js';
+import { openPdf } from '../model/pdfRead.js';
 import { applyUnderlayDialog, closeUnderlayDialog, deleteUnderlayFromDialog, openUnderlayDialog, setPendingUnderlay } from './dialogs/underlay.js';
 import { state } from '../state.js';
 import { applyDimStyleDialog, closeDimStyleDialog, openDimStyleDialog, pendingDimStyle, refreshDimStyleDialog } from './dialogs/dimstyle.js';
@@ -267,6 +268,26 @@ imageInput.addEventListener('change', async () => {
   }
 });
 
+// A PDF is opened here and placed by the PDF command, for the same reason an
+// image is decoded here: the command never touches a File. Opening only finds
+// the pages; reading one waits until the command knows which is wanted.
+pdfInput.addEventListener('change', async () => {
+  const file = pdfInput.files?.[0];
+  if (!file) return;
+  try {
+    setFileStatus(`Reading ${file.name}…`);
+    const opened = openPdf(new Uint8Array(await file.arrayBuffer()));
+    if (opened.error) {
+      setFileStatus(opened.error, true);
+      return;
+    }
+    setFileStatus(`${file.name} · ${opened.doc.pages.length} page${opened.doc.pages.length === 1 ? '' : 's'}`);
+    if (startPdfPlacement({ doc: opened.doc, name: file.name })) canvas.focus();
+  } catch {
+    setFileStatus('Could not read the selected PDF', true);
+  }
+});
+
 dxfInput.addEventListener('change', async () => {
   const file = dxfInput.files?.[0];
   if (!file) return;
@@ -285,6 +306,11 @@ document.getElementById('imageBtn').addEventListener('click', () => {
   if (!requireIdle('placing an image')) return;
   imageInput.value = '';
   imageInput.click();
+});
+document.getElementById('pdfBtn').addEventListener('click', () => {
+  if (!requireIdle('placing a PDF')) return;
+  pdfInput.value = '';
+  pdfInput.click();
 });
 document.getElementById('underlayBtn').addEventListener('click', openUnderlayDialog);
 

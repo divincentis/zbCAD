@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>zbCAD v0.31.0</title>
+  <title>zbCAD v0.32.0</title>
   <style>
 :root {
   font-family: Arial, Helvetica, sans-serif;
@@ -647,7 +647,7 @@ kbd { font-size: 9px; opacity: .65; }
 </head>
 <body>
   <header id="topbar" class="topbar">
-    <div class="brand">zbCAD <span class="version">v0.31.0</span></div>
+    <div class="brand">zbCAD <span class="version">v0.32.0</span></div>
     <button id="toolbarAutohideBtn" class="toolbar-autohide-btn toggle" title="Auto-hide the toolbar; mouse over this bar (or Tab into it) to show it again" aria-pressed="false">Auto-hide</button>
     <div class="tool-group">
       <span class="group-label">File</span>
@@ -700,6 +700,7 @@ kbd { font-size: 9px; opacity: .65; }
       <div class="tool-group">
         <span class="group-label">Underlay</span>
         <button id="imageBtn" title="Place a reference image to trace over (IMAGE)">Image</button>
+        <button id="pdfBtn" title="Place a page of a PDF drawing to trace over, at its true scale (PDF)">PDF</button>
         <button data-command="CALIBRATE" title="Scale an image to a known distance (CALIBRATE)">Calibrate</button>
         <button id="underlayBtn" title="Fade, lock and plot settings for the selected image (UNDERLAY)">Image Props</button>
       </div>
@@ -725,6 +726,7 @@ kbd { font-size: 9px; opacity: .65; }
     <a id="docsLink" class="docs-link" href="docs.html" target="_blank" rel="noopener">Docs</a>
     <input id="openInput" type="file" accept=".json,.zbCAD.json,application/json" hidden />
   <input id="imageInput" type="file" accept="image/*" hidden />
+  <input id="pdfInput" type="file" accept=".pdf,application/pdf" hidden />
   <input id="dxfInput" type="file" accept=".dxf,application/dxf" hidden />
   </header>
 
@@ -1120,6 +1122,7 @@ kbd { font-size: 9px; opacity: .65; }
   const dimStylePreview = document.getElementById('dimStylePreview');
 
   const imageInput = document.getElementById('imageInput');
+  const pdfInput = document.getElementById('pdfInput');
   const underlayDialog = document.getElementById('underlayDialog');
   const underlayDialogSubject = document.getElementById('underlayDialogSubject');
   const underlayFadeInput = document.getElementById('underlayFade');
@@ -1246,6 +1249,243 @@ kbd { font-size: 9px; opacity: .65; }
   // document validator's "data:image/" rule, so the recovered drawing still
   // opens, showing an empty frame where the image was.
   const UNDERLAY_DROPPED_DATA = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+  // ---------------------------------------------------------------------------
+  // core/inflate.js
+  // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Inflate
+  //
+  // DEFLATE decompression (RFC 1951), with the zlib wrapper (RFC 1950) skipped
+  // when it is there. A PDF compresses nearly everything worth reading with
+  // FlateDecode, so the reader in model/pdfRead.js cannot start without this.
+  //
+  // The browser has DecompressionStream, and it is not used, for two reasons.
+  // It is asynchronous, which would make every step of reading a PDF a promise
+  // for the sake of one call; and it does not exist in the headless test
+  // environment, which would leave the whole PDF path untestable. Written out it
+  // is a page of code with no dependencies and nothing to wait for.
+  // ---------------------------------------------------------------------------
+
+  const INFLATE_LENGTH_BASE = [
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
+    35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258,
+  ];
+  const INFLATE_LENGTH_EXTRA = [
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+    3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+  ];
+  const INFLATE_DISTANCE_BASE = [
+    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769,
+    1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+  ];
+  const INFLATE_DISTANCE_EXTRA = [
+    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8,
+    9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
+  ];
+  // The order the code-length code lengths arrive in, which is by how likely
+  // each is to be used rather than by value.
+  const INFLATE_CODE_LENGTH_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+
+  // A Huffman code as a flat lookup: index it with the next `bits` bits of input
+  // and it answers with the symbol and how many of those bits the symbol really
+  // used, packed as (symbol << 4) | length. One table read per symbol is what
+  // keeps a multi-megabyte content stream from taking seconds.
+  function inflateTable(lengths, count) {
+    let bits = 0;
+    for (let symbol = 0; symbol < count; symbol++) if (lengths[symbol] > bits) bits = lengths[symbol];
+    const table = new Uint16Array(1 << bits);
+    const lengthCount = new Uint16Array(16);
+    for (let symbol = 0; symbol < count; symbol++) lengthCount[lengths[symbol]]++;
+    lengthCount[0] = 0;
+    const nextCode = new Uint16Array(16);
+    let code = 0;
+    for (let length = 1; length <= 15; length++) {
+      code = (code + lengthCount[length - 1]) << 1;
+      nextCode[length] = code;
+    }
+    for (let symbol = 0; symbol < count; symbol++) {
+      const length = lengths[symbol];
+      if (!length) continue;
+      // Codes are defined most significant bit first and read least significant
+      // bit first, so each one is reversed before it becomes an index.
+      let canonical = nextCode[length]++;
+      let reversed = 0;
+      for (let bit = 0; bit < length; bit++) {
+        reversed = (reversed << 1) | (canonical & 1);
+        canonical >>= 1;
+      }
+      const entry = (symbol << 4) | length;
+      for (let index = reversed; index < table.length; index += 1 << length) table[index] = entry;
+    }
+    return { table, bits };
+  }
+
+  let inflateFixedTables = null;
+
+  function inflateFixed() {
+    if (inflateFixedTables) return inflateFixedTables;
+    const lengths = new Uint8Array(288);
+    for (let symbol = 0; symbol < 288; symbol++) {
+      lengths[symbol] = symbol < 144 ? 8 : symbol < 256 ? 9 : symbol < 280 ? 7 : 8;
+    }
+    const distances = new Uint8Array(30).fill(5);
+    inflateFixedTables = { literal: inflateTable(lengths, 288), distance: inflateTable(distances, 30) };
+    return inflateFixedTables;
+  }
+
+  // Returns a Uint8Array, or throws. A stream that ends early gives back what it
+  // held up to that point when `tolerant` is set: a truncated content stream
+  // still has most of a drawing in it, and most of a drawing is worth showing.
+  function inflateBytes(input, start = 0, end = input.length, tolerant = true) {
+    let pos = start;
+    // The zlib header is two bytes whose value is a multiple of 31 and whose low
+    // nibble says "deflate". Raw deflate has neither property except by chance.
+    if (end - pos >= 2 && (input[pos] & 0x0f) === 8 && ((input[pos] << 8) | input[pos + 1]) % 31 === 0) {
+      pos += (input[pos + 1] & 0x20) ? 6 : 2;
+    }
+
+    let out = new Uint8Array(Math.max(1024, (end - pos) * 4));
+    let size = 0;
+    let hold = 0;
+    let held = 0;
+
+    const grow = needed => {
+      let capacity = out.length;
+      while (capacity < needed) capacity *= 2;
+      const bigger = new Uint8Array(capacity);
+      bigger.set(out.subarray(0, size));
+      out = bigger;
+    };
+    const fail = message => {
+      if (tolerant && size) return out.subarray(0, size);
+      throw new Error(message);
+    };
+
+    for (;;) {
+      while (held < 3) { hold |= (pos < end ? input[pos] : 0) << held; pos++; held += 8; }
+      const last = hold & 1;
+      const type = (hold >> 1) & 3;
+      hold >>>= 3;
+      held -= 3;
+
+      if (type === 0) {
+        // Stored: discard the rest of the current byte, then a length and its
+        // complement. Whole bytes still sitting in the hold belong to the
+        // length, so they are handed back before it is read.
+        pos -= held >> 3;
+        hold = 0;
+        held = 0;
+        if (pos + 4 > end) return fail('The compressed data ends inside a stored block.');
+        const length = input[pos] | (input[pos + 1] << 8);
+        pos += 4;
+        const take = Math.min(length, Math.max(0, end - pos));
+        if (size + take > out.length) grow(size + take);
+        out.set(input.subarray ? input.subarray(pos, pos + take) : Array.prototype.slice.call(input, pos, pos + take), size);
+        size += take;
+        pos += length;
+        if (take < length) return fail('The compressed data ends inside a stored block.');
+      } else if (type === 1 || type === 2) {
+        let literal;
+        let distance;
+        if (type === 1) {
+          ({ literal, distance } = inflateFixed());
+        } else {
+          while (held < 14) { hold |= (pos < end ? input[pos] : 0) << held; pos++; held += 8; }
+          const literalCount = (hold & 31) + 257;
+          const distanceCount = ((hold >> 5) & 31) + 1;
+          const codeCount = ((hold >> 10) & 15) + 4;
+          hold >>>= 14;
+          held -= 14;
+          const codeLengths = new Uint8Array(19);
+          for (let index = 0; index < codeCount; index++) {
+            while (held < 3) { hold |= (pos < end ? input[pos] : 0) << held; pos++; held += 8; }
+            codeLengths[INFLATE_CODE_LENGTH_ORDER[index]] = hold & 7;
+            hold >>>= 3;
+            held -= 3;
+          }
+          const codeTable = inflateTable(codeLengths, 19);
+          const lengths = new Uint8Array(literalCount + distanceCount);
+          let filled = 0;
+          while (filled < lengths.length) {
+            while (held < 16) { hold |= (pos < end ? input[pos] : 0) << held; pos++; held += 8; }
+            const entry = codeTable.table[hold & ((1 << codeTable.bits) - 1)];
+            const used = entry & 15;
+            if (!used) return fail('The compressed data has an invalid code length table.');
+            hold >>>= used;
+            held -= used;
+            const symbol = entry >> 4;
+            if (symbol < 16) { lengths[filled++] = symbol; continue; }
+            let repeat;
+            let value = 0;
+            if (symbol === 16) {
+              if (!filled) return fail('The compressed data repeats a length before giving one.');
+              value = lengths[filled - 1];
+              repeat = 3 + (hold & 3); hold >>>= 2; held -= 2;
+            } else if (symbol === 17) {
+              repeat = 3 + (hold & 7); hold >>>= 3; held -= 3;
+            } else {
+              repeat = 11 + (hold & 127); hold >>>= 7; held -= 7;
+            }
+            if (filled + repeat > lengths.length) return fail('The compressed data overruns its own code table.');
+            while (repeat--) lengths[filled++] = value;
+          }
+          literal = inflateTable(lengths.subarray(0, literalCount), literalCount);
+          distance = inflateTable(lengths.subarray(literalCount), distanceCount);
+        }
+
+        const literalMask = (1 << literal.bits) - 1;
+        const distanceMask = (1 << distance.bits) - 1;
+        for (;;) {
+          if (pos > end + 8) return fail('The compressed data ends before its block does.');
+          while (held < 15) { hold |= (pos < end ? input[pos] : 0) << held; pos++; held += 8; }
+          let entry = literal.table[hold & literalMask];
+          let used = entry & 15;
+          if (!used) return fail('The compressed data has an invalid literal code.');
+          hold >>>= used;
+          held -= used;
+          let symbol = entry >> 4;
+          if (symbol < 256) {
+            if (size >= out.length) grow(size + 1);
+            out[size++] = symbol;
+            continue;
+          }
+          if (symbol === 256) break;
+          symbol -= 257;
+          if (symbol >= 29) return fail('The compressed data has an invalid length code.');
+          let extra = INFLATE_LENGTH_EXTRA[symbol];
+          while (held < extra) { hold |= (pos < end ? input[pos] : 0) << held; pos++; held += 8; }
+          const length = INFLATE_LENGTH_BASE[symbol] + (hold & ((1 << extra) - 1));
+          hold >>>= extra;
+          held -= extra;
+
+          while (held < 15) { hold |= (pos < end ? input[pos] : 0) << held; pos++; held += 8; }
+          entry = distance.table[hold & distanceMask];
+          used = entry & 15;
+          if (!used) return fail('The compressed data has an invalid distance code.');
+          hold >>>= used;
+          held -= used;
+          symbol = entry >> 4;
+          if (symbol >= 30) return fail('The compressed data has an invalid distance code.');
+          extra = INFLATE_DISTANCE_EXTRA[symbol];
+          while (held < extra) { hold |= (pos < end ? input[pos] : 0) << held; pos++; held += 8; }
+          const back = INFLATE_DISTANCE_BASE[symbol] + (hold & ((1 << extra) - 1));
+          hold >>>= extra;
+          held -= extra;
+          if (back > size) return fail('The compressed data refers back past its own start.');
+
+          if (size + length > out.length) grow(size + length);
+          // Byte by byte on purpose: a match may overlap its own output, which
+          // is how a run of one repeated byte is encoded.
+          for (let index = 0; index < length; index++, size++) out[size] = out[size - back];
+        }
+      } else {
+        return fail('The compressed data uses a block type that does not exist.');
+      }
+      if (last) break;
+    }
+    return out.subarray(0, size);
+  }
 
   // ---------------------------------------------------------------------------
   // core/defaults.js
@@ -2132,6 +2372,268 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   // ---------------------------------------------------------------------------
+  // model/vectorUnderlay.js
+  // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Vector underlays
+  //
+  // A PDF page placed as an underlay is line work, not a picture, and it is kept
+  // as line work: it stays sharp at any zoom, which a raster capped at
+  // UNDERLAY_MAX_EDGE_PX could never be for a full-size sheet.
+  //
+  // It is still an underlay in every other respect — the same record in
+  // state.underlays, with the same origin, rotation, scale, fade and lock — and
+  // only the payload differs. Where an image underlay's `data` is a JPEG data
+  // URL, a vector underlay's is the page as one compact string. Keeping it a
+  // string is deliberate: the record is copied into every undo snapshot, and a
+  // string is shared by reference where an array of paths would have to be
+  // cloned or trusted never to be mutated.
+  //
+  // The string is a list of records separated by ';', in paint order:
+  //
+  //   S<rrggbb>,<width>,<dash ...>|<path>        a stroke
+  //   F<rrggbb>,<n|e>|<path>                     a fill, non-zero or even-odd
+  //   T<rrggbb>,<x>,<y>,<angle>,<size>,<width>,<h|c>|<text>
+  //
+  // Every length is a whole number of micrometres on the page, measured from its
+  // bottom-left corner with Y up, and one micrometre is the "pixel" the record's
+  // widthPx, heightPx and unitsPerPixel are counted in. A path is SVG path data
+  // restricted to M (absolute), l and c (relative) and z, so a subpath costs its
+  // start once and each segment after that only the distance it moves.
+  // ---------------------------------------------------------------------------
+
+  const VECTOR_UNDERLAY_PREFIX = 'zbv1;';
+  const VECTOR_UNITS_PER_MM = 1000;
+
+  function isVectorUnderlayData(data) {
+    return typeof data === 'string' && data.startsWith(VECTOR_UNDERLAY_PREFIX);
+  }
+
+  function vectorHexColor(color) {
+    let hex = '';
+    for (let channel = 0; channel < 3; channel++) {
+      const level = Math.round(Math.min(1, Math.max(0, color[channel] || 0)) * 255);
+      hex += level.toString(16).padStart(2, '0');
+    }
+    return hex;
+  }
+
+  // A separator is only needed before a number that does not announce itself
+  // with a minus sign, which on a real drawing is about half of them.
+  function vectorJoin(out, value) {
+    return value < 0 || !out || out.endsWith('M') || out.endsWith('l') || out.endsWith('c')
+      ? out + value
+      : `${out} ${value}`;
+  }
+
+  function vectorPath(subpaths) {
+    let out = '';
+    for (const subpath of subpaths) {
+      // Positions are rounded as absolutes and written as differences of the
+      // rounded values, so rounding error never accumulates along a path.
+      let x = Math.round(subpath.start.x * VECTOR_UNITS_PER_MM);
+      let y = Math.round(subpath.start.y * VECTOR_UNITS_PER_MM);
+      out += `M${x} ${y}`;
+      let command = '';
+      for (const segment of subpath.segs) {
+        const toX = Math.round(segment.to.x * VECTOR_UNITS_PER_MM);
+        const toY = Math.round(segment.to.y * VECTOR_UNITS_PER_MM);
+        if (segment.type === 'c') {
+          if (command !== 'c') { out += 'c'; command = 'c'; }
+          out = vectorJoin(out, Math.round(segment.c1.x * VECTOR_UNITS_PER_MM) - x);
+          out = vectorJoin(out, Math.round(segment.c1.y * VECTOR_UNITS_PER_MM) - y);
+          out = vectorJoin(out, Math.round(segment.c2.x * VECTOR_UNITS_PER_MM) - x);
+          out = vectorJoin(out, Math.round(segment.c2.y * VECTOR_UNITS_PER_MM) - y);
+        } else if (command !== 'l') {
+          out += 'l';
+          command = 'l';
+        }
+        out = vectorJoin(out, toX - x);
+        out = vectorJoin(out, toY - y);
+        x = toX;
+        y = toY;
+      }
+      if (subpath.closed) out += 'z';
+    }
+    return out;
+  }
+
+  // A page plan (model/pdfPage.js, or anything else in output/plot.js's shape)
+  // to the fields of an underlay descriptor. Images in the plan are not carried:
+  // a vector underlay is line work only, and the caller is told how many were
+  // left behind.
+  function encodeVectorUnderlay(plan) {
+    const records = [];
+    const counts = { strokes: 0, fills: 0, texts: 0, images: 0 };
+    for (const op of plan.ops) {
+      if (op.kind === 'stroke') {
+        const path = vectorPath(op.subpaths);
+        if (!path) continue;
+        const width = Math.max(0, Math.round(op.widthMM * VECTOR_UNITS_PER_MM));
+        const dash = (op.dash || []).map(value => Math.max(0, Math.round(value * VECTOR_UNITS_PER_MM)));
+        // A pattern that rounds to nothing would draw as nothing; solid is the
+        // honest reading of a dash too fine to resolve.
+        records.push(`S${vectorHexColor(op.color)},${width},${dash.some(value => value > 0) ? dash.join(' ') : ''}|${path}`);
+        counts.strokes++;
+      } else if (op.kind === 'fill') {
+        const subpaths = op.subpaths
+          || [{ start: op.points[0], segs: op.points.slice(1).map(to => ({ type: 'l', to })), closed: true }];
+        const path = vectorPath(subpaths.map(subpath => ({ ...subpath, closed: true })));
+        if (!path) continue;
+        records.push(`F${vectorHexColor(op.color)},${op.evenOdd ? 'e' : 'n'}|${path}`);
+        counts.fills++;
+      } else if (op.kind === 'text') {
+        if (!op.text) continue;
+        const fields = [
+          Math.round(op.x * VECTOR_UNITS_PER_MM),
+          Math.round(op.y * VECTOR_UNITS_PER_MM),
+          Math.round((op.angle * 180 / Math.PI) * 1000),
+          Math.round(op.sizeMM * VECTOR_UNITS_PER_MM),
+          Math.round((op.widthMM || 0) * VECTOR_UNITS_PER_MM),
+          op.font === 'courier' ? 'c' : 'h',
+        ];
+        // Percent-encoded so that no character of the text can be mistaken for a
+        // separator, whatever the page happened to say.
+        records.push(`T${vectorHexColor(op.color)},${fields.join(',')}|${encodeURIComponent(op.text)}`);
+        counts.texts++;
+      } else if (op.kind === 'image') {
+        counts.images++;
+      }
+    }
+    return {
+      widthPx: Math.max(1, Math.round(plan.page.widthMM * VECTOR_UNITS_PER_MM)),
+      heightPx: Math.max(1, Math.round(plan.page.heightMM * VECTOR_UNITS_PER_MM)),
+      data: VECTOR_UNDERLAY_PREFIX + records.join(';'),
+      counts,
+    };
+  }
+
+  function vectorColor(hex) {
+    const value = parseInt(hex, 16);
+    if (!Number.isFinite(value)) return [0, 0, 0];
+    return [((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255];
+  }
+
+  // Calls `visit` once per record, in paint order, with the record's style and,
+  // for strokes and fills, its path still as a string. Nothing is expanded into
+  // points here: a caller that wants geometry replays the path onto a sink with
+  // traceVectorPath, and one that only wants a count never pays for it.
+  function eachVectorRecord(data, visit) {
+    if (!isVectorUnderlayData(data)) return;
+    const body = data.slice(VECTOR_UNDERLAY_PREFIX.length);
+    if (!body) return;
+    for (const record of body.split(';')) {
+      const bar = record.indexOf('|');
+      if (bar < 0) continue;
+      const kind = record[0];
+      const fields = record.slice(1, bar).split(',');
+      const payload = record.slice(bar + 1);
+      if (kind === 'S') {
+        visit({
+          kind: 'stroke',
+          color: vectorColor(fields[0]),
+          width: Number(fields[1]) || 0,
+          dash: fields[2] ? fields[2].split(' ').map(Number).filter(Number.isFinite) : [],
+          path: payload,
+        });
+      } else if (kind === 'F') {
+        visit({ kind: 'fill', color: vectorColor(fields[0]), evenOdd: fields[1] === 'e', path: payload });
+      } else if (kind === 'T') {
+        let text;
+        try { text = decodeURIComponent(payload); } catch { continue; }
+        visit({
+          kind: 'text',
+          color: vectorColor(fields[0]),
+          x: Number(fields[1]) || 0,
+          y: Number(fields[2]) || 0,
+          angle: ((Number(fields[3]) || 0) / 1000) * Math.PI / 180,
+          size: Number(fields[4]) || 0,
+          width: Number(fields[5]) || 0,
+          font: fields[6] === 'c' ? 'courier' : 'helvetica',
+          text,
+        });
+      }
+    }
+  }
+
+  // Replays a path onto anything with the canvas path methods — a Path2D, a
+  // 2D context, or an object that just collects points. Coordinates are handed
+  // over in micrometres, absolute.
+  function traceVectorPath(path, sink) {
+    const length = path.length;
+    const numbers = [0, 0, 0, 0, 0, 0];
+    let index = 0;
+    let command = 0;
+    let have = 0;
+    let x = 0;
+    let y = 0;
+    while (index < length) {
+      let code = path.charCodeAt(index);
+      if (code === 77 || code === 108 || code === 99) { command = code; have = 0; index++; continue; }
+      if (code === 122) { sink.closePath(); index++; continue; }
+      const negative = code === 45;
+      if (negative) code = path.charCodeAt(++index);
+      if (!(code >= 48 && code <= 57)) { index++; continue; }
+      let value = 0;
+      while (code >= 48 && code <= 57) {
+        value = value * 10 + (code - 48);
+        code = path.charCodeAt(++index);
+      }
+      numbers[have++] = negative ? -value : value;
+      if (command === 99) {
+        if (have < 6) continue;
+        sink.bezierCurveTo(x + numbers[0], y + numbers[1], x + numbers[2], y + numbers[3], x + numbers[4], y + numbers[5]);
+        x += numbers[4];
+        y += numbers[5];
+      } else {
+        if (have < 2) continue;
+        if (command === 77) { x = numbers[0]; y = numbers[1]; sink.moveTo(x, y); }
+        else { x += numbers[0]; y += numbers[1]; sink.lineTo(x, y); }
+      }
+      have = 0;
+    }
+  }
+
+  // The stored page back as plan ops, each coordinate passed through `place`
+  // (micrometres on the page in, whatever the caller draws in out) and each
+  // length multiplied by `scale`. This is the form output/plot.js wants; the
+  // screen never builds it.
+  function vectorUnderlayOps(data, place, scale) {
+    const ops = [];
+    eachVectorRecord(data, record => {
+      if (record.kind === 'text') {
+        const at = place(record.x, record.y);
+        ops.push({
+          kind: 'text', text: record.text, x: at.x, y: at.y, angle: record.angle,
+          sizeMM: record.size * scale, widthMM: record.width * scale,
+          font: record.font, anchor: 'left', baseline: 'alphabetic', color: record.color,
+        });
+        return;
+      }
+      const subpaths = [];
+      let subpath = null;
+      traceVectorPath(record.path, {
+        moveTo(x, y) { subpath = { start: place(x, y), segs: [], closed: false }; subpaths.push(subpath); },
+        lineTo(x, y) { subpath.segs.push({ type: 'l', to: place(x, y) }); },
+        bezierCurveTo(x1, y1, x2, y2, x, y) {
+          subpath.segs.push({ type: 'c', c1: place(x1, y1), c2: place(x2, y2), to: place(x, y) });
+        },
+        closePath() { if (subpath) subpath.closed = true; },
+      });
+      if (!subpaths.length) return;
+      if (record.kind === 'stroke') {
+        ops.push({
+          kind: 'stroke', widthMM: record.width * scale,
+          dash: record.dash.map(value => value * scale), color: record.color, subpaths,
+        });
+      } else {
+        ops.push({ kind: 'fill', color: record.color, evenOdd: record.evenOdd, subpaths });
+      }
+    });
+    return ops;
+  }
+
+  // ---------------------------------------------------------------------------
   // model/underlay.js
   // ---------------------------------------------------------------------------
 
@@ -2159,6 +2661,13 @@ kbd { font-size: 9px; opacity: .65; }
   //                   instead of a second, parallel permission system
   //   data            a JPEG data URL (model/imageImport.js normalises every
   //                   source format to JPEG so the PDF writer needs one filter)
+  //
+  // A page of a PDF is the one underlay that is not a raster. It uses the same
+  // record, and everything above still means what it says, with a "pixel" one
+  // micrometre of the page; only `data` differs, holding the page's line work in
+  // the format model/vectorUnderlay.js describes. Nothing but the three places
+  // that actually look inside `data` (the screen, the plot, the validator) needs
+  // to know which kind it has.
   // ---------------------------------------------------------------------------
 
   function allocateUnderlayId() {
@@ -2347,6 +2856,20 @@ kbd { font-size: 9px; opacity: .65; }
       return { error: 'That distance would scale the image beyond a usable size.' };
     }
     return { underlay: scaled, factor };
+  }
+
+  function underlayIsVector(underlay) {
+    return isVectorUnderlayData(underlay?.data);
+  }
+
+  // What the underlay was made from, for the properties dialog: a raster is
+  // known by its pixel count, a page by the size of its sheet.
+  function underlaySourceLabel(underlay) {
+    if (!underlayIsVector(underlay)) return `${underlay.widthPx} × ${underlay.heightPx} pixels`;
+    const widthMM = underlay.widthPx / VECTOR_UNITS_PER_MM;
+    const heightMM = underlay.heightPx / VECTOR_UNITS_PER_MM;
+    const inches = value => Number((value / 25.4).toFixed(2));
+    return `PDF page, ${inches(widthMM)} × ${inches(heightMM)} in (${Math.round(widthMM)} × ${Math.round(heightMM)} mm)`;
   }
 
   function underlayFadeAlpha(underlay) {
@@ -3400,13 +3923,52 @@ kbd { font-size: 9px; opacity: .65; }
     return lines;
   }
 
+  function pdfSubpathOperators(subpath) {
+    const lines = [`${pdfPoint(subpath.start.x)} ${pdfPoint(subpath.start.y)} m`];
+    for (const segment of subpath.segs) {
+      if (segment.type === 'c') {
+        lines.push(`${pdfPoint(segment.c1.x)} ${pdfPoint(segment.c1.y)} ` +
+          `${pdfPoint(segment.c2.x)} ${pdfPoint(segment.c2.y)} ` +
+          `${pdfPoint(segment.to.x)} ${pdfPoint(segment.to.y)} c`);
+      } else {
+        lines.push(`${pdfPoint(segment.to.x)} ${pdfPoint(segment.to.y)} l`);
+      }
+    }
+    return lines;
+  }
+
+  // A fill is either a plain polygon (`points`: arrowheads, text masks) or a
+  // general region (`subpaths`: curved edges, holes, the even-odd rule), which
+  // is what a filled shape read back from a PDF page needs.
   function pdfFillOperators(op) {
     const lines = [pdfColor(op.color, false)];
+    if (op.subpaths) {
+      for (const subpath of op.subpaths) lines.push(...pdfSubpathOperators(subpath), 'h');
+      lines.push(op.evenOdd ? 'f*' : 'f');
+      return lines;
+    }
     op.points.forEach((point, index) => {
       lines.push(`${pdfPoint(point.x)} ${pdfPoint(point.y)} ${index === 0 ? 'm' : 'l'}`);
     });
     lines.push('h', 'f');
     return lines;
+  }
+
+  // How far a text op's stand-in face has to be stretched to occupy the width
+  // the op says the string really had, or 1 where it does not say. Text read
+  // from a PDF page carries that width, because the font it was set in is not
+  // one of the two this writer has.
+  const PDF_TEXT_STRETCH_MIN = 0.4;
+  const PDF_TEXT_STRETCH_MAX = 2.5;
+
+  function pdfTextStretch(op) {
+    if (!(op.widthMM > 0)) return 1;
+    const natural = pdfTextWidthMM(op.text, op.font, op.sizeMM);
+    if (!(natural > 0)) return 1;
+    const stretch = Math.min(PDF_TEXT_STRETCH_MAX, Math.max(PDF_TEXT_STRETCH_MIN, op.widthMM / natural));
+    // Within a percent is the same width; leaving it alone keeps a plan that
+    // was read back from this writer's own output writing out identically.
+    return Math.abs(stretch - 1) < 0.01 ? 1 : stretch;
   }
 
   // Text is placed by a full text matrix rather than a translate plus rotate,
@@ -3415,7 +3977,8 @@ kbd { font-size: 9px; opacity: .65; }
   // the same place after rotation.
   function pdfTextOperators(op) {
     const font = op.font === 'courier' ? '/F2' : '/F1';
-    const width = pdfTextWidthMM(op.text, op.font, op.sizeMM);
+    const stretch = pdfTextStretch(op);
+    const width = pdfTextWidthMM(op.text, op.font, op.sizeMM) * stretch;
     const u = op.anchor === 'center' ? -width / 2 : 0;
     // Canvas' "middle" baseline sits about 0.35 em above the alphabetic one for
     // both of these faces, which is what the on-screen dimension text uses.
@@ -3430,9 +3993,13 @@ kbd { font-size: 9px; opacity: .65; }
       pdfColor(op.color, false),
       `${pdfNumber(cos)} ${pdfNumber(sin)} ${pdfNumber(-sin)} ${pdfNumber(cos)} ` +
         `${pdfPoint(x)} ${pdfPoint(y)} Tm`,
+      // Horizontal scaling outlives the text object it is set in, so it is put
+      // back as soon as the string has been shown.
+      stretch !== 1 ? `${pdfNumber(stretch * 100)} Tz` : null,
       `(${pdfEncodeText(op.text)}) Tj`,
+      stretch !== 1 ? '100 Tz' : null,
       'ET',
-    ];
+    ].filter(Boolean);
   }
 
 
@@ -3649,6 +4216,2047 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   // ---------------------------------------------------------------------------
+  // model/pdfRead.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // The PDF reader: file structure
+  //
+  // Bytes in, a table of objects and a list of pages out. Pure — nothing here
+  // touches the drawing, and nothing here knows what a page will be used for;
+  // model/pdfPage.js is what turns one page into line work.
+  //
+  // A PDF is meant to be read backwards: the last line says where the
+  // cross-reference table is, and the table says where each object starts. This
+  // reader ignores all of that and walks the file forwards, collecting every
+  // `N G obj` it meets. That is what a viewer falls back to when the table is
+  // damaged, and it is used here as the only path for three reasons: a damaged
+  // file and a healthy one go through the same code, cross-reference streams and
+  // hybrid files need no handling of their own, and an appended revision
+  // replaces what it changes simply by coming later in the file.
+  //
+  // Values are plain JavaScript where PDF has an obvious equivalent, and a
+  // tagged object where it does not:
+  //
+  //   number, true/false, null   themselves
+  //   /Name                      the string 'Name'
+  //   (text) or <hex>            { string } — one character per byte, undecoded
+  //   [ ... ]                    an array
+  //   << ... >>                  a Map
+  //   12 0 R                     { ref: 12 }
+  //   a stream                   { dict, start, end } — the byte range, undecoded
+  //   an operator (content only) { op: 'cm' }
+  // ---------------------------------------------------------------------------
+
+  const PDF_MAX_BYTES = 256 * 1024 * 1024;
+  // Past this a decoded stream is a decompression bomb or a mistake, not a page.
+  const PDF_MAX_STREAM_BYTES = 512 * 1024 * 1024;
+
+  const PDF_EOF = Object.freeze({ end: 'file' });
+  const PDF_ARRAY_END = Object.freeze({ end: 'array' });
+  const PDF_DICT_END = Object.freeze({ end: 'dict' });
+
+  // 1 = white space, 2 = delimiter; everything else is a "regular" character
+  // and can be part of a name, a number or a keyword.
+  const PDF_CHAR_CLASS = new Uint8Array(256);
+  for (const code of [0, 9, 10, 12, 13, 32]) PDF_CHAR_CLASS[code] = 1;
+  for (const character of '()<>[]{}/%') PDF_CHAR_CLASS[character.charCodeAt(0)] = 2;
+
+  function isPdfRef(value) {
+    return value !== null && typeof value === 'object' && typeof value.ref === 'number';
+  }
+
+  function isPdfString(value) {
+    return value !== null && typeof value === 'object' && typeof value.string === 'string';
+  }
+
+  function isPdfStream(value) {
+    return value !== null && typeof value === 'object' && value.dict instanceof Map
+      && typeof value.start === 'number';
+  }
+
+  function isPdfDict(value) {
+    return value instanceof Map;
+  }
+
+  // Bytes to a string with one character per byte. Chunked because spreading a
+  // large array into fromCharCode overflows the argument stack.
+  function pdfLatin1(bytes, start = 0, end = bytes.length) {
+    let out = '';
+    for (let index = start; index < end; index += 8192) {
+      out += String.fromCharCode.apply(null, bytes.subarray(index, Math.min(end, index + 8192)));
+    }
+    return out;
+  }
+
+  function pdfBytesFromLatin1(text) {
+    const bytes = new Uint8Array(text.length);
+    for (let index = 0; index < text.length; index++) bytes[index] = text.charCodeAt(index) & 255;
+    return bytes;
+  }
+
+  function pdfIndexOf(bytes, needle, from, end) {
+    const first = needle.charCodeAt(0);
+    let at = from;
+    for (;;) {
+      at = bytes.indexOf(first, at);
+      if (at < 0 || at + needle.length > end) return -1;
+      let index = 1;
+      while (index < needle.length && bytes[at + index] === needle.charCodeAt(index)) index++;
+      if (index === needle.length) return at;
+      at++;
+    }
+  }
+
+  function pdfMatchesAt(bytes, at, word) {
+    for (let index = 0; index < word.length; index++) {
+      if (bytes[at + index] !== word.charCodeAt(index)) return false;
+    }
+    return true;
+  }
+
+  function skipPdfSpace(cursor) {
+    const { bytes, end } = cursor;
+    let pos = cursor.pos;
+    while (pos < end) {
+      const code = bytes[pos];
+      if (PDF_CHAR_CLASS[code] === 1) { pos++; continue; }
+      if (code === 37) {
+        while (pos < end && bytes[pos] !== 10 && bytes[pos] !== 13) pos++;
+        continue;
+      }
+      break;
+    }
+    cursor.pos = pos;
+  }
+
+  // Leaves the cursor after the number. Sets cursor.integer so the caller can
+  // tell `12` from `12.0`, which is the difference between a possible object
+  // reference and a coordinate.
+  function readPdfNumber(cursor) {
+    const { bytes, end } = cursor;
+    let pos = cursor.pos;
+    let negative = false;
+    // A doubled sign is malformed, and common enough that every reader lets it
+    // through as the single sign it was meant to be.
+    while (pos < end && (bytes[pos] === 43 || bytes[pos] === 45)) {
+      if (bytes[pos] === 45) negative = true;
+      pos++;
+    }
+    let value = 0;
+    let code;
+    while (pos < end && (code = bytes[pos]) >= 48 && code <= 57) {
+      value = value * 10 + (code - 48);
+      pos++;
+    }
+    let integer = true;
+    if (pos < end && bytes[pos] === 46) {
+      integer = false;
+      pos++;
+      let fraction = 0;
+      let divisor = 1;
+      while (pos < end && (code = bytes[pos]) >= 48 && code <= 57) {
+        // Past fifteen digits the fraction no longer fits a double and the
+        // extra precision is noise; the digits are still consumed.
+        if (divisor < 1e15) { fraction = fraction * 10 + (code - 48); divisor *= 10; }
+        pos++;
+      }
+      value += fraction / divisor;
+    }
+    // Anything else stuck to the number (an exponent, a stray letter) belongs to
+    // the same broken token and is dropped with it.
+    while (pos < end && !PDF_CHAR_CLASS[bytes[pos]]) pos++;
+    cursor.pos = pos;
+    cursor.integer = integer;
+    return negative ? -value : value;
+  }
+
+  function readPdfLiteralString(cursor) {
+    const { bytes, end } = cursor;
+    let pos = cursor.pos + 1;
+    let depth = 1;
+    const codes = [];
+    while (pos < end) {
+      let code = bytes[pos++];
+      if (code === 92) {
+        code = bytes[pos++];
+        if (code === 110) codes.push(10);
+        else if (code === 114) codes.push(13);
+        else if (code === 116) codes.push(9);
+        else if (code === 98) codes.push(8);
+        else if (code === 102) codes.push(12);
+        else if (code >= 48 && code <= 55) {
+          let value = code - 48;
+          for (let digit = 0; digit < 2 && bytes[pos] >= 48 && bytes[pos] <= 55; digit++) {
+            value = value * 8 + (bytes[pos++] - 48);
+          }
+          codes.push(value & 255);
+        } else if (code === 13) {
+          // A backslash at the end of a line continues the string on the next.
+          if (bytes[pos] === 10) pos++;
+        } else if (code !== 10 && code !== undefined) {
+          codes.push(code);
+        }
+      } else if (code === 40) {
+        depth++;
+        codes.push(code);
+      } else if (code === 41) {
+        if (--depth === 0) break;
+        codes.push(code);
+      } else {
+        codes.push(code);
+      }
+    }
+    cursor.pos = pos;
+    let text = '';
+    for (let index = 0; index < codes.length; index += 8192) {
+      text += String.fromCharCode.apply(null, codes.slice(index, index + 8192));
+    }
+    return { string: text };
+  }
+
+  function pdfHexValue(code) {
+    if (code >= 48 && code <= 57) return code - 48;
+    if (code >= 65 && code <= 70) return code - 55;
+    if (code >= 97 && code <= 102) return code - 87;
+    return -1;
+  }
+
+  function readPdfHexString(cursor) {
+    const { bytes, end } = cursor;
+    let pos = cursor.pos + 1;
+    let text = '';
+    let high = -1;
+    while (pos < end) {
+      const code = bytes[pos++];
+      if (code === 62) break;
+      const value = pdfHexValue(code);
+      if (value < 0) continue;
+      if (high < 0) high = value;
+      else { text += String.fromCharCode(high * 16 + value); high = -1; }
+    }
+    // An odd digit count means the last one is the high half of a byte.
+    if (high >= 0) text += String.fromCharCode(high * 16);
+    cursor.pos = pos;
+    return { string: text };
+  }
+
+  function readPdfName(cursor) {
+    const { bytes, end } = cursor;
+    let pos = cursor.pos + 1;
+    let name = '';
+    while (pos < end) {
+      const code = bytes[pos];
+      if (PDF_CHAR_CLASS[code]) break;
+      pos++;
+      if (code === 35 && pdfHexValue(bytes[pos]) >= 0 && pdfHexValue(bytes[pos + 1]) >= 0) {
+        name += String.fromCharCode(pdfHexValue(bytes[pos]) * 16 + pdfHexValue(bytes[pos + 1]));
+        pos += 2;
+      } else {
+        name += String.fromCharCode(code);
+      }
+    }
+    cursor.pos = pos;
+    return name;
+  }
+
+  // One object, or one of the three sentinels. `references` is off inside a
+  // content stream, where `12 0 R` cannot occur and two integers followed by an
+  // operator beginning with R must not be mistaken for one.
+  function readPdfObject(cursor, references = true) {
+    skipPdfSpace(cursor);
+    const { bytes, end } = cursor;
+    if (cursor.pos >= end) return PDF_EOF;
+    const code = bytes[cursor.pos];
+
+    if ((code >= 48 && code <= 57) || code === 45 || code === 43 || code === 46) {
+      const value = readPdfNumber(cursor);
+      if (!references || !cursor.integer || value < 0) return value;
+      // `12 0 R`: look ahead for a generation and the R, and put the cursor back
+      // if this turns out to be two plain numbers.
+      const saved = cursor.pos;
+      skipPdfSpace(cursor);
+      let pos = cursor.pos;
+      let digits = 0;
+      while (pos < end && bytes[pos] >= 48 && bytes[pos] <= 57) { pos++; digits++; }
+      if (digits && digits <= 5) {
+        cursor.pos = pos;
+        skipPdfSpace(cursor);
+        if (bytes[cursor.pos] === 82 && (cursor.pos + 1 >= end || PDF_CHAR_CLASS[bytes[cursor.pos + 1]])) {
+          cursor.pos++;
+          return { ref: value };
+        }
+      }
+      cursor.pos = saved;
+      return value;
+    }
+    if (code === 47) return readPdfName(cursor);
+    if (code === 40) return readPdfLiteralString(cursor);
+    if (code === 60) {
+      if (bytes[cursor.pos + 1] !== 60) return readPdfHexString(cursor);
+      cursor.pos += 2;
+      const dict = new Map();
+      for (;;) {
+        const key = readPdfObject(cursor, references);
+        if (key === PDF_DICT_END || key === PDF_EOF) break;
+        if (typeof key !== 'string') continue;
+        const value = readPdfObject(cursor, references);
+        if (value === PDF_DICT_END || value === PDF_EOF) break;
+        if (value === PDF_ARRAY_END) continue;
+        dict.set(key, value);
+      }
+      return dict;
+    }
+    if (code === 62) {
+      cursor.pos += bytes[cursor.pos + 1] === 62 ? 2 : 1;
+      return PDF_DICT_END;
+    }
+    if (code === 91) {
+      cursor.pos++;
+      const array = [];
+      for (;;) {
+        const item = readPdfObject(cursor, references);
+        if (item === PDF_ARRAY_END || item === PDF_EOF) break;
+        if (item === PDF_DICT_END) continue;
+        array.push(item);
+      }
+      return array;
+    }
+    if (code === 93) { cursor.pos++; return PDF_ARRAY_END; }
+    if (code === 123 || code === 125 || code === 41) {
+      // Braces belong to PostScript calculator functions, which never appear
+      // where this reader looks; a stray one is stepped over.
+      cursor.pos++;
+      return { op: String.fromCharCode(code) };
+    }
+
+    let pos = cursor.pos;
+    while (pos < end && !PDF_CHAR_CLASS[bytes[pos]]) pos++;
+    const word = pdfLatin1(bytes, cursor.pos, pos);
+    cursor.pos = pos;
+    if (word === 'true') return true;
+    if (word === 'false') return false;
+    if (word === 'null') return null;
+    return { op: word };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Filters
+  // ---------------------------------------------------------------------------
+
+  const PDF_FILTER_NAMES = Object.freeze({
+    Fl: 'FlateDecode', LZW: 'LZWDecode', A85: 'ASCII85Decode', AHx: 'ASCIIHexDecode',
+    RL: 'RunLengthDecode', DCT: 'DCTDecode', CCF: 'CCITTFaxDecode',
+  });
+
+  function pdfAscii85Decode(bytes) {
+    const out = [];
+    let group = [];
+    for (let index = 0; index < bytes.length; index++) {
+      const code = bytes[index];
+      if (code === 126) break;
+      if (PDF_CHAR_CLASS[code] === 1) continue;
+      if (code === 122 && !group.length) { out.push(0, 0, 0, 0); continue; }
+      if (code < 33 || code > 117) continue;
+      group.push(code - 33);
+      if (group.length === 5) {
+        let value = 0;
+        for (const digit of group) value = value * 85 + digit;
+        out.push((value >>> 24) & 255, (value >>> 16) & 255, (value >>> 8) & 255, value & 255);
+        group = [];
+      }
+    }
+    if (group.length > 1) {
+      // A short final group is padded with the highest digit and gives one byte
+      // fewer than it has characters.
+      const kept = group.length - 1;
+      while (group.length < 5) group.push(84);
+      let value = 0;
+      for (const digit of group) value = value * 85 + digit;
+      const tail = [(value >>> 24) & 255, (value >>> 16) & 255, (value >>> 8) & 255, value & 255];
+      out.push(...tail.slice(0, kept));
+    }
+    return Uint8Array.from(out);
+  }
+
+  function pdfAsciiHexDecode(bytes) {
+    const out = [];
+    let high = -1;
+    for (let index = 0; index < bytes.length; index++) {
+      if (bytes[index] === 62) break;
+      const value = pdfHexValue(bytes[index]);
+      if (value < 0) continue;
+      if (high < 0) high = value;
+      else { out.push(high * 16 + value); high = -1; }
+    }
+    if (high >= 0) out.push(high * 16);
+    return Uint8Array.from(out);
+  }
+
+  function pdfRunLengthDecode(bytes) {
+    const out = [];
+    let index = 0;
+    while (index < bytes.length) {
+      const length = bytes[index++];
+      if (length === 128) break;
+      if (length < 128) {
+        for (let count = 0; count <= length && index < bytes.length; count++) out.push(bytes[index++]);
+      } else {
+        const value = bytes[index++];
+        for (let count = 0; count < 257 - length; count++) out.push(value);
+      }
+    }
+    return Uint8Array.from(out);
+  }
+
+  // LZW as PDF uses it: codes packed most significant bit first, growing from
+  // nine bits to twelve, with 256 clearing the table and 257 ending the data.
+  // `earlyChange` is the off-by-one the format inherited from TIFF: by default
+  // the code width grows one code sooner than the table strictly needs.
+  function pdfLzwDecode(bytes, earlyChange = 1) {
+    const out = [];
+    let table = [];
+    const reset = () => {
+      table = [];
+      for (let code = 0; code < 256; code++) table.push([code]);
+      table.push(null, null);
+    };
+    reset();
+    let width = 9;
+    let hold = 0;
+    let held = 0;
+    let previous = null;
+    for (let index = 0; index < bytes.length; index++) {
+      hold = (hold << 8) | bytes[index];
+      held += 8;
+      while (held >= width) {
+        const code = (hold >> (held - width)) & ((1 << width) - 1);
+        held -= width;
+        hold &= (1 << held) - 1;
+        if (code === 257) return Uint8Array.from(out);
+        if (code === 256) { reset(); width = 9; previous = null; continue; }
+        let entry;
+        if (code < table.length && table[code]) entry = table[code];
+        else if (previous) entry = previous.concat(previous[0]);
+        else return Uint8Array.from(out);
+        for (const value of entry) out.push(value);
+        if (previous && table.length < 4096) table.push(previous.concat(entry[0]));
+        previous = entry;
+        const size = table.length + earlyChange;
+        width = size > 2048 ? 12 : size > 1024 ? 11 : size > 512 ? 10 : 9;
+      }
+    }
+    return Uint8Array.from(out);
+  }
+
+  // PNG row filters, which is what "Predictor 10 and up" means. Each row carries
+  // its own filter byte, so the declared predictor number does not matter beyond
+  // saying that PNG prediction is in use.
+  function pdfPngUnpredict(bytes, columns, colors, bitsPerComponent) {
+    const pixelBytes = Math.max(1, Math.ceil((colors * bitsPerComponent) / 8));
+    const rowBytes = Math.ceil((columns * colors * bitsPerComponent) / 8);
+    if (!(rowBytes > 0)) return bytes;
+    const rows = Math.floor(bytes.length / (rowBytes + 1));
+    const out = new Uint8Array(rows * rowBytes);
+    for (let row = 0; row < rows; row++) {
+      const filter = bytes[row * (rowBytes + 1)];
+      const from = row * (rowBytes + 1) + 1;
+      const to = row * rowBytes;
+      for (let index = 0; index < rowBytes; index++) {
+        const left = index >= pixelBytes ? out[to + index - pixelBytes] : 0;
+        const up = row ? out[to + index - rowBytes] : 0;
+        const upLeft = row && index >= pixelBytes ? out[to + index - rowBytes - pixelBytes] : 0;
+        let value = bytes[from + index];
+        if (filter === 1) value += left;
+        else if (filter === 2) value += up;
+        else if (filter === 3) value += (left + up) >> 1;
+        else if (filter === 4) {
+          const estimate = left + up - upLeft;
+          const dLeft = Math.abs(estimate - left);
+          const dUp = Math.abs(estimate - up);
+          const dUpLeft = Math.abs(estimate - upLeft);
+          value += dLeft <= dUp && dLeft <= dUpLeft ? left : dUp <= dUpLeft ? up : upLeft;
+        }
+        out[to + index] = value & 255;
+      }
+    }
+    return out;
+  }
+
+  function pdfResolve(doc, value) {
+    // A reference can point at another reference; a file that makes a loop of
+    // them should resolve to nothing rather than hang.
+    for (let hops = 0; hops < 32 && isPdfRef(value); hops++) {
+      value = doc.objects.has(value.ref) ? doc.objects.get(value.ref) : null;
+    }
+    return isPdfRef(value) ? null : value;
+  }
+
+  function pdfDictGet(doc, dict, key) {
+    return dict instanceof Map ? pdfResolve(doc, dict.get(key)) : null;
+  }
+
+  function pdfStreamFilters(doc, stream) {
+    const filter = pdfDictGet(doc, stream.dict, 'Filter') ?? pdfDictGet(doc, stream.dict, 'F');
+    const list = Array.isArray(filter) ? filter : (filter ? [filter] : []);
+    return list.map(name => pdfResolve(doc, name))
+      .filter(name => typeof name === 'string')
+      .map(name => PDF_FILTER_NAMES[name] || name);
+  }
+
+  // Decodes as far as it can and reports what it could not. The image filters
+  // (DCT, CCITT, JBIG2, JPX) are never undone here: their output is pixels, and a
+  // caller that wants an image is better served by the still-encoded bytes.
+  function pdfStreamData(doc, stream) {
+    let bytes = doc.bytes.subarray(stream.start, stream.end);
+    const filters = pdfStreamFilters(doc, stream);
+    let parms = pdfDictGet(doc, stream.dict, 'DecodeParms') ?? pdfDictGet(doc, stream.dict, 'DP');
+    parms = Array.isArray(parms) ? parms.map(item => pdfResolve(doc, item)) : [parms];
+    for (let index = 0; index < filters.length; index++) {
+      const name = filters[index];
+      const parm = parms[index] instanceof Map ? parms[index] : null;
+      if (name === 'FlateDecode') bytes = inflateBytes(bytes);
+      else if (name === 'LZWDecode') bytes = pdfLzwDecode(bytes, pdfDictGet(doc, parm, 'EarlyChange') ?? 1);
+      else if (name === 'ASCII85Decode') bytes = pdfAscii85Decode(bytes);
+      else if (name === 'ASCIIHexDecode') bytes = pdfAsciiHexDecode(bytes);
+      else if (name === 'RunLengthDecode') bytes = pdfRunLengthDecode(bytes);
+      else if (name === 'Crypt') continue;
+      else return { bytes, remaining: filters.slice(index) };
+      if (bytes.length > PDF_MAX_STREAM_BYTES) throw new Error('A stream in this PDF is too large to read.');
+      const predictor = pdfDictGet(doc, parm, 'Predictor') ?? 1;
+      if (predictor >= 10 && (name === 'FlateDecode' || name === 'LZWDecode')) {
+        bytes = pdfPngUnpredict(bytes,
+          pdfDictGet(doc, parm, 'Columns') ?? 1,
+          pdfDictGet(doc, parm, 'Colors') ?? 1,
+          pdfDictGet(doc, parm, 'BitsPerComponent') ?? 8);
+      }
+    }
+    return { bytes, remaining: [] };
+  }
+
+  // ---------------------------------------------------------------------------
+  // File structure
+  // ---------------------------------------------------------------------------
+
+  // The next `N G obj` at or after `from`, found by looking for the word and
+  // reading backwards. Backwards because the word is the rare part: a file is
+  // full of digits, and almost none of them begin an object.
+  function nextPdfObjectHeader(bytes, from, end) {
+    let at = from;
+    for (;;) {
+      at = pdfIndexOf(bytes, 'obj', at, end);
+      if (at < 0) return null;
+      const after = at + 3;
+      at = after;
+      if (after < end && !PDF_CHAR_CLASS[bytes[after]]) continue;
+      let pos = after - 4;
+      const spaceBeforeWord = pos;
+      while (pos >= from && PDF_CHAR_CLASS[bytes[pos]] === 1) pos--;
+      if (pos === spaceBeforeWord) continue;
+      const generationEnd = pos;
+      while (pos >= from && bytes[pos] >= 48 && bytes[pos] <= 57) pos--;
+      if (pos === generationEnd) continue;
+      const spaceBeforeGeneration = pos;
+      while (pos >= from && PDF_CHAR_CLASS[bytes[pos]] === 1) pos--;
+      if (pos === spaceBeforeGeneration) continue;
+      const numberEnd = pos;
+      while (pos >= from && bytes[pos] >= 48 && bytes[pos] <= 57) pos--;
+      if (pos === numberEnd || numberEnd - pos > 10) continue;
+      // The number has to start a token: `x12 0 obj` is not object 12.
+      if (pos >= from && !PDF_CHAR_CLASS[bytes[pos]]) continue;
+      return { number: Number(pdfLatin1(bytes, pos + 1, numberEnd + 1)), at: pos + 1, after };
+    }
+  }
+
+  function pdfStreamRange(doc, cursor, dict, lengths) {
+    const { bytes, end } = cursor;
+    let start = cursor.pos + 6;
+    // The keyword is followed by CRLF or LF; a bare CR is not allowed and is
+    // written anyway.
+    if (bytes[start] === 13) start++;
+    if (bytes[start] === 10) start++;
+    let length = dict.get('Length');
+    if (isPdfRef(length)) length = lengths.get(length.ref);
+    if (Number.isSafeInteger(length) && length >= 0 && start + length <= end) {
+      // Trust a declared length only if `endstream` really is where it says.
+      let probe = start + length;
+      while (probe < end && PDF_CHAR_CLASS[bytes[probe]] === 1) probe++;
+      if (pdfMatchesAt(bytes, probe, 'endstream')) return { start, end: start + length, next: probe + 9 };
+    }
+    const found = pdfIndexOf(bytes, 'endstream', start, end);
+    if (found < 0) return { start, end, next: end };
+    let stop = found;
+    // The line break before the keyword is not part of the data.
+    if (stop > start && bytes[stop - 1] === 10) stop--;
+    if (stop > start && bytes[stop - 1] === 13) stop--;
+    return { start, end: stop, next: found + 9 };
+  }
+
+  function pdfObjectStreamEntries(doc, stream) {
+    const count = pdfDictGet(doc, stream.dict, 'N');
+    const first = pdfDictGet(doc, stream.dict, 'First');
+    if (!Number.isSafeInteger(count) || !Number.isSafeInteger(first) || count < 0 || first < 0) return [];
+    let data;
+    try { data = pdfStreamData(doc, stream); } catch { return []; }
+    if (data.remaining.length) return [];
+    const header = { bytes: data.bytes, pos: 0, end: Math.min(first, data.bytes.length) };
+    const index = [];
+    for (let entry = 0; entry < count; entry++) {
+      const number = readPdfObject(header, false);
+      const offset = readPdfObject(header, false);
+      if (typeof number !== 'number' || typeof offset !== 'number') break;
+      index.push([number, offset]);
+    }
+    return index.map(([number, offset]) => {
+      const cursor = { bytes: data.bytes, pos: first + offset, end: data.bytes.length };
+      const value = readPdfObject(cursor);
+      return [number, value === PDF_EOF || value === PDF_ARRAY_END || value === PDF_DICT_END ? null : value];
+    });
+  }
+
+  function pdfNumberArray(doc, value, length) {
+    const array = pdfResolve(doc, value);
+    if (!Array.isArray(array) || array.length < length) return null;
+    const numbers = array.slice(0, length).map(item => pdfResolve(doc, item));
+    return numbers.every(Number.isFinite) ? numbers : null;
+  }
+
+  function collectPdfPages(doc) {
+    const pages = [];
+    const seen = new Set();
+    // An explicit stack rather than recursion: a page tree is usually three
+    // levels deep, and occasionally a linked list a thousand long.
+    const stack = [{ node: doc.root.get('Pages'), inherited: {} }];
+    while (stack.length && pages.length < 100000) {
+      const { node, inherited } = stack.pop();
+      const dict = pdfResolve(doc, node);
+      if (!(dict instanceof Map) || seen.has(dict)) continue;
+      seen.add(dict);
+      const attributes = { ...inherited };
+      for (const key of ['Resources', 'MediaBox', 'CropBox', 'Rotate', 'UserUnit']) {
+        if (dict.has(key)) attributes[key] = dict.get(key);
+      }
+      const kids = pdfResolve(doc, dict.get('Kids'));
+      if (Array.isArray(kids) && dict.get('Type') !== 'Page') {
+        // Reversed so the stack hands them back in reading order.
+        for (let index = kids.length - 1; index >= 0; index--) stack.push({ node: kids[index], inherited: attributes });
+      } else {
+        pages.push({ dict, ...attributes });
+      }
+    }
+    return pages;
+  }
+
+  // Where a page sits and which way up, as the matrix that takes its own
+  // coordinates to millimetres from the bottom-left corner of the page as a
+  // reader would display it. /Rotate turns the page clockwise, so a landscape
+  // drawing saved as a rotated portrait page comes out landscape here too.
+  function pdfPageGeometry(doc, page) {
+    const media = pdfNumberArray(doc, page.MediaBox, 4) || [0, 0, 612, 792];
+    const crop = pdfNumberArray(doc, page.CropBox, 4);
+    let x0 = Math.min(media[0], media[2]);
+    let y0 = Math.min(media[1], media[3]);
+    let x1 = Math.max(media[0], media[2]);
+    let y1 = Math.max(media[1], media[3]);
+    if (crop) {
+      // The crop box is what a reader shows; it cannot reach outside the media.
+      const cx0 = Math.max(x0, Math.min(crop[0], crop[2]));
+      const cy0 = Math.max(y0, Math.min(crop[1], crop[3]));
+      const cx1 = Math.min(x1, Math.max(crop[0], crop[2]));
+      const cy1 = Math.min(y1, Math.max(crop[1], crop[3]));
+      if (cx1 - cx0 > 1e-6 && cy1 - cy0 > 1e-6) { x0 = cx0; y0 = cy0; x1 = cx1; y1 = cy1; }
+    }
+    const width = x1 - x0;
+    const height = y1 - y0;
+    if (!(width > 1e-6) || !(height > 1e-6)) return null;
+    const userUnit = pdfResolve(doc, page.UserUnit);
+    const mm = (25.4 / 72) * (Number.isFinite(userUnit) && userUnit > 0 ? userUnit : 1);
+    const turn = pdfResolve(doc, page.Rotate);
+    const rotate = Number.isFinite(turn) ? ((Math.round(turn / 90) * 90) % 360 + 360) % 360 : 0;
+    let matrix;
+    if (rotate === 90) matrix = [0, -mm, mm, 0, -y0 * mm, x1 * mm];
+    else if (rotate === 180) matrix = [-mm, 0, 0, -mm, x1 * mm, y1 * mm];
+    else if (rotate === 270) matrix = [0, mm, -mm, 0, y1 * mm, -x0 * mm];
+    else matrix = [mm, 0, 0, mm, -x0 * mm, -y0 * mm];
+    const sideways = rotate === 90 || rotate === 270;
+    return {
+      widthMM: (sideways ? height : width) * mm,
+      heightMM: (sideways ? width : height) * mm,
+      rotate,
+      matrix,
+    };
+  }
+
+  // Returns { doc } or { error }. The document is everything a page reader
+  // needs: the bytes, the object table, the catalog and the page list.
+  function openPdf(input) {
+    const bytes = input && input.subarray ? input : Uint8Array.from(input || []);
+    const size = bytes.length;
+    if (size > PDF_MAX_BYTES) return { error: 'That PDF is too large to read here.' };
+    // The header is allowed to sit a little way in; mail software and some
+    // scanners put a line of their own ahead of it.
+    if (size < 16 || pdfIndexOf(bytes, '%PDF-', 0, Math.min(size, 1024)) < 0) {
+      return { error: 'That file is not a PDF.' };
+    }
+
+    const doc = { bytes, objects: new Map(), root: null, pages: [] };
+
+    // Stream lengths are often written as a reference to an integer object that
+    // comes after the stream. Collecting the bare integers first means a length
+    // is known by the time its stream is reached.
+    const lengths = new Map();
+    for (let from = 0; ;) {
+      const header = nextPdfObjectHeader(bytes, from, size);
+      if (!header) break;
+      from = header.after;
+      const cursor = { bytes, pos: header.after, end: Math.min(size, header.after + 40) };
+      skipPdfSpace(cursor);
+      if (!(bytes[cursor.pos] >= 48 && bytes[cursor.pos] <= 57)) continue;
+      const value = readPdfNumber(cursor);
+      skipPdfSpace(cursor);
+      if (cursor.integer && pdfMatchesAt(bytes, cursor.pos, 'endobj')) lengths.set(header.number, value);
+    }
+
+    const trailers = [];
+    const objectStreams = [];
+    const definedAt = new Map();
+    const define = (number, value, position) => {
+      // Later in the file wins, which is how an appended revision replaces an
+      // object without touching the original.
+      if (definedAt.has(number) && definedAt.get(number) > position) return;
+      definedAt.set(number, position);
+      doc.objects.set(number, value);
+    };
+    const noteTrailers = (from, to) => {
+      for (let at = from; ;) {
+        at = pdfIndexOf(bytes, 'trailer', at, to);
+        if (at < 0) return;
+        const cursor = { bytes, pos: at + 7, end: size };
+        const dict = readPdfObject(cursor);
+        if (dict instanceof Map) trailers.push({ dict, position: at });
+        at += 7;
+      }
+    };
+
+    let pos = 0;
+    for (;;) {
+      const header = nextPdfObjectHeader(bytes, pos, size);
+      noteTrailers(pos, header ? header.at : size);
+      if (!header) break;
+      const cursor = { bytes, pos: header.after, end: size };
+      let value = readPdfObject(cursor);
+      if (value === PDF_EOF || value === PDF_ARRAY_END || value === PDF_DICT_END || (value && value.op)) value = null;
+      skipPdfSpace(cursor);
+      pos = cursor.pos;
+      if (value instanceof Map && pdfMatchesAt(bytes, cursor.pos, 'stream')) {
+        const range = pdfStreamRange(doc, cursor, value, lengths);
+        value = { dict: value, start: range.start, end: range.end };
+        pos = range.next;
+        const type = value.dict.get('Type');
+        if (type === 'ObjStm') objectStreams.push({ stream: value, position: header.at });
+        // A cross-reference stream carries the same keys a trailer does.
+        if (type === 'XRef') trailers.push({ dict: value.dict, position: header.at });
+      }
+      define(header.number, value, header.at);
+    }
+
+    // Expanded after the walk, since a stream's filter or length may be an
+    // object that comes later in the file, but still filed under the position of
+    // the stream that holds them so the later-wins rule is unaffected.
+    for (const { stream, position } of objectStreams) {
+      for (const [number, value] of pdfObjectStreamEntries(doc, stream)) define(number, value, position);
+    }
+
+    trailers.sort((a, b) => a.position - b.position);
+    if (trailers.some(trailer => trailer.dict.has('Encrypt'))) {
+      return { error: 'That PDF is encrypted. Save an unprotected copy of it, or print it to a new PDF, and place that.' };
+    }
+    for (let index = trailers.length - 1; index >= 0 && !doc.root; index--) {
+      const root = pdfResolve(doc, trailers[index].dict.get('Root'));
+      if (root instanceof Map && root.has('Pages')) doc.root = root;
+    }
+    if (!doc.root) {
+      // No usable trailer: the catalog is still an object like any other.
+      for (const value of doc.objects.values()) {
+        if (value instanceof Map && value.get('Type') === 'Catalog' && value.has('Pages')) doc.root = value;
+      }
+    }
+    if (!doc.root) return { error: 'That PDF has no page catalog and cannot be read.' };
+
+    doc.pages = collectPdfPages(doc);
+    if (!doc.pages.length) return { error: 'That PDF has no pages.' };
+    return { doc };
+  }
+
+  // ---------------------------------------------------------------------------
+  // model/pdfText.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // The PDF reader: text
+  //
+  // A PDF does not store text. It stores character codes and the name of a font
+  // to draw them with, and the font — usually embedded, usually a subset — is
+  // what knows which shape each code is. Drawing those shapes would mean reading
+  // TrueType and CFF outlines, which is most of what a PDF renderer is.
+  //
+  // This reader does the other half instead: it works out which characters the
+  // codes stand for, and how wide the font says each one is. That is enough to
+  // put the right words in the right place at the right size in a stand-in face,
+  // stretched to the width the real one occupied, and for a page that is going
+  // to be traced over the words matter far more than the typeface.
+  //
+  // Where a font gives no way to recover its characters (a subset addressed by
+  // glyph number with no /ToUnicode table), the run is reported as undecodable
+  // rather than drawn as the wrong letters.
+  // ---------------------------------------------------------------------------
+
+  // Windows-1252 and Mac OS Roman differ from Latin-1 only in the ranges below.
+  const PDF_WIN_ANSI_HIGH = '€•‚ƒ„…†‡ˆ‰Š‹Œ•Ž•'
+    + '•‘’“”•–—˜™š›œ•žŸ';
+  const PDF_MAC_ROMAN_HIGH = 'ÄÅÇÉÑÖÜáàâäãåçéè'
+    + 'êëíìîïñóòôöõúùûü'
+    + '†°¢£§•¶ß®©™´¨≠ÆØ'
+    + '∞±≤≥¥µ∂∑∏π∫ªºΩæø'
+    + '¿¡¬√ƒ≈∆«»… ÀÃÕŒœ'
+    + '–—“”‘’÷◊ÿŸ⁄€‹›ﬁﬂ'
+    + '‡·‚„‰ÂÊÁËÈÍÎÏÌÓÔ'
+    + 'ÒÚÛÙıˆ˜¯˘˙˚¸˝˛ˇ';
+
+  // Adobe's StandardEncoding, as the places it departs from ASCII and Latin-1.
+  // It is what a Type 1 font uses when the file names no encoding at all.
+  const PDF_STANDARD_OVERRIDES = Object.freeze({
+    0x27: '’', 0x60: '‘', 0xa4: '⁄', 0xa6: 'ƒ', 0xa8: '¤', 0xa9: "'",
+    0xaa: '“', 0xac: '‹', 0xad: '›', 0xae: 'fi', 0xaf: 'fl', 0xb1: '–',
+    0xb2: '†', 0xb3: '‡', 0xb4: '·', 0xb7: '•', 0xb8: '‚', 0xb9: '„',
+    0xba: '”', 0xbc: '…', 0xbd: '‰', 0xc1: '`', 0xc2: '´', 0xc3: 'ˆ',
+    0xc4: '˜', 0xc5: '¯', 0xc8: '¨', 0xcb: '¸', 0xd0: '—', 0xe1: 'Æ',
+    0xe3: 'ª', 0xe8: 'Ł', 0xe9: 'Ø', 0xea: 'Œ', 0xeb: 'º', 0xf1: 'æ',
+    0xf5: 'ı', 0xf8: 'ł', 0xf9: 'ø', 0xfa: 'œ', 0xfb: 'ß',
+  });
+
+  // Glyph names an /Encoding's /Differences array can use, for everything that
+  // is not a single letter or a letter plus an accent (both handled in code).
+  const PDF_GLYPH_NAMES = Object.freeze({
+    space: ' ', exclam: '!', quotedbl: '"', numbersign: '#', dollar: '$', percent: '%', ampersand: '&',
+    quotesingle: "'", parenleft: '(', parenright: ')', asterisk: '*', plus: '+', comma: ',', hyphen: '-',
+    minus: '−', period: '.', slash: '/', zero: '0', one: '1', two: '2', three: '3', four: '4',
+    five: '5', six: '6', seven: '7', eight: '8', nine: '9', colon: ':', semicolon: ';', less: '<',
+    equal: '=', greater: '>', question: '?', at: '@', bracketleft: '[', backslash: '\\',
+    bracketright: ']', asciicircum: '^', underscore: '_', grave: '`', braceleft: '{', bar: '|',
+    braceright: '}', asciitilde: '~', exclamdown: '¡', cent: '¢', sterling: '£',
+    currency: '¤', yen: '¥', brokenbar: '¦', section: '§', dieresis: '¨',
+    copyright: '©', ordfeminine: 'ª', guillemotleft: '«', logicalnot: '¬',
+    registered: '®', macron: '¯', degree: '°', plusminus: '±',
+    twosuperior: '²', threesuperior: '³', acute: '´', mu: 'µ',
+    paragraph: '¶', periodcentered: '·', cedilla: '¸', onesuperior: '¹',
+    ordmasculine: 'º', guillemotright: '»', onequarter: '¼', onehalf: '½',
+    threequarters: '¾', questiondown: '¿', multiply: '×', divide: '÷',
+    germandbls: 'ß', AE: 'Æ', ae: 'æ', Oslash: 'Ø', oslash: 'ø',
+    Eth: 'Ð', eth: 'ð', Thorn: 'Þ', thorn: 'þ', OE: 'Œ', oe: 'œ',
+    Lslash: 'Ł', lslash: 'ł', dotlessi: 'ı', florin: 'ƒ', circumflex: 'ˆ',
+    tilde: '˜', endash: '–', emdash: '—', quoteleft: '‘', quoteright: '’',
+    quotesinglbase: '‚', quotedblleft: '“', quotedblright: '”',
+    quotedblbase: '„', dagger: '†', daggerdbl: '‡', bullet: '•',
+    ellipsis: '…', perthousand: '‰', guilsinglleft: '‹', guilsinglright: '›',
+    fraction: '⁄', Euro: '€', trademark: '™', fi: 'fi', fl: 'fl', ff: 'ff',
+    ffi: 'ffi', ffl: 'ffl', nbspace: ' ', sfthyphen: '-', Delta: '∆', Omega: 'Ω',
+    pi: 'π', infinity: '∞', lessequal: '≤', greaterequal: '≥',
+    notequal: '≠', approxequal: '≈', summation: '∑', product: '∏',
+    radical: '√', integral: '∫', partialdiff: '∂', lozenge: '◊',
+  });
+
+  const PDF_GLYPH_ACCENTS = Object.freeze({
+    acute: '́', grave: '̀', circumflex: '̂', dieresis: '̈', tilde: '̃',
+    ring: '̊', cedilla: '̧', caron: '̌', macron: '̄', breve: '̆',
+  });
+
+  function pdfGlyphNameToText(name) {
+    // `a.sc`, `one.oldstyle`: a variant of the glyph before the dot.
+    const base = String(name).split('.')[0];
+    if (!base) return '';
+    if (base.length === 1) return base;
+    if (PDF_GLYPH_NAMES[base] !== undefined) return PDF_GLYPH_NAMES[base];
+    let match = /^uni([0-9A-Fa-f]{4})+$/.test(base) ? base.slice(3).match(/.{4}/g) : null;
+    if (match) return String.fromCharCode(...match.map(hex => parseInt(hex, 16)));
+    match = /^u([0-9A-Fa-f]{4,6})$/.exec(base);
+    if (match) {
+      const point = parseInt(match[1], 16);
+      return point <= 0x10ffff ? String.fromCodePoint(point) : '';
+    }
+    match = /^([A-Za-z])([a-z]+)$/.exec(base);
+    if (match && PDF_GLYPH_ACCENTS[match[2]]) return (match[1] + PDF_GLYPH_ACCENTS[match[2]]).normalize('NFC');
+    return '';
+  }
+
+  function pdfBaseEncoding(name) {
+    const table = [];
+    for (let code = 0; code < 256; code++) {
+      if (code < 32 || code === 127) table.push('');
+      else if (code < 127) table.push(String.fromCharCode(code));
+      else if (name === 'MacRomanEncoding') table.push(PDF_MAC_ROMAN_HIGH[code - 128]);
+      else if (code < 160) table.push(name === 'StandardEncoding' ? '' : PDF_WIN_ANSI_HIGH[code - 128]);
+      else table.push(String.fromCharCode(code));
+    }
+    if (name === 'StandardEncoding') {
+      for (const [code, text] of Object.entries(PDF_STANDARD_OVERRIDES)) table[Number(code)] = text;
+    }
+    return table;
+  }
+
+  function pdfCodeFromString(text) {
+    let code = 0;
+    for (let index = 0; index < text.length; index++) code = code * 256 + text.charCodeAt(index);
+    return code;
+  }
+
+  function pdfUtf16FromString(text) {
+    if (text.length < 2) return text;
+    let out = '';
+    for (let index = 0; index + 1 < text.length; index += 2) {
+      out += String.fromCharCode(text.charCodeAt(index) * 256 + text.charCodeAt(index + 1));
+    }
+    return out;
+  }
+
+  // A /ToUnicode CMap: the table that says which characters each code stands
+  // for. Only the two mapping operators matter; the rest of the file is the
+  // PostScript ceremony the format is wrapped in.
+  function parsePdfToUnicode(bytes) {
+    const map = new Map();
+    let codeBytes = 0;
+    const cursor = { bytes, pos: 0, end: bytes.length };
+    let operands = [];
+    for (;;) {
+      const token = readPdfObject(cursor, false);
+      if (token === PDF_EOF) break;
+      if (!token || token.op === undefined) { operands.push(token); continue; }
+      if (token.op === 'endcodespacerange') {
+        for (const item of operands) if (isPdfString(item)) codeBytes = Math.max(codeBytes, item.string.length);
+      } else if (token.op === 'endbfchar') {
+        for (let index = 0; index + 1 < operands.length; index += 2) {
+          const [from, to] = [operands[index], operands[index + 1]];
+          if (!isPdfString(from) || !isPdfString(to)) continue;
+          map.set(pdfCodeFromString(from.string), pdfUtf16FromString(to.string));
+          codeBytes = Math.max(codeBytes, from.string.length);
+        }
+      } else if (token.op === 'endbfrange') {
+        for (let index = 0; index + 2 < operands.length; index += 3) {
+          const [low, high, to] = [operands[index], operands[index + 1], operands[index + 2]];
+          if (!isPdfString(low) || !isPdfString(high)) continue;
+          const first = pdfCodeFromString(low.string);
+          const count = Math.min(65536, pdfCodeFromString(high.string) - first + 1);
+          codeBytes = Math.max(codeBytes, low.string.length);
+          if (Array.isArray(to)) {
+            for (let step = 0; step < count && step < to.length; step++) {
+              if (isPdfString(to[step])) map.set(first + step, pdfUtf16FromString(to[step].string));
+            }
+          } else if (isPdfString(to)) {
+            const start = pdfUtf16FromString(to.string);
+            if (!start) continue;
+            // The range counts up in its last code unit only.
+            const head = start.slice(0, -1);
+            const last = start.charCodeAt(start.length - 1);
+            for (let step = 0; step < count; step++) map.set(first + step, head + String.fromCharCode(last + step));
+          }
+        }
+      }
+      operands = [];
+    }
+    return { map, codeBytes };
+  }
+
+  function pdfFontFace(doc, baseFont, descriptor) {
+    const flags = pdfDictGet(doc, descriptor, 'Flags');
+    const fixed = Number.isFinite(flags) && (flags & 1) === 1;
+    return fixed || /courier|mono|consol|typewriter/i.test(baseFont) ? 'courier' : 'helvetica';
+  }
+
+  // The widths a base-14 font has when the file, as it is allowed to, leaves
+  // them out. Helvetica's stand in for every proportional face.
+  function pdfDefaultWidth(code, face) {
+    if (face === 'courier') return PDF_COURIER_WIDTH;
+    return code >= 32 && code <= 126 ? PDF_HELVETICA_WIDTHS[code - 32] : 556;
+  }
+
+  function pdfCompositeFont(doc, dict, unicode) {
+    const descendants = pdfDictGet(doc, dict, 'DescendantFonts');
+    const descendant = Array.isArray(descendants) ? pdfResolve(doc, descendants[0]) : descendants;
+    const baseFont = String(pdfDictGet(doc, dict, 'BaseFont') || '');
+    const face = pdfFontFace(doc, baseFont, pdfDictGet(doc, descendant, 'FontDescriptor'));
+    const defaultWidth = pdfDictGet(doc, descendant, 'DW');
+    const widths = new Map();
+    // /W is a run-length list in two shapes: `c [w1 w2 ...]` gives consecutive
+    // widths starting at c, and `first last w` gives one width to a whole range.
+    const list = pdfDictGet(doc, descendant, 'W');
+    if (Array.isArray(list)) {
+      for (let index = 0; index < list.length;) {
+        const first = pdfResolve(doc, list[index]);
+        const second = pdfResolve(doc, list[index + 1]);
+        if (Array.isArray(second)) {
+          second.forEach((width, offset) => {
+            const value = pdfResolve(doc, width);
+            if (Number.isFinite(value)) widths.set(first + offset, value);
+          });
+          index += 2;
+        } else {
+          const width = pdfResolve(doc, list[index + 2]);
+          if (Number.isFinite(first) && Number.isFinite(second) && Number.isFinite(width)) {
+            for (let cid = first; cid <= second && cid - first < 65536; cid++) widths.set(cid, width);
+          }
+          index += 3;
+        }
+      }
+    }
+    return {
+      codeBytes: 2,
+      face,
+      textOf: code => (unicode ? unicode.map.get(code) ?? '' : ''),
+      widthOf: code => widths.get(code) ?? (Number.isFinite(defaultWidth) ? defaultWidth : 1000),
+    };
+  }
+
+  function pdfSimpleFont(doc, dict, unicode) {
+    const subtype = dict.get('Subtype');
+    const baseFont = String(pdfDictGet(doc, dict, 'BaseFont') || '');
+    const descriptor = pdfDictGet(doc, dict, 'FontDescriptor');
+    const face = pdfFontFace(doc, baseFont, descriptor);
+
+    const encoding = pdfDictGet(doc, dict, 'Encoding');
+    const fallback = subtype === 'Type1' || subtype === 'MMType1' ? 'StandardEncoding' : 'WinAnsiEncoding';
+    let table;
+    if (typeof encoding === 'string') {
+      table = pdfBaseEncoding(encoding);
+    } else if (encoding instanceof Map) {
+      const base = pdfDictGet(doc, encoding, 'BaseEncoding');
+      table = pdfBaseEncoding(typeof base === 'string' ? base : fallback);
+      // `[ 65 /A /B 97 /a ]`: a number sets the code, each name after it takes
+      // the next one.
+      let code = 0;
+      for (const item of pdfDictGet(doc, encoding, 'Differences') || []) {
+        const value = pdfResolve(doc, item);
+        if (typeof value === 'number') code = value;
+        else if (typeof value === 'string' && code >= 0 && code < 256) table[code++] = pdfGlyphNameToText(value);
+      }
+    } else {
+      table = pdfBaseEncoding(fallback);
+    }
+
+    const firstChar = pdfDictGet(doc, dict, 'FirstChar');
+    const declared = pdfDictGet(doc, dict, 'Widths');
+    const missing = pdfDictGet(doc, descriptor, 'MissingWidth');
+    // A Type 3 font measures its glyphs in its own space rather than in
+    // thousandths of an em; its font matrix is the conversion.
+    const matrix = pdfDictGet(doc, dict, 'FontMatrix');
+    const scale = subtype === 'Type3' && Array.isArray(matrix) && Number.isFinite(pdfResolve(doc, matrix[0]))
+      ? Math.abs(pdfResolve(doc, matrix[0])) * 1000 : 1;
+    const widths = Array.isArray(declared) && Number.isFinite(firstChar)
+      ? declared.map(width => pdfResolve(doc, width)) : null;
+
+    return {
+      codeBytes: 1,
+      face,
+      textOf: code => (unicode && unicode.map.has(code) ? unicode.map.get(code) : table[code] ?? ''),
+      widthOf: code => {
+        const width = widths ? widths[code - firstChar] : undefined;
+        if (Number.isFinite(width)) return width * scale;
+        if (widths && Number.isFinite(missing)) return missing;
+        return pdfDefaultWidth(code, face);
+      },
+    };
+  }
+
+  function pdfFontRecord(doc, dict) {
+    if (!(dict instanceof Map)) return null;
+    let unicode = null;
+    const stream = pdfDictGet(doc, dict, 'ToUnicode');
+    if (isPdfStream(stream)) {
+      try {
+        const data = pdfStreamData(doc, stream);
+        if (!data.remaining.length) unicode = parsePdfToUnicode(data.bytes);
+      } catch {
+        unicode = null;
+      }
+    }
+    return dict.get('Subtype') === 'Type0'
+      ? pdfCompositeFont(doc, dict, unicode)
+      : pdfSimpleFont(doc, dict, unicode);
+  }
+
+  // One shown string, reduced to what placing it needs: the characters, the sum
+  // of their advance widths in thousandths of an em, how many glyphs there were
+  // (character spacing is added once per glyph) and how many of them were the
+  // single-byte space that word spacing applies to.
+  function pdfTextRun(font, string) {
+    let text = '';
+    let units = 0;
+    let glyphs = 0;
+    let spaces = 0;
+    let unknown = 0;
+    const step = font.codeBytes;
+    for (let index = 0; index + step <= string.length; index += step) {
+      const code = step === 2
+        ? string.charCodeAt(index) * 256 + string.charCodeAt(index + 1)
+        : string.charCodeAt(index);
+      const piece = font.textOf(code);
+      if (piece) text += piece;
+      else unknown++;
+      units += font.widthOf(code);
+      glyphs++;
+      if (step === 1 && code === 32) spaces++;
+    }
+    return { text, units, glyphs, spaces, unknown };
+  }
+
+  // ---------------------------------------------------------------------------
+  // model/pdfPage.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // The PDF reader: one page
+  //
+  // Runs a page's content stream and writes down what it paints, in the shape
+  // output/plot.js builds for the way out: strokes, fills and text measured in
+  // millimetres from the bottom-left corner of the sheet, Y up. Reading into the
+  // plot plan's own shape is what lets a test plot a drawing, read the PDF back
+  // and compare the two plans directly, and it means everything that already
+  // consumes a plan (the PDF writer, the plot preview) can consume a page.
+  //
+  // This is an interpreter, not a renderer: it never rasterises. It follows the
+  // graphics state closely enough to know where each path ends up and in what
+  // colour, and deliberately stops short of the parts of the imaging model a
+  // drawing to be traced over does not need:
+  //
+  //   - Clipping is tracked as a rectangle (the bounding box of each clip path).
+  //     That is exact for the case that matters, a viewport or plot window, and
+  //     conservative for an irregular clip, where it keeps a little too much.
+  //   - Transparency is flattened onto white paper.
+  //   - Pattern and shading fills are left out and counted.
+  //   - Text is positioned and sized exactly but carries no outlines; see
+  //     model/pdfText.js.
+  //   - Images are located, not decoded.
+  // ---------------------------------------------------------------------------
+
+  // A page with more line work than this is abandoned part-way with what it has.
+  // It is far past any real sheet and well short of what would hang the tab.
+  const PDF_MAX_SEGMENTS = 4000000;
+  const PDF_MAX_FORM_DEPTH = 16;
+  // A kerning adjustment this large, in thousandths of an em, is a word space
+  // written as a gap rather than as a character.
+  const PDF_WORD_GAP_UNITS = 250;
+  // One this large is a jump to the next column, not a space within a line.
+  const PDF_COLUMN_GAP_UNITS = 700;
+
+  const PDF_IDENTITY = Object.freeze([1, 0, 0, 1, 0, 0]);
+
+  // `first` applied, then `second` — the order PDF's `cm` builds a matrix in.
+  function pdfMatrixMultiply(first, second) {
+    return [
+      first[0] * second[0] + first[1] * second[2],
+      first[0] * second[1] + first[1] * second[3],
+      first[2] * second[0] + first[3] * second[2],
+      first[2] * second[1] + first[3] * second[3],
+      first[4] * second[0] + first[5] * second[2] + second[4],
+      first[4] * second[1] + first[5] * second[3] + second[5],
+    ];
+  }
+
+  function pdfClamp01(value) {
+    return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Colour
+  // ---------------------------------------------------------------------------
+
+  const PDF_GRAY_SPACE = Object.freeze({ kind: 'gray', components: 1 });
+  const PDF_RGB_SPACE = Object.freeze({ kind: 'rgb', components: 3 });
+  const PDF_CMYK_SPACE = Object.freeze({ kind: 'cmyk', components: 4 });
+  const PDF_PATTERN_SPACE = Object.freeze({ kind: 'pattern', components: 0 });
+
+  function pdfColorSpace(doc, resources, value, depth = 0) {
+    value = pdfResolve(doc, value);
+    if (typeof value === 'string') {
+      if (value === 'DeviceGray' || value === 'G' || value === 'CalGray') return PDF_GRAY_SPACE;
+      if (value === 'DeviceRGB' || value === 'RGB' || value === 'CalRGB') return PDF_RGB_SPACE;
+      if (value === 'DeviceCMYK' || value === 'CMYK') return PDF_CMYK_SPACE;
+      if (value === 'Pattern') return PDF_PATTERN_SPACE;
+      const named = pdfDictGet(doc, pdfDictGet(doc, resources, 'ColorSpace'), value);
+      return named && depth < 4 ? pdfColorSpace(doc, resources, named, depth + 1) : PDF_GRAY_SPACE;
+    }
+    if (!Array.isArray(value) || !value.length) return PDF_GRAY_SPACE;
+    const family = pdfResolve(doc, value[0]);
+    if (family === 'ICCBased') {
+      // The profile is not read; its channel count says which device space it
+      // stands in for, and for line work that is close enough.
+      const profile = pdfResolve(doc, value[1]);
+      const channels = isPdfStream(profile) ? pdfDictGet(doc, profile.dict, 'N') : 3;
+      return channels === 1 ? PDF_GRAY_SPACE : channels === 4 ? PDF_CMYK_SPACE : PDF_RGB_SPACE;
+    }
+    if (family === 'CalRGB' || family === 'DeviceRGB') return PDF_RGB_SPACE;
+    if (family === 'CalGray' || family === 'DeviceGray') return PDF_GRAY_SPACE;
+    if (family === 'DeviceCMYK') return PDF_CMYK_SPACE;
+    if (family === 'Lab') return { kind: 'lab', components: 3 };
+    if (family === 'Pattern') return PDF_PATTERN_SPACE;
+    if (family === 'Indexed' || family === 'I') {
+      const base = depth < 4 ? pdfColorSpace(doc, resources, value[1], depth + 1) : PDF_RGB_SPACE;
+      let table = pdfResolve(doc, value[3]);
+      if (isPdfStream(table)) {
+        try { table = pdfStreamData(doc, table).bytes; } catch { table = null; }
+      } else if (isPdfString(table)) {
+        table = Uint8Array.from(table.string, character => character.charCodeAt(0));
+      } else {
+        table = null;
+      }
+      return { kind: 'indexed', components: 1, base, table };
+    }
+    if (family === 'Separation') {
+      const name = pdfResolve(doc, value[1]);
+      return { kind: name === 'None' ? 'none' : 'tint', components: 1 };
+    }
+    if (family === 'DeviceN') {
+      const names = pdfResolve(doc, value[1]);
+      return { kind: 'tint', components: Array.isArray(names) ? names.length : 1 };
+    }
+    return PDF_GRAY_SPACE;
+  }
+
+  // A colour as [r, g, b] in 0..1, or null for one that cannot be painted with
+  // (a pattern, or the separation that means "no ink").
+  function pdfInkColor(space, values) {
+    const numbers = values.filter(Number.isFinite);
+    if (space.kind === 'pattern' || space.kind === 'none') return null;
+    if (space.kind === 'rgb') return [pdfClamp01(numbers[0]), pdfClamp01(numbers[1]), pdfClamp01(numbers[2])];
+    if (space.kind === 'cmyk') {
+      const black = 1 - pdfClamp01(numbers[3]);
+      return [
+        (1 - pdfClamp01(numbers[0])) * black,
+        (1 - pdfClamp01(numbers[1])) * black,
+        (1 - pdfClamp01(numbers[2])) * black,
+      ];
+    }
+    if (space.kind === 'lab') {
+      const level = pdfClamp01((numbers[0] ?? 0) / 100);
+      return [level, level, level];
+    }
+    if (space.kind === 'tint') {
+      // A spot colour's real appearance lives in a function this reader does not
+      // run. Full tint is drawn as full ink, which keeps line work visible.
+      const level = 1 - pdfClamp01(Math.max(0, ...numbers));
+      return [level, level, level];
+    }
+    if (space.kind === 'indexed') {
+      const size = space.base.components || 3;
+      const at = Math.max(0, Math.round(numbers[0] ?? 0)) * size;
+      if (!space.table || at + size > space.table.length) return [0, 0, 0];
+      const entry = [];
+      for (let channel = 0; channel < size; channel++) entry.push(space.table[at + channel] / 255);
+      return pdfInkColor(space.base, entry);
+    }
+    const level = pdfClamp01(numbers[0]);
+    return [level, level, level];
+  }
+
+  // Ink at less than full opacity, flattened onto the white sheet behind it.
+  function pdfOnPaper(color, alpha) {
+    if (!(alpha < 1)) return color;
+    const a = pdfClamp01(alpha);
+    return [1 - a * (1 - color[0]), 1 - a * (1 - color[1]), 1 - a * (1 - color[2])];
+  }
+
+  function pdfSameColor(a, b) {
+    return Math.abs(a[0] - b[0]) < 0.002 && Math.abs(a[1] - b[1]) < 0.002 && Math.abs(a[2] - b[2]) < 0.002;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Clipping
+  // ---------------------------------------------------------------------------
+
+  function pdfSubpathsBox(subpaths) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    const take = point => {
+      if (point.x < minX) minX = point.x;
+      if (point.x > maxX) maxX = point.x;
+      if (point.y < minY) minY = point.y;
+      if (point.y > maxY) maxY = point.y;
+    };
+    for (const subpath of subpaths) {
+      take(subpath.start);
+      for (const segment of subpath.segs) {
+        // A curve stays inside the hull of its control points, so including
+        // them gives a box that is never too small.
+        if (segment.type === 'c') { take(segment.c1); take(segment.c2); }
+        take(segment.to);
+      }
+    }
+    return { minX, minY, maxX, maxY };
+  }
+
+  function pdfBoxIntersect(a, b) {
+    return {
+      minX: Math.max(a.minX, b.minX), minY: Math.max(a.minY, b.minY),
+      maxX: Math.min(a.maxX, b.maxX), maxY: Math.min(a.maxY, b.maxY),
+    };
+  }
+
+  // Straight points along a subpath, curves included. Only used on paths that
+  // cross the clip edge, where the pieces are about to be cut anyway.
+  function pdfFlattenSubpath(subpath) {
+    const points = [subpath.start];
+    let from = subpath.start;
+    for (const segment of subpath.segs) {
+      if (segment.type === 'c') {
+        const reach = Math.hypot(segment.c1.x - from.x, segment.c1.y - from.y)
+          + Math.hypot(segment.c2.x - segment.c1.x, segment.c2.y - segment.c1.y)
+          + Math.hypot(segment.to.x - segment.c2.x, segment.to.y - segment.c2.y);
+        const steps = Math.min(64, Math.max(4, Math.ceil(reach / 0.4)));
+        for (let step = 1; step <= steps; step++) {
+          const t = step / steps;
+          const u = 1 - t;
+          points.push({
+            x: u * u * u * from.x + 3 * u * u * t * segment.c1.x + 3 * u * t * t * segment.c2.x + t * t * t * segment.to.x,
+            y: u * u * u * from.y + 3 * u * u * t * segment.c1.y + 3 * u * t * t * segment.c2.y + t * t * t * segment.to.y,
+          });
+        }
+      } else {
+        points.push(segment.to);
+      }
+      from = segment.to;
+    }
+    return points;
+  }
+
+  // Liang-Barsky: the part of a..b inside the box, or null.
+  function pdfClipSegment(a, b, box) {
+    let t0 = 0;
+    let t1 = 1;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const edges = [[-dx, a.x - box.minX], [dx, box.maxX - a.x], [-dy, a.y - box.minY], [dy, box.maxY - a.y]];
+    for (const [p, q] of edges) {
+      if (p === 0) {
+        if (q < 0) return null;
+        continue;
+      }
+      const t = q / p;
+      if (p < 0) { if (t > t1) return null; if (t > t0) t0 = t; }
+      else { if (t < t0) return null; if (t < t1) t1 = t; }
+    }
+    return [
+      t0 > 0 ? { x: a.x + dx * t0, y: a.y + dy * t0 } : a,
+      t1 < 1 ? { x: a.x + dx * t1, y: a.y + dy * t1 } : b,
+    ];
+  }
+
+  // Geometry drawn right up to a clip edge is written by one piece of arithmetic
+  // and the edge by another, so "inside" is given a hair of slack. Without it a
+  // circle touching its viewport would count as crossing it, and be cut into
+  // straight pieces for the sake of a rounding error.
+  const PDF_CLIP_SLACK_MM = 1e-4;
+
+  function pdfBoxOutside(inner, box) {
+    return inner.maxX < box.minX || inner.minX > box.maxX || inner.maxY < box.minY || inner.minY > box.maxY;
+  }
+
+  function pdfBoxInside(inner, box) {
+    return inner.minX >= box.minX - PDF_CLIP_SLACK_MM && inner.maxX <= box.maxX + PDF_CLIP_SLACK_MM
+      && inner.minY >= box.minY - PDF_CLIP_SLACK_MM && inner.maxY <= box.maxY + PDF_CLIP_SLACK_MM;
+  }
+
+  function pdfClipStroke(subpaths, box) {
+    const whole = pdfSubpathsBox(subpaths);
+    if (pdfBoxOutside(whole, box)) return [];
+    if (pdfBoxInside(whole, box)) return subpaths;
+    const out = [];
+    for (const subpath of subpaths) {
+      const own = pdfSubpathsBox([subpath]);
+      if (pdfBoxOutside(own, box)) continue;
+      if (pdfBoxInside(own, box)) {
+        out.push(subpath);
+        continue;
+      }
+      const points = pdfFlattenSubpath(subpath);
+      if (subpath.closed) points.push(subpath.start);
+      let piece = null;
+      for (let index = 1; index < points.length; index++) {
+        const cut = pdfClipSegment(points[index - 1], points[index], box);
+        if (!cut) { piece = null; continue; }
+        // A piece carries on only while each cut segment starts where the last
+        // one stopped; leaving the box and coming back starts a new one.
+        if (piece && cut[0] === points[index - 1]) {
+          piece.segs.push({ type: 'l', to: cut[1] });
+        } else {
+          piece = { start: cut[0], segs: [{ type: 'l', to: cut[1] }], closed: false };
+          out.push(piece);
+        }
+        if (cut[1] !== points[index]) piece = null;
+      }
+    }
+    return out;
+  }
+
+  // Sutherland-Hodgman against the four sides of the box. Each contour is cut
+  // on its own, which is valid for either fill rule because the box is convex.
+  function pdfClipFill(subpaths, box) {
+    const whole = pdfSubpathsBox(subpaths);
+    if (pdfBoxOutside(whole, box)) return [];
+    if (pdfBoxInside(whole, box)) return subpaths;
+    const sides = [
+      [point => point.x >= box.minX, (a, b) => ({ x: box.minX, y: a.y + (b.y - a.y) * (box.minX - a.x) / (b.x - a.x) })],
+      [point => point.x <= box.maxX, (a, b) => ({ x: box.maxX, y: a.y + (b.y - a.y) * (box.maxX - a.x) / (b.x - a.x) })],
+      [point => point.y >= box.minY, (a, b) => ({ x: a.x + (b.x - a.x) * (box.minY - a.y) / (b.y - a.y), y: box.minY })],
+      [point => point.y <= box.maxY, (a, b) => ({ x: a.x + (b.x - a.x) * (box.maxY - a.y) / (b.y - a.y), y: box.maxY })],
+    ];
+    const out = [];
+    for (const subpath of subpaths) {
+      let points = pdfFlattenSubpath(subpath);
+      for (const [inside, cross] of sides) {
+        const next = [];
+        for (let index = 0; index < points.length; index++) {
+          const a = points[index];
+          const b = points[(index + 1) % points.length];
+          const aIn = inside(a);
+          const bIn = inside(b);
+          if (aIn) next.push(a);
+          if (aIn !== bIn) next.push(cross(a, b));
+        }
+        points = next;
+        if (points.length < 3) break;
+      }
+      if (points.length < 3) continue;
+      out.push({ start: points[0], segs: points.slice(1).map(to => ({ type: 'l', to })), closed: true });
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Optional content ("layers")
+  // ---------------------------------------------------------------------------
+
+  // Object numbers of the layers a reader would open the file with switched off.
+  function pdfHiddenLayers(doc) {
+    if (doc.hiddenLayers) return doc.hiddenLayers;
+    const hidden = new Set();
+    const properties = pdfDictGet(doc, doc.root, 'OCProperties');
+    const config = pdfDictGet(doc, properties, 'D');
+    const refs = list => (Array.isArray(list) ? list.filter(isPdfRef).map(item => item.ref) : []);
+    if (pdfDictGet(doc, config, 'BaseState') === 'OFF') {
+      for (const ref of refs(pdfDictGet(doc, properties, 'OCGs'))) hidden.add(ref);
+      for (const ref of refs(pdfDictGet(doc, config, 'ON'))) hidden.delete(ref);
+    }
+    for (const ref of refs(pdfDictGet(doc, config, 'OFF'))) hidden.add(ref);
+    doc.hiddenLayers = hidden;
+    return hidden;
+  }
+
+  // `entry` is the /OC value as written: a reference to a layer, or to a
+  // membership dictionary naming several. A membership is hidden when every
+  // layer it names is — the default policy, and the only one worth following.
+  function pdfLayerHidden(doc, entry) {
+    const hidden = pdfHiddenLayers(doc);
+    if (!hidden.size) return false;
+    if (isPdfRef(entry) && hidden.has(entry.ref)) return true;
+    const dict = pdfResolve(doc, entry);
+    if (!(dict instanceof Map) || dict.get('Type') !== 'OCMD') return false;
+    const groups = dict.get('OCGs');
+    const list = (Array.isArray(pdfResolve(doc, groups)) ? pdfResolve(doc, groups) : [groups]).filter(isPdfRef);
+    return list.length > 0 && list.every(item => hidden.has(item.ref));
+  }
+
+  // ---------------------------------------------------------------------------
+  // The interpreter
+  // ---------------------------------------------------------------------------
+
+  function pdfContentBytes(doc, contents) {
+    const value = pdfResolve(doc, contents);
+    const streams = (Array.isArray(value) ? value.map(item => pdfResolve(doc, item)) : [value]).filter(isPdfStream);
+    const parts = [];
+    let total = 0;
+    for (const stream of streams) {
+      let data;
+      try { data = pdfStreamData(doc, stream); } catch { continue; }
+      if (data.remaining.length) continue;
+      parts.push(data.bytes);
+      total += data.bytes.length + 1;
+    }
+    if (parts.length === 1) return parts[0];
+    // The streams of one page are a single program split at arbitrary token
+    // boundaries, so they are joined with white space between them.
+    const joined = new Uint8Array(total);
+    let at = 0;
+    for (const part of parts) {
+      joined.set(part, at);
+      at += part.length;
+      joined[at++] = 10;
+    }
+    return joined;
+  }
+
+  // Steps over an inline image's data, which is raw bytes sitting in the middle
+  // of the content stream. There is no length; the data ends at an `EI` that
+  // stands alone, and binary data can contain those two letters, so the one that
+  // counts is the first that is followed by something that still reads as PDF.
+  function pdfSkipInlineImage(cursor) {
+    const { bytes, end } = cursor;
+    for (;;) {
+      const token = readPdfObject(cursor, false);
+      if (token === PDF_EOF) return;
+      if (token && token.op === 'ID') break;
+    }
+    let pos = cursor.pos + 1;
+    for (; pos + 1 < end; pos++) {
+      if (bytes[pos] !== 69 || bytes[pos + 1] !== 73) continue;
+      const before = bytes[pos - 1];
+      const after = pos + 2 < end ? bytes[pos + 2] : 32;
+      const spaced = code => code === 0 || code === 9 || code === 10 || code === 12 || code === 13 || code === 32;
+      if (!spaced(before) || !spaced(after)) continue;
+      // Whatever follows a real EI is an operator or operand in plain ASCII.
+      let plain = true;
+      for (let probe = pos + 2; probe < Math.min(end, pos + 12); probe++) {
+        if (bytes[probe] > 126 || (bytes[probe] < 32 && !spaced(bytes[probe]))) { plain = false; break; }
+      }
+      if (plain) break;
+    }
+    cursor.pos = Math.min(end, pos + 2);
+  }
+
+  function runPdfContent(run, bytes, resources, depth) {
+    const { doc, plan } = run;
+    const ops = plan.ops;
+    const cursor = { bytes, pos: 0, end: bytes.length };
+    const args = [];
+    let gs = run.gs;
+
+    let path = [];
+    let subpath = null;
+    let current = null;
+    let pendingClip = false;
+    let textMatrix = PDF_IDENTITY;
+    let lineMatrix = PDF_IDENTITY;
+    // One entry per open marked-content section, true where that section is a
+    // switched-off layer. Kept apart from the graphics state because q/Q and
+    // BDC/EMC nest independently.
+    const marked = [];
+    const hiddenBefore = run.hidden;
+
+    const number = index => {
+      const value = args[index];
+      return typeof value === 'number' ? value : 0;
+    };
+    const point = (x, y) => {
+      const m = gs.ctm;
+      return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
+    };
+    const moveTo = at => {
+      // Two moves in a row: the first one drew nothing and is replaced.
+      if (subpath && !subpath.segs.length) path.pop();
+      subpath = { start: at, segs: [], closed: false };
+      path.push(subpath);
+      current = at;
+    };
+    const ensureSubpath = () => {
+      if (subpath && !subpath.closed) return true;
+      // Drawing on after a close starts a new subpath where the old one began.
+      if (current) { moveTo(current); return true; }
+      return false;
+    };
+    const closeSubpath = () => {
+      if (!subpath || subpath.closed) return;
+      subpath.closed = true;
+      current = subpath.start;
+    };
+    const endPath = () => {
+      if (pendingClip) {
+        const drawn = path.filter(item => item.segs.length);
+        gs.clip = drawn.length ? pdfBoxIntersect(gs.clip, pdfSubpathsBox(drawn)) : gs.clip;
+        pendingClip = false;
+      }
+      path = [];
+      subpath = null;
+      current = null;
+    };
+    const lineScale = () => Math.sqrt(Math.abs(gs.ctm[0] * gs.ctm[3] - gs.ctm[1] * gs.ctm[2]));
+
+    const stroke = () => {
+      if (run.hidden || !gs.strokeColor || run.segments > PDF_MAX_SEGMENTS) return;
+      const drawn = pdfClipStroke(path.filter(item => item.segs.length), gs.clip);
+      if (!drawn.length) return;
+      const scale = lineScale();
+      const widthMM = gs.lineWidth * scale;
+      const dash = gs.dash.some(value => value > 0) ? gs.dash.map(value => value * scale) : [];
+      const color = pdfOnPaper(gs.strokeColor, gs.strokeAlpha);
+      for (const item of drawn) run.segments += item.segs.length;
+      // Consecutive strokes in one style become a single op. A CAD page is
+      // mostly runs of thousands of separate lines in the same pen, and one path
+      // per run is what keeps both the stored page and its redraw small.
+      const last = ops[ops.length - 1];
+      if (last && last.kind === 'stroke' && Math.abs(last.widthMM - widthMM) < 1e-6
+        && pdfSameColor(last.color, color) && last.dash.length === dash.length
+        && last.dash.every((value, index) => Math.abs(value - dash[index]) < 1e-6)) {
+        for (const item of drawn) last.subpaths.push(item);
+        return;
+      }
+      ops.push({ kind: 'stroke', widthMM, dash, color, subpaths: drawn });
+    };
+
+    const fill = evenOdd => {
+      if (run.hidden || run.segments > PDF_MAX_SEGMENTS) return;
+      if (!gs.fillColor) { plan.skipped.patterns++; return; }
+      // Two points enclose nothing; a lone curve can.
+      const closedAreas = path.filter(item => item.segs.length > 1 || item.segs[0]?.type === 'c');
+      const drawn = pdfClipFill(closedAreas, gs.clip);
+      if (!drawn.length) return;
+      const color = pdfOnPaper(gs.fillColor, gs.fillAlpha);
+      for (const item of drawn) run.segments += item.segs.length;
+      const only = drawn[0];
+      if (drawn.length === 1 && !evenOdd && only.segs.every(segment => segment.type === 'l')) {
+        // The simple polygon the plot plan already uses for arrowheads.
+        const points = [only.start, ...only.segs.map(segment => segment.to)];
+        const tail = points[points.length - 1];
+        if (points.length > 3 && Math.abs(tail.x - only.start.x) < 1e-9 && Math.abs(tail.y - only.start.y) < 1e-9) {
+          points.pop();
+        }
+        ops.push({ kind: 'fill', color, points });
+        return;
+      }
+      ops.push({ kind: 'fill', color, evenOdd: Boolean(evenOdd), subpaths: drawn });
+    };
+
+    // One piece of shown text, starting `offset` along the baseline from the
+    // text matrix and `advance` long, both in text space.
+    const placeText = (font, raw, unknown, offset, advance) => {
+      // Mode 3 is invisible text — the searchable layer under a scanned page —
+      // and 7 only adds to the clip. Neither puts ink on the sheet.
+      if (run.hidden || gs.renderMode === 3 || gs.renderMode === 7) return;
+      const text = raw.replace(/[\u0000-\u001f\u007f]/g, '');
+      if (!text.trim()) {
+        if (unknown) plan.skipped.text++;
+        return;
+      }
+      const stroked = gs.renderMode === 1 || gs.renderMode === 5;
+      const color = stroked ? gs.strokeColor : gs.fillColor;
+      if (!color) return;
+      const size = gs.fontSize;
+      const placed = pdfMatrixMultiply([1, 0, 0, 1, offset, 0], pdfMatrixMultiply(textMatrix, gs.ctm));
+      const direction = size * gs.hScale < 0 ? -1 : 1;
+      const xScale = Math.hypot(placed[0], placed[1]);
+      const sizeMM = Math.abs(size) * Math.hypot(placed[2], placed[3]);
+      const widthMM = Math.abs(advance) * xScale;
+      if (!(sizeMM > 1e-6) || !(xScale > 1e-12)) return;
+      const x = placed[2] * gs.rise + placed[4];
+      const y = placed[3] * gs.rise + placed[5];
+      const angle = Math.atan2(placed[1] * direction, placed[0] * direction);
+      const endX = x + Math.cos(angle) * widthMM;
+      const endY = y + Math.sin(angle) * widthMM;
+      const outside = (px, py) => px < gs.clip.minX - sizeMM || px > gs.clip.maxX + sizeMM
+        || py < gs.clip.minY - sizeMM || py > gs.clip.maxY + sizeMM;
+      if (outside(x, y) && outside(endX, endY)) return;
+      if (unknown) plan.skipped.text++;
+
+      const inked = pdfOnPaper(color, stroked ? gs.strokeAlpha : gs.fillAlpha);
+      // Many writers place a line of text a word, or a letter, at a time. Where
+      // one run starts where the previous one stopped, on the same baseline in
+      // the same face, they are the same line of text and are stored as one.
+      const last = ops[ops.length - 1];
+      if (last && last.kind === 'text' && last.font === font.face && pdfSameColor(last.color, inked)
+        && Math.abs(last.sizeMM - sizeMM) < sizeMM * 0.02
+        && Math.abs(Math.atan2(Math.sin(last.angle - angle), Math.cos(last.angle - angle))) < 0.01) {
+        const along = (x - last.x) * Math.cos(angle) + (y - last.y) * Math.sin(angle);
+        const across = -(x - last.x) * Math.sin(angle) + (y - last.y) * Math.cos(angle);
+        const gap = along - last.widthMM;
+        if (Math.abs(across) < sizeMM * 0.1 && gap > -sizeMM * 0.25 && gap < sizeMM * PDF_COLUMN_GAP_UNITS / 1000) {
+          const spaced = gap > sizeMM * 0.18 && !last.text.endsWith(' ') && !text.startsWith(' ');
+          last.text += (spaced ? ' ' : '') + text;
+          last.widthMM = along + widthMM;
+          return;
+        }
+      }
+      ops.push({
+        kind: 'text', text, x, y, angle, sizeMM, widthMM,
+        font: font.face, anchor: 'left', baseline: 'alphabetic', color: inked,
+      });
+    };
+
+    const showText = items => {
+      const font = gs.font;
+      if (!font) return;
+      const size = gs.fontSize;
+      let text = '';
+      let unknown = 0;
+      let begun = false;
+      let start = 0;
+      let advance = 0;
+      const flush = () => {
+        if (begun) placeText(font, text, unknown, start, advance - start);
+        text = '';
+        unknown = 0;
+        begun = false;
+      };
+      for (const item of items) {
+        if (typeof item === 'number') {
+          // A table row is often one operator, with the jump to each column
+          // written as a huge kerning adjustment. Those are separate strings
+          // that happen to share a baseline, so the run is cut there; stretching
+          // one string across the whole row would put every cell in the wrong
+          // place. A backwards jump is cut for the same reason.
+          if (item < -PDF_COLUMN_GAP_UNITS || item > PDF_WORD_GAP_UNITS) flush();
+          else if (item < -PDF_WORD_GAP_UNITS && text && !text.endsWith(' ')) text += ' ';
+          advance -= (item / 1000) * size * gs.hScale;
+        } else if (isPdfString(item)) {
+          if (!begun) { begun = true; start = advance; }
+          const piece = pdfTextRun(font, item.string);
+          text += piece.text;
+          unknown += piece.unknown;
+          advance += ((piece.units / 1000) * size + piece.glyphs * gs.charSpace + piece.spaces * gs.wordSpace) * gs.hScale;
+        }
+      }
+      flush();
+      textMatrix = pdfMatrixMultiply([1, 0, 0, 1, advance, 0], textMatrix);
+    };
+
+    const nextLine = (tx, ty) => {
+      lineMatrix = pdfMatrixMultiply([1, 0, 0, 1, tx, ty], lineMatrix);
+      textMatrix = lineMatrix;
+    };
+
+    const setColor = (stroking, space, values) => {
+      const color = pdfInkColor(space, values);
+      if (stroking) { gs.strokeSpace = space; gs.strokeColor = color; }
+      else { gs.fillSpace = space; gs.fillColor = color; }
+    };
+
+    const drawObject = name => {
+      const xobjects = pdfDictGet(doc, resources, 'XObject');
+      const stream = pdfDictGet(doc, xobjects, name);
+      if (!isPdfStream(stream)) return;
+      if (stream.dict.has('OC') && pdfLayerHidden(doc, stream.dict.get('OC'))) return;
+      const subtype = stream.dict.get('Subtype');
+      if (subtype === 'Image') {
+        if (run.hidden) return;
+        const m = gs.ctm;
+        const corners = [point(0, 0), point(1, 0), point(1, 1), point(0, 1)];
+        const box = pdfSubpathsBox([{ start: corners[0], segs: corners.slice(1).map(to => ({ type: 'l', to })) }]);
+        if (pdfBoxOutside(box, gs.clip)) return;
+        ops.push({
+          kind: 'image',
+          data: null,
+          source: stream,
+          filters: pdfStreamFilters(doc, stream),
+          mask: pdfDictGet(doc, stream.dict, 'ImageMask') === true,
+          pixelWidth: pdfDictGet(doc, stream.dict, 'Width') || 0,
+          pixelHeight: pdfDictGet(doc, stream.dict, 'Height') || 0,
+          origin: corners[0],
+          edgeX: { x: m[0], y: m[1] },
+          edgeY: { x: m[2], y: m[3] },
+          alpha: gs.fillAlpha,
+          widthMM: Math.hypot(m[0], m[1]),
+          heightMM: Math.hypot(m[2], m[3]),
+        });
+        return;
+      }
+      if (subtype !== 'Form' || depth >= PDF_MAX_FORM_DEPTH) return;
+      let data = run.forms.get(stream);
+      if (data === undefined) {
+        try {
+          const decoded = pdfStreamData(doc, stream);
+          data = decoded.remaining.length ? null : decoded.bytes;
+        } catch {
+          data = null;
+        }
+        run.forms.set(stream, data);
+      }
+      if (!data) return;
+      // A form is drawn as if wrapped in q ... Q, in its own matrix, clipped to
+      // its own bounding box.
+      const saved = gs;
+      gs = { ...gs };
+      const matrix = pdfDictGet(doc, stream.dict, 'Matrix');
+      if (Array.isArray(matrix) && matrix.length >= 6) {
+        const values = matrix.slice(0, 6).map(item => pdfResolve(doc, item));
+        if (values.every(Number.isFinite)) gs.ctm = pdfMatrixMultiply(values, gs.ctm);
+      }
+      const bbox = pdfDictGet(doc, stream.dict, 'BBox');
+      if (Array.isArray(bbox) && bbox.length >= 4) {
+        const [x0, y0, x1, y1] = bbox.slice(0, 4).map(item => pdfResolve(doc, item));
+        if ([x0, y0, x1, y1].every(Number.isFinite)) {
+          const corners = [point(x0, y0), point(x1, y0), point(x1, y1), point(x0, y1)];
+          gs.clip = pdfBoxIntersect(gs.clip,
+            pdfSubpathsBox([{ start: corners[0], segs: corners.slice(1).map(to => ({ type: 'l', to })) }]));
+        }
+      }
+      run.gs = gs;
+      // An unbalanced Q inside the form must not pop state that belongs to
+      // whoever drew it, so the form gets its own floor in the shared stack.
+      const stackDepth = run.stack.length;
+      const floor = run.floor;
+      run.floor = stackDepth;
+      runPdfContent(run, data, pdfDictGet(doc, stream.dict, 'Resources') || resources, depth + 1);
+      run.stack.length = stackDepth;
+      run.floor = floor;
+      gs = saved;
+      run.gs = gs;
+    };
+
+    for (;;) {
+      const token = readPdfObject(cursor, false);
+      if (token === PDF_EOF) break;
+      if (token === null || typeof token !== 'object' || token.op === undefined) {
+        // Operands pile up until an operator consumes them. The cap is only so a
+        // stream of garbage cannot grow the stack without limit.
+        if (args.length < 4096) args.push(token);
+        continue;
+      }
+      const op = token.op;
+      switch (op) {
+        // Path construction
+        case 'm': moveTo(point(number(0), number(1))); break;
+        case 'l':
+          if (ensureSubpath()) { current = point(number(0), number(1)); subpath.segs.push({ type: 'l', to: current }); }
+          else moveTo(point(number(0), number(1)));
+          break;
+        case 'c':
+          if (ensureSubpath()) {
+            const to = point(number(4), number(5));
+            subpath.segs.push({ type: 'c', c1: point(number(0), number(1)), c2: point(number(2), number(3)), to });
+            current = to;
+          }
+          break;
+        case 'v':
+          if (ensureSubpath()) {
+            const to = point(number(2), number(3));
+            subpath.segs.push({ type: 'c', c1: current, c2: point(number(0), number(1)), to });
+            current = to;
+          }
+          break;
+        case 'y':
+          if (ensureSubpath()) {
+            const to = point(number(2), number(3));
+            subpath.segs.push({ type: 'c', c1: point(number(0), number(1)), c2: to, to });
+            current = to;
+          }
+          break;
+        case 'h': closeSubpath(); break;
+        case 're': {
+          const [x, y, w, h] = [number(0), number(1), number(2), number(3)];
+          moveTo(point(x, y));
+          subpath.segs.push({ type: 'l', to: point(x + w, y) }, { type: 'l', to: point(x + w, y + h) },
+            { type: 'l', to: point(x, y + h) });
+          closeSubpath();
+          break;
+        }
+
+        // Path painting
+        case 'S': stroke(); endPath(); break;
+        case 's': closeSubpath(); stroke(); endPath(); break;
+        case 'f': case 'F': fill(false); endPath(); break;
+        case 'f*': fill(true); endPath(); break;
+        case 'B': fill(false); stroke(); endPath(); break;
+        case 'B*': fill(true); stroke(); endPath(); break;
+        case 'b': closeSubpath(); fill(false); stroke(); endPath(); break;
+        case 'b*': closeSubpath(); fill(true); stroke(); endPath(); break;
+        case 'n': endPath(); break;
+        case 'W': case 'W*': pendingClip = true; break;
+        case 'sh': if (!run.hidden) plan.skipped.shadings++; break;
+
+        // Graphics state
+        case 'q': run.stack.push(gs); gs = { ...gs }; run.gs = gs; break;
+        case 'Q':
+          if (run.stack.length > run.floor) { gs = run.stack.pop(); run.gs = gs; }
+          break;
+        case 'cm':
+          if (args.length >= 6) gs.ctm = pdfMatrixMultiply(args.slice(-6).map(value => (typeof value === 'number' ? value : 0)), gs.ctm);
+          break;
+        case 'w': gs.lineWidth = Math.abs(number(0)); break;
+        case 'd': {
+          const pattern = Array.isArray(args[0]) ? args[0].filter(value => typeof value === 'number' && value >= 0) : [];
+          gs.dash = pattern;
+          break;
+        }
+        case 'gs': {
+          const state = pdfDictGet(doc, pdfDictGet(doc, resources, 'ExtGState'), args[0]);
+          if (!(state instanceof Map)) break;
+          const strokeAlpha = pdfDictGet(doc, state, 'CA');
+          const fillAlpha = pdfDictGet(doc, state, 'ca');
+          const width = pdfDictGet(doc, state, 'LW');
+          const dash = pdfDictGet(doc, state, 'D');
+          if (Number.isFinite(strokeAlpha)) gs.strokeAlpha = strokeAlpha;
+          if (Number.isFinite(fillAlpha)) gs.fillAlpha = fillAlpha;
+          if (Number.isFinite(width)) gs.lineWidth = Math.abs(width);
+          if (Array.isArray(dash) && Array.isArray(pdfResolve(doc, dash[0]))) {
+            gs.dash = pdfResolve(doc, dash[0]).map(value => pdfResolve(doc, value)).filter(value => typeof value === 'number' && value >= 0);
+          }
+          break;
+        }
+
+        // Colour
+        case 'G': setColor(true, PDF_GRAY_SPACE, args); break;
+        case 'g': setColor(false, PDF_GRAY_SPACE, args); break;
+        case 'RG': setColor(true, PDF_RGB_SPACE, args); break;
+        case 'rg': setColor(false, PDF_RGB_SPACE, args); break;
+        case 'K': setColor(true, PDF_CMYK_SPACE, args); break;
+        case 'k': setColor(false, PDF_CMYK_SPACE, args); break;
+        case 'CS': {
+          const space = pdfColorSpace(doc, resources, args[0]);
+          gs.strokeSpace = space;
+          gs.strokeColor = space.kind === 'pattern' || space.kind === 'none' ? null : [0, 0, 0];
+          break;
+        }
+        case 'cs': {
+          const space = pdfColorSpace(doc, resources, args[0]);
+          gs.fillSpace = space;
+          gs.fillColor = space.kind === 'pattern' || space.kind === 'none' ? null : [0, 0, 0];
+          break;
+        }
+        case 'SC': case 'SCN': setColor(true, gs.strokeSpace, args); break;
+        case 'sc': case 'scn': setColor(false, gs.fillSpace, args); break;
+
+        // Text
+        case 'BT': textMatrix = PDF_IDENTITY; lineMatrix = PDF_IDENTITY; break;
+        case 'ET': break;
+        case 'Tf': {
+          const dict = pdfDictGet(doc, pdfDictGet(doc, resources, 'Font'), args[0]);
+          if (dict instanceof Map) {
+            if (!run.fonts.has(dict)) run.fonts.set(dict, pdfFontRecord(doc, dict));
+            gs.font = run.fonts.get(dict);
+          } else {
+            gs.font = null;
+          }
+          gs.fontSize = number(1);
+          break;
+        }
+        case 'Tc': gs.charSpace = number(0); break;
+        case 'Tw': gs.wordSpace = number(0); break;
+        case 'Tz': gs.hScale = number(0) / 100; break;
+        case 'TL': gs.leading = number(0); break;
+        case 'Ts': gs.rise = number(0); break;
+        case 'Tr': gs.renderMode = number(0); break;
+        case 'Td': nextLine(number(0), number(1)); break;
+        case 'TD': gs.leading = -number(1); nextLine(number(0), number(1)); break;
+        case 'Tm':
+          if (args.length >= 6) {
+            lineMatrix = args.slice(-6).map(value => (typeof value === 'number' ? value : 0));
+            textMatrix = lineMatrix;
+          }
+          break;
+        case 'T*': nextLine(0, -gs.leading); break;
+        case 'Tj': showText([args[0]]); break;
+        case 'TJ': if (Array.isArray(args[0])) showText(args[0]); break;
+        case "'": nextLine(0, -gs.leading); showText([args[0]]); break;
+        case '"':
+          gs.wordSpace = number(0);
+          gs.charSpace = number(1);
+          nextLine(0, -gs.leading);
+          showText([args[2]]);
+          break;
+
+        // XObjects and inline images
+        case 'Do': if (typeof args[0] === 'string') drawObject(args[0]); break;
+        case 'BI':
+          pdfSkipInlineImage(cursor);
+          if (!run.hidden) plan.skipped.inlineImages++;
+          break;
+
+        // Marked content, which is where optional-content layers attach
+        case 'BMC': marked.push(false); break;
+        case 'BDC': {
+          let off = false;
+          if (args[0] === 'OC') {
+            const properties = pdfDictGet(doc, resources, 'Properties');
+            const entry = typeof args[1] === 'string' && properties instanceof Map ? properties.get(args[1]) : args[1];
+            off = pdfLayerHidden(doc, entry);
+          }
+          marked.push(off);
+          if (off) run.hidden++;
+          break;
+        }
+        case 'EMC':
+          if (marked.length && marked.pop()) run.hidden--;
+          break;
+
+        default: break;
+      }
+      args.length = 0;
+    }
+    // A stream that ends with a layer still open must not leave the rest of the
+    // page hidden.
+    run.hidden = hiddenBefore;
+  }
+
+  // Returns the page as a plan: { page, ops, skipped, truncated }, or { error }.
+  function readPdfPage(doc, pageIndex) {
+    const page = doc.pages[pageIndex];
+    if (!page) return { error: 'That page is not in the PDF.' };
+    const geometry = pdfPageGeometry(doc, page);
+    if (!geometry) return { error: 'That page has no usable size.' };
+    const plan = {
+      page: { widthMM: geometry.widthMM, heightMM: geometry.heightMM },
+      ops: [],
+      skipped: { text: 0, patterns: 0, shadings: 0, inlineImages: 0 },
+      truncated: false,
+    };
+    const gs = {
+      ctm: geometry.matrix,
+      // Nothing outside the page is ever shown, so the page is the first clip.
+      clip: { minX: 0, minY: 0, maxX: geometry.widthMM, maxY: geometry.heightMM },
+      strokeColor: [0, 0, 0],
+      fillColor: [0, 0, 0],
+      strokeSpace: PDF_GRAY_SPACE,
+      fillSpace: PDF_GRAY_SPACE,
+      strokeAlpha: 1,
+      fillAlpha: 1,
+      lineWidth: 1,
+      dash: [],
+      font: null,
+      fontSize: 0,
+      charSpace: 0,
+      wordSpace: 0,
+      hScale: 1,
+      leading: 0,
+      rise: 0,
+      renderMode: 0,
+    };
+    const run = { doc, plan, gs, stack: [], floor: 0, hidden: 0, segments: 0, fonts: new Map(), forms: new Map() };
+    let bytes;
+    try {
+      bytes = pdfContentBytes(doc, page.dict.get('Contents'));
+    } catch {
+      return { error: 'That page could not be decompressed.' };
+    }
+    if (bytes && bytes.length) runPdfContent(run, bytes, pdfResolve(doc, page.Resources), 0);
+    plan.truncated = run.segments > PDF_MAX_SEGMENTS;
+    return plan;
+  }
+
+  // The still-encoded bytes of an image the page placed, as a data URL, when
+  // they are something a browser can decode as they stand. That is JPEG only:
+  // every other image filter in PDF stores bare samples with no file around
+  // them.
+  function pdfImageDataUrl(doc, op) {
+    if (!op || !isPdfStream(op.source) || op.mask) return null;
+    let data;
+    try { data = pdfStreamData(doc, op.source); } catch { return null; }
+    if (data.remaining.length !== 1 || data.remaining[0] !== 'DCTDecode') return null;
+    const bytes = data.bytes;
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const parts = [];
+    let chunk = '';
+    for (let index = 0; index < bytes.length; index += 3) {
+      const a = bytes[index];
+      const b = index + 1 < bytes.length ? bytes[index + 1] : -1;
+      const c = index + 2 < bytes.length ? bytes[index + 2] : -1;
+      chunk += alphabet[a >> 2] + alphabet[((a & 3) << 4) | (b < 0 ? 0 : b >> 4)]
+        + (b < 0 ? '=' : alphabet[((b & 15) << 2) | (c < 0 ? 0 : c >> 6)])
+        + (c < 0 ? '=' : alphabet[c & 63]);
+      if (chunk.length > 16384) { parts.push(chunk); chunk = ''; }
+    }
+    parts.push(chunk);
+    return `data:image/jpeg;base64,${parts.join('')}`;
+  }
+
+  // ---------------------------------------------------------------------------
   // output/plot.js
   // ---------------------------------------------------------------------------
 
@@ -3743,6 +6351,34 @@ kbd { font-size: 9px; opacity: .65; }
       widthMM: underlayWidth(underlay) * context.mmPerUnit,
       heightMM: underlayHeight(underlay) * context.mmPerUnit,
     };
+  }
+
+  // A PDF page placed as an underlay goes back out as what it came in as: real
+  // strokes, fills and text, carried through the underlay's own placement and
+  // then onto the sheet. It keeps the page's colours whatever the plot's colour
+  // mode says, as a raster underlay does — forcing a page to black would turn
+  // the white fills it masks with into solid blocks.
+  function plotVectorUnderlayOps(underlay, context) {
+    const cos = Math.cos(underlay.rotation);
+    const sin = Math.sin(underlay.rotation);
+    const unit = underlay.unitsPerPixel;
+    const place = (u, v) => context.toPaper({
+      x: underlay.origin.x + (u * cos - v * sin) * unit,
+      y: underlay.origin.y + (u * sin + v * cos) * unit,
+    });
+    const ops = vectorUnderlayOps(underlay.data, place, unit * context.mmPerUnit);
+    // Fade is opacity on screen. On paper there is nothing behind the page but
+    // the sheet, so the same fade is each colour mixed toward white.
+    const alpha = underlayFadeAlpha(underlay);
+    for (const op of ops) {
+      if (op.kind === 'text') op.angle += underlay.rotation;
+      if (alpha < 1) op.color = op.color.map(level => 1 - alpha * (1 - level));
+    }
+    return ops;
+  }
+
+  function plotUnderlayOps(underlay, context) {
+    return underlayIsVector(underlay) ? plotVectorUnderlayOps(underlay, context) : [plotImageOp(underlay, context)];
   }
 
   function plotHexColor(hex) {
@@ -4077,7 +6713,12 @@ kbd { font-size: 9px; opacity: .65; }
     const unsupported = new Set();
     // Images first: PDF and canvas both paint in order, so anything emitted
     // after these draws on top of them, which is what an underlay is for.
-    for (const underlay of underlays) ops.push(plotImageOp(underlay, context));
+    for (const underlay of underlays) {
+      for (const op of plotUnderlayOps(underlay, context)) {
+        if (op.kind === 'text') pdfUnsupportedCharacters(op.text).forEach(bad => unsupported.add(bad));
+        ops.push(op);
+      }
+    }
     for (const entity of entities) {
       for (const op of plotEntityOps(entity, context)) {
         if (op.kind === 'text') pdfUnsupportedCharacters(op.text).forEach(bad => unsupported.add(bad));
@@ -5025,9 +7666,222 @@ kbd { font-size: 9px; opacity: .65; }
 
   function forgetUnderlayImages() {
     IMAGE_CACHE.clear();
+    VECTOR_DISPLAY_CACHE.clear();
+    VECTOR_LAYERS.clear();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Vector underlays (a page of a PDF)
+  // ---------------------------------------------------------------------------
+
+  // The drawing area's background, as 0..1 channels. A PDF is ink on white
+  // paper and this canvas is light on near-black, so a page drawn in its own
+  // colours would be black lines on a black screen.
+  const UNDERLAY_CANVAS_BACKGROUND = Object.freeze([0x11 / 255, 0x11 / 255, 0x11 / 255]);
+  // A plotted hairline is a fraction of a pixel at any zoom that shows the whole
+  // sheet; below one pixel the canvas fades a line out rather than thinning it.
+  const UNDERLAY_VECTOR_MIN_STROKE_PX = 1;
+  // Text smaller than this is drawn as a bar: the glyphs would be a smudge, and
+  // a thousand smudges cost far more to draw than a thousand rectangles.
+  const UNDERLAY_VECTOR_GREEK_PX = 3.5;
+
+  // Paper colour to screen colour: lightness is turned over and hue is kept, so
+  // black ink comes out white, the white of the sheet (and of any fill used to
+  // mask what is behind it) comes out as the canvas itself, and a red line is
+  // still red. This is the "adjust colours for the background" every CAD program
+  // applies to a PDF underlay, for the same reason.
+  function underlayScreenColor(color) {
+    const [r, g, b] = color;
+    const high = Math.max(r, g, b);
+    const low = Math.min(r, g, b);
+    // Turning lightness over maps each channel c to (high + low) - c mirrored
+    // about the middle: c' = 1 - (high + low) + c.
+    const shift = 1 - (high + low);
+    return [r + shift, g + shift, b + shift].map((level, index) => {
+      const clamped = Math.min(1, Math.max(0, level));
+      const back = UNDERLAY_CANVAS_BACKGROUND[index];
+      return back + (1 - back) * clamped;
+    });
+  }
+
+  function underlayCss(color) {
+    return `rgb(${color.map(level => Math.round(level * 255)).join(', ')})`;
+  }
+
+  // The page as things the canvas can draw, built once per payload and keyed by
+  // the payload string itself — like the image cache, so that a MOVE or a
+  // CALIBRATE, which replace the record but not its data, reuse it.
+  const VECTOR_DISPLAY_CACHE = new Map();
+  // Undo keeps erased pages reachable, so a list is not dropped the moment its
+  // underlay goes; but each one holds every path of a sheet, so only the most
+  // recently drawn few are kept.
+  const VECTOR_DISPLAY_CACHE_LIMIT = 8;
+
+  function vectorDisplayList(data) {
+    const cached = VECTOR_DISPLAY_CACHE.get(data);
+    if (cached) {
+      if (VECTOR_DISPLAY_CACHE.size > 1) {
+        // A Map iterates in insertion order; re-inserting marks this one newest.
+        VECTOR_DISPLAY_CACHE.delete(data);
+        VECTOR_DISPLAY_CACHE.set(data, cached);
+      }
+      return cached;
+    }
+    const list = [];
+    // Path2D holds a parsed path on the browser's side of the fence, so a frame
+    // is one call per item rather than one per segment. The headless harness has
+    // no Path2D; there the string is kept and replayed.
+    const canHold = typeof Path2D === 'function';
+    eachVectorRecord(data, record => {
+      const css = underlayCss(underlayScreenColor(record.color));
+      if (record.kind === 'text') {
+        list.push({ ...record, css, natural: 0 });
+        return;
+      }
+      let held = null;
+      if (canHold) {
+        held = new Path2D();
+        traceVectorPath(record.path, held);
+      }
+      list.push({
+        kind: record.kind, css, width: record.width, dash: record.dash, evenOdd: record.evenOdd,
+        held, path: canHold ? null : record.path,
+      });
+    });
+    VECTOR_DISPLAY_CACHE.set(data, list);
+    while (VECTOR_DISPLAY_CACHE.size > VECTOR_DISPLAY_CACHE_LIMIT) {
+      VECTOR_DISPLAY_CACHE.delete(VECTOR_DISPLAY_CACHE.keys().next().value);
+    }
+    return list;
+  }
+
+  function drawVectorText(context, item, pixelsPerUnit) {
+    const sizePx = item.size * pixelsPerUnit;
+    if (!(sizePx > 0.6)) return;
+    context.save();
+    context.translate(item.x, item.y);
+    context.rotate(item.angle);
+    // Out of the page's Y-up micrometres and into upright pixels, so the font
+    // size is a real pixel size the canvas can render.
+    context.scale(1 / pixelsPerUnit, -1 / pixelsPerUnit);
+    context.fillStyle = item.css;
+    const widthPx = item.width * pixelsPerUnit;
+    if (sizePx < UNDERLAY_VECTOR_GREEK_PX) {
+      context.globalAlpha *= 0.45;
+      context.fillRect(0, -sizePx * 0.7, widthPx || sizePx * item.text.length * 0.5, sizePx * 0.7);
+    } else {
+      const family = item.font === 'courier' ? '"Courier New", Consolas, monospace' : 'Arial, Helvetica, sans-serif';
+      if (!item.natural) {
+        // How wide the stand-in face sets this string, per pixel of font size.
+        // Measured once: it is a property of the string, not of the zoom.
+        context.font = `100px ${family}`;
+        item.natural = Math.max(1e-6, context.measureText(item.text).width / 100);
+      }
+      context.font = `${sizePx}px ${family}`;
+      context.textAlign = 'left';
+      context.textBaseline = 'alphabetic';
+      // Stretched to the width the real font gave the string, so it ends where
+      // it ended on the page and does not run into its neighbour.
+      if (widthPx > 0) context.scale(Math.min(2.5, Math.max(0.4, widthPx / (item.natural * sizePx))), 1);
+      context.fillText(item.text, 0, 0);
+    }
+    context.restore();
+  }
+
+  // Draws the page into `context`, which must already be in screen pixels.
+  function drawVectorUnderlayItems(context, underlay) {
+    const origin = worldToScreen(underlay.origin);
+    const pixelsPerUnit = underlay.unitsPerPixel * state.view.scale;
+    if (!(pixelsPerUnit > 0)) return;
+    context.save();
+    context.translate(origin.x, origin.y);
+    context.rotate(-underlay.rotation);
+    // Page coordinates are Y up, like the world and unlike the screen.
+    context.scale(pixelsPerUnit, -pixelsPerUnit);
+    const hairline = UNDERLAY_VECTOR_MIN_STROKE_PX / pixelsPerUnit;
+    context.lineJoin = 'round';
+    for (const item of vectorDisplayList(underlay.data)) {
+      if (item.kind === 'text') {
+        drawVectorText(context, item, pixelsPerUnit);
+        continue;
+      }
+      if (!item.held) {
+        context.beginPath();
+        traceVectorPath(item.path, context);
+      }
+      if (item.kind === 'fill') {
+        context.fillStyle = item.css;
+        const rule = item.evenOdd ? 'evenodd' : 'nonzero';
+        if (item.held) context.fill(item.held, rule);
+        else context.fill(rule);
+      } else {
+        context.strokeStyle = item.css;
+        context.lineWidth = Math.max(item.width, hairline);
+        context.setLineDash(item.dash);
+        if (item.held) context.stroke(item.held);
+        else context.stroke();
+      }
+    }
+    context.setLineDash([]);
+    context.restore();
+  }
+
+  // One offscreen canvas per vector underlay, holding the page as last drawn.
+  // It earns its keep twice. Fade becomes a single composite of the finished
+  // page, where fading each stroke separately would let lines show through the
+  // white fills a drawing uses to mask them. And a frame in which the view has
+  // not moved — every mouse move while a command is tracking the cursor — costs
+  // one blit instead of redrawing a sheet's worth of line work.
+  const VECTOR_LAYERS = new Map();
+
+  function vectorLayer(underlay) {
+    let layer = VECTOR_LAYERS.get(underlay.id);
+    if (!layer) {
+      const surface = document.createElement('canvas');
+      layer = { surface, context: surface.getContext('2d'), key: '', data: null };
+      VECTOR_LAYERS.set(underlay.id, layer);
+    }
+    if (!layer.context) return null;
+    const ratio = canvas.clientWidth ? canvas.width / canvas.clientWidth : 1;
+    const key = [canvas.width, canvas.height, ratio, state.view.scale, state.view.offsetX, state.view.offsetY,
+      underlay.origin.x, underlay.origin.y, underlay.rotation, underlay.unitsPerPixel].join('|');
+    if (layer.key === key && layer.data === underlay.data) return layer;
+    if (layer.surface.width !== canvas.width) layer.surface.width = canvas.width;
+    if (layer.surface.height !== canvas.height) layer.surface.height = canvas.height;
+    layer.context.setTransform(1, 0, 0, 1, 0, 0);
+    layer.context.clearRect(0, 0, canvas.width, canvas.height);
+    layer.context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    drawVectorUnderlayItems(layer.context, underlay);
+    layer.key = key;
+    layer.data = underlay.data;
+    return layer;
+  }
+
+  function drawVectorUnderlay(underlay) {
+    const layer = vectorLayer(underlay);
+    ctx.save();
+    ctx.globalAlpha = underlayFadeAlpha(underlay);
+    if (layer) {
+      // Device pixel for device pixel: the layer is the size of the canvas's
+      // backing store, so it is copied with the scaling transform set aside.
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(layer.surface, 0, 0);
+    } else {
+      drawVectorUnderlayItems(ctx, underlay);
+    }
+    ctx.restore();
+  }
+
+  // Layers belong to underlays that still exist; an erased page should not keep
+  // a canvas-sized bitmap alive.
+  function pruneVectorLayers() {
+    if (!VECTOR_LAYERS.size) return;
+    const live = new Set(state.underlays.filter(underlayIsVector).map(underlay => underlay.id));
+    for (const id of VECTOR_LAYERS.keys()) if (!live.has(id)) VECTOR_LAYERS.delete(id);
   }
 
   function drawUnderlays() {
+    pruneVectorLayers();
     for (const underlay of state.underlays) {
       if (!isLayerVisible(underlay.layerId)) continue;
       drawUnderlay(underlay);
@@ -5035,6 +7889,11 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   function drawUnderlay(underlay) {
+    if (underlayIsVector(underlay)) {
+      drawVectorUnderlay(underlay);
+      if (state.selected.has(underlaySelectionId(underlay.id))) drawUnderlayOutline(underlay, true);
+      return;
+    }
     const image = underlayImage(underlay);
     const origin = worldToScreen(underlay.origin);
     const scale = underlay.unitsPerPixel * state.view.scale;
@@ -5077,10 +7936,10 @@ kbd { font-size: 9px; opacity: .65; }
   // it is routinely the size of a city block, and painting that on every mouse
   // move to throw it away is a poor trade for an outline that says the same
   // thing.
-  function drawUnderlayPreview(descriptor, origin, unitsPerPixel) {
+  function drawUnderlayPreview(descriptor, origin, unitsPerPixel, rotation = 0) {
     const preview = {
       origin,
-      rotation: 0,
+      rotation,
       unitsPerPixel,
       widthPx: descriptor.widthPx,
       heightPx: descriptor.heightPx,
@@ -5176,6 +8035,22 @@ kbd { font-size: 9px; opacity: .65; }
     inPaperFrame(context, view, () => {
       context.fillStyle = clipped ? PLOT_PREVIEW_CLIPPED_COLOR : plotPreviewCssColor(op.color);
       context.beginPath();
+      if (op.subpaths) {
+        for (const subpath of op.subpaths) {
+          context.moveTo(subpath.start.x, subpath.start.y);
+          for (const segment of subpath.segs) {
+            if (segment.type === 'c') {
+              context.bezierCurveTo(segment.c1.x, segment.c1.y, segment.c2.x, segment.c2.y,
+                segment.to.x, segment.to.y);
+            } else {
+              context.lineTo(segment.to.x, segment.to.y);
+            }
+          }
+          context.closePath();
+        }
+        context.fill(op.evenOdd ? 'evenodd' : 'nonzero');
+        return;
+      }
       op.points.forEach((point, index) => {
         if (index === 0) context.moveTo(point.x, point.y);
         else context.lineTo(point.x, point.y);
@@ -5200,7 +8075,8 @@ kbd { font-size: 9px; opacity: .65; }
     const family = op.font === 'courier' ? '"Courier New", Consolas, monospace' : 'Arial, Helvetica, sans-serif';
     const sizePx = op.sizeMM * view.scale;
     if (sizePx <= 0) return;
-    const widthPx = pdfTextWidthMM(op.text, op.font, op.sizeMM) * view.scale;
+    const stretch = pdfTextStretch(op);
+    const widthPx = pdfTextWidthMM(op.text, op.font, op.sizeMM) * view.scale * stretch;
     const u = op.anchor === 'center' ? -widthPx / 2 : 0;
     const v = op.baseline === 'middle' ? -0.35 * sizePx : 0;
     const anchor = view.toPx(op);
@@ -5217,6 +8093,12 @@ kbd { font-size: 9px; opacity: .65; }
       context.font = `${sizePx}px ${family}`;
       context.textAlign = 'left';
       context.textBaseline = 'alphabetic';
+      // The same horizontal scaling the PDF writer applies, about the anchor.
+      if (stretch !== 1) {
+        context.translate(u, 0);
+        context.scale(stretch, 1);
+        context.translate(-u, 0);
+      }
       context.fillText(op.text, u, -v);
     }
     context.restore();
@@ -5542,6 +8424,20 @@ kbd { font-size: 9px; opacity: .65; }
     };
   }
 
+  // The same normalisation for a picture that arrives as a URL rather than as a
+  // file: the photograph inside a scanned PDF page, already a JPEG, still has to
+  // be capped and re-encoded like any other.
+  function underlayDescriptorFromUrl(url, name) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => {
+        try { resolve(encodeUnderlayImage(image, name)); } catch (error) { reject(error); }
+      };
+      image.onerror = () => reject(new Error('The picture on that page could not be decoded.'));
+      image.src = url;
+    });
+  }
+
   function underlayNameFromFile(name) {
     const base = String(name || 'image').replace(/\.[^.]+$/, '').trim();
     return base.slice(0, 60) || 'image';
@@ -5550,6 +8446,93 @@ kbd { font-size: 9px; opacity: .65; }
   async function underlayDescriptorFromFile(file) {
     const image = await decodeImageFile(file);
     return encodeUnderlayImage(image, file.name);
+  }
+
+  // ---------------------------------------------------------------------------
+  // model/pdfImport.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // One page of an open PDF, as something that can be placed.
+  //
+  // Pure, like the reader beneath it: this decides what kind of underlay a page
+  // should become and says what was lost on the way, and leaves the placing to
+  // the PDF command. A page comes out one of three ways:
+  //
+  //   { descriptor, notes }  line work — a vector underlay, the usual case for
+  //                          anything that was plotted or exported from CAD
+  //   { scan }               a page that is nothing but a photograph of a
+  //                          drawing; the picture is handed back still encoded,
+  //                          to go through the ordinary image path
+  //   { error }              nothing here that can be shown
+  //
+  // The descriptor carries `mmPerPixel`, which an image descriptor never has: a
+  // PDF knows how big its sheet is, so the page can be placed at a real drawing
+  // scale instead of at a guess to be calibrated away.
+  // ---------------------------------------------------------------------------
+
+  // A scan sometimes has a stray border or a white background rectangle drawn
+  // under it; that much vector content does not make the page a drawing.
+  const PDF_SCAN_MAX_FILLS = 2;
+  // The image has to be most of the page to be the page.
+  const PDF_SCAN_MIN_COVERAGE = 0.25;
+
+  function pdfCountNote(count, one, many) {
+    return `${count} ${count === 1 ? one : many}`;
+  }
+
+  function pdfPageUnderlay(doc, pageIndex, fileName) {
+    const plan = readPdfPage(doc, pageIndex);
+    if (plan.error) return { error: plan.error };
+    const base = underlayNameFromFile(fileName || 'pdf');
+    const name = doc.pages.length > 1 ? `${base.slice(0, 52)} p${pageIndex + 1}` : base;
+    const encoded = encodeVectorUnderlay(plan);
+    const { strokes, fills, texts } = encoded.counts;
+    const images = plan.ops.filter(op => op.kind === 'image');
+    const pictures = images.length + plan.skipped.inlineImages;
+
+    if (!strokes && !texts && fills <= PDF_SCAN_MAX_FILLS && pictures) {
+      const pageArea = plan.page.widthMM * plan.page.heightMM;
+      const largest = images.slice().sort((a, b) => b.widthMM * b.heightMM - a.widthMM * a.heightMM)[0];
+      const data = largest && largest.widthMM * largest.heightMM >= pageArea * PDF_SCAN_MIN_COVERAGE
+        ? pdfImageDataUrl(doc, largest) : null;
+      if (!data) {
+        return {
+          error: 'That page is a scan stored in a format that cannot be read here. '
+            + 'Save the page as a PNG or JPEG and place it with Image instead.',
+        };
+      }
+      return {
+        scan: {
+          name, data,
+          widthMM: largest.widthMM,
+          heightMM: largest.heightMM,
+          angle: Math.atan2(largest.edgeX.y, largest.edgeX.x),
+        },
+      };
+    }
+    if (!strokes && !fills && !texts) return { error: 'That page has nothing on it that can be shown.' };
+
+    const notes = [];
+    if (pictures) notes.push(`${pdfCountNote(pictures, 'image', 'images')} left out`);
+    if (plan.skipped.text) {
+      notes.push(`${pdfCountNote(plan.skipped.text, 'piece', 'pieces')} of text in a font that cannot be read`);
+    }
+    const shaded = plan.skipped.patterns + plan.skipped.shadings;
+    if (shaded) notes.push(`${pdfCountNote(shaded, 'pattern or gradient fill', 'pattern or gradient fills')} left out`);
+    if (plan.truncated) notes.push('the page has more line work than can be shown and was cut short');
+    return {
+      descriptor: {
+        name,
+        widthPx: encoded.widthPx,
+        heightPx: encoded.heightPx,
+        data: encoded.data,
+        mmPerPixel: 1 / VECTOR_UNITS_PER_MM,
+        rotation: 0,
+      },
+      counts: encoded.counts,
+      notes,
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -6291,7 +9274,10 @@ kbd { font-size: 9px; opacity: .65; }
     }
     if (!Number.isSafeInteger(value.widthPx) || value.widthPx <= 0) return { error: 'has an invalid pixel width' };
     if (!Number.isSafeInteger(value.heightPx) || value.heightPx <= 0) return { error: 'has an invalid pixel height' };
-    if (typeof value.data !== 'string' || !value.data.startsWith('data:image/')) {
+    // A PDF page's line work is checked no more deeply than a raster is, and for
+    // the same reason: a payload that does not parse draws as an empty frame.
+    if (typeof value.data !== 'string'
+      || !(value.data.startsWith('data:image/') || isVectorUnderlayData(value.data))) {
       return { error: 'has no image data' };
     }
     const fade = Number.isFinite(value.fade) ? Math.min(100, Math.max(0, value.fade)) : 0;
@@ -9050,6 +12036,152 @@ kbd { font-size: 9px; opacity: .65; }
   }
 
   // ---------------------------------------------------------------------------
+  // geometry/underlaySegments.js
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // The straight segments of a vector underlay, for OSNAP.
+  //
+  // A page placed from a PDF is line work, and the point of keeping it as line
+  // work rather than a picture is that the drawing traced over it can land
+  // exactly on its corners instead of on wherever the cursor happened to be.
+  // That means handing its segments to the snap engine — but a sheet has tens of
+  // thousands of them and the snap engine runs on every mouse move, so they are
+  // never handed over wholesale. They are sorted once into a grid, and a query
+  // returns only the handful that pass near the cursor.
+  //
+  // Only straight segments are indexed. A PDF has no circles or arcs, only
+  // Bezier curves, and a chord across one would offer snaps at points that are
+  // not on the drawing at all.
+  // ---------------------------------------------------------------------------
+
+  // Cells along the page's longer edge. Finer costs memory in the index;
+  // coarser means more segments to test exactly at each query.
+  const UNDERLAY_SNAP_CELLS = 128;
+  // More than this many segments within the aperture means the view is zoomed so
+  // far out that the page's detail is under a few pixels, where no single one
+  // can be picked anyway — and the snap engine's intersection pass is quadratic.
+  const UNDERLAY_SNAP_MAX_SEGMENTS = 240;
+  const UNDERLAY_SNAP_INDEX_LIMIT = 4;
+
+  // Keyed by the payload string, like the display list in view/underlay.js, so
+  // moving or calibrating a page keeps its index.
+  const UNDERLAY_SNAP_INDEXES = new Map();
+
+  function vectorSegmentIndex(data, widthPx, heightPx) {
+    const cached = UNDERLAY_SNAP_INDEXES.get(data);
+    if (cached) return cached;
+
+    const coords = [];
+    let startX = 0;
+    let startY = 0;
+    let x = 0;
+    let y = 0;
+    const sink = {
+      moveTo(toX, toY) { startX = x = toX; startY = y = toY; },
+      lineTo(toX, toY) {
+        if (toX !== x || toY !== y) coords.push(x, y, toX, toY);
+        x = toX;
+        y = toY;
+      },
+      bezierCurveTo(c1x, c1y, c2x, c2y, toX, toY) { x = toX; y = toY; },
+      closePath() {
+        if (x !== startX || y !== startY) coords.push(x, y, startX, startY);
+        x = startX;
+        y = startY;
+      },
+    };
+    eachVectorRecord(data, record => {
+      if (record.kind === 'text') return;
+      // A white fill is a mask: it hides what is under it and has no edge of its
+      // own to be seen, so it has none to snap to either.
+      if (record.kind === 'fill' && record.color.every(level => level > 0.98)) return;
+      traceVectorPath(record.path, sink);
+    });
+
+    const cell = Math.max(1, Math.max(widthPx, heightPx) / UNDERLAY_SNAP_CELLS);
+    const columns = Math.max(1, Math.ceil(widthPx / cell));
+    const rows = Math.max(1, Math.ceil(heightPx / cell));
+    const cells = new Array(columns * rows);
+    const segments = Int32Array.from(coords);
+    const clampColumn = value => Math.min(columns - 1, Math.max(0, Math.floor(value / cell)));
+    const clampRow = value => Math.min(rows - 1, Math.max(0, Math.floor(value / cell)));
+    for (let index = 0; index < segments.length; index += 4) {
+      const x0 = segments[index];
+      const y0 = segments[index + 1];
+      const dx = segments[index + 2] - x0;
+      const dy = segments[index + 3] - y0;
+      // Walked at half-cell steps and filed under each cell it passes through.
+      // A corner it merely clips can be missed, which the query allows for by
+      // looking half a cell further than it strictly needs to.
+      const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / (cell / 2)));
+      let last = -1;
+      for (let step = 0; step <= steps; step++) {
+        const t = step / steps;
+        const at = clampRow(y0 + dy * t) * columns + clampColumn(x0 + dx * t);
+        if (at === last) continue;
+        last = at;
+        (cells[at] || (cells[at] = [])).push(index);
+      }
+    }
+
+    const built = { segments, cells, cell, columns, rows };
+    UNDERLAY_SNAP_INDEXES.set(data, built);
+    while (UNDERLAY_SNAP_INDEXES.size > UNDERLAY_SNAP_INDEX_LIMIT) {
+      UNDERLAY_SNAP_INDEXES.delete(UNDERLAY_SNAP_INDEXES.keys().next().value);
+    }
+    return built;
+  }
+
+  // The underlay's segments that pass within `radius` of `point`, both in world
+  // units, as [a, b] pairs in world coordinates — the shape interaction/snap.js
+  // already works in. Empty for a raster underlay, which has no line work.
+  function underlaySegmentsNear(underlay, point, radius) {
+    if (!isVectorUnderlayData(underlay.data)) return [];
+    const index = vectorSegmentIndex(underlay.data, underlay.widthPx, underlay.heightPx);
+    const unit = underlay.unitsPerPixel;
+    const local = underlayWorldToLocal(underlay, point);
+    const px = local.x / unit;
+    const py = local.y / unit;
+    const reach = radius / unit;
+    const span = reach + index.cell / 2;
+    if (px + span < 0 || py + span < 0 || px - span > underlay.widthPx || py - span > underlay.heightPx) return [];
+    const column0 = Math.max(0, Math.floor((px - span) / index.cell));
+    const column1 = Math.min(index.columns - 1, Math.floor((px + span) / index.cell));
+    const row0 = Math.max(0, Math.floor((py - span) / index.cell));
+    const row1 = Math.min(index.rows - 1, Math.floor((py + span) / index.cell));
+
+    const cos = Math.cos(underlay.rotation);
+    const sin = Math.sin(underlay.rotation);
+    const world = (u, v) => ({
+      x: underlay.origin.x + (u * cos - v * sin) * unit,
+      y: underlay.origin.y + (u * sin + v * cos) * unit,
+    });
+    const seen = new Set();
+    const near = [];
+    const coords = index.segments;
+    for (let row = row0; row <= row1; row++) {
+      for (let column = column0; column <= column1; column++) {
+        const bucket = index.cells[row * index.columns + column];
+        if (!bucket) continue;
+        for (const at of bucket) {
+          if (seen.has(at)) continue;
+          seen.add(at);
+          const x0 = coords[at];
+          const y0 = coords[at + 1];
+          const dx = coords[at + 2] - x0;
+          const dy = coords[at + 3] - y0;
+          const t = Math.min(1, Math.max(0, ((px - x0) * dx + (py - y0) * dy) / (dx * dx + dy * dy)));
+          if (Math.hypot(px - (x0 + dx * t), py - (y0 + dy * t)) > reach) continue;
+          if (near.length >= UNDERLAY_SNAP_MAX_SEGMENTS) return [];
+          near.push([world(x0, y0), world(coords[at + 2], coords[at + 3])]);
+        }
+      }
+    }
+    return near;
+  }
+
+  // ---------------------------------------------------------------------------
   // interaction/snap.js
   // ---------------------------------------------------------------------------
 
@@ -9102,6 +12234,14 @@ kbd { font-size: 9px; opacity: .65; }
       if (!isEntityVisible(entity) || entity.id === excludedEntityId) continue;
       if (!['CIRCLE', 'ARC'].includes(entity.type)) continue;
       if (curveInRange(entity)) circularEntities.push(entity);
+    }
+    // A PDF page's line work snaps like geometry, which is what makes tracing
+    // over it exact. Its segments arrive already cut down to the aperture (see
+    // geometry/underlaySegments.js), and from there on are ordinary segments:
+    // every snap type below works on them without knowing where they came from.
+    for (const underlay of state.underlays) {
+      if (!isLayerVisible(underlay.layerId)) continue;
+      for (const segment of underlaySegmentsNear(underlay, cursor, aperture)) segs.push(segment);
     }
 
     // Each type is skipped at the source rather than filtered afterwards, so a
@@ -15354,7 +18494,7 @@ kbd { font-size: 9px; opacity: .65; }
   const COMMAND_ALIASES = Object.freeze({
     DXF:'DXFOUT', DXFOUT:'DXFOUT', DXFIN:'DXFIN', DXFEXPORT:'DXFOUT', DXFIMPORT:'DXFIN',
     IM:'IMAGE', IMAGE:'IMAGE', CAL:'CALIBRATE', CALIBRATE:'CALIBRATE',
-    IP:'UNDERLAY', UNDERLAY:'UNDERLAY',
+    IP:'UNDERLAY', UNDERLAY:'UNDERLAY', PDF:'PDFATTACH', PDFATTACH:'PDFATTACH',
     L:'LINE', LINE:'LINE', PL:'PLINE', PLINE:'PLINE', P:'PLINE',
     REC:'RECTANGLE', RECTANG:'RECTANGLE', RECTANGLE:'RECTANGLE', C:'CIRCLE', CIRCLE:'CIRCLE',
     A:'ARC', ARC:'ARC',
@@ -15444,8 +18584,7 @@ kbd { font-size: 9px; opacity: .65; }
     underlayFadeInput.value = String(pendingUnderlay.fade);
     underlayLockedCheck.checked = pendingUnderlay.locked;
     underlayPlotCheck.checked = pendingUnderlay.plot;
-    underlayDialogSubject.textContent =
-      `${target.name} · ${target.widthPx} × ${target.heightPx} pixels`;
+    underlayDialogSubject.textContent = `${target.name} · ${underlaySourceLabel(target)}`;
     underlayPreviewEl.textContent =
       `${formatLengthLabel(underlayWidth(target))} × ${formatLengthLabel(underlayHeight(target))} · fade ${pendingUnderlay.fade}%`;
   }
@@ -15595,6 +18734,259 @@ kbd { font-size: 9px; opacity: .65; }
   });
 
   // ---------------------------------------------------------------------------
+  // PDFATTACH
+  //
+  // Places one page of a PDF. It differs from IMAGE in the one way a PDF differs
+  // from a picture: the file says how big its sheet is. So the page arrives at
+  // its true paper size, and the number to type is the scale the sheet was drawn
+  // at — 48 for a plan at 1/4" = 1'-0" — after which the building is full size
+  // and nothing needs calibrating. CALIBRATE still works on the result, for the
+  // sheet whose title block lies about its scale.
+  // ---------------------------------------------------------------------------
+
+  // The opened file waiting to be placed: { doc, name }, plus `first` when its
+  // only page has already been read and `nextPage` once a page has been placed.
+  // It is kept after a placement when there are more pages, because a drawing
+  // set is a single file and choosing it again for every sheet would be tedious.
+  let pendingPdf = null;
+
+  // The scale the last page was placed at. Sheets from one set usually share a
+  // scale, so it is offered again rather than starting over at full size.
+  let lastPdfScale = 1;
+
+  function setPendingPdf(source) {
+    pendingPdf = source;
+  }
+
+  // Accepts the ways a drawing scale is written on a title block: a bare ratio
+  // (48), a ratio with its colon (1:48), or a paper length and the real length
+  // it stands for (1/4"=1'). Returns real size over paper size, or null.
+  function parseSheetScale(text) {
+    const source = String(text).trim();
+    const positive = value => (Number.isFinite(value) && value > 0 ? value : null);
+    const equation = source.split('=');
+    if (equation.length === 2) {
+      const paper = positive(parseDistance(equation[0]));
+      const real = positive(parseDistance(equation[1]));
+      return paper && real ? positive(real / paper) : null;
+    }
+    const ratio = source.split(':');
+    if (ratio.length === 2) {
+      const paper = positive(Number(ratio[0]));
+      const real = positive(Number(ratio[1]));
+      return paper && real ? positive(real / paper) : null;
+    }
+    return positive(Number(source));
+  }
+
+  function pdfUnitsPerPixel(operation) {
+    const unitMM = DRAWING_UNITS[state.unitSettings.drawingUnit].mmPerUnit;
+    return (operation.descriptor.mmPerPixel * operation.scale) / unitMM;
+  }
+
+  // The page is placed by the bottom-left corner of what is seen. For a scan the
+  // PDF had turned on its side that is not the picture's own first corner, so
+  // the origin is backed off by however far the turned frame overhangs it.
+  function pdfOriginForCorner(operation, corner) {
+    const placed = {
+      origin: { x: 0, y: 0 },
+      rotation: operation.descriptor.rotation || 0,
+      unitsPerPixel: pdfUnitsPerPixel(operation),
+      widthPx: operation.descriptor.widthPx,
+      heightPx: operation.descriptor.heightPx,
+    };
+    const box = underlayBBox(placed);
+    return { x: corner.x - box.minX, y: corner.y - box.minY };
+  }
+
+  function pdfPageReady(operation, result) {
+    operation.descriptor = result.descriptor;
+    operation.stage = 'PLACE';
+    // What the page lost on the way in. Kept for the message that confirms the
+    // placement, since the status line is soon overwritten by the autosave.
+    operation.notes = result.notes || [];
+    const notes = operation.notes.length ? ` · ${operation.notes.join('; ')}` : '';
+    setFileStatus(`${result.descriptor.name}${notes}`, Boolean(notes));
+    updatePrompt();
+    draw();
+  }
+
+  // Reads a page into the running command. A page of line work is ready at
+  // once; a scan has a picture to decode first, and the command waits in
+  // LOADING for it — unless it has been cancelled in the meantime, in which
+  // case the late result is dropped.
+  function choosePdfPage(operation, index, known = null) {
+    const result = known || pdfPageUnderlay(operation.source.doc, index, operation.source.name);
+    if (result.error) {
+      updatePrompt(`PDF — ${result.error}${operation.pageCount > 1 ? ' Enter another page:' : ''}`);
+      return false;
+    }
+    operation.pageIndex = index;
+    if (result.descriptor) {
+      pdfPageReady(operation, result);
+      return true;
+    }
+    operation.stage = 'LOADING';
+    updatePrompt();
+    const current = () => state.activeCommandName === 'PDFATTACH' && state.underlay === operation;
+    underlayDescriptorFromUrl(result.scan.data, result.scan.name).then(descriptor => {
+      if (!current()) return;
+      pdfPageReady(operation, {
+        descriptor: {
+          ...descriptor,
+          mmPerPixel: result.scan.widthMM / descriptor.widthPx,
+          rotation: result.scan.angle,
+        },
+        notes: ['a scanned page, placed as an image'],
+      });
+    }, error => {
+      if (!current()) return;
+      operation.stage = 'PAGE';
+      updatePrompt(`PDF — ${error.message || 'That page could not be read.'}`);
+    });
+    return true;
+  }
+
+  // The file picker's way in (ui/shell.js), and a test's. A one-page file is
+  // read before the command starts, so that a page with nothing usable on it is
+  // an error message rather than a command that begins and has nowhere to go.
+  function startPdfPlacement(source) {
+    if (!source || !source.doc || !source.doc.pages.length) return false;
+    const pending = { doc: source.doc, name: source.name || 'pdf', first: null, nextPage: 0 };
+    if (pending.doc.pages.length === 1) {
+      pending.first = pdfPageUnderlay(pending.doc, 0, pending.name);
+      if (pending.first.error) {
+        setFileStatus(pending.first.error, true);
+        updatePrompt(`PDF — ${pending.first.error}`);
+        return false;
+      }
+    }
+    pendingPdf = pending;
+    return startCommand('PDFATTACH');
+  }
+
+  defineCommand('PDFATTACH', {
+    creates: true,
+
+    canBegin() {
+      if (!pendingPdf) {
+        updatePrompt('PDF — choose a file with the PDF button first.');
+        return false;
+      }
+      return true;
+    },
+
+    begin() {
+      const operation = {
+        stage: 'PAGE',
+        source: pendingPdf,
+        pageCount: pendingPdf.doc.pages.length,
+        pageIndex: Math.min(pendingPdf.nextPage || 0, pendingPdf.doc.pages.length - 1),
+        descriptor: null,
+        notes: [],
+        scale: lastPdfScale,
+      };
+      state.underlay = operation;
+      if (operation.pageCount === 1) {
+        const known = pendingPdf.first;
+        pendingPdf.first = null;
+        choosePdfPage(operation, 0, known);
+      }
+    },
+
+    prompt() {
+      const operation = state.underlay;
+      if (!operation) return 'PDF:';
+      if (operation.stage === 'PAGE') {
+        return `PDF — ${operation.source.name} has ${operation.pageCount} pages. `
+          + `Enter the page to place <${operation.pageIndex + 1}>:`;
+      }
+      if (operation.stage === 'LOADING') return 'PDF — reading the page…';
+      return 'PDF — Specify bottom-left corner, or type the scale the sheet was drawn at '
+        + `(${scalePresetLabel(operation.scale)} at present):`;
+    },
+
+    acceptsPoint() {
+      return state.underlay?.stage === 'PLACE';
+    },
+
+    // A page number, then a scale. Neither is a distance: 48 here means 1:48,
+    // not forty-eight drawing units.
+    value(text) {
+      const operation = state.underlay;
+      if (!operation) return false;
+      if (operation.stage === 'PAGE') {
+        const page = Number(String(text).trim());
+        if (!Number.isInteger(page) || page < 1 || page > operation.pageCount) {
+          updatePrompt(`PDF — enter a page from 1 to ${operation.pageCount}:`);
+          return true;
+        }
+        choosePdfPage(operation, page - 1);
+        return true;
+      }
+      if (operation.stage !== 'PLACE') return true;
+      const scale = parseSheetScale(text);
+      if (scale === null) {
+        updatePrompt('PDF — enter the sheet\'s scale, for example 48, 1:100 or 1/4"=1\'.');
+        return true;
+      }
+      operation.scale = scale;
+      lastPdfScale = scale;
+      updatePrompt();
+      draw();
+      return true;
+    },
+
+    previewReady() {
+      return state.underlay?.stage === 'PLACE';
+    },
+
+    preview(p) {
+      const operation = state.underlay;
+      if (!operation?.descriptor) return;
+      drawUnderlayPreview(operation.descriptor, pdfOriginForCorner(operation, p),
+        pdfUnitsPerPixel(operation), operation.descriptor.rotation || 0);
+    },
+
+    point(p) {
+      const operation = state.underlay;
+      if (!operation || operation.stage !== 'PLACE') return;
+      if (!currentLayerIsEditable()) {
+        updatePrompt('The current layer is locked or hidden.');
+        return;
+      }
+      const underlay = makeUnderlay(operation.descriptor, pdfOriginForCorner(operation, p), {
+        unitsPerPixel: pdfUnitsPerPixel(operation),
+        rotation: operation.descriptor.rotation || 0,
+        fade: UNDERLAY_DEFAULT_FADE,
+      });
+      if (!commitGeometry(state.entities, {
+        underlays: [...state.underlays, underlay],
+        nextUnderlayId: underlay.id + 1,
+      })) return;
+      const more = operation.pageCount > 1;
+      if (more) pendingPdf = { ...operation.source, first: null, nextPage: Math.min(operation.pageIndex + 1, operation.pageCount - 1) };
+      else pendingPdf = null;
+      state.selected = new Set([underlaySelectionId(underlay.id)]);
+      setMode('SELECT');
+      const lost = operation.notes && operation.notes.length ? ` (${operation.notes.join('; ')})` : '';
+      updatePrompt(`PDF page placed at ${scalePresetLabel(operation.scale)}, ${formatLengthLabel(underlayWidth(underlay))} wide${lost}. `
+        + (more ? 'Type PDF to place another page of the same file.' : 'CALIBRATE checks it against a known dimension.'));
+    },
+
+    // Enter takes the page on offer; once a page is waiting to be placed it
+    // means what it means to IMAGE, which is "never mind".
+    finish() {
+      const operation = state.underlay;
+      if (operation?.stage === 'PAGE') {
+        choosePdfPage(operation, operation.pageIndex);
+        return;
+      }
+      setMode('SELECT');
+    },
+  });
+
+  // ---------------------------------------------------------------------------
   // CALIBRATE
   //
   // Pick two points whose real separation is known, type the distance, and the
@@ -15631,8 +19023,12 @@ kbd { font-size: 9px; opacity: .65; }
 
     // Calibration points are read off a raster, so OSNAP has nothing useful to
     // contribute and a stray endpoint snap would silently calibrate against the
-    // wrong place.
-    usesSnap: false,
+    // wrong place. A PDF page is the exception: its dimension lines have real
+    // ends, and landing exactly on them is the whole of an accurate calibration.
+    usesSnap() {
+      const target = state.underlays.find(underlay => underlay.id === state.underlay?.targetId);
+      return Boolean(target) && underlayIsVector(target);
+    },
 
     takesDistance() {
       return state.underlay?.stage === 'DISTANCE';
@@ -16668,6 +20064,26 @@ kbd { font-size: 9px; opacity: .65; }
     }
   });
 
+  // A PDF is opened here and placed by the PDF command, for the same reason an
+  // image is decoded here: the command never touches a File. Opening only finds
+  // the pages; reading one waits until the command knows which is wanted.
+  pdfInput.addEventListener('change', async () => {
+    const file = pdfInput.files?.[0];
+    if (!file) return;
+    try {
+      setFileStatus(`Reading ${file.name}…`);
+      const opened = openPdf(new Uint8Array(await file.arrayBuffer()));
+      if (opened.error) {
+        setFileStatus(opened.error, true);
+        return;
+      }
+      setFileStatus(`${file.name} · ${opened.doc.pages.length} page${opened.doc.pages.length === 1 ? '' : 's'}`);
+      if (startPdfPlacement({ doc: opened.doc, name: file.name })) canvas.focus();
+    } catch {
+      setFileStatus('Could not read the selected PDF', true);
+    }
+  });
+
   dxfInput.addEventListener('change', async () => {
     const file = dxfInput.files?.[0];
     if (!file) return;
@@ -16686,6 +20102,11 @@ kbd { font-size: 9px; opacity: .65; }
     if (!requireIdle('placing an image')) return;
     imageInput.value = '';
     imageInput.click();
+  });
+  document.getElementById('pdfBtn').addEventListener('click', () => {
+    if (!requireIdle('placing a PDF')) return;
+    pdfInput.value = '';
+    pdfInput.click();
   });
   document.getElementById('underlayBtn').addEventListener('click', openUnderlayDialog);
 
@@ -17136,6 +20557,36 @@ kbd { font-size: 9px; opacity: .65; }
     applyUnderlayDialog,
     deleteUnderlayFromDialog,
     setPendingUnderlay,
+
+    // PDF underlays. The reader is pure — bytes in, a plot-plan-shaped page out
+    // — so a test builds a PDF (or plots one with buildPdfDocument), reads it
+    // back and compares plans, without a file picker or a canvas in sight.
+    get pendingPdf() { return pendingPdf ? { name: pendingPdf.name, pages: pendingPdf.doc.pages.length, nextPage: pendingPdf.nextPage } : null; },
+    setPendingPdf,
+    startPdfPlacement,
+    parseSheetScale,
+    inflateBytes,
+    openPdf,
+    readPdfPage,
+    pdfPageGeometry,
+    pdfStreamData,
+    pdfImageDataUrl,
+    pdfPageUnderlay,
+    pdfAscii85Decode,
+    pdfLzwDecode,
+    pdfRunLengthDecode,
+    pdfGlyphNameToText,
+    encodeVectorUnderlay,
+    eachVectorRecord,
+    traceVectorPath,
+    vectorUnderlayOps,
+    isVectorUnderlayData,
+    underlayIsVector,
+    underlaySourceLabel,
+    underlayScreenColor,
+    vectorDisplayList,
+    underlaySegmentsNear,
+    vectorSegmentIndex,
 
     // DXF. Import and export share one plan shape, so a round trip can be
     // asserted as plan -> text -> plan without going near the document model.

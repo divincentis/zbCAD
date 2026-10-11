@@ -431,6 +431,41 @@ Images are re-encoded to JPEG and capped at 2400px on import, since the
 payload rides inline in the native document's JSON. Verified headlessly (132
 checks in `tools/tests/test-underlay.mjs`) and in a real Chromium session.
 
+### Status — PDF pages as vector underlays shipped (October 2026)
+
+The note above says a PDF page can be imported; until now that meant
+exporting the page to an image first. `PDF` (`PDFATTACH`) reads the file
+itself. A page that was plotted from CAD is line work and is kept as line
+work: it is drawn as vectors (sharp at any zoom, where a raster capped at
+2400px gave a full-size sheet about 65 dpi), OSNAP finds the ends, midpoints
+and intersections of its lines, and it plots back out as real strokes, fills
+and text rather than as a picture. Because a PDF states its sheet size, the
+page is placed at a typed drawing scale (`48`, `1:100`, `1/4"=1'`) instead of
+at a guess to be calibrated away; CALIBRATE still works on it, and snaps.
+
+There is no PDF library: the reader is five small modules. `core/inflate.js`
+is DEFLATE; `model/pdfRead.js` finds the objects by walking the file forwards
+(which handles cross-reference streams, object streams, appended revisions
+and damaged tables through one path); `model/pdfPage.js` runs a page's
+content stream and writes down what it paints **in the plot plan's own
+shape**, so a drawing plotted by `output/pdf.js` reads back as the plan it was
+plotted from and the round trip is asserted directly; `model/pdfText.js`
+recovers characters and widths so text is placed and sized exactly in a
+stand-in face; `model/vectorUnderlay.js` is the compact string a page is
+stored as inside the ordinary underlay record. Verified headlessly (148
+checks in `tools/tests/test-pdf-underlay.mjs`), against poppler's rendering of
+twenty real PDFs, and in a real Chromium session.
+
+Deliberately not done: embedded fonts are not read, so text is not in its
+original typeface; images on a page, and pattern and gradient fills, are
+left out and counted; clipping follows each clip path's bounding box, which
+is exact for a viewport and loose for an irregular boundary; only straight
+segments snap (a PDF has Bezier curves, not arcs); encrypted files are
+refused; and a scanned page comes in as a raster only when its picture is a
+JPEG — CCITT and JBIG2 scans are not decoded. Converting a page to editable
+entities, rather than an underlay, is not built; the reader's plan is the
+place it would start from.
+
 ### Status — DXF import and export shipped (September 2026)
 
 `DXF` writes R2000/AC1015 ASCII DXF and reads it back. Import and export

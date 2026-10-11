@@ -2,7 +2,7 @@ import { requireIdle } from '../../commands/registry.js';
 import { formatLengthLabel } from '../../core/units.js';
 import { canvas, underlayDialog, underlayDialogSubject, underlayFadeInput, underlayLockedCheck, underlayPlotCheck, underlayPreviewEl } from '../../dom.js';
 import { commitGeometry } from '../../model/history.js';
-import { underlayHeight, underlayIsSelectable, underlaySelectionId, underlayWidth } from '../../model/underlay.js';
+import { underlayHeight, underlayIsSelectable, underlaySelectionId, underlaySourceLabel, underlayWidth } from '../../model/underlay.js';
 import { state } from '../../state.js';
 import { updatePrompt } from '../prompt.js';
 import { setFileStatus } from '../status.js';
@@ -62,8 +62,7 @@ export function refreshUnderlayDialog() {
   underlayFadeInput.value = String(pendingUnderlay.fade);
   underlayLockedCheck.checked = pendingUnderlay.locked;
   underlayPlotCheck.checked = pendingUnderlay.plot;
-  underlayDialogSubject.textContent =
-    `${target.name} · ${target.widthPx} × ${target.heightPx} pixels`;
+  underlayDialogSubject.textContent = `${target.name} · ${underlaySourceLabel(target)}`;
   underlayPreviewEl.textContent =
     `${formatLengthLabel(underlayWidth(target))} × ${formatLengthLabel(underlayHeight(target))} · fade ${pendingUnderlay.fade}%`;
 }

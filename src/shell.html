@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>zbCAD v0.31.0</title>
+  <title>zbCAD v0.32.0</title>
   <style>
 :root {
   font-family: Arial, Helvetica, sans-serif;
@@ -647,7 +647,7 @@ kbd { font-size: 9px; opacity: .65; }
 </head>
 <body>
   <header id="topbar" class="topbar">
-    <div class="brand">zbCAD <span class="version">v0.31.0</span></div>
+    <div class="brand">zbCAD <span class="version">v0.32.0</span></div>
     <button id="toolbarAutohideBtn" class="toolbar-autohide-btn toggle" title="Auto-hide the toolbar; mouse over this bar (or Tab into it) to show it again" aria-pressed="false">Auto-hide</button>
     <div class="tool-group">
       <span class="group-label">File</span>
@@ -700,6 +700,7 @@ kbd { font-size: 9px; opacity: .65; }
       <div class="tool-group">
         <span class="group-label">Underlay</span>
         <button id="imageBtn" title="Place a reference image to trace over (IMAGE)">Image</button>
+        <button id="pdfBtn" title="Place a page of a PDF drawing to trace over, at its true scale (PDF)">PDF</button>
         <button data-command="CALIBRATE" title="Scale an image to a known distance (CALIBRATE)">Calibrate</button>
         <button id="underlayBtn" title="Fade, lock and plot settings for the selected image (UNDERLAY)">Image Props</button>
       </div>
@@ -725,6 +726,7 @@ kbd { font-size: 9px; opacity: .65; }
     <a id="docsLink" class="docs-link" href="docs.html" target="_blank" rel="noopener">Docs</a>
     <input id="openInput" type="file" accept=".json,.zbCAD.json,application/json" hidden />
   <input id="imageInput" type="file" accept="image/*" hidden />
+  <input id="pdfInput" type="file" accept=".pdf,application/pdf" hidden />
   <input id="dxfInput" type="file" accept=".dxf,application/dxf" hidden />
   </header>
 

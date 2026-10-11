@@ -1,13 +1,17 @@
 import { defineCommand, setMode, startCommand } from './registry.js';
 import { UNDERLAY_DEFAULT_FADE } from '../core/constants.js';
 import { dist } from '../core/math.js';
-import { formatLength, formatLengthLabel } from '../core/units.js';
+import { scalePresetLabel } from '../core/paper.js';
+import { DRAWING_UNITS, formatLength, formatLengthLabel } from '../core/units.js';
 import { parseDistance } from '../interaction/input.js';
 import { commitGeometry } from '../model/history.js';
+import { underlayDescriptorFromUrl } from '../model/imageImport.js';
 import { currentLayerIsEditable } from '../model/layerQuery.js';
-import { calibrateUnderlay, makeUnderlay, underlayContainsPoint, underlayIsSelectable, underlaySelectionId, underlayWidth } from '../model/underlay.js';
+import { pdfPageUnderlay } from '../model/pdfImport.js';
+import { calibrateUnderlay, makeUnderlay, underlayBBox, underlayContainsPoint, underlayIsSelectable, underlayIsVector, underlaySelectionId, underlayWidth } from '../model/underlay.js';
 import { state } from '../state.js';
 import { updatePrompt } from '../ui/prompt.js';
+import { setFileStatus } from '../ui/status.js';
 import { draw } from '../view/frame.js';
 import { drawEntity } from '../view/render.js';
 import { drawUnderlayPreview } from '../view/underlay.js';
@@ -124,6 +128,259 @@ defineCommand('IMAGE', {
 });
 
 // ---------------------------------------------------------------------------
+// PDFATTACH
+//
+// Places one page of a PDF. It differs from IMAGE in the one way a PDF differs
+// from a picture: the file says how big its sheet is. So the page arrives at
+// its true paper size, and the number to type is the scale the sheet was drawn
+// at — 48 for a plan at 1/4" = 1'-0" — after which the building is full size
+// and nothing needs calibrating. CALIBRATE still works on the result, for the
+// sheet whose title block lies about its scale.
+// ---------------------------------------------------------------------------
+
+// The opened file waiting to be placed: { doc, name }, plus `first` when its
+// only page has already been read and `nextPage` once a page has been placed.
+// It is kept after a placement when there are more pages, because a drawing
+// set is a single file and choosing it again for every sheet would be tedious.
+export let pendingPdf = null;
+
+// The scale the last page was placed at. Sheets from one set usually share a
+// scale, so it is offered again rather than starting over at full size.
+export let lastPdfScale = 1;
+
+export function setPendingPdf(source) {
+  pendingPdf = source;
+}
+
+// Accepts the ways a drawing scale is written on a title block: a bare ratio
+// (48), a ratio with its colon (1:48), or a paper length and the real length
+// it stands for (1/4"=1'). Returns real size over paper size, or null.
+export function parseSheetScale(text) {
+  const source = String(text).trim();
+  const positive = value => (Number.isFinite(value) && value > 0 ? value : null);
+  const equation = source.split('=');
+  if (equation.length === 2) {
+    const paper = positive(parseDistance(equation[0]));
+    const real = positive(parseDistance(equation[1]));
+    return paper && real ? positive(real / paper) : null;
+  }
+  const ratio = source.split(':');
+  if (ratio.length === 2) {
+    const paper = positive(Number(ratio[0]));
+    const real = positive(Number(ratio[1]));
+    return paper && real ? positive(real / paper) : null;
+  }
+  return positive(Number(source));
+}
+
+function pdfUnitsPerPixel(operation) {
+  const unitMM = DRAWING_UNITS[state.unitSettings.drawingUnit].mmPerUnit;
+  return (operation.descriptor.mmPerPixel * operation.scale) / unitMM;
+}
+
+// The page is placed by the bottom-left corner of what is seen. For a scan the
+// PDF had turned on its side that is not the picture's own first corner, so
+// the origin is backed off by however far the turned frame overhangs it.
+function pdfOriginForCorner(operation, corner) {
+  const placed = {
+    origin: { x: 0, y: 0 },
+    rotation: operation.descriptor.rotation || 0,
+    unitsPerPixel: pdfUnitsPerPixel(operation),
+    widthPx: operation.descriptor.widthPx,
+    heightPx: operation.descriptor.heightPx,
+  };
+  const box = underlayBBox(placed);
+  return { x: corner.x - box.minX, y: corner.y - box.minY };
+}
+
+function pdfPageReady(operation, result) {
+  operation.descriptor = result.descriptor;
+  operation.stage = 'PLACE';
+  // What the page lost on the way in. Kept for the message that confirms the
+  // placement, since the status line is soon overwritten by the autosave.
+  operation.notes = result.notes || [];
+  const notes = operation.notes.length ? ` · ${operation.notes.join('; ')}` : '';
+  setFileStatus(`${result.descriptor.name}${notes}`, Boolean(notes));
+  updatePrompt();
+  draw();
+}
+
+// Reads a page into the running command. A page of line work is ready at
+// once; a scan has a picture to decode first, and the command waits in
+// LOADING for it — unless it has been cancelled in the meantime, in which
+// case the late result is dropped.
+function choosePdfPage(operation, index, known = null) {
+  const result = known || pdfPageUnderlay(operation.source.doc, index, operation.source.name);
+  if (result.error) {
+    updatePrompt(`PDF — ${result.error}${operation.pageCount > 1 ? ' Enter another page:' : ''}`);
+    return false;
+  }
+  operation.pageIndex = index;
+  if (result.descriptor) {
+    pdfPageReady(operation, result);
+    return true;
+  }
+  operation.stage = 'LOADING';
+  updatePrompt();
+  const current = () => state.activeCommandName === 'PDFATTACH' && state.underlay === operation;
+  underlayDescriptorFromUrl(result.scan.data, result.scan.name).then(descriptor => {
+    if (!current()) return;
+    pdfPageReady(operation, {
+      descriptor: {
+        ...descriptor,
+        mmPerPixel: result.scan.widthMM / descriptor.widthPx,
+        rotation: result.scan.angle,
+      },
+      notes: ['a scanned page, placed as an image'],
+    });
+  }, error => {
+    if (!current()) return;
+    operation.stage = 'PAGE';
+    updatePrompt(`PDF — ${error.message || 'That page could not be read.'}`);
+  });
+  return true;
+}
+
+// The file picker's way in (ui/shell.js), and a test's. A one-page file is
+// read before the command starts, so that a page with nothing usable on it is
+// an error message rather than a command that begins and has nowhere to go.
+export function startPdfPlacement(source) {
+  if (!source || !source.doc || !source.doc.pages.length) return false;
+  const pending = { doc: source.doc, name: source.name || 'pdf', first: null, nextPage: 0 };
+  if (pending.doc.pages.length === 1) {
+    pending.first = pdfPageUnderlay(pending.doc, 0, pending.name);
+    if (pending.first.error) {
+      setFileStatus(pending.first.error, true);
+      updatePrompt(`PDF — ${pending.first.error}`);
+      return false;
+    }
+  }
+  pendingPdf = pending;
+  return startCommand('PDFATTACH');
+}
+
+defineCommand('PDFATTACH', {
+  creates: true,
+
+  canBegin() {
+    if (!pendingPdf) {
+      updatePrompt('PDF — choose a file with the PDF button first.');
+      return false;
+    }
+    return true;
+  },
+
+  begin() {
+    const operation = {
+      stage: 'PAGE',
+      source: pendingPdf,
+      pageCount: pendingPdf.doc.pages.length,
+      pageIndex: Math.min(pendingPdf.nextPage || 0, pendingPdf.doc.pages.length - 1),
+      descriptor: null,
+      notes: [],
+      scale: lastPdfScale,
+    };
+    state.underlay = operation;
+    if (operation.pageCount === 1) {
+      const known = pendingPdf.first;
+      pendingPdf.first = null;
+      choosePdfPage(operation, 0, known);
+    }
+  },
+
+  prompt() {
+    const operation = state.underlay;
+    if (!operation) return 'PDF:';
+    if (operation.stage === 'PAGE') {
+      return `PDF — ${operation.source.name} has ${operation.pageCount} pages. `
+        + `Enter the page to place <${operation.pageIndex + 1}>:`;
+    }
+    if (operation.stage === 'LOADING') return 'PDF — reading the page…';
+    return 'PDF — Specify bottom-left corner, or type the scale the sheet was drawn at '
+      + `(${scalePresetLabel(operation.scale)} at present):`;
+  },
+
+  acceptsPoint() {
+    return state.underlay?.stage === 'PLACE';
+  },
+
+  // A page number, then a scale. Neither is a distance: 48 here means 1:48,
+  // not forty-eight drawing units.
+  value(text) {
+    const operation = state.underlay;
+    if (!operation) return false;
+    if (operation.stage === 'PAGE') {
+      const page = Number(String(text).trim());
+      if (!Number.isInteger(page) || page < 1 || page > operation.pageCount) {
+        updatePrompt(`PDF — enter a page from 1 to ${operation.pageCount}:`);
+        return true;
+      }
+      choosePdfPage(operation, page - 1);
+      return true;
+    }
+    if (operation.stage !== 'PLACE') return true;
+    const scale = parseSheetScale(text);
+    if (scale === null) {
+      updatePrompt('PDF — enter the sheet\'s scale, for example 48, 1:100 or 1/4"=1\'.');
+      return true;
+    }
+    operation.scale = scale;
+    lastPdfScale = scale;
+    updatePrompt();
+    draw();
+    return true;
+  },
+
+  previewReady() {
+    return state.underlay?.stage === 'PLACE';
+  },
+
+  preview(p) {
+    const operation = state.underlay;
+    if (!operation?.descriptor) return;
+    drawUnderlayPreview(operation.descriptor, pdfOriginForCorner(operation, p),
+      pdfUnitsPerPixel(operation), operation.descriptor.rotation || 0);
+  },
+
+  point(p) {
+    const operation = state.underlay;
+    if (!operation || operation.stage !== 'PLACE') return;
+    if (!currentLayerIsEditable()) {
+      updatePrompt('The current layer is locked or hidden.');
+      return;
+    }
+    const underlay = makeUnderlay(operation.descriptor, pdfOriginForCorner(operation, p), {
+      unitsPerPixel: pdfUnitsPerPixel(operation),
+      rotation: operation.descriptor.rotation || 0,
+      fade: UNDERLAY_DEFAULT_FADE,
+    });
+    if (!commitGeometry(state.entities, {
+      underlays: [...state.underlays, underlay],
+      nextUnderlayId: underlay.id + 1,
+    })) return;
+    const more = operation.pageCount > 1;
+    if (more) pendingPdf = { ...operation.source, first: null, nextPage: Math.min(operation.pageIndex + 1, operation.pageCount - 1) };
+    else pendingPdf = null;
+    state.selected = new Set([underlaySelectionId(underlay.id)]);
+    setMode('SELECT');
+    const lost = operation.notes && operation.notes.length ? ` (${operation.notes.join('; ')})` : '';
+    updatePrompt(`PDF page placed at ${scalePresetLabel(operation.scale)}, ${formatLengthLabel(underlayWidth(underlay))} wide${lost}. `
+      + (more ? 'Type PDF to place another page of the same file.' : 'CALIBRATE checks it against a known dimension.'));
+  },
+
+  // Enter takes the page on offer; once a page is waiting to be placed it
+  // means what it means to IMAGE, which is "never mind".
+  finish() {
+    const operation = state.underlay;
+    if (operation?.stage === 'PAGE') {
+      choosePdfPage(operation, operation.pageIndex);
+      return;
+    }
+    setMode('SELECT');
+  },
+});
+
+// ---------------------------------------------------------------------------
 // CALIBRATE
 //
 // Pick two points whose real separation is known, type the distance, and the
@@ -160,8 +417,12 @@ defineCommand('CALIBRATE', {
 
   // Calibration points are read off a raster, so OSNAP has nothing useful to
   // contribute and a stray endpoint snap would silently calibrate against the
-  // wrong place.
-  usesSnap: false,
+  // wrong place. A PDF page is the exception: its dimension lines have real
+  // ends, and landing exactly on them is the whole of an accurate calibration.
+  usesSnap() {
+    const target = state.underlays.find(underlay => underlay.id === state.underlay?.targetId);
+    return Boolean(target) && underlayIsVector(target);
+  },
 
   takesDistance() {
     return state.underlay?.stage === 'DISTANCE';

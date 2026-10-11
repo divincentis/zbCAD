@@ -1,8 +1,9 @@
 import { activeCommand } from '../commands/registry.js';
 import { SNAP_RANK } from '../core/defaults.js';
 import { SNAP_COINCIDENT_PX, angleFromCenter, angleOnArc, arcSweep, circularEntityIntersections, circularPoint, dist, isArc, normalizeAngle, pointOnInfiniteLine, pointOnSegmentClosest, pointWithinSegment, segmentCircularIntersections, segmentIntersection, segmentWithinRadius } from '../core/math.js';
+import { underlaySegmentsNear } from '../geometry/underlaySegments.js';
 import { entitySegments } from '../model/entity.js';
-import { isEntityVisible } from '../model/layerQuery.js';
+import { isEntityVisible, isLayerVisible } from '../model/layerQuery.js';
 import { state } from '../state.js';
 import { screenToWorld, worldToScreen } from '../view/viewport.js';
 
@@ -55,6 +56,14 @@ export function getSnap(rawWorld, basePoint = null, excludedEntityId = null) {
     if (!isEntityVisible(entity) || entity.id === excludedEntityId) continue;
     if (!['CIRCLE', 'ARC'].includes(entity.type)) continue;
     if (curveInRange(entity)) circularEntities.push(entity);
+  }
+  // A PDF page's line work snaps like geometry, which is what makes tracing
+  // over it exact. Its segments arrive already cut down to the aperture (see
+  // geometry/underlaySegments.js), and from there on are ordinary segments:
+  // every snap type below works on them without knowing where they came from.
+  for (const underlay of state.underlays) {
+    if (!isLayerVisible(underlay.layerId)) continue;
+    for (const segment of underlaySegmentsNear(underlay, cursor, aperture)) segs.push(segment);
   }
 
   // Each type is skipped at the source rather than filtered afterwards, so a

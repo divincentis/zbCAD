@@ -143,13 +143,52 @@ export function pdfStrokeOperators(op) {
   return lines;
 }
 
+function pdfSubpathOperators(subpath) {
+  const lines = [`${pdfPoint(subpath.start.x)} ${pdfPoint(subpath.start.y)} m`];
+  for (const segment of subpath.segs) {
+    if (segment.type === 'c') {
+      lines.push(`${pdfPoint(segment.c1.x)} ${pdfPoint(segment.c1.y)} ` +
+        `${pdfPoint(segment.c2.x)} ${pdfPoint(segment.c2.y)} ` +
+        `${pdfPoint(segment.to.x)} ${pdfPoint(segment.to.y)} c`);
+    } else {
+      lines.push(`${pdfPoint(segment.to.x)} ${pdfPoint(segment.to.y)} l`);
+    }
+  }
+  return lines;
+}
+
+// A fill is either a plain polygon (`points`: arrowheads, text masks) or a
+// general region (`subpaths`: curved edges, holes, the even-odd rule), which
+// is what a filled shape read back from a PDF page needs.
 export function pdfFillOperators(op) {
   const lines = [pdfColor(op.color, false)];
+  if (op.subpaths) {
+    for (const subpath of op.subpaths) lines.push(...pdfSubpathOperators(subpath), 'h');
+    lines.push(op.evenOdd ? 'f*' : 'f');
+    return lines;
+  }
   op.points.forEach((point, index) => {
     lines.push(`${pdfPoint(point.x)} ${pdfPoint(point.y)} ${index === 0 ? 'm' : 'l'}`);
   });
   lines.push('h', 'f');
   return lines;
+}
+
+// How far a text op's stand-in face has to be stretched to occupy the width
+// the op says the string really had, or 1 where it does not say. Text read
+// from a PDF page carries that width, because the font it was set in is not
+// one of the two this writer has.
+export const PDF_TEXT_STRETCH_MIN = 0.4;
+export const PDF_TEXT_STRETCH_MAX = 2.5;
+
+export function pdfTextStretch(op) {
+  if (!(op.widthMM > 0)) return 1;
+  const natural = pdfTextWidthMM(op.text, op.font, op.sizeMM);
+  if (!(natural > 0)) return 1;
+  const stretch = Math.min(PDF_TEXT_STRETCH_MAX, Math.max(PDF_TEXT_STRETCH_MIN, op.widthMM / natural));
+  // Within a percent is the same width; leaving it alone keeps a plan that
+  // was read back from this writer's own output writing out identically.
+  return Math.abs(stretch - 1) < 0.01 ? 1 : stretch;
 }
 
 // Text is placed by a full text matrix rather than a translate plus rotate,
@@ -158,7 +197,8 @@ export function pdfFillOperators(op) {
 // the same place after rotation.
 export function pdfTextOperators(op) {
   const font = op.font === 'courier' ? '/F2' : '/F1';
-  const width = pdfTextWidthMM(op.text, op.font, op.sizeMM);
+  const stretch = pdfTextStretch(op);
+  const width = pdfTextWidthMM(op.text, op.font, op.sizeMM) * stretch;
   const u = op.anchor === 'center' ? -width / 2 : 0;
   // Canvas' "middle" baseline sits about 0.35 em above the alphabetic one for
   // both of these faces, which is what the on-screen dimension text uses.
@@ -173,9 +213,13 @@ export function pdfTextOperators(op) {
     pdfColor(op.color, false),
     `${pdfNumber(cos)} ${pdfNumber(sin)} ${pdfNumber(-sin)} ${pdfNumber(cos)} ` +
       `${pdfPoint(x)} ${pdfPoint(y)} Tm`,
+    // Horizontal scaling outlives the text object it is set in, so it is put
+    // back as soon as the string has been shown.
+    stretch !== 1 ? `${pdfNumber(stretch * 100)} Tz` : null,
     `(${pdfEncodeText(op.text)}) Tj`,
+    stretch !== 1 ? '100 Tz' : null,
     'ET',
-  ];
+  ].filter(Boolean);
 }
 
 

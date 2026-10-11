@@ -1,6 +1,7 @@
 import { TAU, UNDERLAY_MIN_UNITS_PER_PIXEL } from '../core/constants.js';
 import { dist, normalizeAngle } from '../core/math.js';
 import { isLayerLocked, isLayerVisible } from './layerQuery.js';
+import { VECTOR_UNITS_PER_MM, isVectorUnderlayData } from './vectorUnderlay.js';
 import { state } from '../state.js';
 
 // ---------------------------------------------------------------------------
@@ -27,6 +28,13 @@ import { state } from '../state.js';
 //                   instead of a second, parallel permission system
 //   data            a JPEG data URL (model/imageImport.js normalises every
 //                   source format to JPEG so the PDF writer needs one filter)
+//
+// A page of a PDF is the one underlay that is not a raster. It uses the same
+// record, and everything above still means what it says, with a "pixel" one
+// micrometre of the page; only `data` differs, holding the page's line work in
+// the format model/vectorUnderlay.js describes. Nothing but the three places
+// that actually look inside `data` (the screen, the plot, the validator) needs
+// to know which kind it has.
 // ---------------------------------------------------------------------------
 
 export function allocateUnderlayId() {
@@ -215,6 +223,20 @@ export function calibrateUnderlay(underlay, from, to, knownDistance) {
     return { error: 'That distance would scale the image beyond a usable size.' };
   }
   return { underlay: scaled, factor };
+}
+
+export function underlayIsVector(underlay) {
+  return isVectorUnderlayData(underlay?.data);
+}
+
+// What the underlay was made from, for the properties dialog: a raster is
+// known by its pixel count, a page by the size of its sheet.
+export function underlaySourceLabel(underlay) {
+  if (!underlayIsVector(underlay)) return `${underlay.widthPx} × ${underlay.heightPx} pixels`;
+  const widthMM = underlay.widthPx / VECTOR_UNITS_PER_MM;
+  const heightMM = underlay.heightPx / VECTOR_UNITS_PER_MM;
+  const inches = value => Number((value / 25.4).toFixed(2));
+  return `PDF page, ${inches(widthMM)} × ${inches(heightMM)} in (${Math.round(widthMM)} × ${Math.round(heightMM)} mm)`;
 }
 
 export function underlayFadeAlpha(underlay) {
