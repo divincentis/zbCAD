@@ -6,6 +6,7 @@ import { parseUnitSettings } from '../core/units.js';
 import { dimensionGeometry } from './dimension.js';
 import { cloneDimStyles, cloneEntities, cloneLayers, entityArea, entityBBox, entityLength } from './entity.js';
 import { cloneUnderlays } from './underlay.js';
+import { isVectorUnderlayData } from './vectorUnderlay.js';
 import { state } from '../state.js';
 
 export function editSnapshot() {
@@ -283,7 +284,10 @@ export function cleanUnderlay(value, layerIds) {
   }
   if (!Number.isSafeInteger(value.widthPx) || value.widthPx <= 0) return { error: 'has an invalid pixel width' };
   if (!Number.isSafeInteger(value.heightPx) || value.heightPx <= 0) return { error: 'has an invalid pixel height' };
-  if (typeof value.data !== 'string' || !value.data.startsWith('data:image/')) {
+  // A PDF page's line work is checked no more deeply than a raster is, and for
+  // the same reason: a payload that does not parse draws as an empty frame.
+  if (typeof value.data !== 'string'
+    || !(value.data.startsWith('data:image/') || isVectorUnderlayData(value.data))) {
     return { error: 'has no image data' };
   }
   const fade = Number.isFinite(value.fade) ? Math.min(100, Math.max(0, value.fade)) : 0;

@@ -1,4 +1,4 @@
-import { pdfTextWidthMM } from '../output/pdf.js';
+import { pdfTextStretch, pdfTextWidthMM } from '../output/pdf.js';
 import { underlayImage } from './underlay.js';
 
 // ---------------------------------------------------------------------------
@@ -84,6 +84,22 @@ export function drawPlotPreviewFill(context, view, op, clipped) {
   inPaperFrame(context, view, () => {
     context.fillStyle = clipped ? PLOT_PREVIEW_CLIPPED_COLOR : plotPreviewCssColor(op.color);
     context.beginPath();
+    if (op.subpaths) {
+      for (const subpath of op.subpaths) {
+        context.moveTo(subpath.start.x, subpath.start.y);
+        for (const segment of subpath.segs) {
+          if (segment.type === 'c') {
+            context.bezierCurveTo(segment.c1.x, segment.c1.y, segment.c2.x, segment.c2.y,
+              segment.to.x, segment.to.y);
+          } else {
+            context.lineTo(segment.to.x, segment.to.y);
+          }
+        }
+        context.closePath();
+      }
+      context.fill(op.evenOdd ? 'evenodd' : 'nonzero');
+      return;
+    }
     op.points.forEach((point, index) => {
       if (index === 0) context.moveTo(point.x, point.y);
       else context.lineTo(point.x, point.y);
@@ -108,7 +124,8 @@ export function drawPlotPreviewText(context, view, op, clipped) {
   const family = op.font === 'courier' ? '"Courier New", Consolas, monospace' : 'Arial, Helvetica, sans-serif';
   const sizePx = op.sizeMM * view.scale;
   if (sizePx <= 0) return;
-  const widthPx = pdfTextWidthMM(op.text, op.font, op.sizeMM) * view.scale;
+  const stretch = pdfTextStretch(op);
+  const widthPx = pdfTextWidthMM(op.text, op.font, op.sizeMM) * view.scale * stretch;
   const u = op.anchor === 'center' ? -widthPx / 2 : 0;
   const v = op.baseline === 'middle' ? -0.35 * sizePx : 0;
   const anchor = view.toPx(op);
@@ -125,6 +142,12 @@ export function drawPlotPreviewText(context, view, op, clipped) {
     context.font = `${sizePx}px ${family}`;
     context.textAlign = 'left';
     context.textBaseline = 'alphabetic';
+    // The same horizontal scaling the PDF writer applies, about the anchor.
+    if (stretch !== 1) {
+      context.translate(u, 0);
+      context.scale(stretch, 1);
+      context.translate(-u, 0);
+    }
     context.fillText(op.text, u, -v);
   }
   context.restore();

@@ -8,7 +8,8 @@ import { dimensionGeometry, dimensionText } from '../model/dimension.js';
 import { entityBBox, entitySegments, mtextLinePosition, mtextLines } from '../model/entity.js';
 import { getLayer, isLayerPrintable, isLayerVisible } from '../model/layerQuery.js';
 import { pdfTextWidthMM, pdfUnsupportedCharacters } from './pdf.js';
-import { underlayBBox, underlayCorners, underlayFadeAlpha, underlayHeight, underlayWidth } from '../model/underlay.js';
+import { underlayBBox, underlayCorners, underlayFadeAlpha, underlayHeight, underlayIsVector, underlayWidth } from '../model/underlay.js';
+import { vectorUnderlayOps } from '../model/vectorUnderlay.js';
 import { state } from '../state.js';
 import { screenToWorld } from '../view/viewport.js';
 
@@ -103,6 +104,34 @@ export function plotImageOp(underlay, context) {
     widthMM: underlayWidth(underlay) * context.mmPerUnit,
     heightMM: underlayHeight(underlay) * context.mmPerUnit,
   };
+}
+
+// A PDF page placed as an underlay goes back out as what it came in as: real
+// strokes, fills and text, carried through the underlay's own placement and
+// then onto the sheet. It keeps the page's colours whatever the plot's colour
+// mode says, as a raster underlay does — forcing a page to black would turn
+// the white fills it masks with into solid blocks.
+export function plotVectorUnderlayOps(underlay, context) {
+  const cos = Math.cos(underlay.rotation);
+  const sin = Math.sin(underlay.rotation);
+  const unit = underlay.unitsPerPixel;
+  const place = (u, v) => context.toPaper({
+    x: underlay.origin.x + (u * cos - v * sin) * unit,
+    y: underlay.origin.y + (u * sin + v * cos) * unit,
+  });
+  const ops = vectorUnderlayOps(underlay.data, place, unit * context.mmPerUnit);
+  // Fade is opacity on screen. On paper there is nothing behind the page but
+  // the sheet, so the same fade is each colour mixed toward white.
+  const alpha = underlayFadeAlpha(underlay);
+  for (const op of ops) {
+    if (op.kind === 'text') op.angle += underlay.rotation;
+    if (alpha < 1) op.color = op.color.map(level => 1 - alpha * (1 - level));
+  }
+  return ops;
+}
+
+export function plotUnderlayOps(underlay, context) {
+  return underlayIsVector(underlay) ? plotVectorUnderlayOps(underlay, context) : [plotImageOp(underlay, context)];
 }
 
 export function plotHexColor(hex) {
@@ -437,7 +466,12 @@ export function buildPlotPlan(settings) {
   const unsupported = new Set();
   // Images first: PDF and canvas both paint in order, so anything emitted
   // after these draws on top of them, which is what an underlay is for.
-  for (const underlay of underlays) ops.push(plotImageOp(underlay, context));
+  for (const underlay of underlays) {
+    for (const op of plotUnderlayOps(underlay, context)) {
+      if (op.kind === 'text') pdfUnsupportedCharacters(op.text).forEach(bad => unsupported.add(bad));
+      ops.push(op);
+    }
+  }
   for (const entity of entities) {
     for (const op of plotEntityOps(entity, context)) {
       if (op.kind === 'text') pdfUnsupportedCharacters(op.text).forEach(bad => unsupported.add(bad));

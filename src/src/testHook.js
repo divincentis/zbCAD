@@ -34,10 +34,18 @@ import { closePolarDialog, closeSnapDialog, openPolarDialog, openSnapDialog, set
 import { closePlotDialog, openPlotDialog, pendingPlot, plotDownloadName, runPlot, setPendingPlot, startPlotWindowPick } from './ui/dialogs/plot.js';
 import { applyUnderlayDialog, closeUnderlayDialog, deleteUnderlayFromDialog, openUnderlayDialog, pendingUnderlay, setPendingUnderlay } from './ui/dialogs/underlay.js';
 import { applyPropertiesField, selectionPropertiesSummary } from './ui/propertiesPanel.js';
-import { setPendingUnderlayImage, startImagePlacement } from './commands/underlay.js';
-import { calibrateUnderlay, cloneUnderlays, underlayBBox, underlayContainsPoint, underlayCorners, underlayHeight, underlayIsSelectable, underlaySelectionId, underlayWidth, underlayWorldToLocal } from './model/underlay.js';
+import { parseSheetScale, pendingPdf, setPendingPdf, setPendingUnderlayImage, startImagePlacement, startPdfPlacement } from './commands/underlay.js';
+import { calibrateUnderlay, cloneUnderlays, underlayBBox, underlayContainsPoint, underlayCorners, underlayHeight, underlayIsSelectable, underlayIsVector, underlaySelectionId, underlaySourceLabel, underlayWidth, underlayWorldToLocal } from './model/underlay.js';
 import { encodeUnderlayImage, imageFitScale, imageTargetSize, underlayDescriptorFromFile, underlayNameFromFile } from './model/imageImport.js';
 import { underlayDialog } from './dom.js';
+import { inflateBytes } from './core/inflate.js';
+import { openPdf, pdfAscii85Decode, pdfLzwDecode, pdfPageGeometry, pdfRunLengthDecode, pdfStreamData } from './model/pdfRead.js';
+import { pdfGlyphNameToText } from './model/pdfText.js';
+import { pdfImageDataUrl, readPdfPage } from './model/pdfPage.js';
+import { pdfPageUnderlay } from './model/pdfImport.js';
+import { eachVectorRecord, encodeVectorUnderlay, isVectorUnderlayData, traceVectorPath, vectorUnderlayOps } from './model/vectorUnderlay.js';
+import { underlayScreenColor, vectorDisplayList } from './view/underlay.js';
+import { underlaySegmentsNear, vectorSegmentIndex } from './geometry/underlaySegments.js';
 import { buildDxfPlan } from './output/dxfPlan.js';
 import { buildDxfDocument } from './output/dxf.js';
 import { parseDxfText } from './model/dxfRead.js';
@@ -298,6 +306,36 @@ window.__cadPrototype = {
   applyUnderlayDialog,
   deleteUnderlayFromDialog,
   setPendingUnderlay,
+
+  // PDF underlays. The reader is pure — bytes in, a plot-plan-shaped page out
+  // — so a test builds a PDF (or plots one with buildPdfDocument), reads it
+  // back and compares plans, without a file picker or a canvas in sight.
+  get pendingPdf() { return pendingPdf ? { name: pendingPdf.name, pages: pendingPdf.doc.pages.length, nextPage: pendingPdf.nextPage } : null; },
+  setPendingPdf,
+  startPdfPlacement,
+  parseSheetScale,
+  inflateBytes,
+  openPdf,
+  readPdfPage,
+  pdfPageGeometry,
+  pdfStreamData,
+  pdfImageDataUrl,
+  pdfPageUnderlay,
+  pdfAscii85Decode,
+  pdfLzwDecode,
+  pdfRunLengthDecode,
+  pdfGlyphNameToText,
+  encodeVectorUnderlay,
+  eachVectorRecord,
+  traceVectorPath,
+  vectorUnderlayOps,
+  isVectorUnderlayData,
+  underlayIsVector,
+  underlaySourceLabel,
+  underlayScreenColor,
+  vectorDisplayList,
+  underlaySegmentsNear,
+  vectorSegmentIndex,
 
   // DXF. Import and export share one plan shape, so a round trip can be
   // asserted as plan -> text -> plan without going near the document model.

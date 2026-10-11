@@ -84,6 +84,20 @@ export function encodeUnderlayImage(image, name) {
   };
 }
 
+// The same normalisation for a picture that arrives as a URL rather than as a
+// file: the photograph inside a scanned PDF page, already a JPEG, still has to
+// be capped and re-encoded like any other.
+export function underlayDescriptorFromUrl(url, name) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      try { resolve(encodeUnderlayImage(image, name)); } catch (error) { reject(error); }
+    };
+    image.onerror = () => reject(new Error('The picture on that page could not be decoded.'));
+    image.src = url;
+  });
+}
+
 export function underlayNameFromFile(name) {
   const base = String(name || 'image').replace(/\.[^.]+$/, '').trim();
   return base.slice(0, 60) || 'image';
