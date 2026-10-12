@@ -75,6 +75,14 @@ sh src/tools/tests/panels/run.sh
 
 It follows the CAD's plan/writer split in miniature. `layoutFacet(facet, eff(facet))` is the engine: a pure function of a facet and its working settings (project defaults, facet overrides, profile), in decimal inches with y up the slope, that never draws. `facetPlan` turns a layout into sheet primitives, and `reportPages` lays the whole package out as pages of the same primitives; the on-screen SVG, the print sheets and the PDF writer all consume those, so assert on the layout or the plan rather than on any output. Panels are always derived: a saved project holds inputs only. A panel ID names an interchangeable panel within a facet, not a location, so several pieces share one; lists go through `byMark` for one row per ID with a quantity. The coil order (`coilOrder`) is derived the same way, from the pieces of whichever packages it is given. Its `checkProject` has the same rule as the scheduler's: a new field must be added there as well as in its factory (`newFacet`, `newDefaults`, `mkProfile`, `newLayout`, `newParams`, `newCoil`).
 
+`pattern.html` (Sheet Metal Layout) is the third of these: hand-edited, one classic script, no build step.
+
+```sh
+sh src/tools/tests/pattern/run.sh
+```
+
+Its top level is the part that never draws. Each tool (`rtr`, `rect2`, `cone`, `ecc`, `elbow`, `branch`) is a pure function of the parsed form that returns flat `pieces`, a 3D `model`, a `table` and `notes`, and `dxfOf` writes placed pieces out. The UI closure below holds the rest — the form, the SVG view, the tiled full-size PDF, and the link in the address bar, which *is* the saved fitting (there is no storage) — so the suites reach that part the way a person does, through the hash, a typed value or a button, and read back what the page wrote or downloaded. A field's limits live on its definition in `TOOLS` (`gt`/`ge`/`lt`, and `dim` for a size that moves to the mean line) and are enforced once, in `parsed()`; a tool should not re-check them. A piece is `{ name, qty, cut, bend, form, labels }`, and identical pieces are one entry with a `qty` rather than repeats, because the PDF pays for every entry in sheets.
+
 ## Runtime architecture
 
 The app has no framework and no build-time dependencies — plain DOM APIs, a `<canvas>`, and a global mutable `state` object (`src/src/state.js`). Module responsibilities, roughly bottom-up:
