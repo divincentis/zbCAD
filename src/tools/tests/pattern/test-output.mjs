@@ -83,6 +83,9 @@ const IN = 72;
   t.ok(/\(\\225 C = rectangle corners/.test(a.pdf) && /1\\205 = round division/.test(a.pdf) && !/\(\? /.test(a.pdf), 'notes keep their bullets and ellipsis');
   t.ok(/\(MATCH LINE \\227 sheet A2 laps here\)/.test(a.pdf) && /\(Sheet A1 \\267 row A of 4, col 1 of 5/.test(a.pdf), 'sheets say where they go');
   t.ok(!/1\.00 1\.00 1\.00 rg/.test(a.pdf), 'and nothing is painted over the pattern');
+  const signed = p => [p.pdf.match(/\(zbCAD\) Tj/g)?.length, p.pdf.match(/\(Sheet Metal Layout \\267 zbcad\.com\) Tj/g)?.length];
+  t.eq(signed(a), [21, 21], 'every page is signed: cover, sheets and table');
+  t.ok(/\/Info \d+ 0 R/.test(a.pdf) && /\/Title \(Rectangle to round - full-scale layout\) \/Producer \(zbCAD Sheet Metal Layout, zbcad\.com\)/.test(a.pdf), 'and so is the file');
   // The dialog keeps its settings from one opening to the next, so each is put back.
   t.ok(/\(M3\) Tj/.test(a.pdf) && !/\(M3\) Tj/.test(app.print({ labels: false }).pdf), 'point labels are a choice');
   t.eq(app.print({ labels: true, cover: false, table: false }).pages.length, 19, 'so are the cover and the table');
@@ -111,6 +114,10 @@ const IN = 72;
   const q = app.print();
   t.ok(/^12 sheets of pattern/.test(q.sum) && /\(1\. Rectangle to round \\267 pieces 1 & 3 of 4 \\227 cut 2\)/.test(q.pdf), 'matching quarters are printed once each pair');
   t.ok(/\(1\. Rectangle to round \\267 pieces 1 & 3 of 4\) Tj/.test(q.pdf), 'the sheet map captions a piece by name where there is room');
+  app.open('#tool=rtr&pc=4&w=20&d=20');
+  const long = app.print({ orient: 'p', cover: false, table: false });
+  t.ok(signed(long)[0] === long.pages.length && !signed(long)[1], 'beside a long piece name the mark gives up its address line, not its place');
+  app.print({ orient: 'auto', cover: true, table: true });
   app.open('#tool=rtr&pc=4&ox=2');
   t.ok(/\(4\.\) Tj/.test(app.print().pdf), 'and by its number alone where there is not');
 }

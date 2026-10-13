@@ -1039,9 +1039,11 @@ if (typeof document !== 'undefined') (function () {
       }
     };
   }
-  function buildPDF(pages) {
+  function buildPDF(pages, title) {
     const objs = [], add = s => (objs.push(s), objs.length);
     const cat = add(''), pg = add('');
+    // Info strings are not in the fonts' encoding, so these stay ASCII.
+    const info = add(`<< /Title (${pdfEsc(title)} - full-scale layout) /Producer (zbCAD Sheet Metal Layout, zbcad.com) >>`);
     const f1 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
     const f2 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
     const kids = pages.map(p => {
@@ -1054,12 +1056,28 @@ if (typeof document !== 'undefined') (function () {
     objs.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
     const xr = out.length;
     out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('') +
-      `trailer\n<< /Size ${objs.length + 1} /Root ${cat} 0 R >>\nstartxref\n${xr}\n%%EOF\n`;
+      `trailer\n<< /Size ${objs.length + 1} /Root ${cat} 0 R /Info ${info} 0 R >>\nstartxref\n${xr}\n%%EOF\n`;
     const b = new Uint8Array(out.length); for (let i = 0; i < out.length; i++) b[i] = out.charCodeAt(i) & 255;
     return b;
   }
 
   /* ---- page drawing ---- */
+  /* Every page is signed, so a sheet found on a bench says where it came from: the favicon's
+     mark, the name, and where the tool lives. Drawn up to xr on baseline y; with less room it
+     drops the address line, and with none it draws nothing rather than run into its neighbor.
+     The widths are Helvetica's own for these two strings, which tw() only estimates. */
+  const BRAND = 'Sheet Metal Layout · zbcad.com', BRAND_W = 107.14, WORD_W = 36.05, BRAND_FULL = 16 + WORD_W + 7 + BRAND_W;
+  function brand(o, xr, y, room = Infinity) {
+    const full = room >= BRAND_FULL, w = full ? BRAND_FULL : 16 + WORD_W;
+    if (room < w) return;
+    const x = xr - w, k = 12 / 32, at = pts => pts.map(q => [x + q[0] * k, y - 2.5 + (32 - q[1]) * k]);
+    o.fill([0.11, 0.106, 0.098]); o.rect(x, y - 2.5, 12, 12, 'f');
+    o.stroke([0.957, 0.945, 0.918], 2.5 * k); o.raw('2 J 0 j');
+    o.poly(at([[6, 14.5], [14.5, 14.5], [6, 23.5], [14.5, 23.5]]), 0, 0); o.poly(at([[18.5, 8.5], [18.5, 23.5], [26, 23.5], [26, 14.5], [18.5, 14.5]]), 0, 0);
+    o.text(x + 16, y, 11, 'zbCAD', { bold: true });
+    if (full) { o.fill([0.42, 0.4, 0.37]); o.text(x + 16 + WORD_W + 7, y, 7.5, BRAND); }
+  }
+  const SCALE = len => `SCALE CHECK: bar = ${S.u === 'in' ? Math.round(len / 72) + ' in' : Math.round(len / MM) + ' mm'} — measure before cutting`;
   function scaleBar(o, xr, y, aw) {
     const isIn = S.u === 'in', len = isIn ? (aw >= 700 ? 6 : aw >= 480 ? 3 : 2) * 72 : (aw >= 700 ? 150 : aw >= 480 ? 75 : 50) * MM;
     const step = isIn ? 72 : 10 * MM, x0 = xr - len;
@@ -1067,7 +1085,7 @@ if (typeof document !== 'undefined') (function () {
     for (let x = x0, i = 0; x <= xr + 0.01; x += step, i++) o.line(x, y, x, y + (i === 0 || x > xr - 0.5 ? 7 : 4));
     if (isIn) { o.stroke([0, 0, 0], 0.4); for (let x = x0 + 36; x < xr; x += 72) o.line(x, y, x, y + 2.5); }
     o.fill([0, 0, 0]);
-    o.text(xr, y + 9, 7.5, `SCALE CHECK: bar = ${isIn ? Math.round(len / 72) + ' in' : Math.round(len / MM) + ' mm'} — measure before cutting`, { align: 'r', bold: true });
+    o.text(xr, y + 9, 7.5, SCALE(len), { align: 'r', bold: true });
   }
 
   function tilePage(pl, t, title, pageNo, total) {
@@ -1102,7 +1120,11 @@ if (typeof document !== 'undefined') (function () {
     o.fill(blue); o.text(xL + 22, yT - 25, 13, t.id, { bold: true });
     o.stroke([0.6, 0.6, 0.6], 0.4); o.line(m, m + FOOT - 6, pw - m, m + FOOT - 6);
     o.fill([0, 0, 0]);
-    o.text(m, m + 15, 8.5, `${g.name.startsWith(title) ? g.name : title + ' — ' + g.name}${g.qty > 1 ? `  (cut ${g.qty})` : ''}`, { bold: true });
+    const what = `${g.name.startsWith(title) ? g.name : title + ' — ' + g.name}${g.qty > 1 ? `  (cut ${g.qty})` : ''}`;
+    o.text(m, m + 15, 8.5, what, { bold: true });
+    const bx = pw - m - tw(SCALE(432), 7.5, true) - 14;
+    brand(o, bx, m + 14, bx - m - tw(what, 8.5, true) - 14);
+    o.fill([0, 0, 0]);
     o.text(m, m + 3, 7.5, `Sheet ${t.id} · row ${rowName(t.r)} of ${rows}, col ${t.c + 1} of ${cols}${pl.rot ? ' · rotated 90°' : ''} · page ${pageNo} of ${total}`);
     scaleBar(o, pw - m, m + 3, pw - 2 * m);
     return { w: pw, h: ph, ops: o.a };
@@ -1115,6 +1137,8 @@ if (typeof document !== 'undefined') (function () {
     if (isRoll()) { pw = ph; ph = Math.min(Math.max(W, H), Math.max(612, 2 * m + 240 + shown.length * 11 + plans.length * 24)); }
     o.fill([0, 0, 0]);
     o.text(m, ph - m - 16, 16, `${title} — full-scale layout`, { bold: true });
+    brand(o, pw - m, ph - m - 16, pw - 2 * m - tw(`${title} — full-scale layout`, 16, true) - 14);
+    o.fill([0, 0, 0]);
     o.text(m, ph - m - 30, 8.5, `${new Date().toLocaleDateString()} · units: ${S.u === 'in' ? 'inches' : 'millimetres'} · ${PAPERS.find(p => p[0] === PO.paper)[1]} · ${total} pages`);
     const colW = Math.min(250, (pw - 2 * m) * 0.36); let y = ph - m - 54;
     const line = (s, sz = 8, bold = false) => { o.text(m, y, sz, s, { bold }); y -= sz + 4; };
@@ -1168,7 +1192,8 @@ if (typeof document !== 'undefined') (function () {
     const pages = []; let o = null, y = 0;
     const head = () => {
       o = Ops(); pages.push(o); y = ph - m - 14;
-      o.fill([0, 0, 0]); o.text(m, y, 12, `${title} — layout data (${S.u})`, { bold: true }); y -= 22;
+      o.fill([0, 0, 0]); o.text(m, y, 12, `${title} — layout data (${S.u})`, { bold: true });
+      brand(o, m + aw, y, aw - tw(`${title} — layout data (${S.u})`, 12, true) - 14); y -= 22;
       o.fill([0.35, 0.35, 0.35]); tb.cols.forEach((c, i) => o.text(i ? m + c0 + cwid * i : m, y, 8, c, { bold: true, align: i ? 'r' : 'l' }));
       y -= 6; o.stroke([0.5, 0.5, 0.5], 0.5); o.line(m, y, m + aw, y); y -= rh;
     };
@@ -1199,7 +1224,7 @@ if (typeof document !== 'undefined') (function () {
     if (PO.cover) pages.push(coverPage(plans, title, total));
     specs.forEach(sp => pages.push(tilePage(sp.pl, sp.t, title, pages.length + 1, total)));
     pages.push(...tbl);
-    return buildPDF(pages);
+    return buildPDF(pages, title);
   }
 
   /* ---- dialog ---- */
