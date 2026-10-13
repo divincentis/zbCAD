@@ -44,9 +44,10 @@ button,input,select{font:inherit;color:inherit}
 .field input,.field select{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--sheet);font-variant-numeric:tabular-nums}
 .field input:focus,.field select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
 .field input.bad{border-color:var(--bend);background:var(--err-bg)}
+.field:has(select){grid-template-columns:1fr 150px}
 .field .help{grid-column:1/-1;font-size:11.5px;color:var(--muted);margin-top:-2px}
 .field.hide{display:none}
-.msgs div{margin-top:10px;padding:8px 10px;border-radius:6px;font-size:12.5px}
+.msgs div{padding:8px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
 .msgs .w{background:var(--warn-bg);color:var(--warn-ink)}
 .msgs .e{background:var(--err-bg);color:var(--err-ink)}
 .foot{margin-top:18px;font-size:11.5px;color:var(--muted)}
@@ -102,9 +103,10 @@ dialog#pdlg::backdrop{background:rgba(0,0,0,.45)}
 .dfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .hide{display:none!important}
+.work.stale .view svg,.work.stale #c3,.work.stale .tw,.work.stale #notes{opacity:.35}
 @media (max-width:480px){.checks{grid-template-columns:1fr}.dbody .field{grid-template-columns:1fr 150px}}
 @media print{
-  .top,.side,.actions,.legend,.lower .card:first-child{display:none!important}
+  .top,.side,.actions,.msgs,.legend,.lower .card:first-child{display:none!important}
   .app{display:block;height:auto}
   .view{height:60vh;border:1px solid #999}
   .lower{display:block}
@@ -122,7 +124,6 @@ dialog#pdlg::backdrop{background:rgba(0,0,0,.45)}
   <aside class="side">
     <div class="tools" id="tools"></div>
     <form id="form" autocomplete="off" onsubmit="return false"></form>
-    <div class="msgs" id="msgs"></div>
     <div class="foot">Inches accept fractions: <code>12 1/2</code> or <code>12-1/2</code>. The link in your address bar saves the current fitting.</div>
   </aside>
   <section class="work">
@@ -137,6 +138,7 @@ dialog#pdlg::backdrop{background:rgba(0,0,0,.45)}
         <button class="btn" id="prt">Print full size</button>
       </div>
     </div>
+    <div class="msgs" id="msgs"></div>
     <div class="view" id="view">
       <svg id="flat" xmlns="http://www.w3.org/2000/svg"></svg>
       <div class="legend"><span><i style="border-color:var(--cut)"></i>Cut</span><span><i style="border-color:var(--bend);border-top-style:dashed"></i>Bend / break</span><span><i style="border-color:var(--form);border-top-style:dotted"></i>Layout / roll lines</span><span id="gridlbl"></span></div>
@@ -153,7 +155,7 @@ dialog#pdlg::backdrop{background:rgba(0,0,0,.45)}
     <div class="dbody">
       <div class="field"><label for="p_paper">Paper</label><select id="p_paper"></select></div>
       <div class="field custom"><label for="p_cw">Paper width <span class="u"></span></label><input id="p_cw"></div>
-      <div class="field custom"><label for="p_ch">Paper length <span class="u"></span></label><input id="p_ch"><div class="help">For a roll plotter, set the roll width and the longest sheet you want.</div></div>
+      <div class="field custom"><label for="p_ch">Paper length <span class="u"></span></label><input id="p_ch"><div class="help">For a roll plotter, set the roll width and the longest sheet you want. Each page is cut to the length it needs.</div></div>
       <div class="field"><label for="p_orient">Orientation</label><select id="p_orient"><option value="auto">Auto (fewest sheets)</option><option value="p">Portrait</option><option value="l">Landscape</option></select></div>
       <div class="field"><label for="p_margin">Printer margin <span class="u"></span></label><input id="p_margin"><div class="help">Unprintable edge of your printer. 1/4 in is safe for most.</div></div>
       <div class="field"><label for="p_ovl">Overlap <span class="u"></span></label><input id="p_ovl"><div class="help">Shaded band repeated on the next sheet for lapping and taping.</div></div>
@@ -231,10 +233,23 @@ function sliceLoop(loop, a, b) {
   return out;
 }
 
-function piecesFromLoop(loop, seamIdx, label) {
-  const n = seamIdx.length;
-  return seamIdx.map((a, i) => stripPiece(sliceLoop(loop, a, seamIdx[(i + 1) % n]), n === 1 ? label : `${label} · piece ${i + 1} of ${n}`));
+/* Every strip starts from the same first rung, so two pieces that are the same blank come
+   out as the same coordinates and can be told apart from mirror images, which do not. */
+function samePiece(p, q) {
+  return ['cut', 'bend', 'form'].every(k => p[k].length === q[k].length && p[k].every((l, i) =>
+    l.length === q[k][i].length && l.every((a, j) => Math.hypot(a[0] - q[k][i][j][0], a[1] - q[k][i][j][1]) < 1e-6)));
 }
+function piecesFromLoop(loop, seamIdx, label) {
+  const n = seamIdx.length, groups = [];
+  seamIdx.forEach((a, i) => {
+    const pc = stripPiece(sliceLoop(loop, a, seamIdx[(i + 1) % n]), label), g = groups.find(o => samePiece(o.pc, pc));
+    if (g) g.ids.push(i + 1); else groups.push({ pc, ids: [i + 1] });
+  });
+  if (n === 1) return [groups[0].pc];
+  return groups.map(g => ({ ...g.pc, qty: g.ids.length, name: `${label} · piece${g.ids.length > 1 ? 's' : ''} ${g.ids.join(g.ids.length === 2 ? ' & ' : ', ')} of ${n}` }));
+}
+const SHARED = 'Identical pieces are drawn once, with the first one\'s point labels.';
+const FACE = 'Drawn outside face up: form it with this side out, or an offset fitting comes out mirrored.';
 
 function ring3(c, r, axisU, axisV, seg = 72) {
   const pts = [];
@@ -277,8 +292,9 @@ function rtr(p) {
   return {
     pieces, model: m3, table: { cols: ['Line', 'True length'], rows }, warn,
     notes: ['C = rectangle corners (C1 front-right, counter-clockwise), M = side midpoints, 1… = round division points starting at the front.',
-      'Dashed lines are the main breaks; dotted lines are light bends/roll lines.',
-      'Developed on the mean line. Add seam/lock allowances to the seam edges as your shop requires.']
+      'Dashed lines are the main breaks; dotted lines are light bends/roll lines.', FACE,
+      'Developed on the mean line. Add seam/lock allowances to the seam edges as your shop requires.',
+      ...(pieces.some(q => q.qty > 1) ? [SHARED] : [])]
   };
 }
 
@@ -314,7 +330,8 @@ function rect2(p) {
   return {
     pieces, model: m3, table: { cols: ['Line', 'True length', ''], rows }, warn: [],
     notes: ['Each face is flat; diagonals are only used for layout by triangulation.',
-      'Primed points (′) are on the top rectangle.', 'Add seam/lock allowances as required.']
+      'Primed points (′) are on the top rectangle.', FACE, 'Add seam/lock allowances as required.',
+      ...(pieces.some(q => q.qty > 1) ? [SHARED] : [])]
   };
 }
 
@@ -329,24 +346,26 @@ function cone(p) {
   for (let i = 0; i < gens; i++) { const t = TAU * i / gens; m3.push({ a: [r1 * Math.cos(t), r1 * Math.sin(t), 0], b: [r2 * Math.cos(t), r2 * Math.sin(t), H], kind: 'form' }); }
   if (Math.abs(r1 - r2) < 1e-9) {
     const Cw = TAU * r1 / pc;
-    for (let i = 0; i < pc; i++) {
-      const form = []; for (let j = 1; j < k; j++) form.push([[Cw * j / k, 0], [Cw * j / k, H]]);
-      pieces.push({ name: pc > 1 ? `Cylinder · piece ${i + 1} of ${pc}` : 'Cylinder', qty: 1, cut: [[[0, 0], [Cw, 0], [Cw, H], [0, H], [0, 0]]], bend: [], form, labels: [] });
-    }
+    const form = []; for (let j = 1; j < k; j++) form.push([[Cw * j / k, 0], [Cw * j / k, H]]);
+    pieces.push({ name: pc > 1 ? 'Cylinder segment' : 'Cylinder', qty: pc, cut: [[[0, 0], [Cw, 0], [Cw, H], [0, H], [0, 0]]], bend: [], form, labels: [] });
     rows.push(['Stretch-out per piece', { len: Cw }], ['Height', { len: H }]);
     return { pieces, model: m3, table: { cols: ['Item', 'Value'], rows }, warn: ['Diameters are equal, so this is a straight cylinder.'], notes: [] };
   }
   const s = Math.hypot(H, r1 - r2), Ro = r1 * s / (r1 - r2), Ri = Ro - s, tot = TAU * r1 / Ro, per = tot / pc;
   const seg = Math.max(48, Math.ceil(per / D2R * 2));
-  for (let i = 0; i < pc; i++) {
-    const outl = [], a0 = -Math.PI / 2 - per / 2;
-    for (let j = 0; j <= seg; j++) { const t = a0 + per * j / seg; outl.push([Ro * Math.cos(t), Ro * Math.sin(t)]); }
-    if (Ri > 1e-9) for (let j = seg; j >= 0; j--) { const t = a0 + per * j / seg; outl.push([Ri * Math.cos(t), Ri * Math.sin(t)]); }
-    else outl.push([0, 0]);
-    outl.push(outl[0]);
-    const form = []; for (let j = 1; j < k; j++) { const t = a0 + per * j / k; form.push([[Ri * Math.cos(t), Ri * Math.sin(t)], [Ro * Math.cos(t), Ro * Math.sin(t)]]); }
-    pieces.push({ name: pc > 1 ? `Cone · piece ${i + 1} of ${pc}` : 'Cone', qty: 1, cut: [outl], bend: [], form, labels: [] });
-  }
+  const outl = [], a0 = -Math.PI / 2 - per / 2;
+  for (let j = 0; j <= seg; j++) { const t = a0 + per * j / seg; outl.push([Ro * Math.cos(t), Ro * Math.sin(t)]); }
+  if (Ri > 1e-9) for (let j = seg; j >= 0; j--) { const t = a0 + per * j / seg; outl.push([Ri * Math.cos(t), Ri * Math.sin(t)]); }
+  else outl.push([0, 0]);
+  outl.push(outl[0]);
+  const form = []; for (let j = 1; j < k; j++) { const t = a0 + per * j / k; form.push([[Ri * Math.cos(t), Ri * Math.sin(t)], [Ro * Math.cos(t), Ro * Math.sin(t)]]); }
+  // The same outline as arcs, [x, y, bulge], in spans short enough to keep the bulge moderate.
+  const nA = Math.ceil(per / (TAU / 3)), bu = Math.tan(per / nA / 4), arcs = [];
+  for (let j = 0; j <= nA; j++) { const t = a0 + per * j / nA; arcs.push([Ro * Math.cos(t), Ro * Math.sin(t), j < nA ? bu : 0]); }
+  if (Ri > 1e-9) for (let j = nA; j >= 0; j--) { const t = a0 + per * j / nA; arcs.push([Ri * Math.cos(t), Ri * Math.sin(t), j ? -bu : 0]); }
+  else arcs.push([0, 0, 0]);
+  arcs.push(arcs[0]);
+  pieces.push({ name: pc > 1 ? 'Cone segment' : 'Cone', qty: pc, cut: [outl], cutB: [arcs], bend: [], form, labels: [] });
   rows.push({ grp: 'Radial-line layout (swing from apex)' });
   rows.push(['Slant height', { len: s }]);
   rows.push(['Outer radius (large end)', { len: Ro }]);
@@ -398,7 +417,7 @@ function ecc(p) {
   return {
     pieces, model: m3, table: { cols: ['Line', 'True length'], rows }, warn: [],
     notes: ['Point 1 is in the direction of the offset. Unprimed = bottom (diameter 1), primed = top (diameter 2).',
-      'Triangulated development — use more divisions for a closer fit on large fittings.', 'Add seam allowances as required.']
+      'Triangulated development — use more divisions for a closer fit on large fittings.', FACE, 'Add seam allowances as required.']
   };
 }
 
@@ -406,7 +425,6 @@ function ecc(p) {
 function elbow(p) {
   const a = adj(p), r = (p.dia + a) / 2, A = p.ang * D2R, N = Math.max(2, p.n | 0), Rc = N > 2 ? p.r : 0, L = p.l, k = p.k, m = 4 * k;
   const warn = [];
-  if (!(A > 0 && A < Math.PI)) warn.push('Bend angle should be between 0° and 180°.');
   const al = A / (2 * (N - 1)), ta = Math.tan(al), C = TAU * r;
   const th0 = p.seam === 'heel' ? 0 : p.seam === 'throat' ? Math.PI : Math.PI / 2;
   const Lend = L + Rc * ta, Lg = 2 * Rc * ta;
@@ -505,17 +523,17 @@ function branch(p) {
    Tool definitions
    ============================================================ */
 const COMMON = [
-  { k: 't', label: 'Material thickness', type: 'len', def: 0, help: 'Patterns are developed on the mean line (mid-thickness).' },
+  { k: 't', label: 'Material thickness', type: 'len', def: 0, ge: 0, help: 'Patterns are developed on the mean line (mid-thickness).' },
   { k: 'ref', label: 'Dimensions given as', type: 'select', def: 'inside', opts: [['inside', 'Inside'], ['mean', 'Mean'], ['outside', 'Outside']] },
 ];
 const SEAM4 = [['0', 'Front (−Y)'], ['1', 'Right (+X)'], ['2', 'Back (+Y)'], ['3', 'Left (−X)']];
 const TOOLS = [
   { id: 'rtr', name: 'Rectangle to round', icon: '<ellipse cx="12" cy="6" rx="5" ry="2"/><path d="M3 19h18M7 6L3 19M17 6l4 13"/>', run: rtr, fields: [
     { sec: 'Shape' },
-    { k: 'w', label: 'Rectangle width (X)', type: 'len', def: 24 },
-    { k: 'd', label: 'Rectangle depth (Y)', type: 'len', def: 16 },
-    { k: 'dia', label: 'Round diameter', type: 'len', def: 12 },
-    { k: 'h', label: 'Height', type: 'len', def: 12 },
+    { k: 'w', label: 'Rectangle width (X)', type: 'len', def: 24, gt: 0, dim: true },
+    { k: 'd', label: 'Rectangle depth (Y)', type: 'len', def: 16, gt: 0, dim: true },
+    { k: 'dia', label: 'Round diameter', type: 'len', def: 12, gt: 0, dim: true },
+    { k: 'h', label: 'Height', type: 'len', def: 12, gt: 0 },
     { k: 'ox', label: 'Round offset X', type: 'len', def: 0 },
     { k: 'oy', label: 'Round offset Y', type: 'len', def: 0, help: 'Offsets move the round center relative to the rectangle center.' },
     { sec: 'Layout' },
@@ -525,11 +543,11 @@ const TOOLS = [
   ] },
   { id: 'rect', name: 'Rectangle transition', icon: '<path d="M8 5h8M3 19h18M8 5L3 19M16 5l5 14"/>', run: rect2, fields: [
     { sec: 'Shape' },
-    { k: 'w1', label: 'Bottom width (X)', type: 'len', def: 24 },
-    { k: 'd1', label: 'Bottom depth (Y)', type: 'len', def: 16 },
-    { k: 'w2', label: 'Top width (X)', type: 'len', def: 12 },
-    { k: 'd2', label: 'Top depth (Y)', type: 'len', def: 10 },
-    { k: 'h', label: 'Height', type: 'len', def: 12 },
+    { k: 'w1', label: 'Bottom width (X)', type: 'len', def: 24, gt: 0, dim: true },
+    { k: 'd1', label: 'Bottom depth (Y)', type: 'len', def: 16, gt: 0, dim: true },
+    { k: 'w2', label: 'Top width (X)', type: 'len', def: 12, gt: 0, dim: true },
+    { k: 'd2', label: 'Top depth (Y)', type: 'len', def: 10, gt: 0, dim: true },
+    { k: 'h', label: 'Height', type: 'len', def: 12, gt: 0 },
     { k: 'ox', label: 'Top offset X', type: 'len', def: 0 },
     { k: 'oy', label: 'Top offset Y', type: 'len', def: 0 },
     { sec: 'Layout' },
@@ -538,18 +556,18 @@ const TOOLS = [
   ] },
   { id: 'cone', name: 'Cone / reducer', icon: '<ellipse cx="12" cy="5" rx="4" ry="1.6"/><ellipse cx="12" cy="19" rx="8" ry="2.4"/><path d="M8 5L4 19M16 5l4 14"/>', run: cone, fields: [
     { sec: 'Shape' },
-    { k: 'd1', label: 'Large diameter', type: 'len', def: 18 },
-    { k: 'd2', label: 'Small diameter', type: 'len', def: 10, help: 'Use 0 for a full cone to a point.' },
-    { k: 'h', label: 'Height', type: 'len', def: 10 },
+    { k: 'd1', label: 'Large diameter', type: 'len', def: 18, gt: 0, dim: true },
+    { k: 'd2', label: 'Small diameter', type: 'len', def: 10, ge: 0, dim: true, help: 'Use 0 for a full cone to a point.' },
+    { k: 'h', label: 'Height', type: 'len', def: 10, gt: 0 },
     { sec: 'Layout' },
     { k: 'pc', label: 'Pieces', type: 'int', def: 1, min: 1, max: 12 },
     { k: 'k', label: 'Roll lines per piece', type: 'int', def: 12, min: 1, max: 96 },
   ] },
   { id: 'ecc', name: 'Offset round to round', icon: '<ellipse cx="8" cy="5" rx="4" ry="1.6"/><ellipse cx="12" cy="19" rx="8" ry="2.4"/><path d="M4 5v14M12 5l8 14"/>', run: ecc, fields: [
     { sec: 'Shape' },
-    { k: 'd1', label: 'Bottom diameter', type: 'len', def: 18 },
-    { k: 'd2', label: 'Top diameter', type: 'len', def: 10 },
-    { k: 'h', label: 'Height', type: 'len', def: 12 },
+    { k: 'd1', label: 'Bottom diameter', type: 'len', def: 18, gt: 0, dim: true },
+    { k: 'd2', label: 'Top diameter', type: 'len', def: 10, gt: 0, dim: true },
+    { k: 'h', label: 'Height', type: 'len', def: 12, gt: 0 },
     { k: 'ox', label: 'Top offset X', type: 'len', def: 4 },
     { k: 'oy', label: 'Top offset Y', type: 'len', def: 0, help: 'Offset = (D1 − D2) / 2 gives a flat-on-one-side eccentric reducer.' },
     { sec: 'Layout' },
@@ -559,22 +577,22 @@ const TOOLS = [
   ] },
   { id: 'elbow', name: 'Elbow / miter', icon: '<path d="M4 21V13a9 9 0 0 1 9-9h7M10 21v-8a3 3 0 0 1 3-3h7M4 15h6M7 7l4 4M13 4v6"/>', run: elbow, fields: [
     { sec: 'Shape' },
-    { k: 'dia', label: 'Pipe diameter', type: 'len', def: 8 },
-    { k: 'ang', label: 'Bend angle (°)', type: 'num', def: 90 },
+    { k: 'dia', label: 'Pipe diameter', type: 'len', def: 8, gt: 0, dim: true },
+    { k: 'ang', label: 'Bend angle (°)', type: 'num', def: 90, gt: 0, lt: 180 },
     { k: 'n', label: 'Number of pieces', type: 'int', def: 5, min: 2, max: 24, help: '2 = simple miter. 5-piece 90° is typical.' },
-    { k: 'r', label: 'Centerline radius', type: 'len', def: 12, show: p => p.n > 2 },
-    { k: 'l', label: 'Straight length on ends', type: 'len', def: 2, help: '2-piece: centerline length from the square end to the miter point.' },
+    { k: 'r', label: 'Centerline radius', type: 'len', def: 12, ge: 0, show: p => p.n > 2 },
+    { k: 'l', label: 'Straight length on ends', type: 'len', def: 2, ge: 0, help: '2-piece: centerline length from the square end to the miter point.' },
     { sec: 'Layout' },
     { k: 'k', label: 'Divisions per quarter', type: 'int', def: 4, min: 2, max: 48 },
     { k: 'seam', label: 'Seam at', type: 'select', def: 'throat', opts: [['throat', 'Throat (inside)'], ['heel', 'Heel (outside)'], ['side', 'Side']] },
   ] },
   { id: 'branch', name: 'Branch / tee / lateral', icon: '<path d="M2 14h20M2 21h20M9 14L5 3M15 14L11 3"/>', run: branch, fields: [
     { sec: 'Shape' },
-    { k: 'dm', label: 'Main diameter', type: 'len', def: 12 },
-    { k: 'db', label: 'Branch diameter', type: 'len', def: 8 },
+    { k: 'dm', label: 'Main diameter', type: 'len', def: 12, gt: 0, dim: true },
+    { k: 'db', label: 'Branch diameter', type: 'len', def: 8, gt: 0, dim: true },
     { k: 'beta', label: 'Branch angle (°)', type: 'num', def: 90, help: '90 = tee. Smaller = lateral.' },
-    { k: 'l', label: 'Branch length', type: 'len', def: 14, help: 'Along the branch axis, from the main centerline to the branch end.' },
-    { k: 'lm', label: 'Main length (template)', type: 'len', def: 24 },
+    { k: 'l', label: 'Branch length', type: 'len', def: 14, gt: 0, help: 'Along the branch axis, from the main centerline to the branch end.' },
+    { k: 'lm', label: 'Main length (template)', type: 'len', def: 24, gt: 0 },
     { sec: 'Layout' },
     { k: 'k', label: 'Divisions per quarter', type: 'int', def: 4, min: 2, max: 48 },
     { k: 'seam', label: 'Branch seam at', type: 'select', def: 'short', opts: [['short', 'Shortest element'], ['long', 'Longest element'], ['side', 'Side']] },
@@ -588,13 +606,18 @@ TOOLS.forEach(t => t.fields.push({ sec: 'Material' }, ...COMMON));
 let S = { tool: 'rtr', u: 'in', vals: {}, labels: false };
 const toolDef = () => TOOLS.find(t => t.id === S.tool) || TOOLS[0];
 
-function parseNum(s) {
-  s = String(s).trim().replace(/\s*(in|mm|″|"|°)\s*$/i, '');
+/* u is the unit a length field is in. A value typed with the other unit's suffix is
+   converted to it; without u the suffix is only stripped. */
+function parseNum(s, u) {
+  let sfx = '';
+  s = String(s).trim().replace(/\s*(in|mm|″|"|°)\s*$/i, (_, x) => { sfx = x.toLowerCase(); return ''; });
   if (s === '') return NaN;
   const m = s.match(/^(-)?\s*(?:(\d*\.?\d+)(?:[\s-]+(\d+)\/(\d+))?|(\d+)\/(\d+))$/);
   if (!m) return NaN;
   let v = m[2] !== undefined ? parseFloat(m[2]) + (m[3] ? m[3] / m[4] : 0) : m[5] / m[6];
-  return m[1] ? -v : v;
+  if (m[1]) v = -v;
+  const su = sfx === 'mm' ? 'mm' : sfx && sfx !== '°' ? 'in' : '';
+  return u && su && su !== u ? (u === 'mm' ? v * 25.4 : v / 25.4) : v;
 }
 function frac(v, den = 16) {
   const neg = v < 0; v = Math.abs(v);
@@ -619,17 +642,72 @@ function defaults(t, u) {
   return o;
 }
 function vals() { return S.vals[S.tool] || (S.vals[S.tool] = defaults(toolDef(), S.u)); }
+const isOpt = (f, x) => f.opts.some(o => o[0] === x);
+/* A field's definition carries its limits: gt / ge / lt, and dim for a cross-section
+   size, which must still be positive once it has been moved to the mean line. */
 function parsed() {
-  const t = toolDef(), v = vals(), p = {}, bad = [];
+  const t = toolDef(), v = vals(), p = {}, why = [], note = [];
   t.fields.forEach(f => {
     if (!f.k) return;
-    if (f.type === 'select') { p[f.k] = v[f.k]; return; }
-    let x = parseNum(v[f.k]);
-    if (f.type === 'int') { x = Math.round(x); if (isFinite(x)) x = Math.min(f.max ?? 1e9, Math.max(f.min ?? 1, x)); }
-    if (!isFinite(x)) bad.push(f.k);
+    // Tools share keys (seam), so a link can carry another tool's value; the seam
+    // tables are indexed by it, and a miss there never terminates.
+    if (f.type === 'select') { p[f.k] = isOpt(f, v[f.k]) ? v[f.k] : f.def; return; }
+    let x = parseNum(v[f.k], f.type === 'len' ? S.u : undefined);
+    if (f.type === 'int' && isFinite(x)) {
+      const raw = x; x = Math.min(f.max ?? 1e9, Math.max(f.min ?? 1, Math.round(x)));
+      if (x !== raw) note.push(`${f.label} takes a whole number from ${f.min ?? 1} to ${f.max ?? 1e9}; using ${x}.`);
+    }
     p[f.k] = x;
   });
-  return { p, bad };
+  // A field the form is not showing is not used by the tool either, so what is in it cannot block.
+  const bad = t.fields.filter(f => f.k && f.type !== 'select' && !isFinite(p[f.k]) && !(f.show && !f.show(p))).map(f => f.k);
+  if (!bad.length) {
+    const a = adj(p);
+    t.fields.forEach(f => {
+      if (!f.k || f.type === 'select' || (f.show && !f.show(p))) return;
+      const x = p[f.k];
+      const m = f.gt !== undefined && !(x > f.gt) ? `must be greater than ${f.gt}`
+        : f.ge !== undefined && !(x >= f.ge) ? `can't be less than ${f.ge}`
+        : f.lt !== undefined && !(x < f.lt) ? `must be less than ${f.lt}`
+        : f.dim && x > 0 && x + a <= 0 ? 'must be larger than the material thickness' : '';
+      if (m) { bad.push(f.k); why.push(`${f.label.replace(/\s*\(.*\)$/, '')} ${m}.`); }
+    });
+  }
+  return { p, bad, why, note };
+}
+
+/* ============================================================
+   DXF (R12)
+   ============================================================ */
+/* Pieces as the layout placed them. An outline goes out as one closed POLYLINE, which is what
+   nesting and cutting software wants to pick up, and a piece that has its outline as arcs
+   (cutB) sends those instead of the chords the screen draws. */
+function dxfOf(pieces, fs, unit, labels) {
+  const o = [], n = v => v.toFixed(6), add = (...a) => o.push(...a);
+  add('0', 'SECTION', '2', 'HEADER', '9', '$ACADVER', '1', 'AC1009', '9', '$INSUNITS', '70', unit === 'in' ? '1' : '4', '0', 'ENDSEC');
+  add('0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '70', '4');
+  [['CUT', 7], ['BEND', 1], ['FORM', 8], ['TEXT', 3]].forEach(([nm, c]) => add('0', 'LAYER', '2', nm, '70', '0', '62', String(c), '6', 'CONTINUOUS'));
+  add('0', 'ENDTAB', '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES');
+  const gap = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) > 1e-9;
+  const poly = (ly, l) => {
+    const v = l.filter((q, i) => !i || gap(q, l[i - 1])), closed = v.length > 3 && !gap(v[0], v[v.length - 1]);
+    if (closed) v.pop();
+    if (v.length < 2) return;
+    if (v.length === 2) { add('0', 'LINE', '8', ly, '10', n(v[0][0]), '20', n(v[0][1]), '30', '0', '11', n(v[1][0]), '21', n(v[1][1]), '31', '0'); return; }
+    add('0', 'POLYLINE', '8', ly, '66', '1', '10', '0', '20', '0', '30', '0', '70', closed ? '1' : '0');
+    v.forEach(q => { add('0', 'VERTEX', '8', ly, '10', n(q[0]), '20', n(q[1]), '30', '0'); if (q[2]) add('42', n(q[2])); });
+    add('0', 'SEQEND', '8', ly);
+  };
+  // R12 text is in a code page, not UTF-8, so only ASCII is safe to send.
+  const DMAP = { '′': "'", '″': '"', '·': '-', '–': '-', '—': '-', '×': 'x' };
+  const text = (ly, p, h, s) => add('0', 'TEXT', '8', ly, '10', n(p[0]), '20', n(p[1]), '30', '0', '40', n(h), '1', s.replace(/[^\x20-\x7e]/g, ch => DMAP[ch] ?? '?'));
+  for (const pc of pieces) {
+    (pc.cutB || pc.cut).forEach(l => poly('CUT', l)); pc.bend.forEach(l => poly('BEND', l)); pc.form.forEach(l => poly('FORM', l));
+    text('TEXT', [pc.bb[0], pc.bb[3] + fs * 0.6], fs * 0.8, `${pc.name}${pc.qty > 1 ? ' - CUT ' + pc.qty : ''}`);
+    if (labels) pc.labels.forEach(l => text('TEXT', l.p, fs * 0.45, l.t));
+  }
+  add('0', 'ENDSEC', '0', 'EOF');
+  return o.join('\r\n');
 }
 
 /* ============================================================
@@ -637,17 +715,18 @@ function parsed() {
    ============================================================ */
 if (typeof document !== 'undefined') (function () {
   const $ = id => document.getElementById(id);
-  const form = $('form'), svg = $('flat'), view = $('view'), c3 = $('c3');
-  let res = null, layout = null, vb = null, autoFit = true;
+  const form = $('form'), svg = $('flat'), view = $('view'), c3 = $('c3'), work = document.querySelector('.work');
+  let res = null, resTool = null, layout = null, vb = null, autoFit = true;
 
   /* ---- state <-> URL hash ---- */
   function loadHash() {
     const h = new URLSearchParams(location.hash.slice(1));
-    if (h.get('u') === 'mm') S.u = 'mm';
+    const u = h.get('u') === 'mm' ? 'mm' : 'in';
+    if (u !== S.u) convertVals(u);
     if (TOOLS.some(t => t.id === h.get('tool'))) S.tool = h.get('tool');
     S.labels = h.get('lb') === '1';
     const v = defaults(toolDef(), S.u);
-    toolDef().fields.forEach(f => { if (f.k && h.has(f.k)) v[f.k] = h.get(f.k); });
+    toolDef().fields.forEach(f => { if (f.k && h.has(f.k) && (f.type !== 'select' || isOpt(f, h.get(f.k)))) v[f.k] = h.get(f.k); });
     S.vals[S.tool] = v;
   }
   function saveHash() {
@@ -661,19 +740,21 @@ if (typeof document !== 'undefined') (function () {
   $('tools').addEventListener('click', e => { const b = e.target.closest('.tool'); if (!b) return; S.tool = b.dataset.t; autoFit = true; buildForm(); update(); });
   $('units').addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.u !== S.u) setUnits(b.dataset.u); });
 
-  function setUnits(u) {
+  function convertVals(u) {
     const f = u === 'mm' ? 25.4 : 1 / 25.4;
     for (const id in S.vals) {
       const t = TOOLS.find(x => x.id === id), v = S.vals[id];
-      t.fields.forEach(fd => { if (fd.type !== 'len') return; const x = parseNum(v[fd.k]); if (isFinite(x)) v[fd.k] = String(u === 'mm' ? Math.round(x * f * 10) / 10 : Math.round(x * f * 1000) / 1000); });
+      t.fields.forEach(fd => { if (fd.type !== 'len') return; const x = parseNum(v[fd.k], S.u); if (isFinite(x)) v[fd.k] = String(u === 'mm' ? Math.round(x * f * 10) / 10 : Math.round(x * f * 1000) / 1000); });
     }
-    S.u = u; autoFit = true; buildForm(); update();
+    S.u = u;
   }
+  function setUnits(u) { convertVals(u); autoFit = true; buildForm(); update(); }
 
   function buildForm() {
     document.querySelectorAll('.tool').forEach(b => b.classList.toggle('on', b.dataset.t === S.tool));
     document.querySelectorAll('#units button').forEach(b => b.classList.toggle('on', b.dataset.u === S.u));
     const t = toolDef(), v = vals();
+    building = true;
     form.innerHTML = t.fields.map(f => {
       if (f.sec) return `<div class="sec">${f.sec}</div>`;
       const unit = f.type === 'len' ? ` <span style="color:var(--muted)">(${S.u})</span>` : '';
@@ -682,32 +763,49 @@ if (typeof document !== 'undefined') (function () {
         : `<input id="f_${f.k}" value="${esc(v[f.k])}" inputmode="${f.type === 'int' ? 'numeric' : 'text'}" spellcheck="false">`;
       return `<div class="field" data-k="${f.k}"><label for="f_${f.k}">${f.label}${unit}</label>${ctl}${f.help ? `<div class="help">${f.help}</div>` : ''}</div>`;
     }).join('');
+    building = false;
     $('lbl').checked = S.labels;
   }
-  form.addEventListener('input', e => { const k = e.target.id.slice(2); vals()[k] = e.target.value; update(); });
-  form.addEventListener('change', e => { const k = e.target.id.slice(2); vals()[k] = e.target.value; update(); });
+  // Replacing the form under a field that has focus makes the browser send that field's
+  // change on its way out, after the values it belonged to have already been replaced.
+  let building = false;
+  const onField = e => { if (building || !form.contains(e.target)) return; vals()[e.target.id.slice(2)] = e.target.value; update(); };
+  form.addEventListener('input', onField); form.addEventListener('change', onField);
   $('lbl').addEventListener('change', e => { S.labels = e.target.checked; renderFlat(); saveHash(); });
 
   /* ---- compute + render ---- */
   function update() {
-    const t = toolDef(), { p, bad } = parsed();
+    const t = toolDef(), { p, bad, why, note } = parsed();
+    document.title = `${t.name} · Sheet Metal Layout`;
     t.fields.forEach(f => {
       if (!f.k) return;
       const el = form.querySelector(`.field[data-k="${f.k}"]`);
       if (el) { el.classList.toggle('hide', !!(f.show && !f.show(p))); el.querySelector('input')?.classList.toggle('bad', bad.includes(f.k)); }
     });
     saveHash();
-    const msgs = [];
-    if (bad.length) { $('msgs').innerHTML = '<div class="e">Check the highlighted values.</div>'; return; }
-    try { res = t.run(p); } catch (err) { res = null; $('msgs').innerHTML = `<div class="e">Couldn't develop this shape: ${esc(err.message)}</div>`; return; }
-    if (res.err) msgs.push(`<div class="e">${esc(res.err)}</div>`);
-    (res.warn || []).forEach(w => msgs.push(`<div class="w">${esc(w)}</div>`));
-    $('msgs').innerHTML = msgs.join('');
+    const errs = []; let r = null;
+    if (bad.length) errs.push(...(why.length ? why : ['Check the highlighted values.']));
+    else try { r = t.run(p); if (r.err) errs.push(r.err); } catch (err) { errs.push(`Couldn't develop this shape: ${err.message}`); }
+    if (errs.length) { setStale(true); $('msgs').innerHTML = errs.map(e => `<div class="e">${esc(e)}</div>`).join(''); return; }
+    res = r; resTool = S.tool; setStale(false);
+    $('msgs').innerHTML = [...note, ...(res.warn || [])].map(w => `<div class="w">${esc(w)}</div>`).join('');
     doLayout();
     renderFlat(); if (autoFit) fit();
     render3d(); renderTable();
     const total = res.pieces.reduce((s, pc) => s + pc.qty, 0);
     $('ptitle').innerHTML = `${esc(t.name)}<small>${res.pieces.length} pattern${res.pieces.length === 1 ? '' : 's'}${total !== res.pieces.length ? `, ${total} pieces total` : ''}</small>`;
+  }
+
+  /* The last good drawing stays up, dimmed, while the form is invalid, so the view does
+     not blink as a fraction is typed. It no longer matches the inputs, so it cannot be
+     exported; a drawing left over from another tool is not worth keeping at all. */
+  function setStale(on) {
+    if (on && resTool !== S.tool) {
+      res = layout = resTool = null; renderFlat(); render3d();
+      $('table').innerHTML = ''; $('notes').innerHTML = ''; $('ptitle').textContent = toolDef().name;
+    }
+    work.classList.toggle('stale', on);
+    ['dxf', 'svgx', 'csv', 'prt'].forEach(id => $(id).disabled = on || !res);
   }
 
   function bbox(pts) { let a = [Infinity, Infinity, -Infinity, -Infinity]; for (const q of pts) { a[0] = Math.min(a[0], q[0]); a[1] = Math.min(a[1], q[1]); a[2] = Math.max(a[2], q[0]); a[3] = Math.max(a[3], q[1]); } return a; }
@@ -722,6 +820,7 @@ if (typeof document !== 'undefined') (function () {
       x += pc.bb[2] - pc.bb[0] + gap;
       return {
         name: pc.name, qty: pc.qty, cut: pc.cut.map(l => l.map(f)), bend: pc.bend.map(l => l.map(f)), form: pc.form.map(l => l.map(f)),
+        cutB: pc.cutB && pc.cutB.map(l => l.map(q => [...f(q), q[2]])),
         labels: pc.labels.map(l => ({ p: f(l.p), t: l.t })), w: pc.bb[2] - pc.bb[0], h: pc.bb[3] - pc.bb[1],
         bb: [pc.bb[0] + dx, 0, pc.bb[2] + dx, pc.bb[3] - pc.bb[1]]
       };
@@ -732,6 +831,8 @@ if (typeof document !== 'undefined') (function () {
 
   const pathOf = l => 'M' + l.map(q => `${q[0].toFixed(4)} ${(-q[1]).toFixed(4)}`).join('L');
   function niceStep(x) { const e = Math.pow(10, Math.floor(Math.log10(x))), m = x / e; return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * e; }
+  const IN_STEPS = [1 / 64, 1 / 32, 1 / 16, 1 / 8, 1 / 4, 1 / 2, 1, 2, 3, 6, 12, 24, 48, 96];
+  const gridStep = x => (S.u === 'in' && IN_STEPS.find(q => q >= x * 0.75)) || niceStep(x);
 
   function svgBody(forExport) {
     if (!layout) return '';
@@ -752,9 +853,9 @@ if (typeof document !== 'undefined') (function () {
   }
 
   function renderFlat() {
-    if (!layout) { svg.innerHTML = ''; return; }
-    const step = niceStep(layout.md / 12);
-    $('gridlbl').textContent = `Grid ${S.u === 'in' ? frac(step) + '″' : step + ' mm'}`;
+    if (!layout) { svg.innerHTML = ''; $('gridlbl').textContent = ''; return; }
+    const step = gridStep(layout.md / 12);
+    $('gridlbl').textContent = `Grid ${S.u === 'in' ? frac(step, 64) + '″' : step + ' mm'}`;
     svg.innerHTML = `<defs><pattern id="gp" width="${step}" height="${step}" patternUnits="userSpaceOnUse"><path d="M${step} 0H0V${step}" fill="none" stroke="var(--grid)" stroke-width="1" vector-effect="non-scaling-stroke"/></pattern></defs>
       <rect x="-1e6" y="-1e6" width="2e6" height="2e6" fill="url(#gp)"/>` + svgBody(false);
     applyVB();
@@ -805,7 +906,7 @@ if (typeof document !== 'undefined') (function () {
     const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
     const pr = p => { const x = p[0] - c[0], y = p[1] - c[1], z = p[2] - c[2]; const x1 = x * cy - y * sy, y1 = x * sy + y * cy; return [w / 2 + x1 * sc, h / 2 - (z * cp + y1 * sp) * sc]; };
     const cs = getComputedStyle(document.documentElement);
-    const colr = { edge: cs.getPropertyValue('--cut'), break: cs.getPropertyValue('--accent'), form: cs.getPropertyValue('--form') };
+    const colr = { edge: cs.getPropertyValue('--cut'), break: cs.getPropertyValue('--bend'), form: cs.getPropertyValue('--form') };
     for (const kind of ['form', 'break', 'edge']) {
       g.strokeStyle = colr[kind]; g.lineWidth = kind === 'form' ? 0.8 : 1.4; g.globalAlpha = kind === 'form' ? 0.7 : 1;
       g.beginPath();
@@ -835,24 +936,7 @@ if (typeof document !== 'undefined') (function () {
     document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
   const fname = ext => `${S.tool}-pattern.${ext}`;
-  $('dxf').onclick = () => {
-    if (!layout) return;
-    const o = [], n = v => v.toFixed(6), add = (...a) => o.push(...a);
-    add('0', 'SECTION', '2', 'HEADER', '9', '$ACADVER', '1', 'AC1009', '9', '$INSUNITS', '70', S.u === 'in' ? '1' : '4', '0', 'ENDSEC');
-    add('0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '70', '4');
-    [['CUT', 7], ['BEND', 1], ['FORM', 8], ['TEXT', 3]].forEach(([nm, c]) => add('0', 'LAYER', '2', nm, '70', '0', '62', String(c), '6', 'CONTINUOUS'));
-    add('0', 'ENDTAB', '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES');
-    const line = (ly, a, b) => add('0', 'LINE', '8', ly, '10', n(a[0]), '20', n(a[1]), '30', '0', '11', n(b[0]), '21', n(b[1]), '31', '0');
-    const poly = (ly, l) => { for (let i = 1; i < l.length; i++) if (Math.hypot(l[i][0] - l[i - 1][0], l[i][1] - l[i - 1][1]) > 1e-9) line(ly, l[i - 1], l[i]); };
-    const text = (ly, p, h, s) => add('0', 'TEXT', '8', ly, '10', n(p[0]), '20', n(p[1]), '30', '0', '40', n(h), '1', s);
-    for (const pc of layout.pieces) {
-      pc.cut.forEach(l => poly('CUT', l)); pc.bend.forEach(l => poly('BEND', l)); pc.form.forEach(l => poly('FORM', l));
-      text('TEXT', [pc.bb[0], pc.bb[3] + layout.fs * 0.6], layout.fs * 0.8, `${pc.name}${pc.qty > 1 ? ' - CUT ' + pc.qty : ''}`);
-      if (S.labels) pc.labels.forEach(l => text('TEXT', l.p, layout.fs * 0.45, l.t.replace('′', "'")));
-    }
-    add('0', 'ENDSEC', '0', 'EOF');
-    download(fname('dxf'), o.join('\r\n'), 'application/dxf');
-  };
+  $('dxf').onclick = () => { if (layout) download(fname('dxf'), dxfOf(layout.pieces, layout.fs, S.u, S.labels), 'application/dxf'); };
   $('svgx').onclick = () => {
     if (!layout) return;
     const b = layout.bb, m = layout.fs * 3, x = b[0] - m, y = -b[3] - m, w = b[2] - b[0] + 2 * m, h = b[3] - b[1] + 2 * m;
@@ -862,7 +946,7 @@ if (typeof document !== 'undefined') (function () {
     if (!res) return;
     const q = s => /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s, tb = res.table;
     const lines = [tb.cols.map(q).join(','), ...tb.rows.map(r => r.grp ? q(r.grp) : tb.cols.map((_, i) => q(csvCell(r[i]))).join(','))];
-    download(fname('csv'), lines.join('\n'), 'text/csv');
+    download(fname('csv'), '\ufeff' + lines.join('\n'), 'text/csv');
   };
   /* ============================================================
      Full-scale tiled PDF (vector, true size, match lines)
@@ -876,6 +960,9 @@ if (typeof document !== 'undefined') (function () {
     ['custom', 'Custom / plotter roll', 0, 0]];
   const PO = { paper: null, orient: 'auto', margin: 18, ovl: 36, cw: 24 * 72, ch: 36 * 72, rotate: true, skip: true, cover: true, table: true, labels: true };
   const k2pt = () => S.u === 'in' ? 72 : MM;
+  /* Custom paper is a roll: its long side is the most a page may run, not what every page
+     must be, so each page is shortened along the feed to what is on it. */
+  const isRoll = () => PO.paper === 'custom';
   const rowName = r => r < 26 ? String.fromCharCode(65 + r) : String.fromCharCode(64 + Math.floor(r / 26)) + String.fromCharCode(65 + r % 26);
   function paperDims() { if (PO.paper === 'custom') return [PO.cw, PO.ch]; const p = PAPERS.find(q => q[0] === PO.paper); return [p[2], p[3]]; }
 
@@ -894,12 +981,17 @@ if (typeof document !== 'undefined') (function () {
   function planPiece(pc, prefix) {
     const k = k2pt(), [W, H] = paperDims(), m = PO.margin, ov = PO.ovl; let best = null;
     for (const rot of PO.rotate ? [0, 1] : [0]) for (const o of PO.orient === 'auto' ? ['p', 'l'] : [PO.orient]) {
-      const pw = o === 'p' ? Math.min(W, H) : Math.max(W, H), ph = o === 'p' ? Math.max(W, H) : Math.min(W, H);
-      const cw = pw - 2 * m - ov, ch = ph - 2 * m - FOOT - ov;
+      let pw = o === 'p' ? Math.min(W, H) : Math.max(W, H), ph = o === 'p' ? Math.max(W, H) : Math.min(W, H);
+      let cw = pw - 2 * m - ov, ch = ph - 2 * m - FOOT - ov;
       if (cw < 72 || ch < 72) continue;
       const g = xformPiece(pc, rot, k), bb = bbox(g.cut.flat());
       const bw = bb[2] - bb[0] + 2 * PAD, bh = bb[3] - bb[1] + 2 * PAD;
       const cols = Math.max(1, Math.ceil(bw / cw - 1e-9)), rows = Math.max(1, Math.ceil(bh / ch - 1e-9));
+      if (isRoll()) {
+        // Sideways feed keeps a letter's width, which is what the footer line needs.
+        if (o === 'l') { cw = Math.min(cw, Math.max(bw / cols, 612 - 2 * m - ov)); pw = cw + 2 * m + ov; }
+        else { ch = Math.min(ch, Math.max(bh / rows, 72)); ph = ch + 2 * m + FOOT + ov; }
+      }
       const x0 = bb[0] - PAD - (cols * cw - bw) / 2, yT = bb[3] + PAD + (rows * ch - bh) / 2;
       const segs = []; for (const set of [g.cut, g.bend, g.form]) for (const l of set) for (let i = 1; i < l.length; i++) segs.push([l[i - 1], l[i]]);
       const tiles = [];
@@ -909,15 +1001,15 @@ if (typeof document !== 'undefined') (function () {
         tiles.push({ r, c, cx0, cyT, reg, blank: !segs.some(s => segHits(s[0], s[1], reg)), id: prefix + rowName(r) + (c + 1) });
       }
       const n = tiles.filter(t => !(PO.skip && t.blank)).length;
-      const cand = { g, rot, o, pw, ph, cw, ch, cols, rows, tiles, n, x0, yT };
-      if (!best || n < best.n || (n === best.n && rows * cols < best.rows * best.cols)) best = cand;
+      const cand = { g, rot, o, pw, ph, cw, ch, cols, rows, tiles, n, x0, yT, paper: n * pw * ph };
+      if (!best || (n !== best.n ? n < best.n : cand.paper !== best.paper ? cand.paper < best.paper : rows * cols < best.rows * best.cols)) best = cand;
     }
     return best;
   }
   const printed = (pl, r, c) => { const t = pl.tiles.find(q => q.r === r && q.c === c); return t && !(PO.skip && t.blank) ? t : null; };
 
   /* ---- minimal PDF writer ---- */
-  const PMAP = { '′': "'", '″': '"', '→': '->', '–': '\x96', '—': '\x97', '·': '\xb7', '×': '\xd7', '°': '\xb0', '≈': '~', 'θ': 'theta ', '−': '-' };
+  const PMAP = { '′': "'", '″': '"', '→': '->', '–': '\x96', '—': '\x97', '·': '\xb7', '×': '\xd7', '°': '\xb0', '≈': '~', 'θ': 'theta ', '−': '-', '•': '\x95', '…': '\x85', '‘': '\x91', '’': '\x92', '“': '\x93', '”': '\x94' };
   function pdfEsc(s) {
     let o = '';
     for (const ch of String(s)) for (const cc of (PMAP[ch] ?? ch)) {
@@ -1006,9 +1098,8 @@ if (typeof document !== 'undefined') (function () {
       { const r = 4, q = r * 0.5523, f = v => v.toFixed(2); o.raw(`${f(x + r)} ${f(y)} m ${f(x + r)} ${f(y + q)} ${f(x + q)} ${f(y + r)} ${f(x)} ${f(y + r)} c ${f(x - q)} ${f(y + r)} ${f(x - r)} ${f(y + q)} ${f(x - r)} ${f(y)} c ${f(x - r)} ${f(y - q)} ${f(x - q)} ${f(y - r)} ${f(x)} ${f(y - r)} c ${f(x + q)} ${f(y - r)} ${f(x + r)} ${f(y - q)} ${f(x + r)} ${f(y)} c S`); }
     }
     const tagW = tw(t.id, 13, true) + 12;
-    o.fill([1, 1, 1]); o.rect(xL + 16, yT - 30, tagW, 19, 'f');
-    o.stroke([0, 0, 0], 0.8); o.rect(xL + 16, yT - 30, tagW, 19, 'S');
-    o.fill([0, 0, 0]); o.text(xL + 22, yT - 25, 13, t.id, { bold: true });
+    o.stroke(blue, 0.8); o.rect(xL + 16, yT - 30, tagW, 19, 'S');
+    o.fill(blue); o.text(xL + 22, yT - 25, 13, t.id, { bold: true });
     o.stroke([0.6, 0.6, 0.6], 0.4); o.line(m, m + FOOT - 6, pw - m, m + FOOT - 6);
     o.fill([0, 0, 0]);
     o.text(m, m + 15, 8.5, `${g.name.startsWith(title) ? g.name : title + ' — ' + g.name}${g.qty > 1 ? `  (cut ${g.qty})` : ''}`, { bold: true });
@@ -1018,7 +1109,10 @@ if (typeof document !== 'undefined') (function () {
   }
 
   function coverPage(plans, title, total) {
-    const [W, H] = paperDims(), pw = Math.max(W, H), ph = Math.min(W, H), m = Math.max(PO.margin, 18), o = Ops();
+    const [W, H] = paperDims(), m = Math.max(PO.margin, 18), o = Ops(), { p } = parsed();
+    const shown = toolDef().fields.filter(f => f.k && !(f.show && !f.show(p)));
+    let pw = Math.max(W, H), ph = Math.min(W, H);
+    if (isRoll()) { pw = ph; ph = Math.min(Math.max(W, H), Math.max(612, 2 * m + 240 + shown.length * 11 + plans.length * 24)); }
     o.fill([0, 0, 0]);
     o.text(m, ph - m - 16, 16, `${title} — full-scale layout`, { bold: true });
     o.text(m, ph - m - 30, 8.5, `${new Date().toLocaleDateString()} · units: ${S.u === 'in' ? 'inches' : 'millimetres'} · ${PAPERS.find(p => p[0] === PO.paper)[1]} · ${total} pages`);
@@ -1029,10 +1123,8 @@ if (typeof document !== 'undefined') (function () {
     line('ASSEMBLY', 9, true);
     ['Lay sheets out by row (A, B, ...) and column (1, 2, ...).', 'Trim each sheet along its TRIM & MATCH edges', '(top and left), then lap it over the shaded band of', 'its neighbor so the trimmed edge sits on the blue', 'match line. Line up the crosshairs and tape.', ''].forEach(s => line(s));
     line('INPUTS', 9, true);
-    const { p } = parsed();
-    toolDef().fields.forEach(f => {
-      if (!f.k || (f.show && !f.show(p))) return;
-      const v = vals()[f.k], disp = f.type === 'select' ? (f.opts.find(q => q[0] === v) || [, v])[1] : v + (f.type === 'len' ? (S.u === 'in' ? ' in' : ' mm') : '');
+    shown.forEach(f => {
+      const v = vals()[f.k], disp = f.type === 'select' ? (f.opts.find(q => q[0] === v) || [, v])[1] : v + (f.type === 'len' && !/[a-z″"]\s*$/i.test(v) ? (S.u === 'in' ? ' in' : ' mm') : '');
       o.text(m, y, 8, f.label); o.text(m + colW, y, 8, disp, { align: 'r' }); y -= 11;
     });
     y -= 6; line('PIECES', 9, true);
@@ -1058,7 +1150,8 @@ if (typeof document !== 'undefined') (function () {
         if (!skip) { o.fill([0, 0.35, 0.85]); o.text(x + pl.cw * s / 2, yb + pl.ch * s / 2 - 4, Math.max(6, Math.min(14, pl.cw * s * 0.18)), t.id, { align: 'c', bold: true }); }
       });
       o.stroke([0, 0, 0], 0.7); pl.g.cut.forEach(l => o.poly(sc(l), ox, oy));
-      o.fill([0, 0, 0]); o.text(cx, oy + b[3] * s + 6, 8, `${i + 1}. ${pl.g.name}`, { bold: true });
+      const cap = `${i + 1}. ${pl.g.name}`;
+      o.fill([0, 0, 0]); o.text(cx, oy + b[3] * s + 6, 8, tw(cap, 8, true) <= (b[2] - b[0]) * s ? cap : `${i + 1}.`, { bold: true });
       cx += (b[2] - b[0]) * s + gap * s;
     });
     return { w: pw, h: ph, ops: o.a };
@@ -1068,14 +1161,16 @@ if (typeof document !== 'undefined') (function () {
     : S.u === 'in' ? `${c.len.toFixed(3)}"  (${frac(c.len)})` : c.len.toFixed(1);
   function tablePages(title) {
     const tb = res.table; if (!tb || !tb.rows.length) return [];
-    const [W, H] = paperDims(), pw = Math.min(W, H), ph = Math.max(W, H), m = Math.max(PO.margin, 24), aw = pw - 2 * m;
-    const nc = tb.cols.length, c0 = aw * (nc > 2 ? 0.4 : 0.6), cwid = (aw - c0) / Math.max(1, nc - 1), rh = 12;
+    const [W, H] = paperDims(), pw = Math.min(W, H), m = Math.max(PO.margin, 24), rh = 12;
+    const roll = isRoll(), aw = roll ? Math.min(pw - 2 * m, 564) : pw - 2 * m;
+    const ph = roll ? Math.min(Math.max(W, H), Math.max(396, 2 * m + 90 + tb.rows.length * rh + (res.notes || []).length * 11)) : Math.max(W, H);
+    const nc = tb.cols.length, c0 = aw * (nc > 2 ? 0.4 : 0.6), cwid = (aw - c0) / Math.max(1, nc - 1);
     const pages = []; let o = null, y = 0;
     const head = () => {
       o = Ops(); pages.push(o); y = ph - m - 14;
       o.fill([0, 0, 0]); o.text(m, y, 12, `${title} — layout data (${S.u})`, { bold: true }); y -= 22;
       o.fill([0.35, 0.35, 0.35]); tb.cols.forEach((c, i) => o.text(i ? m + c0 + cwid * i : m, y, 8, c, { bold: true, align: i ? 'r' : 'l' }));
-      y -= 6; o.stroke([0.5, 0.5, 0.5], 0.5); o.line(m, y, pw - m, y); y -= rh;
+      y -= 6; o.stroke([0.5, 0.5, 0.5], 0.5); o.line(m, y, m + aw, y); y -= rh;
     };
     head();
     tb.rows.forEach(r => {
@@ -1122,7 +1217,7 @@ if (typeof document !== 'undefined') (function () {
   }
   function readPrint() {
     PO.paper = pf('paper').value; PO.orient = pf('orient').value;
-    ['margin', 'ovl', 'cw', 'ch'].forEach(k => { const v = parseNum(pf(k).value); pf(k).classList.toggle('bad', !isFinite(v) || v < 0); if (isFinite(v) && v >= 0) PO[k] = v * k2pt(); });
+    ['margin', 'ovl', 'cw', 'ch'].forEach(k => { const v = parseNum(pf(k).value, S.u); pf(k).classList.toggle('bad', !isFinite(v) || v < 0); if (isFinite(v) && v >= 0) PO[k] = v * k2pt(); });
     ['rotate', 'skip', 'cover', 'table', 'labels'].forEach(k => PO[k] = pf(k).checked);
   }
   function refreshPrint() {
@@ -1133,7 +1228,7 @@ if (typeof document !== 'undefined') (function () {
     $('pgo').disabled = false;
     const sheets = plans.reduce((s, p) => s + p.n, 0), tbl = PO.table ? tablePages('x').length : 0;
     $('psum').innerHTML = `<b>${sheets} sheet${sheets === 1 ? '' : 's'}</b> of pattern${PO.cover ? ' + cover' : ''}${tbl ? ` + ${tbl} data page${tbl > 1 ? 's' : ''}` : ''}. ` +
-      plans.map((p, i) => `${plans.length > 1 ? `Piece ${i + 1}: ` : ''}${p.cols}×${p.rows} grid, ${p.o === 'p' ? 'portrait' : 'landscape'}${p.rot ? ', rotated 90°' : ''}`).join('; ') + '.';
+      plans.map((p, i) => `${plans.length > 1 ? `Piece ${i + 1}: ` : ''}${p.cols}×${p.rows} grid, ${p.o === 'p' ? 'portrait' : 'landscape'}${p.rot ? ', rotated 90°' : ''}${isRoll() ? `, ${showLen(p.pw)} × ${showLen(p.ph)} ${uLbl()} page${p.n === 1 ? '' : 's'}` : ''}`).join('; ') + '.';
     // preview
     const boxes = plans.map(pl => [pl.x0, pl.yT - pl.rows * pl.ch, pl.x0 + pl.cols * pl.cw, pl.yT]);
     const gap = Math.max(...boxes.map(b => b[2] - b[0])) * 0.12; let cx = 0, svgS = '';
@@ -1159,6 +1254,9 @@ if (typeof document !== 'undefined') (function () {
   $('prt').onclick = openPrint;
 
   let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (autoFit) fit(); render3d(); }, 100); });
+
+  // saveHash replaces the state, which fires nothing, so this is only ever a link or Back.
+  window.addEventListener('hashchange', () => { loadHash(); autoFit = true; buildForm(); update(); });
 
   loadHash(); buildForm(); update();
 })();
