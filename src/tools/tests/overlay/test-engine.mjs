@@ -112,6 +112,8 @@ const look = { ...ev('LOOK'), weight: 0, clean: 40, color: '#1f6fff' };
   const count = (o, f) => { let c = 0; for (let i = 0; i < n * n; i++) if (f(o, i * 4)) c++; return c; };
   const thick = E.styledPlan(img, n, n, { ...look, weight: 2 });
   t.eq(count(thick, (o, j) => o[j + 3] === 255), 25, 'thickness 2 grows a dot to 5×5');
+  const dense = E.styledPlan(img, n, n, { ...look, weight: 1 }, 2);
+  t.eq(count(dense, (o, j) => o[j + 3] === 255), 25, 'a raster twice as dense takes twice the thickness per step');
   const halo = E.styledPlan(img, n, n, { ...look, weight: 1, halo: true, haloColor: '#ffffff' });
   t.eq(count(halo, (o, j) => o[j + 3] === 255), 81, 'an outline adds three more pixels all round');
   t.eq(halo[3], 0, 'beyond the outline stays clear');

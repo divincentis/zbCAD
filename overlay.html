@@ -161,7 +161,7 @@ input[type=color]{width:34px;height:26px;padding:0 2px;border:1px solid var(--li
       <h2><b>6</b>Save and share</h2>
       <div class="field wide"><label for="title">Title</label><input id="title" placeholder="e.g. 1200 Main St, leak survey"></div>
       <div class="grid2"><button class="btn pri" id="png">Save image</button><button class="btn" id="print">Print</button><button class="btn" id="saveProj">Save project</button><button class="btn" id="openProj">Open project</button></div>
-      <p class="help">The image is the roof photo at full size with the plan and markers on it, and the notes listed underneath. Set plan visibility to 0 for markers on the bare roof. Your work is kept in this browser; Save project makes a file you can keep or send.</p>
+      <p class="help">The image is the roof photo with the plan and markers on it and the notes listed underneath, made large enough to print sharp. Set plan visibility to 0 for markers on the bare roof. Your work is kept in this browser; Save project makes a file you can keep or send.</p>
       <button class="link" id="reset">Start over</button>
     </section>
   </aside>
@@ -307,21 +307,23 @@ function spread(src, w, h, r) {
 }
 
 // One step of the thickness slider, in plan pixels: a big render needs a fatter step for the
-// lines to look the same once the plan is scaled down onto the photo.
+// lines to look the same once the plan is scaled down onto the photo. A raster denser than the
+// plan's own pixels passes its own unit, the plan's times its density, so a step is the same
+// width on the roof either way.
 const lookUnit = (w, h) => Math.max(1, Math.round(Math.max(w, h) / 2500));
 
 // The plan as it is drawn over the photo, from its own RGBA pixels. How much a pixel reads as
 // line work is its distance from white in its darkest channel, so a red or yellow line counts
 // as fully as a black one, and transparency counts as white. With the background knocked out
 // that becomes the pixel's opacity; without, the paper stays and only the lines are recolored.
-function styledPlan(px, w, h, look) {
+function styledPlan(px, w, h, look, unit = lookUnit(w, h)) {
   const n = w * h, ink = new Uint8Array(n), t0 = 8 + look.clean * 1.6, span = 48;
   for (let i = 0, j = 0; i < n; i++, j += 4) {
     const r = px[j], g = px[j + 1], b = px[j + 2], m = r < g ? (r < b ? r : b) : (g < b ? g : b);
     const t = ((255 - m) * px[j + 3] / 255 - t0) / span;
     ink[i] = t <= 0 ? 0 : t >= 1 ? 255 : t * 255 + 0.5;
   }
-  const rad = look.weight * lookUnit(w, h), line = spread(ink, w, h, rad);
+  const rad = Math.round(look.weight * unit), line = spread(ink, w, h, rad);
   // Original colors, thickened: each channel takes the darkest of its neighbours, the same
   // spread applied to how far it is from white.
   let ch = null;
@@ -329,7 +331,7 @@ function styledPlan(px, w, h, look) {
     ch = [0, 1, 2].map(c => { const d = new Uint8Array(n); for (let i = 0, j = c; i < n; i++, j += 4) d[i] = (255 - px[j]) * px[j - c + 3] / 255; return spread(d, w, h, rad); });
   }
   const [cr, cg, cb] = hexRGB(look.color), [hr, hg, hb] = hexRGB(look.haloColor);
-  const halo = look.knockout && look.halo ? spread(line, w, h, 3 * lookUnit(w, h)) : null;
+  const halo = look.knockout && look.halo ? spread(line, w, h, Math.round(3 * unit)) : null;
   const out = new Uint8ClampedArray(n * 4);
   for (let i = 0, j = 0; i < n; i++, j += 4) {
     const la = line[i] / 255;
@@ -415,6 +417,9 @@ const view = $('view'), cv = $('cv'), ctx = cv.getContext('2d');
 // The plan is rendered once at up to this many pixels and kept; the photo is kept as it came
 // unless it is bigger than any screen or export needs.
 const PLAN_CAP = 16e6, AERIAL_CAP = 40e6, PLAN_LONG = 5000;
+// A PDF's crop is drawn a second time, from the PDF, at up to HI_MAX times the density of the
+// whole-sheet render; output is made at least EXPORT_LONG pixels on its long side.
+const HI_CAP = 20e6, HI_MAX = 4, EXPORT_LONG = 6000, EXPORT_CAP = 40e6;
 const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
 const PAKO = 'https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js';
 const UTIF_JS = 'https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.js';
@@ -534,7 +539,7 @@ async function renderPdfPage(doc, n) {
   const vp = page.getViewport({ scale: k }), c = mkCanvas(Math.floor(vp.width), Math.floor(vp.height)), g = c.getContext('2d');
   g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
   await page.render({ canvasContext: g, viewport: vp }).promise;
-  return c;
+  return { img: c, scale: k };
 }
 function pixelsOf(img) {
   const c = mkCanvas(img.width, img.height), g = c.getContext('2d', { willReadFrequently: true });
@@ -565,12 +570,12 @@ async function loadPlan(blob, name, page = 1, restoring = false) {
   busy('Reading the floor plan…');
   try {
     const buf = await blob.arrayBuffer(), kind = sniff(new Uint8Array(buf.slice(0, 4)));
-    let img, pages = 1, doc = plan && plan.blob === blob ? plan.doc : null;
+    let img, scale = 1, pages = 1, doc = plan && plan.blob === blob ? plan.doc : null;
     if (kind === 'pdf') {
       if (!doc) { busy('Loading the PDF reader…'); doc = await pdfDoc(buf); }
       pages = doc.numPages; page = Math.min(page, pages);
       busy(pages > 1 ? `Drawing page ${page} of ${pages}…` : 'Drawing the plan…');
-      img = await renderPdfPage(doc, page);
+      ({ img, scale } = await renderPdfPage(doc, page));
     } else {
       if (kind === 'tiff') busy('Loading the TIFF reader…');
       ({ img, pages } = await readRaster(blob, buf, PLAN_CAP, page));
@@ -589,7 +594,7 @@ async function loadPlan(blob, name, page = 1, restoring = false) {
     P.crop = clampCrop(P.crop, w, h);
     if (!P.T) P.T = fitPlan(P.crop, aerial.w, aerial.h);
     P.page = page;
-    plan = { data, styled: mkCanvas(w, h), w, h, name, blob, kind, pages, page, doc };
+    plan = { data, styled: mkCanvas(w, h), w, h, name, blob, kind, pages, page, doc, scale, hi: null };
     restyleNow();
     if (!restoring) { DB.put('plan', { blob, name }); save(); }
     if (mode === 'crop' || mode === 'align') setMode('adjust');
@@ -605,6 +610,47 @@ function restyleNow() {
   if (!plan) return;
   const { w, h } = plan;
   plan.styled.getContext('2d').putImageData(new ImageData(styledPlan(plan.data.data, w, h, P.look), w, h), 0, 0);
+  redraw();
+  clearTimeout(hiStyleTimer); hiStyleTimer = setTimeout(styleHi, 200);
+}
+
+/* ---------- the sharp crop ----------
+   The whole sheet is rendered once at a size every saved project's coordinates are counted in,
+   and when the building is a small part of a big sheet that leaves it few pixels. So a PDF's
+   crop is drawn again from the PDF at up to HI_MAX times that density, into the same plan
+   coordinates, and drawn in place of the sheet whenever it is current. While it is being made,
+   or restyled after a slider moves, the sheet stands in. */
+let hiTimer, hiStyleTimer, hiToken = 0;
+const lookKey = () => JSON.stringify({ ...P.look, opacity: 0 });
+const hiKey = () => JSON.stringify(P.crop) + '/' + plan.page;
+const hiReady = () => plan && plan.hi && plan.hi.key === hiKey() && plan.hi.style === lookKey();
+function scheduleHi() { clearTimeout(hiTimer); hiTimer = setTimeout(renderHi, 300); }
+async function renderHi() {
+  clearTimeout(hiTimer);
+  if (!plan || plan.kind !== 'pdf' || mode === 'crop') return;
+  const p = plan, c = { ...P.crop }, key = hiKey();
+  if (p.hi && p.hi.key === key) return styleHi();
+  const d = Math.min(HI_MAX, Math.sqrt(HI_CAP / (c.w * c.h)));
+  if (d < 1.2) { p.hi = null; redraw(); return; }
+  const token = ++hiToken;
+  try {
+    const page = await p.doc.getPage(p.page), vp = page.getViewport({ scale: p.scale * d });
+    const x0 = Math.floor(c.x * d), y0 = Math.floor(c.y * d);
+    const cvs = mkCanvas(Math.ceil((c.x + c.w) * d) - x0, Math.ceil((c.y + c.h) * d) - y0), g = cvs.getContext('2d', { willReadFrequently: true });
+    g.fillStyle = '#fff'; g.fillRect(0, 0, cvs.width, cvs.height);
+    await page.render({ canvasContext: g, viewport: vp, transform: [1, 0, 0, 1, -x0, -y0] }).promise;
+    if (token !== hiToken || plan !== p) return;
+    p.hi = { key, d, x: x0 / d, y: y0 / d, w: cvs.width / d, h: cvs.height / d, data: g.getImageData(0, 0, cvs.width, cvs.height), styled: mkCanvas(cvs.width, cvs.height), style: null };
+    styleHi();
+  } catch (e) { console.error(e); }
+}
+function styleHi() {
+  clearTimeout(hiStyleTimer);
+  const hi = plan && plan.hi;
+  if (!hi || hi.style === lookKey()) return;
+  const { width: w, height: h } = hi.data;
+  hi.styled.getContext('2d').putImageData(new ImageData(styledPlan(hi.data.data, w, h, P.look, lookUnit(plan.w, plan.h) * hi.d), w, h), 0, 0);
+  hi.style = lookKey();
   redraw();
 }
 
@@ -640,7 +686,11 @@ function drawPlanOn(g, alpha, whole) {
   g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
   if (whole) { g.globalAlpha = alpha * 0.3; g.drawImage(plan.styled, 0, 0); }
   g.globalAlpha = alpha;
-  g.drawImage(plan.styled, c.x, c.y, c.w, c.h, c.x, c.y, c.w, c.h);
+  if (!whole && hiReady()) {
+    const hi = plan.hi;
+    g.beginPath(); g.rect(c.x, c.y, c.w, c.h); g.clip();
+    g.drawImage(hi.styled, hi.x, hi.y, hi.w, hi.h);
+  } else g.drawImage(plan.styled, c.x, c.y, c.w, c.h, c.x, c.y, c.w, c.h);
   g.restore();
 }
 
@@ -964,6 +1014,7 @@ function refresh() {
   $('fade').disabled = !hp;
   setHint(hintFor());
   for (const n of $('pins').querySelectorAll('.num')) n.style.background = P.pinColor;
+  if (plan && plan.kind === 'pdf' && mode !== 'crop' && !(plan.hi && plan.hi.key === hiKey())) scheduleHi();
   redraw();
 }
 
@@ -1084,20 +1135,24 @@ function bind() {
 }
 
 /* ---------- output ---------- */
-// The photo at its own size, with the plan and markers drawn as they are on screen, and a
-// strip underneath with the title and each marker's note, which is what makes the picture
-// stand on its own once it is emailed.
+// The photo with the plan and markers drawn as they are on screen, and a strip underneath with
+// the title and each marker's note, which is what makes the picture stand on its own once it is
+// emailed. It is made at least EXPORT_LONG pixels long even when the photo is a small
+// screenshot: the photo is only scaled up smoothly, but the plan's lines, the markers and the
+// text are drawn at the full size, which is what keeps a print sharp.
 function composite() {
-  const w = aerial.w, h = aerial.h, unit = Math.max(w, h);
-  const pins = P.pins.map((p, i) => ({ n: i + 1, label: p.label.trim(), at: pinWorld(P.T, p) })).filter(p => p.at);
+  const k = Math.max(1, Math.min(EXPORT_LONG / Math.max(aerial.w, aerial.h), Math.sqrt(EXPORT_CAP / (aerial.w * aerial.h))));
+  const w = Math.round(aerial.w * k), h = Math.round(aerial.h * k), unit = Math.max(w, h);
+  const pins = P.pins.map((p, i) => ({ n: i + 1, label: p.label.trim(), at: pinWorld(P.T, p) })).filter(p => p.at).map(p => ({ ...p, at: [p.at[0] * w / aerial.w, p.at[1] * h / aerial.h] }));
   const fs = Math.max(13, Math.round(unit / 80)), pad = Math.round(fs * 1.2), lh = Math.round(fs * 1.55);
   const listed = pins.filter(p => p.label), title = P.title.trim();
   const cols = Math.max(1, Math.min(3, Math.floor((w - 2 * pad) / (fs * 24))));
   const rows = Math.ceil(listed.length / cols);
   const foot = title || listed.length ? Math.round(pad * 2 + fs * 1.4 + (rows ? fs * 0.7 + rows * lh : 0)) : 0;
   const c = mkCanvas(w, h + foot), g = c.getContext('2d');
-  g.drawImage(aerial.img, 0, 0);
-  if (plan) drawPlanOn(g, P.look.opacity / 100, false);
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  g.drawImage(aerial.img, 0, 0, w, h);
+  if (plan) { g.save(); g.scale(w / aerial.w, h / aerial.h); drawPlanOn(g, P.look.opacity / 100, false); g.restore(); }
   const r = Math.max(8, Math.round(unit / 95));
   for (const p of pins) drawPin(g, p.at[0], p.at[1], r, p.n, P.pinColor, P.pinLabels ? p.label : '');
   if (foot) {
@@ -1127,23 +1182,31 @@ function fit(g, s, max) {
   while (s.length > 1 && g.measureText(s + '…').width > max) s = s.slice(0, -1);
   return s + '…';
 }
-const canvasBlob = c => new Promise((res, rej) => c.toBlob(b => (b ? res(b) : rej(new Error('The image is too big for this browser to save.'))), 'image/png'));
+// JPEG, because at this size a PNG of a photograph runs to tens of megabytes, too big to email.
+const canvasBlob = c => new Promise((res, rej) => c.toBlob(b => (b ? res(b) : rej(new Error('The image is too big for this browser to save.'))), 'image/jpeg', 0.92));
+// Output waits for the sharp crop, so a save straight after loading a plan is not the soft one.
+async function sharpen() { if (plan && plan.kind === 'pdf') { await renderHi(); styleHi(); } }
 async function savePNG() {
   if (!aerial) return;
   busy('Making the image…');
-  try { download(slug() + '.png', await canvasBlob(composite())); } catch (e) { toast(friendly(e)); } finally { busy(null); }
+  try { await sharpen(); download(slug() + '.jpg', await canvasBlob(composite())); } catch (e) { toast(friendly(e)); } finally { busy(null); }
 }
 async function printIt() {
   if (!aerial) return;
   busy('Getting it ready to print…');
   try {
+    await sharpen();
     const c = composite(), url = URL.createObjectURL(await canvasBlob(c)), out = $('printOut');
     out.innerHTML = `<style>@page{size:${c.width >= c.height ? 'landscape' : 'portrait'};margin:10mm}</style><img alt="">`;
     const img = out.querySelector('img');
     await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
     busy(null);
+    // Save as PDF names the file after the page title, so the project's title goes first.
+    const was = document.title, title = P.title.trim().replace(/[\\/:*?"<>|]+/g, '-');
+    document.title = title ? `${title} - Roof Overlay` : was;
+    const done = () => { document.title = was; out.innerHTML = ''; URL.revokeObjectURL(url); };
+    window.addEventListener('afterprint', done, { once: true });
     window.print();
-    setTimeout(() => { out.innerHTML = ''; URL.revokeObjectURL(url); }, 1000);
   } catch (e) { toast(friendly(e)); } finally { busy(null); }
 }
 async function saveProject() {
