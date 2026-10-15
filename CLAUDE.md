@@ -83,6 +83,14 @@ sh src/tools/tests/pattern/run.sh
 
 Its top level is the part that never draws. Each tool (`rtr`, `rect2`, `cone`, `ecc`, `elbow`, `branch`) is a pure function of the parsed form that returns flat `pieces`, a 3D `model`, a `table` and `notes`, and `dxfOf` writes placed pieces out. The UI closure below holds the rest — the form, the SVG view, the tiled full-size PDF, and the link in the address bar, which *is* the saved fitting (there is no storage) — so the suites reach that part the way a person does, through the hash, a typed value or a button, and read back what the page wrote or downloaded. A field's limits live on its definition in `TOOLS` (`gt`/`ge`/`lt`, and `dim` for a size that moves to the mean line) and are enforced once, in `parsed()`; a tool should not re-check them. A piece is `{ name, qty, cut, bend, form, labels }`, and identical pieces are one entry with a `qty` rather than repeats, because the PDF pays for every entry in sheets.
 
+`overlay.html` (Roof Overlay) is hand-edited too, with no build step, and is split across **two** classic scripts on purpose. The first never touches the DOM: the placement math (`toWorld`, `dragGrip`, `alignTwo`, …), the plan styling (`styledPlan`, a pure function of RGBA pixels) and `checkProject`. The second is the UI closure — canvas, pointer events, file readers. The suite boots the first script alone:
+
+```sh
+sh src/tools/tests/overlay/run.sh
+```
+
+World coordinates are the roof photo's own pixels; the photo is never transformed. The plan's placement `T` maps *uncropped* plan pixels into the world, so a crop is only a draw clip and never moves anything, and markers on the plan are stored in plan pixels so they follow every adjustment. PDF and TIFF readers (pdf.js, UTIF + pako) load from the CDN only when such a file is opened. The images live in IndexedDB as the original files; the project itself is everything else, and goes through `checkProject` like the other tools' files do.
+
 `plan.html` (Deadline Planner) is hand-edited too, with no suite: a Preact + htm app inlined into the page, state in localStorage. Its companion `plan-sw.js` (offline reopening, and phone notifications) is registered **scoped to `plan.html` alone**, and its manifest is scoped the same way. Keep it so: every page on zbcad.com shares the origin, and a worker scoped to the folder would serve the whole site from its cache.
 
 ## Runtime architecture
