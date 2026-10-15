@@ -91,6 +91,14 @@ sh src/tools/tests/overlay/run.sh
 
 World coordinates are the roof photo's own pixels; the photo is never transformed. The plan's placement `T` maps *uncropped* plan pixels into the world, so a crop is only a draw clip and never moves anything, and markers on the plan are stored in plan pixels so they follow every adjustment. PDF and TIFF readers (pdf.js, UTIF + pako) load from the CDN only when such a file is opened. The images live in IndexedDB as the original files; the project itself is everything else, and goes through `checkProject` like the other tools' files do.
 
+`pano.html` (360 Photo Viewer) is the overlay's arrangement again: hand-edited, two classic scripts, the first never touching the DOM. It holds the projection math (`viewRot`, `screenToDir`, `dirToScreen`, `dirToUV`), the GPano XMP reader and `panoArea`, `tilePlan` and snapshot sizing; the second is a WebGL2 viewer whose fragment shader repeats `viewRot`/`screenToDir`/`dirToUV` in GLSL, so a change to the conventions there must be made in both. A snapshot is the same shader drawn into a framebuffer the size of the output, so what is saved is exactly what is framed.
+
+```sh
+sh src/tools/tests/pano/run.sh
+```
+
+Screen points are scaled so ±1 is the frame's *long* side, which is what the field of view measures. Photos wider than `MAX_TEXTURE_SIZE` (an 8K Insta360 photo is 11904 px) are cut into padded tiles, one draw pass each, and the shader samples with `textureGrad` after taking the longitude wrap out of the derivatives — plain `texture()` draws a line of the smallest mip level down the seam behind the camera. Nothing is stored but the snapshot settings.
+
 `plan.html` (Deadline Planner) is hand-edited too, with no suite: a Preact + htm app inlined into the page, state in localStorage. Its companion `plan-sw.js` (offline reopening, and phone notifications) is registered **scoped to `plan.html` alone**, and its manifest is scoped the same way. Keep it so: every page on zbcad.com shares the origin, and a worker scoped to the folder would serve the whole site from its cache.
 
 ## Runtime architecture

@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>360 Photo Viewer</title>
+<meta name="description" content="Look around a 360° photo from an Insta360 or any other 360 camera, and save ordinary photos of any part of it at any field of view.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c1b19'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23f4f1ea' stroke-width='2.5'/%3E%3Cellipse cx='16' cy='16' rx='9' ry='3.6' fill='none' stroke='%23f4f1ea' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f6f4ef; --panel:#fffdf8; --ink:#1c1b19; --muted:#6b675f; --line:#d9d4c9; --soft:#efe9df;
+  --accent:#9a4a1f; --accent-ink:#fff; --sheet:#fbf9f4; --view:#1a1917;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#161614; --panel:#1c1b19; --ink:#e9e5dc; --muted:#9a958a; --line:#2f2d29; --soft:#252320;
+    --accent:#e08a55; --accent-ink:#1a0d05; --sheet:#181816; --view:#0e0e0d;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+button,input,select{font:inherit;color:inherit}
+.top{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.brand{display:flex;align-items:baseline;font-weight:700;font-size:15px;letter-spacing:-.01em}
+.brand a{color:var(--muted);text-decoration:none}
+.brand a:hover,.brand a:focus-visible{color:var(--accent)}
+.brand .sep{color:var(--line);margin:0 7px;font-weight:400}
+.app{display:grid;grid-template-columns:310px 1fr;height:calc(100vh - 52px)}
+.side{border-right:1px solid var(--line);background:var(--panel);overflow:auto;padding:0 16px 28px}
+.step{padding:14px 0 16px;border-bottom:1px solid var(--line)}
+.step:last-child{border-bottom:0}
+.step.off{opacity:.42;pointer-events:none}
+.step h2{display:flex;align-items:center;gap:9px;font-size:14px;margin:0 0 10px;font-weight:650}
+.step h2 b{display:inline-grid;place-items:center;width:21px;height:21px;border-radius:50%;background:var(--soft);color:var(--muted);font-size:11.5px;flex:none}
+.step.done h2 b{background:var(--accent);color:var(--accent-ink)}
+.help{font-size:12px;color:var(--muted);margin:8px 0 0}
+.help.warn{color:var(--accent)}
+.file{display:flex;align-items:center;gap:10px;min-width:0}
+.fname{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.slider{display:grid;grid-template-columns:76px 1fr 44px;align-items:center;gap:8px;margin:12px 0 0;font-size:13px}
+.slider output{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent);margin:0}
+.chk{display:flex;gap:7px;align-items:center;font-size:13px;margin:12px 0 0;cursor:pointer}
+.field{display:grid;grid-template-columns:1fr 140px;align-items:center;gap:8px;margin-top:10px;font-size:13px}
+.field input,.field select{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--sheet);font-variant-numeric:tabular-nums}
+.field input:focus,.field select:focus,.trio input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px}
+.trio label{font-size:11.5px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
+.trio input{width:100%;padding:6px 7px;border:1px solid var(--line);border-radius:6px;background:var(--sheet);font-variant-numeric:tabular-nums;color:var(--ink);font-size:13px}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{border:0;background:var(--panel);padding:6px 8px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--ink);color:var(--panel);font-weight:600}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:6px 11px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.wide{width:100%;margin-top:14px;padding:8px 11px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.shots{list-style:none;margin:10px 0 0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.shots li{position:relative;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--sheet)}
+.shots img{display:block;width:100%;height:84px;object-fit:contain;background:#000;cursor:pointer}
+.shots .cap{display:flex;align-items:center;justify-content:space-between;gap:4px;padding:3px 4px 3px 7px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.shots .cap span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shots .cap button{border:0;background:none;color:var(--muted);cursor:pointer;padding:2px 4px;font-size:12px}
+.shots .cap button:hover{color:var(--ink)}
+.work{display:flex;flex-direction:column;min-width:0;min-height:0}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap;min-height:49px}
+.hint{font-size:13px;min-width:0;color:var(--muted)}
+.hint b{color:var(--ink);font-weight:600}
+.actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.readout{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;margin-right:6px}
+.view{position:relative;flex:1 1 auto;min-height:0;background:var(--view);overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+.view:fullscreen{background:#000}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block;outline:none;cursor:grab}
+#cv.grab{cursor:grabbing}
+.empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px}
+.empty>div{border:2px dashed var(--line);border-radius:14px;padding:30px 34px;background:var(--panel);max-width:440px}
+.empty b{font-size:16px}
+.empty p{color:var(--muted);margin:8px 0 16px;font-size:13px}
+.view.drop::after{content:'';position:absolute;inset:8px;border:3px dashed var(--accent);border-radius:12px;pointer-events:none}
+.busy{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:7px 14px;border-radius:999px;font-size:13px;white-space:nowrap}
+.toast{position:absolute;left:50%;bottom:16px;transform:translate(-50%,16px);opacity:0;transition:opacity .2s,transform .2s;background:var(--ink);color:var(--panel);padding:9px 14px;border-radius:8px;font-size:13px;width:max-content;max-width:min(520px,90%);pointer-events:none}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.hide{display:none!important}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr;height:auto}
+  .work{order:-1;height:62vh;position:sticky;top:0;z-index:1;border-bottom:1px solid var(--line)}
+  .side{border-right:0}
+  .hint{display:none}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><a href="/">zbCAD</a><span class="sep">/</span><span>360 Photo Viewer</span></div>
+</header>
+<main class="app">
+  <aside class="side">
+    <section class="step" id="s1">
+      <h2><b>1</b>360 photo</h2>
+      <div class="file"><button class="btn pri" id="pick">Open 360 photo</button><span class="fname" id="fname"></span></div>
+      <p class="help" id="meta">A JPEG exported from the Insta360 app or Insta360 Studio as a 360 photo, or from any other 360 camera. You can also drop it on the viewer. Nothing is uploaded; the photo stays on this computer.</p>
+    </section>
+    <section class="step off" id="s2">
+      <h2><b>2</b>Look around</h2>
+      <div class="seg" id="proj"><button data-p="0" class="on" title="Straight lines stay straight, like an ordinary camera">Standard</button><button data-p="1" title="Stereographic: fits much more in, bending straight lines">Wide</button></div>
+      <div class="slider"><span>Zoom</span><input type="range" id="fov" min="0" max="1000" step="1"><output id="fovOut"></output></div>
+      <div class="trio">
+        <label>Heading °<input id="inYaw" type="number" step="1"></label>
+        <label>Tilt °<input id="inPitch" type="number" step="1" min="-90" max="90"></label>
+        <label>Level °<input id="inRoll" type="number" step="0.5" min="-45" max="45"></label>
+      </div>
+      <div class="row"><button class="btn" id="reset" title="Back to the front of the photo (R)">Reset view</button><button class="btn" id="planet" title="Look straight down with the wide lens">Little planet</button></div>
+      <label class="chk"><input type="checkbox" id="grid"> Rule-of-thirds grid</label>
+      <p class="help">Drag to look around, scroll or pinch to zoom, double-click to turn to a spot. Arrow keys pan, + and − zoom. Level straightens a tilted horizon.</p>
+    </section>
+    <section class="step off" id="s3">
+      <h2><b>3</b>Snapshot</h2>
+      <div class="field"><span>Frame</span><select id="aspect">
+        <option value="screen">Fill the viewer</option>
+        <option value="16:9">16 : 9 landscape</option>
+        <option value="3:2">3 : 2 landscape</option>
+        <option value="4:3">4 : 3 landscape</option>
+        <option value="1:1">1 : 1 square</option>
+        <option value="4:5">4 : 5 portrait</option>
+        <option value="2:3">2 : 3 portrait</option>
+        <option value="9:16">9 : 16 portrait</option>
+      </select></div>
+      <div class="field"><span>Size</span><select id="size">
+        <option value="native">Match the photo</option>
+        <option value="1280">1280 px</option>
+        <option value="1920">1920 px</option>
+        <option value="2560">2560 px</option>
+        <option value="3840">3840 px (4K)</option>
+        <option value="6000">6000 px</option>
+      </select></div>
+      <div class="field"><span>Format</span><select id="fmt"><option value="jpeg">JPEG</option><option value="png">PNG</option></select></div>
+      <div class="slider" id="qRow"><span>Quality</span><input type="range" id="quality" min="60" max="100" step="1"><output id="qOut"></output></div>
+      <p class="help" id="sizeNote"></p>
+      <button class="btn pri wide" id="snap" title="Save what's in the frame as a photo (S)">Save snapshot</button>
+    </section>
+    <section class="step off" id="s4">
+      <h2><b>4</b>Snapshots</h2>
+      <p class="help" id="noShots">Every snapshot you save is listed here. Click one to go back to that view.</p>
+      <ul class="shots" id="shots"></ul>
+      <div class="row hide" id="shotActions"><button class="btn" id="saveAll">Save all again</button><button class="btn" id="clearShots">Clear list</button></div>
+    </section>
+  </aside>
+  <section class="work">
+    <div class="bar">
+      <div class="hint" id="hint"><b>Drag</b> to look around · <b>scroll</b> to zoom · <b>S</b> saves a snapshot</div>
+      <div class="actions"><span class="readout" id="readout"></span><button class="btn" id="full" title="Full screen (F)">Full screen</button></div>
+    </div>
+    <div class="view" id="view">
+      <canvas id="cv" tabindex="0"></canvas>
+      <div class="empty" id="empty"><div>
+        <b>Open a 360 photo</b>
+        <p>Drop a 360° JPEG here, or choose one. Export it from the Insta360 app as a 360 photo first: the camera's own .insp files are the two unstitched lenses.</p>
+        <button class="btn pri" id="pick2">Choose photo</button>
+      </div></div>
+      <div class="busy hide" id="busy"></div>
+      <div class="toast" id="toast"></div>
+    </div>
+  </section>
+</main>
+<input type="file" id="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.insp,.png,.webp" class="hide">
+
+<script>
+// The half of the page that never touches the DOM: the projection math, the photo's
+// panorama metadata, snapshot sizes and the saved settings. The headless suite boots this
+// script alone. The shader in the second script repeats viewRot/screenToDir/dirToUV in
+// GLSL, so a change to the conventions here has to be made there too.
+//
+// Conventions. A direction is [x, y, z] with x right, y up and z straight ahead (the
+// centre of the photo). Heading turns right, tilt looks up, level rolls the view. The
+// photo is equirectangular: u runs 0..1 left to right over longitude −180°..180°, v runs
+// 0..1 top to bottom over latitude 90°..−90°. A screen point is [nx, ny] with y up,
+// scaled so that ±1 lies on the edges of the frame's longer side, so the field of view is
+// always measured across the long side of whatever is being saved.
+
+const DEG = Math.PI / 180;
+const PROJ_STANDARD = 0, PROJ_WIDE = 1;
+// Rectilinear blows up towards 180°; stereographic holds out to ~330° (a little planet).
+const FOV_LIMITS = [[5, 140], [30, 330]];
+const ASPECTS = { '16:9': 16 / 9, '3:2': 3 / 2, '4:3': 4 / 3, '1:1': 1, '4:5': 4 / 5, '2:3': 2 / 3, '9:16': 9 / 16 };
+const SIZES = ['native', '1280', '1920', '2560', '3840', '6000'];
+const MIN_OUT = 640, MAX_OUT = 16384;
+
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const wrapDeg = d => { d = ((d + 180) % 360 + 360) % 360 - 180; return d === -180 ? 180 : d; };
+
+function newView() { return { yaw: 0, pitch: 0, roll: 0, fov: 90, proj: PROJ_STANDARD }; }
+
+function clampView(v) {
+  const [lo, hi] = FOV_LIMITS[v.proj] || FOV_LIMITS[0];
+  return {
+    yaw: wrapDeg(+v.yaw || 0), pitch: clamp(+v.pitch || 0, -90, 90), roll: clamp(+v.roll || 0, -45, 45),
+    fov: clamp(+v.fov || 90, lo, hi), proj: v.proj === PROJ_WIDE ? PROJ_WIDE : PROJ_STANDARD,
+  };
+}
+
+// Camera to world: roll about z, then tilt about x, then heading about y. Row-major 3×3.
+function viewRot(v) {
+  const cy = Math.cos(v.yaw * DEG), sy = Math.sin(v.yaw * DEG);
+  const cp = Math.cos(v.pitch * DEG), sp = Math.sin(v.pitch * DEG);
+  const cr = Math.cos(v.roll * DEG), sr = Math.sin(v.roll * DEG);
+  // Y(yaw) · X(pitch) · Z(roll), with X(p) = [[1,0,0],[0,cp,sp],[0,−sp,cp]] taking ahead to up.
+  const X = [1, 0, 0, 0, cp, sp, 0, -sp, cp];
+  const Y = [cy, 0, sy, 0, 1, 0, -sy, 0, cy];
+  const Z = [cr, -sr, 0, sr, cr, 0, 0, 0, 1];
+  return mul3(Y, mul3(X, Z));
+}
+function mul3(a, b) {
+  const r = new Array(9);
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++)
+    r[i * 3 + j] = a[i * 3] * b[j] + a[i * 3 + 1] * b[3 + j] + a[i * 3 + 2] * b[6 + j];
+  return r;
+}
+const apply3 = (m, d) => [m[0] * d[0] + m[1] * d[1] + m[2] * d[2], m[3] * d[0] + m[4] * d[1] + m[5] * d[2], m[6] * d[0] + m[7] * d[1] + m[8] * d[2]];
+
+// What a screen offset of 1 (the edge of the long side) means on the projection plane:
+// tan(fov/2) for rectilinear, 2·tan(fov/4) for stereographic.
+function projScale(v) { return v.proj === PROJ_WIDE ? 2 * Math.tan(v.fov * DEG / 4) : Math.tan(v.fov * DEG / 2); }
+
+function camDir(nx, ny, proj, s) {
+  const a = nx * s, b = ny * s;
+  if (proj === PROJ_WIDE) {
+    const r = Math.hypot(a, b);
+    if (r < 1e-12) return [0, 0, 1];
+    const th = 2 * Math.atan(r / 2), k = Math.sin(th) / r;
+    return [a * k, b * k, Math.cos(th)];
+  }
+  const n = Math.hypot(a, b, 1);
+  return [a / n, b / n, 1 / n];
+}
+function screenToDir(nx, ny, v) { return apply3(viewRot(v), camDir(nx, ny, v.proj, projScale(v))); }
+
+// The inverse, for whoever needs to know where a direction lands; null when it is behind
+// a rectilinear camera (or exactly behind a stereographic one).
+function dirToScreen(d, v) {
+  const R = viewRot(v);   // orthonormal, so the transpose takes world back to camera
+  const c = [R[0] * d[0] + R[3] * d[1] + R[6] * d[2], R[1] * d[0] + R[4] * d[1] + R[7] * d[2], R[2] * d[0] + R[5] * d[1] + R[8] * d[2]];
+  const s = projScale(v);
+  if (v.proj === PROJ_WIDE) {
+    const r = Math.hypot(c[0], c[1]);
+    if (r < 1e-12) return c[2] > 0 ? [0, 0] : null;
+    const th = Math.atan2(r, c[2]), q = 2 * Math.tan(th / 2) / r / s;
+    return [c[0] * q, c[1] * q];
+  }
+  if (c[2] <= 1e-9) return null;
+  return [c[0] / c[2] / s, c[1] / c[2] / s];
+}
+
+function dirToUV(d) {
+  const lon = Math.atan2(d[0], d[2]), lat = Math.asin(clamp(d[1] / Math.hypot(d[0], d[1], d[2]), -1, 1));
+  return [0.5 + lon / (2 * Math.PI), 0.5 - lat / Math.PI];
+}
+// Heading and tilt that put a direction in the middle of the frame.
+function aimAt(d, v) {
+  const r = Math.hypot(d[0], d[1], d[2]);
+  return clampView({ ...v, yaw: Math.atan2(d[0], d[2]) / DEG, pitch: Math.asin(clamp(d[1] / r, -1, 1)) / DEG });
+}
+
+// Turning the view by a drag: radians per device pixel at the frame's centre, where a
+// pixel of offset n·halfLong means s·n on the plane and both projections start at slope 1.
+function dragRate(v, halfLong) { return projScale(v) / halfLong; }
+
+// The frame (what gets saved) inside a canvas of cw × ch, centred, with a margin when its
+// shape differs from the canvas's. Returns its size and half the long side, in the
+// canvas's own pixels.
+function frameIn(cw, ch, aspect, margin = 0) {
+  const r = ASPECTS[aspect];
+  let w = cw, h = ch;
+  if (r) {
+    const aw = Math.max(1, cw - 2 * margin), ah = Math.max(1, ch - 2 * margin);
+    if (aw / ah > r) { h = ah; w = ah * r; } else { w = aw; h = aw / r; }
+  }
+  return { w, h, halfLong: Math.max(w, h) / 2 };
+}
+
+// How wide the saved image can be before it is only enlarging the photo: one output pixel
+// per photo pixel at the frame's centre. The photo has fullW / 2π pixels per radian along
+// its equator, and the output has (long / 2) / s.
+function nativeLong(fullW, v) { return projScale(v) * fullW / Math.PI; }
+
+function outputSize(ratio, long) {
+  long = Math.round(clamp(long, 16, MAX_OUT));
+  return ratio >= 1 ? [long, Math.max(1, Math.round(long / ratio))] : [Math.max(1, Math.round(long * ratio)), long];
+}
+function snapshotSize(settings, v, fullW, screenRatio, maxDim = MAX_OUT) {
+  const ratio = ASPECTS[settings.aspect] || screenRatio;
+  const want = settings.size === 'native' ? clamp(Math.round(nativeLong(fullW, v)), MIN_OUT, MAX_OUT) : +settings.size;
+  return outputSize(ratio, Math.min(want, maxDim));
+}
+
+// ---- the photo ----
+
+// GPano XMP, which the Insta360 app and every other 360 tool write, either as attributes
+// or as elements. Everything is optional.
+function readGPano(text) {
+  const m = /<x:xmpmeta[\s\S]*?<\/x:xmpmeta>/.exec(text || '');
+  if (!m) return null;
+  const x = m[0];
+  const get = name => {
+    const r = new RegExp('GPano:' + name + '\\s*=\\s*["\']([^"\']*)["\']').exec(x) || new RegExp('<GPano:' + name + '>([^<]*)<').exec(x);
+    return r ? r[1].trim() : null;
+  };
+  const num = name => { const s = get(name); const n = s == null ? NaN : parseFloat(s); return Number.isFinite(n) ? n : null; };
+  const out = {
+    projection: get('ProjectionType'),
+    fullW: num('FullPanoWidthPixels'), fullH: num('FullPanoHeightPixels'),
+    cropW: num('CroppedAreaImageWidthPixels'), cropH: num('CroppedAreaImageHeightPixels'),
+    left: num('CroppedAreaLeftPixels'), top: num('CroppedAreaTopPixels'),
+    pose: num('PoseHeadingDegrees'), heading: num('InitialViewHeadingDegrees'), pitch: num('InitialViewPitchDegrees'), fov: num('InitialHorizontalFOVDegrees'),
+  };
+  return Object.values(out).some(v => v != null) ? out : null;
+}
+
+// Where to look first. InitialViewHeading is a compass heading and the photo's centre is
+// at PoseHeading, so without the pose the initial heading means nothing here.
+function initialView(gp) {
+  const v = newView();
+  if (!gp) return v;
+  if (gp.heading != null && gp.pose != null) v.yaw = gp.heading - gp.pose;
+  if (gp.pitch != null) v.pitch = gp.pitch;
+  if (gp.fov != null) v.fov = gp.fov;
+  return clampView(v);
+}
+
+// Where the image sits on the full sphere, as a rectangle in sphere uv, plus the sphere's
+// width in photo pixels (for sharpness). A photo with no crop metadata that isn't 2:1 is
+// taken to wrap all the way round, centred on the horizon, which is what a partial
+// panorama without metadata nearly always is.
+function panoArea(gp, w, h) {
+  if (gp && gp.fullW > 0 && gp.fullH > 0) {
+    const cw = gp.cropW > 0 ? gp.cropW : w, ch = gp.cropH > 0 ? gp.cropH : h;
+    const sx = w / cw;   // the file may have been resized after the metadata was written
+    return {
+      x: (gp.left || 0) / gp.fullW, y: (gp.top || 0) / gp.fullH, w: cw / gp.fullW, h: ch / gp.fullH,
+      fullW: gp.fullW * sx, full: cw >= gp.fullW && ch >= gp.fullH,
+    };
+  }
+  const ratio = w / h;
+  if (Math.abs(ratio - 2) < 0.02) return { x: 0, y: 0, w: 1, h: 1, fullW: w, full: true };
+  const vh = Math.min(1, 2 / ratio);
+  return { x: 0, y: (1 - vh) / 2, w: 1, h: vh, fullW: w, full: false };
+}
+
+// Textures no bigger than the GPU allows. An 8K Insta360 photo is 11904 × 5952 and plenty
+// of GPUs stop at 8192, so the photo is cut into a grid, each tile carrying `pad` pixels
+// of its neighbours so filtering and mip levels don't seam at the joins. `core` is what
+// the tile is responsible for and `src` what it holds, both in image pixels.
+function tilePlan(w, h, maxTex, pad = 32) {
+  const cols = w <= maxTex ? 1 : Math.ceil(w / (maxTex - 2 * pad));
+  const rows = h <= maxTex ? 1 : Math.ceil(h / (maxTex - 2 * pad));
+  const tiles = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const x0 = Math.round(c * w / cols), x1 = Math.round((c + 1) * w / cols);
+    const y0 = Math.round(r * h / rows), y1 = Math.round((r + 1) * h / rows);
+    const sx0 = cols > 1 ? Math.max(0, x0 - pad) : 0, sx1 = cols > 1 ? Math.min(w, x1 + pad) : w;
+    const sy0 = rows > 1 ? Math.max(0, y0 - pad) : 0, sy1 = rows > 1 ? Math.min(h, y1 + pad) : h;
+    tiles.push({ core: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, src: { x: sx0, y: sy0, w: sx1 - sx0, h: sy1 - sy0 } });
+  }
+  return { cols, rows, tiles };
+}
+
+function snapName(file, v, ext) {
+  const base = String(file || 'pano').replace(/\.[^.]+$/, '').replace(/[^\w\-]+/g, '_').slice(0, 60) || 'pano';
+  const n = x => String(Math.round(x));
+  return `${base}_h${n(v.yaw)}_t${n(v.pitch)}_fov${n(v.fov)}${v.proj === PROJ_WIDE ? '_wide' : ''}.${ext}`;
+}
+
+function newSettings() { return { aspect: '16:9', size: 'native', fmt: 'jpeg', quality: 92, grid: false }; }
+// Whatever localStorage hands back, reduced to settings the page can use.
+function checkSettings(o) {
+  const d = newSettings();
+  if (!o || typeof o !== 'object') return d;
+  return {
+    aspect: o.aspect === 'screen' || o.aspect in ASPECTS ? o.aspect : d.aspect,
+    size: SIZES.includes(String(o.size)) ? String(o.size) : d.size,
+    fmt: o.fmt === 'png' ? 'png' : 'jpeg',
+    quality: Number.isFinite(+o.quality) ? clamp(Math.round(+o.quality), 60, 100) : d.quality,
+    grid: o.grid === true,
+  };
+}
+
+// The zoom slider runs 0..1000 over the log of the field of view, so each notch is the
+// same proportion of zoom whether wide or tight; it is reversed so right zooms in.
+function fovToSlider(fov, proj) { const [lo, hi] = FOV_LIMITS[proj]; return Math.round(1000 * Math.log(hi / clamp(fov, lo, hi)) / Math.log(hi / lo)); }
+function sliderToFov(s, proj) { const [lo, hi] = FOV_LIMITS[proj]; return hi * Math.pow(lo / hi, clamp(s, 0, 1000) / 1000); }
+</script>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const cv = $('cv'), viewEl = $('view');
+
+let view = newView();
+let settings = (() => { try { return checkSettings(JSON.parse(localStorage.getItem('pano.settings'))); } catch { return newSettings(); } })();
+let photo = null;   // { name, w, h, area, tiles: [{ tex, core, src }] }
+const shots = [];   // { url, thumb, view, aspect, name }
+
+// ---- WebGL ----
+const gl = cv.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: false });
+const VS = `#version 300 es
+in vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }`;
+// One full-screen pass per tile; each fragment works out where its ray hits the sphere and
+// draws only if that falls in the tile's own core. textureGrad with the longitude wrap
+// taken out of the derivative is what keeps the seam behind the camera from drawing a line
+// of the smallest mip level down the photo.
+const FS = `#version 300 es
+precision highp float;
+uniform sampler2D tex;
+uniform vec2 center; uniform float halfLong, scale; uniform int proj;
+uniform mat3 rot;
+uniform vec4 area, core, src;   // sphere uv → image uv → tile uv
+uniform vec2 frameHalf; uniform float dim; uniform int grid;
+out vec4 color;
+const float PI = 3.141592653589793;
+void main(){
+  vec2 d = gl_FragCoord.xy - center;
+  vec2 n = d / halfLong * scale;
+  vec3 c;
+  if (proj == 1) {
+    float r = length(n);
+    float th = 2.0 * atan(r * 0.5);
+    c = r < 1e-9 ? vec3(0, 0, 1) : vec3(n / r * sin(th), cos(th));
+  } else c = normalize(vec3(n, 1.0));
+  vec3 w = rot * c;
+  vec2 uv = vec2(0.5 + atan(w.x, w.z) / (2.0 * PI), 0.5 - asin(clamp(w.y, -1.0, 1.0)) / PI);
+  vec2 gx = dFdx(uv), gy = dFdy(uv);
+  gx.x -= floor(gx.x + 0.5); gy.x -= floor(gy.x + 0.5);
+  vec2 iuv = (uv - area.xy) / area.zw;
+  if (area.z >= 1.0) iuv.x = fract(iuv.x);
+  if (iuv.x < core.x || iuv.x >= core.x + core.z || iuv.y < core.y || iuv.y >= core.y + core.w) discard;
+  vec2 tuv = (iuv - src.xy) / src.zw;
+  vec2 k = 1.0 / (area.zw * src.zw);
+  vec3 rgb = textureGrad(tex, tuv, gx * k, gy * k).rgb;
+  vec2 a = abs(d);
+  bool out_ = a.x > frameHalf.x || a.y > frameHalf.y;
+  if (out_) rgb *= dim;
+  else if (grid == 1) {
+    vec2 t = abs(abs(d) - frameHalf / 3.0);
+    if (min(t.x, t.y) < 0.75) rgb = mix(rgb, vec3(1.0), 0.45);
+  }
+  if (dim < 1.0 && !out_ && (frameHalf.x - a.x < 1.0 || frameHalf.y - a.y < 1.0)) rgb = mix(rgb, vec3(1.0), 0.7);
+  color = vec4(rgb, 1.0);
+}`;
+
+let prog, loc = {}, aniso = null, maxTex = 4096, maxOut = 4096;
+function initGL() {
+  if (!gl) return false;
+  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+  prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  for (const u of ['tex', 'center', 'halfLong', 'scale', 'proj', 'rot', 'area', 'core', 'src', 'frameHalf', 'dim', 'grid']) loc[u] = gl.getUniformLocation(prog, u);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const p = gl.getAttribLocation(prog, 'p');
+  gl.enableVertexAttribArray(p); gl.vertexAttribPointer(p, 2, gl.FLOAT, false, 0, 0);
+  aniso = gl.getExtension('EXT_texture_filter_anisotropic');
+  maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+  const vp = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
+  maxOut = Math.min(MAX_OUT, gl.getParameter(gl.MAX_RENDERBUFFER_SIZE), vp[0], vp[1]);
+  return true;
+}
+
+// Draws the current photo into whatever framebuffer is bound, `w` × `h` device pixels.
+function draw(w, h, v, frame, dim, grid) {
+  gl.viewport(0, 0, w, h);
+  gl.clearColor(0.08, 0.08, 0.075, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  if (!photo) return;
+  gl.useProgram(prog);
+  const R = viewRot(v);
+  // GLSL mat3 is column-major; transpose = false wants columns, so hand it R's columns.
+  gl.uniformMatrix3fv(loc.rot, false, [R[0], R[3], R[6], R[1], R[4], R[7], R[2], R[5], R[8]]);
+  gl.uniform2f(loc.center, w / 2, h / 2);
+  gl.uniform1f(loc.halfLong, frame.halfLong);
+  gl.uniform1f(loc.scale, projScale(v));
+  gl.uniform1i(loc.proj, v.proj);
+  gl.uniform2f(loc.frameHalf, frame.w / 2, frame.h / 2);
+  gl.uniform1f(loc.dim, dim);
+  gl.uniform1i(loc.grid, grid ? 1 : 0);
+  const a = photo.area;
+  gl.uniform4f(loc.area, a.x, a.y, a.w, a.h);
+  gl.uniform1i(loc.tex, 0);
+  gl.activeTexture(gl.TEXTURE0);
+  for (const t of photo.tiles) {
+    const W = photo.w, H = photo.h;
+    gl.uniform4f(loc.core, t.core.x / W, t.core.y / H, t.core.w / W, t.core.h / H);
+    gl.uniform4f(loc.src, t.src.x / W, t.src.y / H, t.src.w / W, t.src.h / H);
+    gl.bindTexture(gl.TEXTURE_2D, t.tex);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+}
+
+let dpr = 1, raf = 0;
+function frameNow() {
+  const cw = cv.width, ch = cv.height;
+  return frameIn(cw, ch, settings.aspect, 22 * dpr);
+}
+function render() {
+  raf = 0;
+  const f = frameNow();
+  draw(cv.width, cv.height, view, f, settings.aspect === 'screen' ? 1 : 0.42, settings.grid);
+}
+function requestRender() { if (!raf) raf = requestAnimationFrame(render); }
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const r = viewEl.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  syncUI(); render();
+}
+new ResizeObserver(resize).observe(viewEl);
+
+// ---- loading ----
+async function openFile(file) {
+  if (!file) return;
+  if (!gl) { toast('This browser has no WebGL 2, which the viewer needs.'); return; }
+  busy('Opening ' + file.name + '…');
+  try {
+    const head = new TextDecoder('latin1').decode(await file.slice(0, 1 << 19).arrayBuffer());
+    const gp = readGPano(head);
+    let bmp;
+    try { bmp = await createImageBitmap(file); }
+    catch { throw new Error("That file couldn't be read as an image. Export the photo from the Insta360 app as a JPEG."); }
+    const w = bmp.width, h = bmp.height;
+    const area = panoArea(gp, w, h);
+    const plan = tilePlan(w, h, Math.min(maxTex, 16384));
+    if (photo) for (const t of photo.tiles) gl.deleteTexture(t.tex);
+    photo = null;
+    const tiles = [];
+    for (const t of plan.tiles) {
+      const img = plan.tiles.length === 1 ? bmp : await createImageBitmap(bmp, t.src.x, t.src.y, t.src.w, t.src.h);
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      // A photo in one column wraps round behind the camera, so it repeats sideways.
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, plan.cols === 1 && area.w >= 1 ? gl.REPEAT : gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      if (aniso) gl.texParameterf(gl.TEXTURE_2D, aniso.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(16, gl.getParameter(aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+      if (img !== bmp) img.close();
+      tiles.push({ tex, core: t.core, src: t.src });
+    }
+    bmp.close();
+    photo = { name: file.name, w, h, area, gp, tiles };
+    view = initialView(gp);
+    $('fname').textContent = file.name;
+    const mp = (w * h / 1e6).toFixed(1);
+    let note = `${w.toLocaleString()} × ${h.toLocaleString()} px · ${mp} MP · ${area.full ? 'full sphere' : 'partial panorama'}`;
+    if (plan.tiles.length > 1) note += ` · ${plan.tiles.length} tiles`;
+    $('meta').textContent = note;
+    $('meta').classList.remove('warn');
+    if (/\.insp$/i.test(file.name)) { $('meta').textContent = note + '. This looks like an unstitched .insp original; export it from the Insta360 app as a 360 photo for a proper view.'; $('meta').classList.add('warn'); }
+    else if (!area.full && !(gp && gp.fullW)) { $('meta').textContent = note + ". It isn't 2 : 1, so it may not be a 360 photo."; $('meta').classList.add('warn'); }
+    $('empty').classList.add('hide');
+    for (const s of ['s2', 's3', 's4']) $(s).classList.remove('off');
+    $('s1').classList.add('done');
+    syncUI(); render(); cv.focus();
+  } catch (e) { console.error(e); toast(e.message || String(e)); }
+  finally { busy(null); }
+}
+
+// ---- snapshots ----
+function renderTo(w, h, v) {
+  const fb = gl.createFramebuffer(), rb = gl.createRenderbuffer();
+  gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+  gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, w, h);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rb);
+  try {
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('The graphics card would not make an image that large. Try a smaller size.');
+    draw(w, h, v, { w, h, halfLong: Math.max(w, h) / 2 }, 1, false);
+    const px = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(w, h), row = w * 4;
+    for (let y = 0; y < h; y++) img.data.set(px.subarray((h - 1 - y) * row, (h - y) * row), y * row);   // GL rows run bottom up
+    ctx.putImageData(img, 0, 0);
+    return c;
+  } finally {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.deleteFramebuffer(fb); gl.deleteRenderbuffer(rb);
+    requestRender();
+  }
+}
+const screenRatio = () => { const f = frameIn(cv.width, cv.height, 'screen'); return f.w / f.h; };
+const blobOf = (c, type, q) => new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('The browser could not encode the image.')), type, q));
+function download(url, name) { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+
+async function snapshot() {
+  if (!photo) return;
+  const [w, h] = snapshotSize(settings, view, photo.area.fullW, screenRatio(), maxOut);
+  busy(`Saving ${w} × ${h}…`);
+  await new Promise(r => setTimeout(r, 30));   // let the pill paint before the GPU work
+  try {
+    const c = renderTo(w, h, view);
+    const type = settings.fmt === 'png' ? 'image/png' : 'image/jpeg', ext = settings.fmt === 'png' ? 'png' : 'jpg';
+    const blob = await blobOf(c, type, settings.quality / 100);
+    const url = URL.createObjectURL(blob), name = snapName(photo.name, view, ext);
+    download(url, name);
+    const t = document.createElement('canvas'), tw = 240, th = Math.max(1, Math.round(240 * h / w));
+    t.width = tw; t.height = th; t.getContext('2d').drawImage(c, 0, 0, tw, th);
+    shots.unshift({ url, thumb: t.toDataURL('image/jpeg', 0.8), view: { ...view }, aspect: settings.aspect, name, w, h });
+    drawShots();
+    toast(`Saved ${name} (${w} × ${h})`);
+  } catch (e) { console.error(e); toast(e.message || String(e)); }
+  finally { busy(null); }
+}
+function drawShots() {
+  const ul = $('shots');
+  ul.innerHTML = '';
+  shots.forEach((s, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<img alt="" title="Go back to this view"><div class="cap"><span></span><button title="Save again">Save</button><button title="Remove from list">×</button></div>`;
+    li.querySelector('img').src = s.thumb;
+    li.querySelector('span').textContent = `${Math.round(s.view.fov)}° · ${s.w}×${s.h}`;
+    li.querySelector('img').onclick = () => { settings.aspect = s.aspect; persist(); animateTo(s.view); };
+    const [save, del] = li.querySelectorAll('button');
+    save.onclick = () => download(s.url, s.name);
+    del.onclick = () => { URL.revokeObjectURL(s.url); shots.splice(i, 1); drawShots(); };
+    ul.appendChild(li);
+  });
+  $('noShots').classList.toggle('hide', shots.length > 0);
+  $('shotActions').classList.toggle('hide', shots.length === 0);
+}
+$('saveAll').onclick = async () => { for (const s of [...shots].reverse()) { download(s.url, s.name); await new Promise(r => setTimeout(r, 250)); } };
+$('clearShots').onclick = () => { for (const s of shots) URL.revokeObjectURL(s.url); shots.length = 0; drawShots(); };
+
+// ---- view changes ----
+function setView(v) { view = clampView(v); syncUI(); requestRender(); }
+let anim = 0;
+function animateTo(target) {
+  cancelAnimationFrame(anim);
+  const from = { ...view }, to = clampView(target), t0 = performance.now(), dur = 380;
+  const dy = wrapDeg(to.yaw - from.yaw);
+  const step = now => {
+    const k = Math.min(1, (now - t0) / dur), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    const fov = to.proj === from.proj ? from.fov * Math.pow(to.fov / from.fov, e) : to.fov;
+    setView({ yaw: from.yaw + dy * e, pitch: from.pitch + (to.pitch - from.pitch) * e, roll: from.roll + (to.roll - from.roll) * e, fov, proj: to.proj });
+    if (k < 1) anim = requestAnimationFrame(step);
+  };
+  anim = requestAnimationFrame(step);
+}
+
+function syncUI() {
+  const fmt = n => (Math.round(n * 10) / 10).toString();
+  $('fov').value = fovToSlider(view.fov, view.proj);
+  $('fovOut').textContent = Math.round(view.fov) + '°';
+  for (const b of $('proj').children) b.classList.toggle('on', +b.dataset.p === view.proj);
+  const act = document.activeElement;
+  if (act !== $('inYaw')) $('inYaw').value = Math.round(view.yaw);
+  if (act !== $('inPitch')) $('inPitch').value = Math.round(view.pitch);
+  if (act !== $('inRoll')) $('inRoll').value = fmt(view.roll);
+  $('aspect').value = settings.aspect; $('size').value = settings.size; $('fmt').value = settings.fmt;
+  $('quality').value = settings.quality; $('qOut').textContent = settings.quality; $('grid').checked = settings.grid;
+  $('qRow').classList.toggle('hide', settings.fmt === 'png');
+  if (photo) {
+    const f = frameIn(cv.width, cv.height, settings.aspect, 22 * dpr);
+    const vfov = 2 * Math.atan(Math.tan(view.fov * DEG / 2) * Math.min(f.w, f.h) / Math.max(f.w, f.h)) / DEG;
+    $('readout').textContent = `Heading ${Math.round(view.yaw)}° · Tilt ${Math.round(view.pitch)}° · ${Math.round(view.fov)}°${view.proj === PROJ_STANDARD ? ' × ' + Math.round(vfov) + '°' : ' wide'}`;
+    const [w, h] = snapshotSize(settings, view, photo.area.fullW, screenRatio(), maxOut);
+    const native = Math.round(nativeLong(photo.area.fullW, view));
+    let note = `Saves ${w.toLocaleString()} × ${h.toLocaleString()} px.`;
+    if (settings.size === 'native') note += native > maxOut ? ` Zoomed this far out the photo has more detail than one image can hold.` : ` At this zoom the photo holds about ${native.toLocaleString()} px of detail across.`;
+    else if (Math.max(w, h) > native * 1.15) note += ` At this zoom the photo only holds about ${native.toLocaleString()} px across, so this enlarges it.`;
+    $('sizeNote').textContent = note;
+  }
+}
+function persist() { try { localStorage.setItem('pano.settings', JSON.stringify(settings)); } catch {} syncUI(); requestRender(); }
+
+$('fov').oninput = e => setView({ ...view, fov: sliderToFov(+e.target.value, view.proj) });
+$('proj').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const p = +b.dataset.p;
+  // Keep roughly what's in frame: the same width on the projection plane at the edge.
+  if (p !== view.proj) setView({ ...view, proj: p, fov: p === PROJ_WIDE ? Math.max(view.fov, 100) : Math.min(view.fov, 110) });
+};
+const numIn = (id, key) => $(id).addEventListener('change', e => { const n = parseFloat(e.target.value); if (Number.isFinite(n)) setView({ ...view, [key]: n }); else syncUI(); });
+numIn('inYaw', 'yaw'); numIn('inPitch', 'pitch'); numIn('inRoll', 'roll');
+$('reset').onclick = () => animateTo({ ...newView(), roll: view.roll });
+$('planet').onclick = () => animateTo({ ...view, proj: PROJ_WIDE, pitch: -90, fov: 280 });
+$('grid').onchange = e => { settings.grid = e.target.checked; persist(); };
+$('aspect').onchange = e => { settings.aspect = e.target.value; persist(); };
+$('size').onchange = e => { settings.size = e.target.value; persist(); };
+$('fmt').onchange = e => { settings.fmt = e.target.value; persist(); };
+$('quality').oninput = e => { settings.quality = +e.target.value; persist(); };
+$('snap').onclick = snapshot;
+$('full').onclick = () => document.fullscreenElement ? document.exitFullscreen() : viewEl.requestFullscreen?.();
+
+// ---- pointer ----
+const pts = new Map();
+let pinch = null;
+cv.addEventListener('pointerdown', e => {
+  if (!photo) return;
+  cv.setPointerCapture(e.pointerId); cv.classList.add('grab'); cancelAnimationFrame(anim);
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), fov: view.fov }; }
+});
+cv.addEventListener('pointermove', e => {
+  const p = pts.get(e.pointerId); if (!p) return;
+  if (pts.size === 2 && pinch) {
+    p.x = e.clientX; p.y = e.clientY;
+    const [a, b] = [...pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (d > 10) setView({ ...view, fov: pinch.fov * pinch.d / d });
+    return;
+  }
+  const dx = (e.clientX - p.x) * dpr, dy = (e.clientY - p.y) * dpr;
+  p.x = e.clientX; p.y = e.clientY;
+  const k = dragRate(view, frameNow().halfLong) / DEG;
+  setView({ ...view, yaw: view.yaw - dx * k, pitch: view.pitch + dy * k });
+});
+const up = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (!pts.size) cv.classList.remove('grab'); };
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+cv.addEventListener('wheel', e => {
+  if (!photo) return;
+  e.preventDefault();
+  const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+  setView({ ...view, fov: view.fov * Math.exp(dy * 0.0012) });
+}, { passive: false });
+cv.addEventListener('dblclick', e => {
+  if (!photo) return;
+  const r = cv.getBoundingClientRect(), f = frameNow();
+  const nx = ((e.clientX - r.left) * dpr - cv.width / 2) / f.halfLong, ny = -((e.clientY - r.top) * dpr - cv.height / 2) / f.halfLong;
+  animateTo(aimAt(screenToDir(nx, ny, view), view));
+});
+window.addEventListener('keydown', e => {
+  if (!photo || e.ctrlKey || e.metaKey || e.altKey || /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName)) return;
+  const step = (e.shiftKey ? 15 : 4) * view.fov / 90;
+  const k = e.key;
+  if (k === 'ArrowLeft') setView({ ...view, yaw: view.yaw - step });
+  else if (k === 'ArrowRight') setView({ ...view, yaw: view.yaw + step });
+  else if (k === 'ArrowUp') setView({ ...view, pitch: view.pitch + step });
+  else if (k === 'ArrowDown') setView({ ...view, pitch: view.pitch - step });
+  else if (k === '+' || k === '=') setView({ ...view, fov: view.fov / 1.15 });
+  else if (k === '-' || k === '_') setView({ ...view, fov: view.fov * 1.15 });
+  else if (k === 's' || k === 'S') snapshot();
+  else if (k === 'f' || k === 'F') $('full').click();
+  else if (k === 'r' || k === 'R') $('reset').click();
+  else return;
+  e.preventDefault();
+});
+
+// ---- files ----
+$('pick').onclick = $('pick2').onclick = () => $('file').click();
+$('file').onchange = e => { openFile(e.target.files[0]); e.target.value = ''; };
+viewEl.addEventListener('dragover', e => { e.preventDefault(); viewEl.classList.add('drop'); });
+viewEl.addEventListener('dragleave', () => viewEl.classList.remove('drop'));
+viewEl.addEventListener('drop', e => { e.preventDefault(); viewEl.classList.remove('drop'); openFile(e.dataTransfer.files[0]); });
+window.addEventListener('paste', e => { const f = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith('image/')); if (f) openFile(f); });
+
+let toastTimer;
+function toast(msg, ms = 3800) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms); }
+function busy(msg) { $('busy').textContent = msg || ''; $('busy').classList.toggle('hide', !msg); }
+
+try { if (!initGL()) toast('This browser has no WebGL 2, which the viewer needs.'); }
+catch (e) { console.error(e); toast('The viewer could not start its graphics: ' + e.message); }
+syncUI();
+})();
+</script>
+</body>
+</html>
