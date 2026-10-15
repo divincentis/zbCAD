@@ -1,0 +1,1338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Deadline Planner</title>
+<meta name="description" content="Plan backwards from a deadline: the latest start and finish for every step, a running buffer, and alerts when a step runs over.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#fffdf8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1c1b19" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Deadlines">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c1b19'/%3E%3Cpath d='M6 14.5h8.5L6 23.5h8.5M18.5 8.5v15h7.5v-9h-7.5' fill='none' stroke='%23f4f1ea' stroke-width='2.5' stroke-linecap='square'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/png;base64,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">
+<script>
+// Web app manifest, built here so the whole app is this one file. Only used over http(s).
+// Its scope is this page alone: the planner shares an origin with every other zbCAD tool,
+// and a standalone window scoped to the folder would swallow links to them.
+(() => {
+  if (!/^https?:$/.test(location.protocol)) return;
+  const here = location.href.split(/[?#]/)[0];
+  const icon512 = "data:image/png;base64,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AGPRf+bpH/voh0sN5r2gUwSAUfvoRz7U339GqWHt2kHzXtApAsDofOAD7/vUJXU+v6xft37WnLnmvaBTBIBReM+7//+KyxaXGvbOe23d+pcCdIgAMFInn3TS0iVXHnbYYaXrmjXvBU0hAIyIeS9oHwHg4CrOe23avMm8F4wTAeAg6s57zTj1NPNeME4EgAOpPu/1+/V/KMD4EAD265hjjjHvBS0mAOzbS/NeX7qpyrzX0NCQeS/oAgFgH/bOex177LTSdcPDw+ctvNC8F3SBAPBa1ee97rzr7gKMPwHgVerOey1ZerV5L+gaAeCf6s573bTqiytW3liAbhEAXlZ93uvKzy8pQBcJAC8z7wVpBICXmPeCQAJAzXmv++//qXkvqEUA0lWc9/rNwMAZC8427wW1CEC0uvNes+fM37lzZwEqEYBc1ee9tm0z7gg1CUAo816AACSqOO/19NPPmPeCHiEAcerOe50y07wX9AoByFJ93uvxx/9YgN4gAEHMewGvJAApKs577dq1y7wX9CABiFB33qv/rHPNe0EPEoD2qz7vdd99Py5A7xGAljPvBeyPALRZ3Xmvz135BfNe0MsEoLXqzntdv+LGVTffUoAeJgDtVH3ea+myqwvQ2wSgncx7AQclAC1Ucd7re/d837wXNIUAtE3dea9zzl1o3guaQgBapfq819DQUAEaQgDaw7wXMCoC0BIV570eevgR817QRALQBhXnvZ544knzXtBQAtB41ee9nnvuuQI0kAA0W/V5r6eeeqoAzSQADVZx3mvLlq3mvaDpBKCpKs57bd++fdbseea9oOkEoJHqznvNm3/mg4ODBWg4AWie6vNeP//FrwrQfALQMOa9gE4RgCYx7wV0kAA0Rt15r0WLLzfvBS0jAM1Qd97r2utXrr7tqwVoFwFogOrzXldddU0BWkcAGqDivNe3vvUd817QVgLQ6+rOe11w0acK0FIC0NP6F1Se9xoeHi5ASwlA73pp3muBeS9gvAhAj6o477V27aB5L0ggAL2o7rzXrDnmvSCCAPScd77zf+vOe23d+pcCBBCA3nLi29+2/Kol5r2ALhCAHrJ33uuII44oXbfx2WfNe0EaAegVlee9Zsw27wVpBKAnVJ/3eviRRwsQRgDqM+8FVDFh2tQKw1L8Q19f322rv/im444rdNHx008oo7ducKAw/sb26zAGbgA17Z33cvoDVQhANXXnvQAEoI4jjzyy4rwXQBGAKiZOnHjdNctqzXsB7CUA3bZ33usd7zi5AFQlAN1Wcd4L4JUEoKsqznsBvIYAdE/FeS+AfyUAXVJx3gtgnwSgGyrOewHsjwCMu4rzXgAHIADjq+K8F8CBCcA4qjjvBXBQzqbxUnHeC2AkBGBcVJz3AhghAei8ivNeACMnAB1Wcd4LYFQEoJP6+vr2nP5TphhZAxpAADpm77zXscdOKwBNIACdYd4LaBwB6ADzXkATCcChMu8FNJQAHBLzXkBzCcAhMe8FNJcAjN1FFyw07wU0lwCMUf+C02fM+FgBaCwBGAvzXkALCMComfcC2kEARse8F9AaE6ZN9cc1AIlMFQKEEgCAUAIAEEoAAEIJAEAoAQAIJQAAoQQAIJQAAIQSAIBQAgAQSgAAQgkAQCgBAAglAAChBAAglAAAhBIAgFACABBKAABCCQBAKAEACCUAAKEEACCUAACEEgCAUAIAEEoAAEIJAEAoAQAIJQAAoQQAIJQAAIQSAIBQAgAQSgAAQgkAQCgBAAglAAChBAAglAAAhBIAgFACABBKAABCCQBAKAEACCUAAKEEACCUAACEEgCAUAIAEEoAAEIJAEAoAQAIJQAAoQQAIJQAAIQSAIBQAgAQSgAAQgkAQCgBAAglAAChBAAglAAAhBIAgFACABBKAABCCQBAKAEACCUAAKEEACCUAACEEgCAUAIAEEoAAEIJAEAoAQAIJQAAoQQAIJQAAIQSAIBQAgAQSgAAQgkAQCgBAAglAAChBAAglAAAhBIAgFACABBKAABCCQBAKAEACCUAAKEEACCUAACEEgCAUAIAEEoAAEIJAEAoAQAIJQAAoQQAIJQAAIQSAIBQAgAQSgAAQgkAQCgBAAglAAChBAAglAAAhBIAgFACABBKAABCCQBAKAEACCUAAKEEACCUAACEEgCAUAIAEEoAAEIJAEAoAQAIJQAAoQQAIJQAAIQSAIBQAgAQSgAAQgkAQCgBAAglAAChBAAglAAAhBIAgFACABBKAABCCQBAKAEACCUAAKEEACCUAACEEgCAUAIAEEoAAEIJAEAoAQAI9VcAAAD//0oMuBsAAAAGSURBVAMAYfBnhEBVMoEAAAAASUVORK5CYII=";
+  const manifest = {
+    id: new URL(here).pathname,
+    name: "Deadline Planner",
+    short_name: "Deadlines",
+    description: "Plan backwards from a deadline and track each step against it.",
+    start_url: here,
+    scope: here,
+    display: "standalone",
+    background_color: "#f6f4ef",
+    theme_color: "#fffdf8",
+    icons: [
+      { src: icon512, sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: icon512, sizes: "512x512", type: "image/png", purpose: "maskable" }
+    ]
+  };
+  const link = document.createElement("link");
+  link.rel = "manifest";
+  link.href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" }));
+  document.head.appendChild(link);
+})();
+</script>
+<style>
+:root{
+  --bg:#f6f4ef; --panel:#fffdf8; --ink:#1c1b19; --muted:#6b675f; --line:#d9d4c9; --soft:#efe9df; --sheet:#fbf9f4;
+  --accent:#9a4a1f; --accent-ink:#fff; --accent-bg:#f6e9df;
+  --ok:#2b8a3e; --ok-bg:#ebfbee; --warn:#a85a00; --warn-bg:#fff4e6; --bad:#c92a2a; --bad-bg:#ffe3e3;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --shadow:0 12px 32px rgba(28,27,25,.18);
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#161614; --panel:#1c1b19; --ink:#e9e5dc; --muted:#9a958a; --line:#2f2d29; --soft:#252320; --sheet:#181816;
+    --accent:#e08a55; --accent-ink:#1a0d05; --accent-bg:#33231a;
+    --ok:#69db7c; --ok-bg:#17291c; --warn:#ffc078; --warn-bg:#3a2a12; --bad:#ffa8a8; --bad-bg:#3d1818;
+    --shadow:0 12px 32px rgba(0,0,0,.5);
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%;min-height:100vh}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:0}
+button:disabled{cursor:default}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.input{background:var(--sheet);border:1px solid var(--line);color:var(--ink);font-family:inherit;font-size:16px /* keeps iOS from zooming in on focus */;font-variant-numeric:tabular-nums}
+.input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.input::placeholder{color:var(--muted)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{font-size:12px;color:var(--muted);margin:8px 0 0}
+
+/* Top bar, as on every zbCAD tool */
+.top{position:sticky;top:0;z-index:30;height:52px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.brand{display:flex;align-items:baseline;min-width:0;font-weight:700;font-size:15px;letter-spacing:-.01em;white-space:nowrap}
+.brand a{color:var(--muted);text-decoration:none}
+.brand a:hover,.brand a:focus-visible{color:var(--accent)}
+.brand .sep{color:var(--line);margin:0 7px;font-weight:400}
+.brand .name{overflow:hidden;text-overflow:ellipsis}
+.header-right{position:relative;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.bell{position:relative;display:flex;padding:7px;border:1px solid var(--line);border-radius:8px;color:var(--muted)}
+.bell:hover{border-color:var(--muted)}
+.bell.on{color:var(--accent);border-color:var(--accent);background:var(--accent-bg)}
+.bell.partial::after{content:'';position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 2px var(--panel)}
+.clock-time{font-size:20px;font-weight:600;line-height:1;white-space:nowrap}
+.clock-time .ampm{font-size:.6em;font-weight:500;margin-left:3px;color:var(--muted)}
+
+.app{max-width:560px;margin:0 auto;padding:16px 16px 96px}
+
+/* Alerts & display panel */
+.panel{position:absolute;top:calc(100% + 10px);right:0;z-index:40;width:min(300px,calc(100vw - 32px));padding:6px;box-shadow:var(--shadow)}
+.switch-row{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border-radius:6px;text-align:left}
+.switch-row:hover:not(:disabled){background:var(--soft)}
+.switch-row:disabled{opacity:.45}
+.switch-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+.switch-label{font-size:13px;font-weight:600}
+.switch-sub{font-size:11.5px;color:var(--muted)}
+.switch-sub.warn{color:var(--warn)}
+.switch{flex-shrink:0;position:relative;width:36px;height:20px;border-radius:10px;background:var(--line);transition:background-color .15s}
+.switch .knob{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--panel);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+.switch.on{background:var(--accent)}
+.switch.on .knob{transform:translateX(16px)}
+.panel-note{font-size:11.5px;line-height:1.4;color:var(--muted);padding:8px 10px 6px;margin-top:4px;border-top:1px solid var(--line)}
+
+/* Deadline + buffer */
+.settings{padding:14px 16px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:10px 14px}
+.settings .grow{flex:1;min-width:0}
+.settings .buffer{width:100px}
+.settings .input{width:100%;border-radius:6px;padding:7px 8px;text-align:center;font-size:18px}
+.plan-line{flex-basis:100%;font-size:12px;color:var(--muted)}
+.label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:0 0 6px}
+.label .day{text-transform:none;letter-spacing:0;color:var(--accent)}
+
+/* Status panel */
+.status{padding:16px;margin-bottom:22px;border-left:4px solid var(--tone);display:grid;grid-template-columns:1fr 1fr;gap:14px;transition:background-color .5s,border-color .5s}
+.tone-neutral{--tone:var(--line);--tone-text:var(--muted)}
+.tone-green{--tone:var(--ok);--tone-text:var(--ok)}
+.tone-yellow{--tone:var(--warn);--tone-text:var(--warn)}
+.tone-red{--tone:var(--bad);--tone-text:var(--bad);background:var(--bad-bg)}
+.status.all-done.tone-green{background:var(--ok-bg)}
+.eyebrow{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px}
+.status-line{font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px;color:var(--tone-text)}
+.status-sub{font-size:12px;margin-top:4px}
+.status-sub.ahead{color:var(--ok)}
+.status-sub.behind{color:var(--warn)}
+.right{text-align:right}
+.buffer-left{font-size:24px;font-weight:700}
+.buffer-left.pos{color:var(--ok)}
+.buffer-left.partial{color:var(--warn)}
+.buffer-left.neg{color:var(--bad)}
+.finished{font-size:12px;color:var(--muted);margin-top:4px}
+.gate-row{grid-column:1/-1;padding-top:12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.gate{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.gate-time{font-size:20px;font-weight:700;color:var(--accent)}
+.countdown{font-size:13px;font-weight:600;color:var(--muted)}
+.countdown.soon{color:var(--warn)}
+.countdown.over{color:var(--bad)}
+.eta{font-size:14px}
+
+/* Run summary */
+.summary{padding:14px 16px;margin-bottom:22px}
+.sum-row{display:grid;grid-template-columns:minmax(0,1fr) 56px 64px 60px;gap:8px;font-size:12.5px;padding:5px 0;border-top:1px solid var(--soft)}
+.sum-row>span:not(:first-child){text-align:right}
+.sum-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sum-head{font-size:11.5px;font-weight:600;color:var(--muted);border-top:0}
+.sum-total{font-weight:700;border-top-color:var(--line)}
+.over-est{color:var(--bad)}
+.under-est{color:var(--ok)}
+
+/* Steps */
+.steps-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;min-height:26px}
+.steps-head .label{margin:0}
+.reset{font-size:12px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;display:flex;align-items:center;gap:5px;color:var(--muted);background:var(--panel)}
+.reset:hover{color:var(--ink);border-color:var(--muted)}
+.reset.armed{background:var(--bad);border-color:var(--bad);color:var(--panel)}
+
+.task-list{display:flex;flex-direction:column;gap:10px}
+.empty{text-align:center;padding:24px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:13px}
+.task{padding:10px 12px;border-left:3px solid var(--line);transition:background-color .2s,border-color .2s,opacity .2s,box-shadow .2s}
+.task.paused{border-left-color:var(--muted)}
+.task.active{border-color:var(--accent);border-left-width:3px;background:var(--accent-bg);box-shadow:inset 0 0 0 1px var(--accent)}
+.task.done{border-left-color:var(--ok);opacity:.6}
+.task.dragging{opacity:.4}
+.task-times{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 8px;font-size:11px;margin-bottom:6px;padding:0 2px}
+.task-times .planned{color:var(--muted)}
+.chip-ok{color:var(--ok)}
+.chip-late{color:var(--bad)}
+.chip-paused{color:var(--muted);font-style:italic}
+.task-times .wide{order:3;flex-basis:100%}
+.task-main{display:flex;gap:6px;align-items:center}
+.grip{display:flex;padding:4px 2px;cursor:move;color:var(--muted);opacity:.6;touch-action:none}
+.grip:hover{opacity:1}
+.task-name{flex:1;min-width:0;border-radius:6px;padding:5px 8px}
+.task-name.struck{text-decoration:line-through}
+.dur{position:relative;width:68px;flex-shrink:0}
+.dur .input{width:100%;border-radius:6px;padding:5px 22px 5px 6px;text-align:center}
+.dur span{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--muted);pointer-events:none}
+.task-actions{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-left:22px}
+.tools,.act-group{display:flex;gap:2px;align-items:center}
+.act-group{gap:6px}
+.icon-btn{display:flex;padding:6px;border-radius:6px;color:var(--muted)}
+.icon-btn:hover{color:var(--ink);background:var(--soft)}
+.icon-btn.danger:hover{color:var(--bad);background:var(--bad-bg)}
+.icon-btn.ok:hover{color:var(--ok);background:var(--ok-bg)}
+.act{font-size:12.5px;padding:5px 11px;border:1px solid var(--line);border-radius:6px;background:var(--panel);display:flex;align-items:center;gap:5px}
+.act:hover{border-color:var(--muted)}
+.act.start{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.act.start:hover{filter:brightness(1.08)}
+.act.finish{background:var(--ok);border-color:var(--ok);color:var(--panel);font-weight:600}
+.act.finish:hover{filter:brightness(1.08)}
+
+.add{width:100%;margin-top:12px;padding:11px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;font-weight:500}
+.add:hover{color:var(--accent);border-color:var(--accent);background:var(--panel)}
+
+/* Plans & templates */
+.plans{margin-top:14px;overflow:hidden}
+.plans-head{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:13px;font-weight:600}
+.plans-head:hover{background:var(--soft)}
+.plans-head .chev{margin-left:auto;color:var(--muted);transition:transform .15s}
+.plans-head[aria-expanded="true"]{border-bottom:1px solid var(--line)}
+.plans-head[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.plans-body{padding:12px}
+.tpl-list{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:6px}
+.tpl{display:flex;align-items:center;gap:8px;padding:7px 8px 7px 10px;border:1px solid var(--soft);border-radius:8px;background:var(--sheet)}
+.tpl-info{flex:1;min-width:0}
+.tpl-name{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tpl-meta{font-size:11.5px;color:var(--muted)}
+.plans-actions{display:flex;flex-wrap:wrap;gap:6px}
+.plans-body>.muted{margin:0 0 12px}
+
+.foot{margin-top:24px;text-align:center;font-size:11.5px;color:var(--muted)}
+
+/* Toast (alerts, below the bar) and undo bar (bottom) */
+.toast{position:fixed;top:62px;left:50%;transform:translateX(-50%);z-index:50;width:calc(100% - 32px);max-width:528px;padding:12px;box-shadow:var(--shadow);display:flex;gap:12px;align-items:flex-start;text-align:left;cursor:pointer;border-left:3px solid var(--accent)}
+.toast>.icon{color:var(--accent);margin-top:1px;flex-shrink:0}
+.toast.info{border-left-color:var(--line)}
+.toast.info>.icon{color:var(--muted)}
+.toast-text{flex:1;min-width:0}
+.toast-title{font-weight:600;font-size:13.5px}
+.toast-body{font-size:12.5px;color:var(--muted)}
+.toast-close{display:flex;padding:4px;margin:-4px -4px 0 0;border-radius:6px;color:var(--muted)}
+.toast-close:hover{color:var(--ink);background:var(--soft)}
+.snackbar{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);z-index:50;width:calc(100% - 32px);max-width:528px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 6px 6px 14px;border-radius:10px;font-size:13px;background:var(--ink);color:var(--panel);box-shadow:var(--shadow)}
+.snackbar span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.snack-btn{flex-shrink:0;font-weight:700;color:var(--panel);padding:6px 12px;border-radius:6px}
+.snack-btn:hover{background:color-mix(in srgb,var(--panel) 15%,transparent)}
+
+@media (max-width:400px){
+  .top{padding:0 12px}
+  .brand .long{display:none}
+  .clock-time{font-size:18px}
+}
+
+.fatal{background:var(--bad-bg);color:var(--bad);border:1px solid var(--bad);padding:16px;margin:16px;border-radius:10px;text-align:center}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<noscript><div class="fatal">This planner needs JavaScript enabled.</div></noscript>
+
+    <!-- Preact 10.29.8 + hooks + htm 3.1.1 (MIT), inlined so the page needs no network. -->
+    <script>
+!function(n,t){"object"==typeof exports&&"undefined"!=typeof module?t(exports):"function"==typeof define&&define.amd?define(["exports"],t):t((n||self).preact={})}(this,function(n){var t,i,e,r,f,o,u,c,s,a,h,l,p,y,v,d,w="http://www.w3.org/2000/svg",_="http://www.w3.org/1999/xhtml",g=null,m=void 0,b={},k=[],x=/acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i,M=Array.isArray;function S(n,t){for(var i in t)n[i]=t[i];return n}function T(n){n&&n.parentNode&&n.parentNode.removeChild(n)}function $(n,i,e){var r,f,o,u={};for(o in i)"key"==o?r=i[o]:"ref"==o?f=i[o]:u[o]=i[o];if(arguments.length>2&&(u.children=arguments.length>3?t.call(arguments,2):e),"function"==typeof n&&n.defaultProps!=g)for(o in n.defaultProps)u[o]===m&&(u[o]=n.defaultProps[o]);return C(n,u,r,f,g)}function C(n,t,r,f,o){var u={type:n,props:t,key:r,ref:f,__k:g,__:g,__b:0,__e:g,__c:g,constructor:m,__v:o==g?++e:o,__i:-1,__u:0};return o==g&&i.vnode!=g&&i.vnode(u),u}function I(n){return n.children}function P(n,t){this.props=n,this.context=t}function j(n,t){if(t==g)return n.__?j(n.__,n.__i+1):g;for(var i;t<n.__k.length;t++)if((i=n.__k[t])!=g&&i.__e!=g)return i.__e;return"function"==typeof n.type?j(n):g}function A(n){if(n.__P&&n.__d){var t=n.__v,e=t.__e,r=[],f=[],o=S({},t);o.__v=t.__v+1,i.vnode&&i.vnode(o),E(n.__P,o,t,n.__n,n.__P.namespaceURI,32&t.__u?[e]:g,r,e==g?j(t):e,!!(32&t.__u),f),o.__v=t.__v,o.__.__k[o.__i]=o,J(r,o,f),t.__e=t.__=null,o.__e!=e&&H(o)}}function H(n){if((n=n.__)!=g&&n.__c!=g)return n.__e=n.__c.base=g,n.__k.some(function(t){if(t!=g&&t.__e!=g)return n.__e=n.__c.base=t.__e}),H(n)}function L(n){(!n.__d&&(n.__d=!0)&&f.push(n)&&!F.__r++||o!=i.debounceRendering)&&((o=i.debounceRendering)||u)(F)}function F(){try{for(var n,t=1;f.length;)f.length>t&&f.sort(c),n=f.shift(),t=f.length,A(n)}finally{f.length=F.__r=0}}function O(n,t,i,e,r,f,o,u,c,s,a){var h,l,p,y,v,d,w=e&&e.__k||k,_=t.length;for(c=z(i,t,w,c,_),h=0;h<_;h++)(p=i.__k[h])!=g&&(l=-1!=p.__i&&w[p.__i]||b,p.__i=h,d=E(n,p,l,r,f,o,u,c,s,a),y=p.__e,p.ref&&l.ref!=p.ref&&(l.ref&&R(l.ref,g,p),a.push(p.ref,p.__c||y,p)),v==g&&y!=g&&(v=y),4&p.__u?(c=N(p,c,n),l.__e&&(l.__e=g)):"function"==typeof p.type&&d!==m?c=d:y&&(c=y.nextSibling),p.__u&=-7);return i.__e=v,c}function z(n,t,i,e,r){var f,o,u,c,s,a=i.length,h=a,l=0;for(n.__k=new Array(r),f=0;f<r;f++)(o=t[f])!=g&&"boolean"!=typeof o&&"function"!=typeof o?("string"==typeof o||"number"==typeof o||"bigint"==typeof o||o.constructor==String?o=n.__k[f]=C(g,o,g,g,g):M(o)?o=n.__k[f]=C(I,{children:o},g,g,g):o.constructor===m&&o.__b>0?o=n.__k[f]=C(o.type,o.props,o.key,o.ref?o.ref:g,o.__v):n.__k[f]=o,c=f+l,o.__=n,o.__b=n.__b+1,s=o.__i=V(o,i,c,h),u=g,-1!=s&&(h--,(u=i[s])&&(u.__u|=2)),u==g||u.__v==g?(-1==s&&(r>a?l--:r<a&&l++),"function"!=typeof o.type&&(o.__u|=4)):s!=c&&(s==c-1?l--:s==c+1?l++:(s>c?l--:l++,o.__u|=4))):n.__k[f]=g;if(h)for(f=0;f<a;f++)(u=i[f])!=g&&0==(2&u.__u)&&(u.__e==e&&(e=j(u)),U(u,u));return e}function N(n,t,i){var e,r;if("function"==typeof n.type){for(e=n.__k,r=0;e&&r<e.length;r++)e[r]&&(e[r].__=n,t=N(e[r],t,i));return t}n.__e!=t&&(t&&n.type&&!t.parentNode&&(t=j(n)),t=i.insertBefore(n.__e,t||g));do{t=t&&t.nextSibling}while(t!=g&&8==t.nodeType);return t}function V(n,t,i,e){var r,f,o,u=n.key,c=n.type,s=t[i],a=s!=g&&0==(2&s.__u);if(s===g&&null==u||a&&u==s.key&&c==s.type)return i;if(e>(a?1:0))for(r=i-1,f=i+1;r>=0||f<t.length;)if((s=t[o=r>=0?r--:f++])!=g&&0==(2&s.__u)&&u==s.key&&c==s.type)return o;return-1}function q(n,t,i){"-"==t[0]?n.setProperty(t,i==g?"":i):n[t]=i==g?"":"number"!=typeof i||x.test(t)?i:i+"px"}function B(n,t,i,e,r){var f,o;n:if("style"==t)if("string"==typeof i)n.style.cssText=i;else{if("string"==typeof e&&(n.style.cssText=e=""),e)for(t in e)i&&t in i||q(n.style,t,"");if(i)for(t in i)e&&i[t]==e[t]||q(n.style,t,i[t])}else if("o"==t[0]&&"n"==t[1])f=t!=(t=t.replace(l,"$1")),o=t.toLowerCase(),t=o in n||"onFocusOut"==t||"onFocusIn"==t?o.slice(2):t.slice(2),n.l||(n.l={}),n.l[t+f]=i,i?e?i[h]=e[h]:(i[h]=p,n.addEventListener(t,f?v:y,f)):n.removeEventListener(t,f?v:y,f);else{if(r==w)t=t.replace(/xlink(H|:h)/,"h").replace(/sName$/,"s");else if("width"!=t&&"height"!=t&&"href"!=t&&"list"!=t&&"form"!=t&&"tabIndex"!=t&&"download"!=t&&"rowSpan"!=t&&"colSpan"!=t&&"role"!=t&&"popover"!=t&&t in n)try{n[t]=i==g?"":i;break n}catch(n){}"function"==typeof i||(i==g||!1===i&&"-"!=t[4]?n.removeAttribute(t):n.setAttribute(t,"popover"==t&&1==i?"":i))}}function D(n){return function(t){if(this.l){var e=this.l[t.type+n];if(t[a]==g)t[a]=p++;else if(t[a]<e[h])return;return e(i.event?i.event(t):t)}}}function E(n,t,e,r,f,o,u,c,s,a){var h,l,p,y,v,d,w,_,b,x,$,C,A,H,L,F,z=t.type;if(t.constructor!==m)return g;128&e.__u&&(s=!!(32&e.__u),o=[c=t.__e=e.__e]),(h=i.__b)&&h(t);n:if("function"==typeof z){l=u.length;try{if(b=t.props,x=z.prototype&&z.prototype.render,$=(h=z.contextType)&&r[h.__c],C=h?$?$.props.value:h.__:r,e.__c?_=(p=t.__c=e.__c).__=p.__E:(x?t.__c=p=new z(b,C):(t.__c=p=new P(b,C),p.constructor=z,p.render=W),$&&$.sub(p),p.state||(p.state={}),p.__n=r,y=p.__d=!0,p.__h=[],p._sb=[]),x&&p.__s==g&&(p.__s=p.state),x&&z.getDerivedStateFromProps!=g&&(p.__s==p.state&&(p.__s=S({},p.__s)),S(p.__s,z.getDerivedStateFromProps(b,p.__s))),v=p.props,d=p.state,p.__v=t,y)x&&z.getDerivedStateFromProps==g&&p.componentWillMount!=g&&p.componentWillMount(),x&&p.componentDidMount!=g&&p.__h.push(p.componentDidMount);else{if(x&&z.getDerivedStateFromProps==g&&b!==v&&p.componentWillReceiveProps!=g&&p.componentWillReceiveProps(b,C),t.__v==e.__v||!p.__e&&p.shouldComponentUpdate!=g&&!1===p.shouldComponentUpdate(b,p.__s,C)){t.__v!=e.__v&&(p.props=b,p.state=p.__s,p.__d=!1),t.__e=e.__e,t.__k=e.__k,t.__k.some(function(n){n&&(n.__=t)}),k.push.apply(p.__h,p._sb),p._sb=[],p.__h.length&&u.push(p),c=j(e);break n}p.componentWillUpdate!=g&&p.componentWillUpdate(b,p.__s,C),x&&p.componentDidUpdate!=g&&p.__h.push(function(){p.componentDidUpdate(v,d,w)})}if(p.context=C,p.props=b,p.__P=n,p.__e=!1,A=i.__r,H=0,x)p.state=p.__s,p.__d=!1,A&&A(t),h=p.render(p.props,p.state,p.context),k.push.apply(p.__h,p._sb),p._sb=[];else do{p.__d=!1,A&&A(t),h=p.render(p.props,p.state,p.context),p.state=p.__s}while(p.__d&&++H<25);p.state=p.__s,p.getChildContext!=g&&(r=S(S({},r),p.getChildContext())),x&&!y&&p.getSnapshotBeforeUpdate!=g&&(w=p.getSnapshotBeforeUpdate(v,d)),L=h!=g&&h.type===I&&h.key==g?K(h.props.children):h,c=O(n,M(L)?L:[L],t,e,r,f,o,u,c,s,a),p.base=t.__e,t.__u&=-161,p.__h.length&&u.push(p),_&&(p.__E=p.__=g)}catch(n){if(u.length=l,t.__v=g,s||o!=g){if(n.then){for(t.__u|=s?160:128;c&&8==c.nodeType&&c.nextSibling;)c=c.nextSibling;o!=g&&(o[o.indexOf(c)]=g),t.__e=c}else if(o!=g)for(F=o.length;F--;)T(o[F])}else t.__e=e.__e;t.__k==g&&(t.__k=e.__k||[]),n.then||G(t),i.__e(n,t,e)}}else o==g&&t.__v==e.__v?(t.__k=e.__k,t.__e=e.__e):c=t.__e=Q(e.__e,t,e,r,f,o,u,s,a);return(h=i.diffed)&&h(t),128&t.__u?void 0:c}function G(n){n&&(n.__c&&(n.__c.__e=!0),n.__k&&n.__k.some(G))}function J(n,t,e){for(var r=0;r<e.length;r++)R(e[r],e[++r],e[++r]);i.__c&&i.__c(t,n),n.some(function(t){try{n=t.__h,t.__h=[],n.some(function(n){n.call(t)})}catch(n){i.__e(n,t.__v)}})}function K(n){return"object"!=typeof n||n==g||n.__b>0?n:M(n)?n.map(K):n.constructor!==m?null:S({},n)}function Q(n,e,r,f,o,u,c,s,a){var h,l,p,y,v,d,k,x=r.props||b,S=e.props,$=e.type;if("svg"==$?o=w:"math"==$?o="http://www.w3.org/1998/Math/MathML":o||(o=_),u!=g)for(h=0;h<u.length;h++)if((v=u[h])&&"setAttribute"in v==!!$&&($?v.localName==$:3==v.nodeType)){n=v,u[h]=g;break}if(n==g){if($==g)return document.createTextNode(S);n=document.createElementNS(o,$,S.is&&S),s&&(i.__m&&i.__m(e,u),s=!1),u=g}if($==g)x===S||s&&n.data==S||(n.data=S);else{if(u="textarea"==$&&S.defaultValue!=g?g:u&&t.call(n.childNodes),!s&&u!=g)for(x={},h=0;h<n.attributes.length;h++)x[(v=n.attributes[h]).name]=v.value;for(h in x)v=x[h],"dangerouslySetInnerHTML"==h?p=v:"children"==h||h in S||"value"==h&&"defaultValue"in S||"checked"==h&&"defaultChecked"in S||B(n,h,g,v,o);for(h in S)v=S[h],"children"==h?y=v:"dangerouslySetInnerHTML"==h?l=v:"value"==h?d=v:"checked"==h?k=v:s&&"function"!=typeof v||x[h]===v||B(n,h,v,x[h],o);if(l)s||p&&(l.__html==p.__html||l.__html==n.innerHTML)||(n.innerHTML=l.__html),e.__k=[];else if(p&&(n.innerHTML=""),O("template"==e.type?n.content:n,M(y)?y:[y],e,r,f,"foreignObject"==$?_:o,u,c,u?u[0]:r.__k&&j(r,0),s,a),u!=g)for(h=u.length;h--;)T(u[h]);s&&"textarea"!=$||(h="value","progress"==$&&d==g?n.removeAttribute("value"):d!=m&&(d!==n[h]||"progress"==$&&!d||"option"==$&&d!=x[h])&&B(n,h,d,x[h],o),h="checked",k!=m&&k!=n[h]&&B(n,h,k,x[h],o))}return n}function R(n,t,e){try{if("function"==typeof n){var r="function"==typeof n.__u;r&&n.__u(),r&&t==g||(n.__u=n(t))}else n.current=t}catch(n){i.__e(n,e)}}function U(n,t,e){var r,f;if(i.unmount&&i.unmount(n),(r=n.ref)&&(r.current&&r.current!=n.__e||R(r,g,t)),(r=n.__c)!=g){if(r.componentWillUnmount)try{r.componentWillUnmount()}catch(n){i.__e(n,t)}r.base=r.__P=r.__n=g}if(r=n.__k)for(f=0;f<r.length;f++)r[f]&&U(r[f],t,e||"function"!=typeof n.type);e||T(n.__e),n.__c=n.__=n.__e=m}function W(n,t,i){return this.constructor(n,i)}function X(n,e,r){var f,o,u,c;e==document&&(e=document.documentElement),i.__&&i.__(n,e),o=(f="function"==typeof r)?g:r&&r.__k||e.__k,u=[],c=[],E(e,n=(!f&&r||e).__k=$(I,g,[n]),o||b,b,e.namespaceURI,!f&&r?[r]:o?g:e.firstChild?t.call(e.childNodes):g,u,!f&&r?r:o?o.__e:e.firstChild,f,c),J(u,n,c),n.props.children=g}t=k.slice,i={__e:function(n,t,i,e){for(var r,f,o;t=t.__;)if((r=t.__c)&&!r.__)try{if((f=r.constructor)&&f.getDerivedStateFromError!=g&&(r.setState(f.getDerivedStateFromError(n)),o=r.__d),r.componentDidCatch!=g&&(r.componentDidCatch(n,e||{}),o=r.__d),o)return r.__E=r}catch(t){n=t}throw n}},e=0,r=function(n){return n!=g&&n.constructor===m},P.prototype.setState=function(n,t){var i;i=this.__s!=g&&this.__s!=this.state?this.__s:this.__s=S({},this.state),"function"==typeof n&&(n=n(S({},i),this.props)),n&&S(i,n),n!=g&&this.__v&&(t&&this._sb.push(t),L(this))},P.prototype.forceUpdate=function(n){this.__v&&(this.__e=!0,n&&this.__h.push(n),L(this))},P.prototype.render=I,f=[],u="function"==typeof Promise?Promise.prototype.then.bind(Promise.resolve()):setTimeout,c=function(n,t){return n.__v.__b-t.__v.__b},F.__r=0,s=Math.random().toString(8),a="__d"+s,h="__a"+s,l=/(PointerCapture)$|Capture$/i,p=0,y=D(!1),v=D(!0),d=0,n.Component=P,n.Fragment=I,n.cloneElement=function(n,i,e){var r,f,o,u,c=S({},n.props);for(o in n.type&&n.type.defaultProps&&(u=n.type.defaultProps),i)"key"==o?r=i[o]:"ref"==o?f=i[o]:c[o]=i[o]===m&&u!=m?u[o]:i[o];return arguments.length>2&&(c.children=arguments.length>3?t.call(arguments,2):e),C(n.type,c,r||n.key,f||n.ref,g)},n.createContext=function(n){function t(n){var i,e;return this.getChildContext||(i=new Set,(e={})[t.__c]=this,this.getChildContext=function(){return e},this.componentWillUnmount=function(){i=g},this.shouldComponentUpdate=function(n){this.props.value!=n.value&&i.forEach(function(n){n.__e=!0,L(n)})},this.sub=function(n){i.add(n);var t=n.componentWillUnmount;n.componentWillUnmount=function(){i&&i.delete(n),t&&t.call(n)}}),n.children}return t.__c="__cC"+d++,t.__=n,t.Provider=t.__l=(t.Consumer=function(n,t){return n.children(t)}).contextType=t,t},n.createElement=$,n.createRef=function(){return{current:g}},n.h=$,n.hydrate=function n(t,i){X(t,i,n)},n.isValidElement=r,n.options=i,n.render=X,n.toChildArray=function n(t,i){return i=i||[],t==g||"boolean"==typeof t||(M(t)?t.some(function(t){n(t,i)}):i.push(t)),i}});
+
+!function(n,t){"object"==typeof exports&&"undefined"!=typeof module?t(exports,require("preact")):"function"==typeof define&&define.amd?define(["exports","preact"],t):t((n||self).preactHooks={},n.preact)}(this,function(n,t){var u,i,r,o,f=0,c=[],e=t.options,a=e.__b,v=e.__r,l=e.diffed,d=e.__c,p=e.unmount,s=e.__;function y(n,t){e.__h&&e.__h(i,n,f||t),f=0;var u=i.__H||(i.__H={__:[],__h:[]});return n>=u.__.length&&u.__.push({}),u.__[n]}function h(n){return f=1,m(j,n)}function m(n,t,r){var o=y(u++,2);if(o.t=n,!o.__c&&(o.__=[r?r(t):j(void 0,t),function(n){var t=o.__N?o.__N[0]:o.__[0],u=o.t(t,n);t!==u&&(o.__N=[u,o.__[1]],o.__c.setState({}))}],o.__c=i,!i.__f)){var f=function(n,t,u){if(!o.__c.__H)return!0;var i=!1,r=o.__c.props!==n;if(o.__c.__H.__.some(function(n){if(n.__N){i=!0;var t=n.__[0];n.__=n.__N,n.__N=void 0,t!==n.__[0]&&(r=!0)}}),c){var f=c.call(this,n,t,u);return i?f||r:f}return!i||r};i.__f=!0;var c=i.shouldComponentUpdate,e=i.componentWillUpdate;i.componentWillUpdate=function(n,t,u){if(this.__e){var i=c;c=void 0,f(n,t,u),c=i}e&&e.call(this,n,t,u)},i.shouldComponentUpdate=f}return o.__N||o.__}function T(n,t){var r=y(u++,4);!e.__s&&g(r.__H,t)&&(r.__=n,r.u=t,i.__h.push(r))}function _(n,t){var i=y(u++,7);return g(i.__H,t)&&(i.__=n(),i.__H=t,i.__h=n),i.__}function b(){for(var n;n=c.shift();){var t=n.__H;if(n.__P&&t)try{t.__h.some(A),t.__h.some(F),t.__h=[]}catch(u){t.__h=[],e.__e(u,n.__v)}}}e.__b=function(n){i=null,a&&a(n)},e.__=function(n,t){n&&t.__k&&t.__k.__m&&(n.__m=t.__k.__m),s&&s(n,t)},e.__r=function(n){v&&v(n),u=0;var t=(i=n.__c).__H;t&&(r===i?(t.__h=[],i.__h=[],t.__.some(function(n){n.__N&&(n.__=n.__N),n.u=n.__N=void 0})):(t.__h.some(A),t.__h.some(F),t.__h=[],u=0)),r=i},e.diffed=function(n){l&&l(n);var t=n.__c;t&&t.__H&&(t.__H.__h.length&&(1!==c.push(t)&&o===e.requestAnimationFrame||((o=e.requestAnimationFrame)||x)(b)),t.__H.__.some(function(n){n.u&&(n.__H=n.u,n.u=void 0)})),r=i=null},e.__c=function(n,t){t.some(function(n){try{n.__h.some(A),n.__h=n.__h.filter(function(n){return!n.__||F(n)})}catch(u){t.some(function(n){n.__h&&(n.__h=[])}),t=[],e.__e(u,n.__v)}}),d&&d(n,t)},e.unmount=function(n){p&&p(n);var t,u=n.__c;u&&u.__H&&(u.__H.__.some(function(n){try{A(n)}catch(n){t=n}}),u.__H=void 0,t&&e.__e(t,u.__v))};var q="function"==typeof requestAnimationFrame;function x(n){var t,u=function(){clearTimeout(i),q&&cancelAnimationFrame(t),setTimeout(n)},i=setTimeout(u,35);q&&(t=requestAnimationFrame(u))}function A(n){var t=i,u=n.__c;"function"==typeof u&&(n.__c=void 0,u()),i=t}function F(n){var t=i;n.__c=n.__(),i=t}function g(n,t){return!n||n.length!==t.length||t.some(function(t,u){return t!==n[u]})}function j(n,t){return"function"==typeof t?t(n):t}n.useCallback=function(n,t){return f=8,_(function(){return n},t)},n.useContext=function(n){var t=i.context[n.__c],r=y(u++,9);return r.c=n,t?(null==r.__&&(r.__=!0,t.sub(i)),t.props.value):n.__},n.useDebugValue=function(n,t){e.useDebugValue&&e.useDebugValue(t?t(n):n)},n.useEffect=function(n,t){var r=y(u++,3);!e.__s&&g(r.__H,t)&&(r.__=n,r.u=t,i.__H.__h.push(r))},n.useErrorBoundary=function(n){var t=y(u++,10),r=h();return t.__=n,i.componentDidCatch||(i.componentDidCatch=function(n,u){t.__&&t.__(n,u),r[1](n)}),[r[0],function(){r[1](void 0)}]},n.useId=function(){var n=y(u++,11);if(!n.__){for(var t=i.__v;null!==t&&!t.__m&&null!==t.__;)t=t.__;var r=t.__m||(t.__m=[0,0]);n.__="P"+r[0]+"-"+r[1]++}return n.__},n.useImperativeHandle=function(n,t,u){f=6,T(function(){if("function"==typeof n){var u=n(t());return function(){n(null),u&&"function"==typeof u&&u()}}if(n)return n.current=t(),function(){return n.current=null}},null==u?u:u.concat(n))},n.useLayoutEffect=T,n.useMemo=_,n.useReducer=m,n.useRef=function(n){return f=5,_(function(){return{current:n}},[])},n.useState=h});
+
+!function(n,e){"object"==typeof exports&&"undefined"!=typeof module?module.exports=e():"function"==typeof define&&define.amd?define(e):n.htm=e()}(this,function(){var n=function(e,t,u,s){var r;t[0]=0;for(var p=1;p<t.length;p++){var h=t[p++],o=t[p]?(t[0]|=h?1:2,u[t[p++]]):t[++p];3===h?s[0]=o:4===h?s[1]=Object.assign(s[1]||{},o):5===h?(s[1]=s[1]||{})[t[++p]]=o:6===h?s[1][t[++p]]+=o+"":h?(r=e.apply(o,n(e,o,u,["",null])),s.push(r),o[0]?t[0]|=2:(t[p-2]=0,t[p]=r)):s.push(o)}return s},e=new Map;return function(t){var u=e.get(this);return u||(u=new Map,e.set(this,u)),(u=n(this,u.get(t)||(u.set(t,u=function(n){for(var e,t,u=1,s="",r="",p=[0],h=function(n){1===u&&(n||(s=s.replace(/^\s*\n\s*|\s*\n\s*$/g,"")))?p.push(0,n,s):3===u&&(n||s)?(p.push(3,n,s),u=2):2===u&&"..."===s&&n?p.push(4,n,0):2===u&&s&&!n?p.push(5,0,!0,s):u>=5&&((s||!n&&5===u)&&(p.push(u,0,s,t),u=6),n&&(p.push(u,n,0,t),u=6)),s=""},o=0;o<n.length;o++){o&&(1===u&&h(),h(o));for(var f=0;f<n[o].length;f++)e=n[o][f],1===u?"<"===e?(h(),p=[p],u=3):s+=e:4===u?"--"===s&&">"===e?(u=1,s=""):s=e+s[0]:r?e===r?r="":s+=e:'"'===e||"'"===e?r=e:">"===e?(h(),u=1):u&&("="===e?(u=5,t=s,s=""):"/"===e&&(u<5||">"===n[o][f+1])?(h(),3===u&&(p=p[0]),u=p,(p=p[0]).push(2,0,u),u=0):" "===e||"\t"===e||"\n"===e||"\r"===e?(h(),u=2):s+=e),3===u&&"!--"===s&&(u=4,p=p[0])}return h(),p}(t)),u),arguments,[])).length>1?u:u[0]}});
+
+    </script>
+
+    <script>
+        // --- 1. Setup ---
+        const { h, render } = preact;
+        const { useState, useEffect, useRef } = preactHooks;
+        const html = htm.bind(h);
+
+        // --- 2. Icons (path data from Lucide) ---
+        const ICONS = {
+            Clock: "M12 6v6l4 2 M22 12A10 10 0 1 1 12 2a10 10 0 0 1 10 10z",
+            AlertTriangle: "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01",
+            CheckCircle: "M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3",
+            PartyPopper: "M5.8 11.3 2 22l10.7-3.79 M4 3h.01 M22 8h.01 M15 2h.01 M22 20h.01 M22 2l-2.24.75a2.9 2.9 0 0 0-1.96 3v0a2.9 2.9 0 0 0 1.96 3L22 9.5V2z M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2z",
+            GripVertical: "M9 12h1 M9 5h1 M9 19h1 M15 12h1 M15 5h1 M15 19h1",
+            ArrowUp: "M12 19V5 M5 12l7-7 7 7",
+            ArrowDown: "M12 5v14 M19 12l-7 7-7-7",
+            Trash2: "M3 6h18 M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6 M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2 M10 11v6 M14 11v6",
+            Play: "M5 3l14 9-14 9V3z",
+            Pause: "M6 4h4v16H6z M14 4h4v16h-4z",
+            Check: "M20 6L9 17l-5-5",
+            RotateCcw: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5",
+            Plus: "M12 5v14 M5 12h14",
+            X: "M18 6L6 18 M6 6l12 12",
+            Info: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 16v-4 M12 8h.01",
+            Bell: "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9 M10.3 21a1.94 1.94 0 0 0 3.4 0",
+            BellOff: "M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5 M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7 M10.3 21a1.94 1.94 0 0 0 3.4 0 M2 2l20 20",
+            Bookmark: "M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z",
+            Download: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3",
+            Upload: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M17 8l-5-5-5 5 M12 3v12",
+            ChevronDown: "M6 9l6 6 6-6"
+        };
+
+        const Icon = ({ name, size = 20, className = '' }) => html`
+            <svg class=${'icon ' + className} width=${size} height=${size} viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d=${ICONS[name]} />
+            </svg>`;
+
+        // --- 3. Time + formatting helpers ---
+        const MIN = 60 * 1000;
+        const HOUR = 60 * MIN;
+        const MAX_MINS = 24 * 60;
+        const STORAGE_KEY = 'deadlinePlannerData_v3';
+        const ALERTS_KEY = 'deadlinePlannerFiredAlerts_v1';
+        const TEMPLATES_KEY = 'deadlinePlannerTemplates_v1';
+
+        const pad = (n) => n.toString().padStart(2, '0');
+        const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+        const sameId = (a, b) => String(a) === String(b);
+        const clampMins = (v) => {
+            const n = Math.round(Number(v));
+            return Number.isFinite(n) ? Math.min(MAX_MINS, Math.max(0, n)) : 0;
+        };
+
+        // Default to the device's 12/24-hour preference; the setting in the alerts panel overrides it.
+        const prefers12h = (() => {
+            try {
+                const hc = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hourCycle;
+                if (hc) return hc === 'h12' || hc === 'h11';
+                return /am|pm/i.test(new Date(2020, 0, 1, 13).toLocaleTimeString());
+            } catch (e) { return false; }
+        })();
+        let use12h = prefers12h; // updated from state on every render
+
+        const timeParts = (ms) => {
+            const d = new Date(ms);
+            const hh = d.getHours(), mm = pad(d.getMinutes());
+            if (!use12h) return { hm: `${pad(hh)}:${mm}`, suffix: '' };
+            return { hm: `${hh % 12 || 12}:${mm}`, suffix: hh < 12 ? 'AM' : 'PM' };
+        };
+        const fmtTime = (ms) => { const p = timeParts(ms); return p.suffix ? `${p.hm} ${p.suffix}` : p.hm; };
+        const toTimeInput = (ms) => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+        const fmtClockStr = (hhmm) => { const [hh, mm] = hhmm.split(':').map(Number); return fmtTime(new Date(2020, 0, 1, hh, mm).getTime()); };
+
+        const fmtDur = (mins) => {
+            const m = Math.round(Math.abs(mins));
+            if (m < 60) return `${m}m`;
+            return m % 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m / 60}h`;
+        };
+        const fmtSigned = (mins) => mins === 0 ? '0m' : `${mins > 0 ? '+' : '−'}${fmtDur(mins)}`;
+        const toMins = (ms) => Math.round(ms / MIN);
+
+        // Positive = early (credit), negative = late.
+        const earlyLate = (mins) => mins === 0 ? 'on time' : `${fmtDur(mins)} ${mins > 0 ? 'early' : 'late'}`;
+
+        // Pick the occurrence of HH:MM nearest to now (6h back to 18h ahead), so a 01:00
+        // deadline set at 23:00 lands tomorrow instead of 22 hours in the past.
+        const resolveDeadline = (timeStr, nowMs) => {
+            const [h, m] = timeStr.split(':').map(Number);
+            const d = new Date(nowMs);
+            d.setHours(h, m, 0, 0);
+            if (d.getTime() < nowMs - 6 * HOUR) d.setDate(d.getDate() + 1);
+            else if (d.getTime() > nowMs + 18 * HOUR) d.setDate(d.getDate() - 1);
+            return d.getTime();
+        };
+        const isStale = (deadlineAt, nowMs) => deadlineAt < nowMs - 12 * HOUR;
+
+        const dayOffset = (ms, nowMs) => {
+            const d = new Date(ms); d.setHours(0, 0, 0, 0);
+            const t = new Date(nowMs); t.setHours(0, 0, 0, 0);
+            return Math.round((d - t) / (24 * HOUR));
+        };
+        const dayLabel = (ms, nowMs) => {
+            const days = dayOffset(ms, nowMs);
+            if (days === 0) return '';
+            if (days === 1) return 'tomorrow';
+            if (days === -1) return 'yesterday';
+            return new Date(ms).toLocaleDateString(undefined, { weekday: 'short' });
+        };
+        // Time plus a short day tag when it isn't today, e.g. "12:30 AM tmrw".
+        const fmtWhen = (ms, nowMs) => {
+            const days = dayOffset(ms, nowMs);
+            const tag = days === 0 ? '' : days === 1 ? 'tmrw' : days === -1 ? 'yest'
+                : new Date(ms).toLocaleDateString(undefined, { weekday: 'short' });
+            return tag ? `${fmtTime(ms)} ${tag}` : fmtTime(ms);
+        };
+
+        // --- 4. Task model ---
+        // status: pending | active | completed. A pending step with spentMs > 0 is paused.
+        // startedAt: start of the current run (active only). spentMs: time from earlier runs.
+        // firstStartedAt: first time it was started. completedAt, dueBy (its gate at that moment),
+        // actualMs (total time spent; unknown if marked done without timing).
+        const stepName = (t) => t.name || 'Untitled step';
+        const remainingMs = (t) => Math.max(0, t.duration * MIN - (t.spentMs || 0));
+        const freshTask = ({ id, name, duration }) => ({ id, name, duration, status: 'pending' });
+        const pauseOf = (t, now) => {
+            const { startedAt, ...rest } = t;
+            return { ...rest, status: 'pending', spentMs: (t.spentMs || 0) + Math.max(0, now - (startedAt ?? now)) };
+        };
+        const DEFAULT_TASKS = () => [
+            { id: 1, name: "Research", duration: 30, status: "pending" },
+            { id: 2, name: "Drafting", duration: 45, status: "pending" },
+            { id: 3, name: "Review", duration: 15, status: "pending" }
+        ];
+
+        const sanitizeTasks = (list, nowMs) => {
+            if (!Array.isArray(list)) return null;
+            const ids = new Set();
+            let seenActive = false;
+            return list.filter(t => t && typeof t === 'object').map((t, i) => {
+                let id = t.id ?? `${nowMs.toString(36)}-${i}`;
+                if (ids.has(String(id))) id = `${id}-${i}`;
+                ids.add(String(id));
+                const task = {
+                    id,
+                    name: typeof t.name === 'string' ? t.name : '',
+                    duration: clampMins(t.duration),
+                    status: ['pending', 'active', 'completed'].includes(t.status) ? t.status : 'pending'
+                };
+                if (Number.isFinite(t.spentMs) && t.spentMs > 0) task.spentMs = t.spentMs;
+                if (Number.isFinite(t.firstStartedAt)) task.firstStartedAt = t.firstStartedAt;
+                if (task.status === 'active') {
+                    if (seenActive) {
+                        task.status = 'pending';
+                    } else {
+                        seenActive = true;
+                        // Older saves have no start times; treat an active step as started now.
+                        task.startedAt = Number.isFinite(t.startedAt) ? t.startedAt : nowMs;
+                        task.firstStartedAt = task.firstStartedAt ?? task.startedAt;
+                    }
+                }
+                if (task.status === 'completed') {
+                    if (Number.isFinite(t.completedAt)) task.completedAt = t.completedAt;
+                    if (Number.isFinite(t.dueBy)) task.dueBy = t.dueBy;
+                    if (Number.isFinite(t.actualMs)) task.actualMs = t.actualMs;
+                    else if (Number.isFinite(t.startedAt) && Number.isFinite(t.completedAt)) task.actualMs = t.completedAt - t.startedAt;
+                    if (task.firstStartedAt == null && Number.isFinite(t.startedAt)) task.firstStartedAt = t.startedAt;
+                    delete task.spentMs;
+                }
+                return task;
+            });
+        };
+
+        const sanitizeTemplate = (t) => {
+            if (!t || typeof t !== 'object' || !Array.isArray(t.steps)) return null;
+            return {
+                id: String(t.id || uid()),
+                name: String(t.name || 'Untitled plan').trim().slice(0, 80) || 'Untitled plan',
+                deadline: typeof t.deadline === 'string' && /^\d{2}:\d{2}$/.test(t.deadline) ? t.deadline : null,
+                buffer: clampMins(t.buffer ?? 10),
+                steps: t.steps.filter(s => s && typeof s === 'object')
+                    .map(s => ({ name: typeof s.name === 'string' ? s.name : '', duration: clampMins(s.duration) }))
+            };
+        };
+
+        // --- 5. Storage ---
+        const readJSON = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } };
+
+        const normalizeSaved = (parsed, nowMs) => {
+            const s = {
+                deadlineAt: null, buffer: 10, tasks: DEFAULT_TASKS(), alertEpoch: 0,
+                alertsOn: false, soundOn: false, keepAwake: true, hour12: prefers12h
+            };
+            if (parsed && typeof parsed === 'object') {
+                if (Number.isFinite(parsed.deadlineAt)) s.deadlineAt = parsed.deadlineAt;
+                else if (typeof parsed.deadline === 'string' && /^\d{2}:\d{2}$/.test(parsed.deadline)) s.deadlineAt = resolveDeadline(parsed.deadline, nowMs);
+                if (Number.isFinite(parsed.buffer)) s.buffer = clampMins(parsed.buffer);
+                if (Number.isFinite(parsed.alertEpoch)) s.alertEpoch = parsed.alertEpoch;
+                s.alertsOn = !!parsed.alertsOn;
+                s.soundOn = !!parsed.soundOn;
+                if (typeof parsed.keepAwake === 'boolean') s.keepAwake = parsed.keepAwake;
+                if (typeof parsed.hour12 === 'boolean') s.hour12 = parsed.hour12;
+                const tasks = sanitizeTasks(parsed.tasks, nowMs);
+                if (tasks) s.tasks = tasks;
+            }
+            if (!s.deadlineAt) s.deadlineAt = resolveDeadline('17:00', nowMs);
+            return s;
+        };
+
+        const loadSaved = () => {
+            const nowMs = Date.now();
+            const s = normalizeSaved(readJSON(STORAGE_KEY), nowMs);
+            s.rolledOver = false;
+            // Left over from an earlier day: move the deadline to its next occurrence and clear old progress.
+            if (isStale(s.deadlineAt, nowMs)) {
+                s.rolledOver = s.tasks.some(t => t.status !== 'pending' || t.spentMs);
+                s.deadlineAt = resolveDeadline(toTimeInput(s.deadlineAt), nowMs);
+                s.tasks = s.tasks.map(freshTask);
+            }
+            return s;
+        };
+
+        const loadFired = () => { const arr = readJSON(ALERTS_KEY); return new Set(Array.isArray(arr) ? arr : []); };
+        const saveFired = (set) => { try { localStorage.setItem(ALERTS_KEY, JSON.stringify([...set].slice(-100))); } catch (e) {} };
+        const loadTemplates = () => { const arr = readJSON(TEMPLATES_KEY); return Array.isArray(arr) ? arr.map(sanitizeTemplate).filter(Boolean) : []; };
+
+        const ROLLOVER_TOAST = { kind: 'info', title: 'Fresh start', body: "Progress from the last run was cleared and the deadline moved to its next occurrence." };
+
+        // --- 6. Notifications, sound, vibration ---
+        // Optional service worker (plan-sw.js next to this file): offline reopening, and the only way phones
+        // show system notifications. Without it the app still works; alerts stay in-app.
+        // Only available over http(s), not file://. It's told this page's file name so it can cache it,
+        // and scoped to this page alone: by default it would claim the whole folder, which on zbcad.com
+        // is the whole site, and serve every other tool from its cache.
+        const canUseSW = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol);
+        if (canUseSW) {
+            const page = location.pathname.split('/').pop() || './';
+            navigator.serviceWorker.register('plan-sw.js?app=' + encodeURIComponent(page), { scope: page }).catch(() => {});
+        }
+        const APP_ICON = document.querySelector('link[rel="apple-touch-icon"]')?.href;
+
+        // The registration with a running worker, or null. Doesn't wait on `ready`, which never resolves
+        // if the worker failed to install.
+        const activeRegistration = async () => {
+            if (!canUseSW) return null;
+            try {
+                const reg = await navigator.serviceWorker.getRegistration();
+                return reg && reg.active ? reg : null;
+            } catch (e) { return null; }
+        };
+
+        const notifState = () => ('Notification' in window) ? Notification.permission : 'unsupported';
+
+        const showSystemNotification = async (title, body) => {
+            if (notifState() !== 'granted') return;
+            const opts = { body, tag: 'deadline-planner', renotify: true, icon: APP_ICON };
+            try {
+                const reg = await activeRegistration();
+                if (reg) await reg.showNotification(title, opts);
+                else new Notification(title, opts); // desktop without a worker; throws on Android (caught)
+            } catch (e) {}
+        };
+
+        // Web Audio beep. Browsers only allow audio after a tap, so the context is unlocked on taps.
+        let audioCtx = null;
+        let soundWanted = false; // updated from state on every render
+        const unlockAudio = () => {
+            try {
+                if (!audioCtx) {
+                    const AC = window.AudioContext || window.webkitAudioContext;
+                    if (!AC) return;
+                    audioCtx = new AC();
+                }
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+            } catch (e) {}
+        };
+        ['click', 'touchend', 'keydown'].forEach(ev =>
+            document.addEventListener(ev, () => { if (soundWanted) unlockAudio(); }, true));
+        const beep = () => {
+            try {
+                if (!audioCtx) return;
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const t0 = audioCtx.currentTime + 0.01;
+                [0, 0.22].forEach(offset => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = 880;
+                    gain.gain.setValueAtTime(0.0001, t0 + offset);
+                    gain.gain.exponentialRampToValueAtTime(0.3, t0 + offset + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + offset + 0.18);
+                    osc.connect(gain).connect(audioCtx.destination);
+                    osc.start(t0 + offset);
+                    osc.stop(t0 + offset + 0.2);
+                });
+            } catch (e) {}
+        };
+
+        // System notification only when the app isn't on screen; the in-app toast covers the visible case.
+        const fireAlert = (alert, soundOn) => {
+            if (document.visibilityState !== 'visible') showSystemNotification(alert.title, alert.body);
+            if (soundOn) beep();
+            try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch (e) {}
+        };
+
+        // --- 7. Small components ---
+        // Keeps the raw text while the field is focused, so it can be emptied or hold a half-typed value.
+        // `onValue` gets every edit and decides whether it's valid; on blur the field shows the saved value again.
+        const DraftInput = ({ value, onValue, ...rest }) => {
+            const [draft, setDraft] = useState(null);
+            return html`<input ...${rest} value=${draft ?? String(value)}
+                onFocus=${() => setDraft(String(value))}
+                onInput=${(e) => { setDraft(e.target.value); onValue(e.target.value); }}
+                onBlur=${() => setDraft(null)} />`;
+        };
+
+        const Switch = ({ on, onToggle, label, sub, subClass = '', disabled = false }) => html`
+            <button class="switch-row" role="switch" aria-label=${label} aria-checked=${on ? 'true' : 'false'} onClick=${onToggle} disabled=${disabled}>
+                <span class="switch-text">
+                    <span class="switch-label">${label}</span>
+                    ${sub && html`<span class=${'switch-sub ' + subClass}>${sub}</span>`}
+                </span>
+                <span class=${'switch' + (on ? ' on' : '')} aria-hidden="true"><span class="knob"></span></span>
+            </button>`;
+
+        // --- 8. App ---
+        const App = () => {
+            const [initial] = useState(loadSaved);
+            const [deadlineAt, setDeadlineAt] = useState(initial.deadlineAt);
+            const [buffer, setBuffer] = useState(initial.buffer);
+            const [tasks, setTasks] = useState(initial.tasks);
+            const [alertEpoch, setAlertEpoch] = useState(initial.alertEpoch);
+            const [alertsOn, setAlertsOn] = useState(initial.alertsOn);
+            const [soundOn, setSoundOn] = useState(initial.soundOn);
+            const [keepAwake, setKeepAwake] = useState(initial.keepAwake);
+            const [hour12, setHour12] = useState(initial.hour12);
+            const [templates, setTemplates] = useState(loadTemplates);
+            const [nowMs, setNowMs] = useState(Date.now());
+            const [dragId, setDragId] = useState(null);
+            const [toast, setToast] = useState(initial.rolledOver ? ROLLOVER_TOAST : null);
+            const [undo, setUndo] = useState(null);
+            const [confirmReset, setConfirmReset] = useState(false);
+            const [panelOpen, setPanelOpen] = useState(false);
+            const [plansOpen, setPlansOpen] = useState(false);
+            const [notif, setNotif] = useState(notifState());
+            const [focusId, setFocusId] = useState(null);
+            const firedAlerts = useRef(loadFired());
+            const headerRight = useRef(null);
+            const importInput = useRef(null);
+            const wakeLock = useRef(null);
+
+            use12h = hour12;
+            soundWanted = soundOn;
+
+            // Any change that moves the gates starts a new alert epoch: alerts timed before it are skipped,
+            // so tapping Start or editing a duration while behind doesn't set off a pile of stale alerts.
+            const touch = () => { const t = Date.now(); setAlertEpoch(t); setNowMs(t); };
+
+            // --- Persistence + sync between tabs ---
+            useEffect(() => {
+                const json = JSON.stringify({ v: 4, deadlineAt, buffer, tasks, alertEpoch, alertsOn, soundOn, keepAwake, hour12 });
+                try { if (localStorage.getItem(STORAGE_KEY) !== json) localStorage.setItem(STORAGE_KEY, json); } catch (e) {}
+            }, [deadlineAt, buffer, tasks, alertEpoch, alertsOn, soundOn, keepAwake, hour12]);
+
+            useEffect(() => {
+                const json = JSON.stringify(templates);
+                try { if (localStorage.getItem(TEMPLATES_KEY) !== json) localStorage.setItem(TEMPLATES_KEY, json); } catch (e) {}
+            }, [templates]);
+
+            useEffect(() => {
+                const onStorage = (e) => {
+                    if (e.storageArea !== localStorage) return;
+                    if (e.key === STORAGE_KEY && e.newValue) {
+                        try {
+                            const s = normalizeSaved(JSON.parse(e.newValue), Date.now());
+                            setDeadlineAt(s.deadlineAt); setBuffer(s.buffer); setTasks(s.tasks); setAlertEpoch(s.alertEpoch);
+                            setAlertsOn(s.alertsOn); setSoundOn(s.soundOn); setKeepAwake(s.keepAwake); setHour12(s.hour12);
+                        } catch (err) {}
+                    } else if (e.key === ALERTS_KEY) {
+                        loadFired().forEach(k => firedAlerts.current.add(k));
+                    } else if (e.key === TEMPLATES_KEY) {
+                        setTemplates(loadTemplates());
+                    }
+                };
+                window.addEventListener('storage', onStorage);
+                return () => window.removeEventListener('storage', onStorage);
+            }, []);
+
+            // --- Clock ---
+            useEffect(() => {
+                const tick = () => { setNowMs(Date.now()); setNotif(notifState()); };
+                const interval = setInterval(() => setNowMs(Date.now()), 1000);
+                document.addEventListener('visibilitychange', tick);
+                window.addEventListener('focus', tick);
+                return () => {
+                    clearInterval(interval);
+                    document.removeEventListener('visibilitychange', tick);
+                    window.removeEventListener('focus', tick);
+                };
+            }, []);
+
+            // New day while the app stayed open: same treatment as on load.
+            useEffect(() => {
+                if (!isStale(deadlineAt, nowMs)) return;
+                const hadProgress = tasks.some(t => t.status !== 'pending' || t.spentMs);
+                setDeadlineAt(resolveDeadline(toTimeInput(deadlineAt), nowMs));
+                if (hadProgress) {
+                    setTasks(ts => ts.map(freshTask));
+                    setToast(ROLLOVER_TOAST);
+                }
+                setUndo(null);
+                touch();
+            }, [nowMs, deadlineAt]);
+
+            // --- Plan: work backwards from (deadline - buffer) over the work that's left ---
+            // Remaining steps are scheduled back-to-back: the running step first, then pending steps in list
+            // order. Each gets the latest start/end that still lands the whole plan on time. With steps done in
+            // order this matches the original plan; out of order, it stays correct.
+            const finishGate = deadlineAt - buffer * MIN;
+            const activeTask = tasks.find(t => t.status === 'active');
+            const pendingTasks = tasks.filter(t => t.status === 'pending');
+            const latest = new Map();
+            {
+                let g = finishGate;
+                const remaining = [activeTask, ...pendingTasks].filter(Boolean);
+                for (let i = remaining.length - 1; i >= 0; i--) {
+                    const end = g;
+                    g -= remainingMs(remaining[i]);
+                    latest.set(String(remaining[i].id), { start: g, end });
+                }
+            }
+            const latestOf = (t) => latest.get(String(t.id));
+
+            // --- Projection: work forwards from now ---
+            const nextTask = activeTask || pendingTasks[0];
+            const isEmpty = tasks.length === 0;
+            const allDone = !isEmpty && !nextTask;
+            const hasProgress = tasks.some(t => t.status !== 'pending' || t.spentMs > 0);
+            const activeProjectedEnd = activeTask ? Math.max(nowMs, activeTask.startedAt + remainingMs(activeTask)) : null;
+
+            let projectedFinish = null;
+            if (nextTask) {
+                projectedFinish = (activeTask ? activeProjectedEnd : nowMs) + pendingTasks.reduce((s, t) => s + remainingMs(t), 0);
+            } else {
+                const finishes = tasks.map(t => t.completedAt).filter(Number.isFinite);
+                if (finishes.length) projectedFinish = Math.max(...finishes);
+            }
+
+            const bufferLeft = projectedFinish == null ? buffer : toMins(deadlineAt - projectedFinish);
+            const vsPlan = projectedFinish == null ? 0 : toMins(finishGate - projectedFinish); // positive = ahead
+            const tone = isEmpty ? 'neutral' : bufferLeft < 0 ? 'red' : (nextTask && vsPlan < 0) ? 'yellow' : 'green';
+            // Show how much of the safety buffer is intact; time beyond it is reported as "ahead of plan".
+            const bufferShown = bufferLeft < 0 ? bufferLeft : Math.min(bufferLeft, buffer);
+            const bufferClass = bufferLeft < 0 ? ' neg' : bufferLeft >= buffer ? ' pos' : ' partial';
+
+            // The gate you're working towards right now, and how long until it.
+            const gateAt = activeTask ? latestOf(activeTask).end : nextTask ? latestOf(nextTask).start : null;
+            const gateDiff = gateAt == null ? 0 : gateAt - nowMs;
+            let countdown = '', countdownClass = '';
+            if (nextTask) {
+                if (gateDiff > 0) {
+                    const left = Math.ceil(gateDiff / MIN);
+                    countdown = activeTask ? `${fmtDur(left)} left` : `in ${fmtDur(left)}`;
+                    if (left <= 5) countdownClass = ' soon';
+                } else {
+                    const over = Math.floor(-gateDiff / MIN);
+                    if (over === 0) { countdown = 'now'; countdownClass = ' soon'; }
+                    else { countdown = `${fmtDur(over)} ${activeTask ? 'over' : 'overdue'}`; countdownClass = ' over'; }
+                }
+            }
+
+            const totalMins = tasks.reduce((s, t) => s + t.duration, 0);
+            const planLine = isEmpty ? 'Add steps to build the plan'
+                : !hasProgress ? `${fmtDur(totalMins)} of steps · start by ${fmtWhen(finishGate - totalMins * MIN, nowMs)}`
+                : allDone ? `${fmtDur(totalMins)} planned`
+                : `${fmtDur(totalMins)} planned · ${fmtDur(Math.ceil((projectedFinish - nowMs) / MIN))} left`;
+
+            // --- Alerts: 5 minutes before and at the current gate, plus once when the deadline is projected to slip ---
+            const alerts = [];
+            if (activeTask) {
+                const name = stepName(activeTask);
+                const k = `${activeTask.id}-${gateAt}-${alertEpoch}`;
+                alerts.push({ key: `warn-end-${k}`, at: gateAt - 5 * MIN, title: `5 min left: ${name}`, body: `Finish by ${fmtWhen(gateAt, nowMs)} to stay on plan.` });
+                alerts.push({ key: `end-${k}`, at: gateAt, title: `Time's up: ${name}`, body: `This step was due to finish at ${fmtWhen(gateAt, nowMs)}.` });
+            } else if (nextTask) {
+                const name = stepName(nextTask);
+                const k = `${nextTask.id}-${gateAt}-${alertEpoch}`;
+                alerts.push({ key: `warn-start-${k}`, at: gateAt - 5 * MIN, title: `Up next in 5 min: ${name}`, body: `Start by ${fmtWhen(gateAt, nowMs)} to stay on plan.` });
+                alerts.push({ key: `start-${k}`, at: gateAt, title: `Start now: ${name}`, body: `This step was due to start at ${fmtWhen(gateAt, nowMs)}.` });
+            }
+            if (nextTask && bufferLeft < 0) {
+                alerts.push({ key: `late-${deadlineAt}`, at: nowMs, always: true, title: `Deadline at risk`, body: `On current pace you'll finish at ${fmtWhen(projectedFinish, nowMs)}, ${fmtDur(bufferLeft)} past the deadline.` });
+            }
+
+            useEffect(() => {
+                if (!alertsOn) return;
+                // Skip anything more than 10 minutes stale (e.g. the tab was asleep) rather than firing a backlog.
+                const isDue = (a) => a.at <= nowMs && a.at > nowMs - 10 * MIN && (a.always || a.at >= alertEpoch) && !firedAlerts.current.has(a.key);
+                if (!alerts.some(isDue)) return;
+                // Re-check against what other tabs have already fired before alerting.
+                loadFired().forEach(k => firedAlerts.current.add(k));
+                const due = alerts.filter(isDue);
+                if (!due.length) return;
+                due.forEach(a => firedAlerts.current.add(a.key));
+                saveFired(firedAlerts.current);
+                const latestAlert = due[due.length - 1];
+                fireAlert(latestAlert, soundOn);
+                setToast({ kind: 'alert', title: latestAlert.title, body: latestAlert.body });
+            });
+
+            useEffect(() => {
+                if (!toast) return;
+                const t = setTimeout(() => setToast(null), toast.kind === 'alert' ? 15000 : 8000);
+                return () => clearTimeout(t);
+            }, [toast]);
+
+            useEffect(() => {
+                if (!undo) return;
+                const t = setTimeout(() => setUndo(null), 6000);
+                return () => clearTimeout(t);
+            }, [undo]);
+
+            useEffect(() => {
+                if (!confirmReset) return;
+                const t = setTimeout(() => setConfirmReset(false), 3000);
+                return () => clearTimeout(t);
+            }, [confirmReset]);
+
+            // Keep the screen on while a step runs and alerts are on: a phone that sleeps pauses the app,
+            // and a paused app can't alert. The lock drops whenever the page is hidden, so re-request it.
+            const wantLock = alertsOn && keepAwake && !!activeTask;
+            useEffect(() => {
+                if (!wantLock || !('wakeLock' in navigator)) return;
+                let cancelled = false;
+                const acquire = async () => {
+                    if (cancelled || wakeLock.current || document.visibilityState !== 'visible') return;
+                    try {
+                        const lock = await navigator.wakeLock.request('screen');
+                        if (cancelled) { lock.release().catch(() => {}); return; }
+                        wakeLock.current = lock;
+                        lock.addEventListener('release', () => { if (wakeLock.current === lock) wakeLock.current = null; });
+                    } catch (e) {}
+                };
+                acquire();
+                document.addEventListener('visibilitychange', acquire);
+                return () => {
+                    cancelled = true;
+                    document.removeEventListener('visibilitychange', acquire);
+                    if (wakeLock.current) { wakeLock.current.release().catch(() => {}); wakeLock.current = null; }
+                };
+            }, [wantLock]);
+
+            // Close the alerts panel on an outside tap or Escape.
+            useEffect(() => {
+                if (!panelOpen) return;
+                setNotif(notifState());
+                const onDown = (e) => { if (headerRight.current && !headerRight.current.contains(e.target)) setPanelOpen(false); };
+                const onKey = (e) => { if (e.key === 'Escape') setPanelOpen(false); };
+                document.addEventListener('pointerdown', onDown);
+                document.addEventListener('keydown', onKey);
+                return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
+            }, [panelOpen]);
+
+            // Focus the name field of a step that was just added.
+            useEffect(() => {
+                if (focusId == null) return;
+                const sel = `[data-task-id="${window.CSS && CSS.escape ? CSS.escape(String(focusId)) : focusId}"] .task-name`;
+                const el = document.querySelector(sel);
+                if (el) el.focus();
+                setFocusId(null);
+            }, [focusId]);
+
+            // Status in the tab title, e.g. "12m left · Drafting · ▲ 5m ahead".
+            useEffect(() => {
+                if (isEmpty) { document.title = 'Deadline Planner'; return; }
+                if (allDone) { document.title = bufferLeft < 0 ? '✗ Finished late · Deadline Planner' : '✓ Done · Deadline Planner'; return; }
+                let status;
+                if (tone === 'red') status = `✗ late ${fmtDur(bufferLeft)}`;
+                else if (tone === 'yellow') status = `▼ ${fmtDur(vsPlan)} behind`;
+                else status = activeTask && vsPlan > 0 ? `▲ ${fmtDur(vsPlan)} ahead` : '✓ on track';
+                document.title = `${countdown} · ${stepName(nextTask)} · ${status}`;
+            });
+
+            // --- Actions: settings ---
+            const toggleAlerts = async () => {
+                if (alertsOn) return setAlertsOn(false);
+                if (notifState() === 'default') {
+                    try { await Notification.requestPermission(); } catch (e) {}
+                }
+                const st = notifState();
+                setNotif(st);
+                setAlertsOn(true);
+                setToast(st === 'granted'
+                    ? { kind: 'info', title: 'Alerts on', body: "Keep this app open. Phones pause web apps in the background, so alerts only fire while it's running." }
+                    : { kind: 'info', title: 'Alerts on (in-app only)', body: st === 'denied'
+                        ? 'Notifications are blocked for this site, so alerts show here only. Turn on Sound to hear them.'
+                        : "This browser can't show notifications here (on iPhone, add the app to your Home Screen first). Alerts show in-app; turn on Sound to hear them." });
+            };
+            const toggleSound = () => {
+                if (soundOn) return setSoundOn(false);
+                unlockAudio();
+                setSoundOn(true);
+                setTimeout(beep, 50); // test beep, and confirms audio is unlocked
+            };
+
+            const onDeadlineInput = (v) => {
+                if (!/^\d{2}:\d{2}/.test(v)) return;
+                setDeadlineAt(resolveDeadline(v.slice(0, 5), Date.now()));
+                touch();
+            };
+            const onBufferInput = (v) => {
+                const n = parseInt(v, 10);
+                if (!Number.isFinite(n)) return;
+                setBuffer(clampMins(n));
+                touch();
+            };
+
+            // First tap arms, second tap (within 3s) clears all progress and re-anchors the deadline.
+            const resetProgress = () => {
+                if (!confirmReset) return setConfirmReset(true);
+                setTasks(tasks.map(freshTask));
+                setDeadlineAt(resolveDeadline(toTimeInput(deadlineAt), Date.now()));
+                firedAlerts.current.clear();
+                saveFired(firedAlerts.current);
+                setConfirmReset(false);
+                touch();
+            };
+
+            // --- Actions: steps ---
+            const addTask = () => {
+                const id = uid();
+                setTasks([...tasks, { id, name: '', duration: 15, status: 'pending' }]);
+                setFocusId(id);
+                touch();
+            };
+            const patchTask = (id, patch) => setTasks(ts => ts.map(t => sameId(t.id, id) ? { ...t, ...patch } : t));
+            const onDurationInput = (id, v) => {
+                const n = parseInt(v, 10);
+                if (!Number.isFinite(n)) return;
+                patchTask(id, { duration: clampMins(n) });
+                touch();
+            };
+
+            const deleteTask = (id) => {
+                const index = tasks.findIndex(t => sameId(t.id, id));
+                if (index < 0) return;
+                const task = tasks[index];
+                setTasks(tasks.filter((_, i) => i !== index));
+                setUndo({ kind: 'delete', label: `Deleted “${stepName(task)}”`, task, index });
+                touch();
+            };
+            const doUndo = () => {
+                if (!undo) return;
+                if (undo.kind === 'delete') {
+                    setTasks(ts => {
+                        let task = undo.task;
+                        // Don't end up with two running steps.
+                        if (task.status === 'active' && ts.some(t => t.status === 'active')) task = pauseOf(task, Date.now());
+                        const copy = [...ts];
+                        copy.splice(Math.min(undo.index, copy.length), 0, task);
+                        return copy;
+                    });
+                } else {
+                    setTasks(undo.tasks); setDeadlineAt(undo.deadlineAt); setBuffer(undo.buffer);
+                }
+                setUndo(null);
+                touch();
+            };
+
+            const moveTask = (index, direction) => {
+                const to = index + direction;
+                if (to < 0 || to >= tasks.length) return;
+                const copy = [...tasks];
+                [copy[index], copy[to]] = [copy[to], copy[index]];
+                setTasks(copy);
+                touch();
+            };
+
+            const startTask = (id) => {
+                const now = Date.now();
+                // Only one step can run; starting another pauses the current one (its time is kept).
+                setTasks(ts => ts.map(t => {
+                    if (sameId(t.id, id)) return { ...t, status: 'active', startedAt: now, firstStartedAt: t.firstStartedAt ?? now };
+                    if (t.status === 'active') return pauseOf(t, now);
+                    return t;
+                }));
+                touch();
+            };
+            const pauseTask = (id) => {
+                const now = Date.now();
+                setTasks(ts => ts.map(t => sameId(t.id, id) && t.status === 'active' ? pauseOf(t, now) : t));
+                touch();
+            };
+            // Works on a running step or straight from pending (e.g. it was already done, or skipped).
+            const completeTask = (id) => {
+                const now = Date.now();
+                const due = latest.get(String(id))?.end ?? now;
+                setTasks(ts => ts.map(t => {
+                    if (!sameId(t.id, id)) return t;
+                    const { startedAt, spentMs, ...rest } = t;
+                    const ran = t.status === 'active' && startedAt ? Math.max(0, now - startedAt) : 0;
+                    const timed = t.status === 'active' || spentMs > 0;
+                    const done = { ...rest, status: 'completed', completedAt: now, dueBy: due };
+                    if (timed) done.actualMs = (spentMs || 0) + ran;
+                    return done;
+                }));
+                touch();
+            };
+            const reopenTask = (id) => {
+                setTasks(ts => ts.map(t => sameId(t.id, id) ? freshTask(t) : t));
+                touch();
+            };
+
+            // Pointer-based reordering from the grip handle (works with touch as well as mouse).
+            const onGripDown = (e, id) => {
+                e.preventDefault();
+                e.currentTarget.setPointerCapture(e.pointerId);
+                setDragId(id);
+            };
+            const onGripMove = (e) => {
+                if (dragId === null) return;
+                const row = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-task-id]');
+                if (!row || row.dataset.taskId === String(dragId)) return;
+                setTasks(prev => {
+                    const from = prev.findIndex(t => sameId(t.id, dragId));
+                    const to = prev.findIndex(t => sameId(t.id, row.dataset.taskId));
+                    if (from < 0 || to < 0) return prev;
+                    const copy = [...prev];
+                    copy.splice(to, 0, copy.splice(from, 1)[0]);
+                    return copy;
+                });
+            };
+            const onGripUp = () => {
+                if (dragId !== null) touch();
+                setDragId(null);
+            };
+
+            // --- Actions: templates, export, import ---
+            const applyPlan = (tpl, label) => {
+                setUndo({ kind: 'snapshot', label, tasks, deadlineAt, buffer });
+                setTasks(tpl.steps.map(s => ({ id: uid(), name: s.name, duration: s.duration, status: 'pending' })));
+                setBuffer(tpl.buffer);
+                if (tpl.deadline) setDeadlineAt(resolveDeadline(tpl.deadline, Date.now()));
+                setPlansOpen(false);
+                touch();
+            };
+            const saveTemplate = () => {
+                const name = window.prompt('Name this template:', '');
+                if (name == null) return;
+                const tpl = sanitizeTemplate({
+                    id: uid(), name, deadline: toTimeInput(deadlineAt), buffer,
+                    steps: tasks.map(t => ({ name: t.name, duration: t.duration }))
+                });
+                // Saving under an existing name replaces that template.
+                setTemplates(list => [...list.filter(t => t.name !== tpl.name), tpl]);
+                setToast({ kind: 'info', title: 'Template saved', body: `“${tpl.name}” · ${tpl.steps.length} steps, due ${fmtClockStr(tpl.deadline)}, ${tpl.buffer}m buffer.` });
+            };
+            const deleteTemplate = (tpl) => {
+                if (!window.confirm(`Delete template “${tpl.name}”?`)) return;
+                setTemplates(list => list.filter(t => t.id !== tpl.id));
+            };
+            const exportJSON = () => {
+                const data = {
+                    app: 'deadline-planner', version: 1, exportedAt: new Date().toISOString(),
+                    plan: { deadline: toTimeInput(deadlineAt), buffer, steps: tasks.map(t => ({ name: t.name, duration: t.duration })) },
+                    templates
+                };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                const d = new Date();
+                a.href = url;
+                a.download = `deadline-planner-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            };
+            const onImportFile = async (e) => {
+                const file = e.target.files && e.target.files[0];
+                e.target.value = '';
+                if (!file) return;
+                try {
+                    const data = JSON.parse(await file.text());
+                    const incoming = Array.isArray(data.templates) ? data.templates.map(sanitizeTemplate).filter(Boolean) : [];
+                    const plan = data.plan ? sanitizeTemplate({ name: 'Imported plan', ...data.plan }) : null;
+                    if (!plan && !incoming.length) throw new Error('nothing to import');
+                    if (incoming.length) {
+                        const names = new Set(incoming.map(t => t.name));
+                        setTemplates(list => [...list.filter(t => !names.has(t.name)), ...incoming.map(t => ({ ...t, id: uid() }))]);
+                    }
+                    if (plan) applyPlan(plan, 'Imported plan');
+                    const parts = [];
+                    if (plan) parts.push(`plan with ${plan.steps.length} steps`);
+                    if (incoming.length) parts.push(`${incoming.length} template${incoming.length === 1 ? '' : 's'}`);
+                    setToast({ kind: 'info', title: 'Imported', body: `Loaded ${parts.join(' and ')}.` });
+                } catch (err) {
+                    setToast({ kind: 'info', title: 'Import failed', body: "That file isn't a Deadline Planner export." });
+                }
+            };
+
+            // --- Render ---
+            const deadlineDay = dayLabel(deadlineAt, nowMs);
+            const clock = timeParts(nowMs);
+            const bellPartial = alertsOn && notif !== 'granted';
+            const notifSub = notif === 'granted' ? 'Notifications allowed'
+                : notif === 'denied' ? 'Notifications blocked: in-app only'
+                : notif === 'unsupported' ? 'No notifications here: in-app only'
+                : 'Notifications not yet allowed';
+            const wakeSupported = 'wakeLock' in navigator;
+
+            let statusIcon, statusText, statusSub = null;
+            if (isEmpty) { statusIcon = 'Clock'; statusText = 'No steps yet'; }
+            else if (allDone) {
+                if (bufferLeft < 0) { statusIcon = 'AlertTriangle'; statusText = `Finished ${fmtDur(bufferLeft)} late`; }
+                else { statusIcon = 'PartyPopper'; statusText = 'All done'; if (projectedFinish != null) statusSub = { cls: 'ahead', text: `${fmtDur(bufferLeft)} before deadline` }; }
+            }
+            else if (tone === 'red') { statusIcon = 'AlertTriangle'; statusText = `Late ${fmtDur(bufferLeft)}`; }
+            else if (tone === 'yellow') { statusIcon = 'AlertTriangle'; statusText = `Behind ${fmtDur(vsPlan)}`; statusSub = { cls: 'behind', text: 'eating into buffer' }; }
+            else {
+                statusIcon = 'CheckCircle';
+                statusText = hasProgress ? 'On track' : 'Ready';
+                if (activeTask && vsPlan > 0) statusSub = { cls: 'ahead', text: `${fmtDur(vsPlan)} ahead of plan` };
+            }
+
+            // End-of-run summary: actual vs estimate per step.
+            const summaryRows = allDone ? tasks.map(t => ({
+                id: t.id, name: stepName(t), est: t.duration,
+                actual: Number.isFinite(t.actualMs) ? toMins(t.actualMs) : null
+            })) : [];
+            const timedRows = summaryRows.filter(r => r.actual != null);
+            const estTotal = summaryRows.reduce((s, r) => s + r.est, 0);
+            const actualTotal = timedRows.reduce((s, r) => s + r.actual, 0);
+            const timedEst = timedRows.reduce((s, r) => s + r.est, 0);
+            const diffClass = (d) => d > 0 ? 'over-est' : d < 0 ? 'under-est' : '';
+
+            return html`<div>
+                <header class="top">
+                    <div class="brand"><a href="/">zbCAD</a><span class="sep">/</span><span>Deadline<span class="long"> Planner</span></span></div>
+                    <div class="header-right" ref=${headerRight}>
+                        <button
+                            class=${'bell' + (alertsOn ? ' on' : '') + (bellPartial ? ' partial' : '')}
+                            onClick=${() => setPanelOpen(!panelOpen)}
+                            title=${!alertsOn ? 'Alerts off' : bellPartial ? 'Alerts on (in-app only)' : 'Alerts on'}
+                            aria-label="Alerts and display settings"
+                            aria-haspopup="dialog"
+                            aria-expanded=${panelOpen ? 'true' : 'false'}
+                        >
+                            <${Icon} name=${alertsOn ? 'Bell' : 'BellOff'} size=${18} />
+                        </button>
+                        <div class="clock-time mono" title="Current time">${clock.hm}${clock.suffix && html`<span class="ampm">${clock.suffix}</span>`}</div>
+                        ${panelOpen && html`
+                            <div class="panel card" role="dialog" aria-label="Alerts and display">
+                                <${Switch} on=${alertsOn} onToggle=${toggleAlerts} label="Alerts"
+                                    sub=${alertsOn ? notifSub : '5 min before and at each gate'} subClass=${alertsOn && notif !== 'granted' ? 'warn' : ''} />
+                                <${Switch} on=${soundOn} onToggle=${toggleSound} label="Sound" sub="Beep when an alert fires" />
+                                <${Switch} on=${keepAwake && wakeSupported} onToggle=${() => setKeepAwake(!keepAwake)} disabled=${!wakeSupported}
+                                    label="Keep screen awake" sub=${wakeSupported ? 'While a step runs and alerts are on' : 'Not supported in this browser'} />
+                                <${Switch} on=${!hour12} onToggle=${() => setHour12(!hour12)} label="24-hour time" />
+                                <div class="panel-note">Phones pause web apps in the background, so alerts only fire while this app is open.</div>
+                            </div>
+                        `}
+                    </div>
+                </header>
+
+                <div class="app">
+                    ${toast && html`
+                        <div class=${'toast card' + (toast.kind === 'info' ? ' info' : '')} role=${toast.kind === 'alert' ? 'alert' : 'status'} onClick=${() => setToast(null)}>
+                            <${Icon} name=${toast.kind === 'info' ? 'Info' : 'Bell'} size=${18} />
+                            <div class="toast-text">
+                                <div class="toast-title">${toast.title}</div>
+                                <div class="toast-body">${toast.body}</div>
+                            </div>
+                            <button class="toast-close" aria-label="Dismiss" onClick=${(e) => { e.stopPropagation(); setToast(null); }}>
+                                <${Icon} name="X" size=${16} />
+                            </button>
+                        </div>
+                    `}
+
+
+                    <div class="settings card">
+                        <div class="grow">
+                            <label class="label" for="deadline">
+                                Deadline ${deadlineDay && html`<span class="day">(${deadlineDay})</span>`}
+                            </label>
+                            <${DraftInput} id="deadline" type="time" class="input mono" value=${toTimeInput(deadlineAt)} onValue=${onDeadlineInput} />
+                        </div>
+                        <div class="buffer">
+                            <label class="label" for="buffer">Buffer, min</label>
+                            <${DraftInput} id="buffer" type="number" min="0" step="1" inputmode="numeric" class="input mono" value=${buffer} onValue=${onBufferInput} />
+                        </div>
+                        <div class="plan-line">${planLine}</div>
+                    </div>
+
+                    <section class=${`status card tone-${tone}${allDone ? ' all-done' : ''}`} aria-label="Status">
+                        <div>
+                            <div class="eyebrow">Status</div>
+                            <div class="status-line"><${Icon} name=${statusIcon} size=${18} /> ${statusText}</div>
+                            ${statusSub && html`<div class=${'status-sub ' + statusSub.cls}>${statusSub.text}</div>`}
+                        </div>
+                        <div class="right">
+                            <div class="eyebrow">Buffer left</div>
+                            <div class=${'buffer-left mono' + (isEmpty ? '' : bufferClass)}>
+                                ${bufferShown < 0 ? '−' : ''}${fmtDur(bufferShown)}
+                            </div>
+                            ${allDone && projectedFinish != null && html`<div class="finished">finished ${fmtWhen(projectedFinish, nowMs)}</div>`}
+                        </div>
+                        ${nextTask && html`
+                            <div class="gate-row">
+                                <div>
+                                    <div class="eyebrow">${activeTask ? 'Finish current step by' : 'Start next step by'}</div>
+                                    <div class="gate">
+                                        <span class="gate-time mono">${fmtWhen(gateAt, nowMs)}</span>
+                                        <span class=${'countdown' + countdownClass}>${countdown}</span>
+                                    </div>
+                                </div>
+                                <div class="right">
+                                    <div class="eyebrow">Est. finish</div>
+                                    <div class="eta mono">${fmtWhen(projectedFinish, nowMs)}</div>
+                                </div>
+                            </div>
+                        `}
+                    </section>
+
+                    ${allDone && html`
+                        <section class="summary card" aria-label="Run summary">
+                            <div class="eyebrow">Run summary</div>
+                            <div class="sum-row sum-head"><span>Step</span><span>Est</span><span>Actual</span><span>±</span></div>
+                            ${summaryRows.map(r => html`
+                                <div class="sum-row" key=${r.id}>
+                                    <span class="sum-name">${r.name}</span>
+                                    <span class="mono">${fmtDur(r.est)}</span>
+                                    <span class="mono">${r.actual == null ? '—' : fmtDur(r.actual)}</span>
+                                    <span class=${'mono ' + (r.actual == null ? '' : diffClass(r.actual - r.est))}>${r.actual == null ? '' : fmtSigned(r.actual - r.est)}</span>
+                                </div>
+                            `)}
+                            <div class="sum-row sum-total">
+                                <span>Total</span>
+                                <span class="mono">${fmtDur(estTotal)}</span>
+                                <span class="mono">${timedRows.length ? fmtDur(actualTotal) : '—'}</span>
+                                <span class=${'mono ' + diffClass(actualTotal - timedEst)}>${timedRows.length ? fmtSigned(actualTotal - timedEst) : ''}</span>
+                            </div>
+                            ${timedRows.length < summaryRows.length && html`<p class="muted">— marked done without timing; left out of the actual and ± totals.</p>`}
+                        </section>
+                    `}
+
+                    <div class="steps-head">
+                        <h2 class="label">Steps</h2>
+                        ${hasProgress && html`
+                            <button class=${'reset' + (confirmReset ? ' armed' : '')} onClick=${resetProgress}>
+                                <${Icon} name="RotateCcw" size=${12} /> ${confirmReset ? 'Tap again to reset' : 'Reset all'}
+                            </button>
+                        `}
+                    </div>
+
+                    <div class="task-list">
+                        ${isEmpty && html`<div class="empty">No steps yet. Add one below to build the plan.</div>`}
+                        ${tasks.map((task, index) => {
+                            const isCompleted = task.status === 'completed';
+                            const isActive = task.status === 'active';
+                            const isPaused = task.status === 'pending' && task.spentMs > 0;
+                            const name = stepName(task);
+                            const lt = latestOf(task);
+                            const cls = 'task card' + (isActive ? ' active' : '') + (isCompleted ? ' done' : '') + (isPaused ? ' paused' : '') + (sameId(dragId, task.id) ? ' dragging' : '');
+
+                            // Left/right: when it started or must start, and when it ended or must end.
+                            // Middle chip: how this step is tracking against its own gate.
+                            let left, right, chip = null;
+                            if (isCompleted) {
+                                left = task.firstStartedAt ? `started ${fmtWhen(task.firstStartedAt, nowMs)}` : 'marked done';
+                                right = task.completedAt ? `done ${fmtWhen(task.completedAt, nowMs)}` : 'done';
+                                if (Number.isFinite(task.completedAt) && Number.isFinite(task.dueBy)) {
+                                    const diff = toMins(task.dueBy - task.completedAt);
+                                    chip = { text: earlyLate(diff), cls: diff >= 0 ? 'chip-ok' : 'chip-late' };
+                                }
+                            } else if (isActive) {
+                                left = `started ${fmtWhen(task.firstStartedAt ?? task.startedAt, nowMs)}`;
+                                right = `end by ${fmtWhen(lt.end, nowMs)}`;
+                                const diff = toMins(lt.end - activeProjectedEnd);
+                                chip = { text: `ends ${fmtWhen(activeProjectedEnd, nowMs)} · ${earlyLate(diff)}`, cls: (diff >= 0 ? 'chip-ok' : 'chip-late') + ' wide' };
+                            } else {
+                                left = `${isPaused ? 'resume' : 'start'} by ${fmtWhen(lt.start, nowMs)}`;
+                                right = `end by ${fmtWhen(lt.end, nowMs)}`;
+                                if (isPaused) chip = { text: `paused · ${fmtDur(toMins(task.spentMs))} in`, cls: 'chip-paused' };
+                            }
+
+                            return html`
+                                <div key=${task.id} data-task-id=${task.id} class=${cls}>
+                                    <div class="task-times mono">
+                                        <span class="planned">${left}</span>
+                                        ${chip && html`<span class=${chip.cls}>${chip.text}</span>`}
+                                        <span class="planned">${right}</span>
+                                    </div>
+                                    <div class="task-main">
+                                        <div
+                                            class="grip"
+                                            aria-hidden="true"
+                                            onPointerDown=${(e) => onGripDown(e, task.id)}
+                                            onPointerMove=${onGripMove}
+                                            onPointerUp=${onGripUp}
+                                            onPointerCancel=${onGripUp}
+                                        >
+                                            <${Icon} name="GripVertical" size=${16} />
+                                        </div>
+                                        <input type="text" class=${'input task-name' + (isCompleted ? ' struck' : '')} value=${task.name}
+                                            placeholder="Step name" aria-label="Step name"
+                                            onInput=${(e) => patchTask(task.id, { name: e.target.value })} />
+                                        <div class="dur">
+                                            <${DraftInput} type="number" min="0" step="1" inputmode="numeric" class="input" value=${task.duration}
+                                                aria-label=${`Minutes for ${name}`} onValue=${(v) => onDurationInput(task.id, v)} />
+                                            <span aria-hidden="true">min</span>
+                                        </div>
+                                    </div>
+                                    <div class="task-actions">
+                                        <div class="tools">
+                                            <button class="icon-btn" onClick=${() => moveTask(index, -1)} aria-label=${`Move ${name} up`}><${Icon} name="ArrowUp" size=${14} /></button>
+                                            <button class="icon-btn" onClick=${() => moveTask(index, 1)} aria-label=${`Move ${name} down`}><${Icon} name="ArrowDown" size=${14} /></button>
+                                            <button class="icon-btn danger" onClick=${() => deleteTask(task.id)} aria-label=${`Delete ${name}`}><${Icon} name="Trash2" size=${14} /></button>
+                                        </div>
+                                        <div class="act-group">
+                                            ${task.status === 'pending' && html`
+                                                <button class="icon-btn ok" onClick=${() => completeTask(task.id)} aria-label=${`Mark ${name} done`} title="Mark done"><${Icon} name="Check" size=${14} /></button>
+                                                <button class="act start" onClick=${() => startTask(task.id)}><${Icon} name="Play" size=${12} /> ${isPaused ? 'Resume' : 'Start'}</button>
+                                            `}
+                                            ${isActive && html`
+                                                <button class="act pause" onClick=${() => pauseTask(task.id)}><${Icon} name="Pause" size=${12} /> Pause</button>
+                                                <button class="act finish" onClick=${() => completeTask(task.id)}><${Icon} name="Check" size=${12} /> Done</button>
+                                            `}
+                                            ${isCompleted && html`<button class="act restart" onClick=${() => reopenTask(task.id)}><${Icon} name="RotateCcw" size=${12} /> Reopen</button>`}
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        })}
+                    </div>
+                    <button class="add" onClick=${addTask}>
+                        <${Icon} name="Plus" size=${18} /> Add step
+                    </button>
+
+                    <section class="plans card">
+                        <button class="plans-head" aria-expanded=${plansOpen ? 'true' : 'false'} onClick=${() => setPlansOpen(!plansOpen)}>
+                            <${Icon} name="Bookmark" size=${16} /> Templates & backup
+                            <${Icon} name="ChevronDown" size=${16} className="chev" />
+                        </button>
+                        ${plansOpen && html`
+                            <div class="plans-body">
+                                ${templates.length ? html`
+                                    <ul class="tpl-list">
+                                        ${templates.map(t => html`
+                                            <li class="tpl" key=${t.id}>
+                                                <div class="tpl-info">
+                                                    <div class="tpl-name">${t.name}</div>
+                                                    <div class="tpl-meta">${t.steps.length} steps · ${fmtDur(t.steps.reduce((s, x) => s + x.duration, 0))}${t.deadline ? ` · due ${fmtClockStr(t.deadline)}` : ''}</div>
+                                                </div>
+                                                <button class="act start" onClick=${() => applyPlan(t, `Loaded “${t.name}”`)}>Load</button>
+                                                <button class="icon-btn danger" onClick=${() => deleteTemplate(t)} aria-label=${`Delete template ${t.name}`}><${Icon} name="Trash2" size=${14} /></button>
+                                            </li>
+                                        `)}
+                                    </ul>
+                                ` : html`<p class="muted">No templates yet. Save the current steps, deadline and buffer to reuse them.</p>`}
+                                <div class="plans-actions">
+                                    <button class="act restart" onClick=${saveTemplate}><${Icon} name="Bookmark" size=${12} /> Save current</button>
+                                    <button class="act restart" onClick=${exportJSON}><${Icon} name="Download" size=${12} /> Export</button>
+                                    <button class="act restart" onClick=${() => importInput.current && importInput.current.click()}><${Icon} name="Upload" size=${12} /> Import</button>
+                                    <input type="file" accept="application/json,.json" hidden ref=${importInput} onChange=${onImportFile} />
+                                </div>
+                            </div>
+                        `}
+                    </section>
+
+                    <div class="foot">Changes are saved on this device.</div>
+
+                    ${undo && html`
+                        <div class="snackbar" role="status">
+                            <span>${undo.label}</span>
+                            <button class="snack-btn" onClick=${doUndo}>Undo</button>
+                        </div>
+                    `}
+                </div>
+            </div>`;
+        };
+
+        render(html`<${App} />`, document.getElementById('root'));
+    </script>
+</body>
+</html>
