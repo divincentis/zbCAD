@@ -83,6 +83,8 @@ sh src/tools/tests/pattern/run.sh
 
 Its top level is the part that never draws. Each tool (`rtr`, `rect2`, `cone`, `ecc`, `elbow`, `branch`) is a pure function of the parsed form that returns flat `pieces`, a 3D `model`, a `table` and `notes`, and `dxfOf` writes placed pieces out. The UI closure below holds the rest — the form, the SVG view, the tiled full-size PDF, and the link in the address bar, which *is* the saved fitting (there is no storage) — so the suites reach that part the way a person does, through the hash, a typed value or a button, and read back what the page wrote or downloaded. A field's limits live on its definition in `TOOLS` (`gt`/`ge`/`lt`, and `dim` for a size that moves to the mean line) and are enforced once, in `parsed()`; a tool should not re-check them. A piece is `{ name, qty, cut, bend, form, labels }`, and identical pieces are one entry with a `qty` rather than repeats, because the PDF pays for every entry in sheets.
 
+`plan.html` (Deadline Planner) is hand-edited too, with no suite: a Preact + htm app inlined into the page, state in localStorage. Its companion `plan-sw.js` (offline reopening, and phone notifications) is registered **scoped to `plan.html` alone**, and its manifest is scoped the same way. Keep it so: every page on zbcad.com shares the origin, and a worker scoped to the folder would serve the whole site from its cache.
+
 ## Runtime architecture
 
 The app has no framework and no build-time dependencies — plain DOM APIs, a `<canvas>`, and a global mutable `state` object (`src/src/state.js`). Module responsibilities, roughly bottom-up:
