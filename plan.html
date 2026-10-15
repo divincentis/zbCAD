@@ -164,6 +164,15 @@ button:disabled{cursor:default}
 .task.active{border-color:var(--accent);border-left-width:3px;background:var(--accent-bg);box-shadow:inset 0 0 0 1px var(--accent)}
 .task.done{border-left-color:var(--ok);opacity:.6}
 .task.dragging{opacity:.4}
+.task.folded{display:flex;align-items:center;gap:4px;padding:4px 6px 4px 8px}
+.fold-row{flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:4px;border-radius:6px;text-align:left;font-size:13px}
+.fold-row:hover{background:var(--soft)}
+.fold-check{color:var(--ok);flex-shrink:0}
+.fold-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:line-through}
+.fold-chip,.fold-when{font-size:11px;white-space:nowrap;flex-shrink:0}
+.fold-when{color:var(--muted)}
+.fold-up{transform:rotate(180deg)}
+@media (max-width:420px){.fold-when{display:none}}
 .task-times{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 8px;font-size:11px;margin-bottom:6px;padding:0 2px}
 .task-times .planned{color:var(--muted)}
 .chip-ok{color:var(--ok)}
@@ -596,6 +605,14 @@ button:disabled{cursor:default}
             const [plansOpen, setPlansOpen] = useState(false);
             const [notif, setNotif] = useState(notifState());
             const [focusId, setFocusId] = useState(null);
+            // Finished steps fold to one line; these are the ones opened back up for editing. Not saved:
+            // a reload folds them again.
+            const [openDone, setOpenDone] = useState(() => new Set());
+            const setDoneOpen = (id, open) => setOpenDone(s => {
+                const next = new Set(s);
+                if (open) next.add(String(id)); else next.delete(String(id));
+                return next;
+            });
             const firedAlerts = useRef(loadFired());
             const headerRight = useRef(null);
             const importInput = useRef(null);
@@ -956,6 +973,7 @@ button:disabled{cursor:default}
                     if (timed) done.actualMs = (spentMs || 0) + ran;
                     return done;
                 }));
+                setDoneOpen(id, false);
                 touch();
             };
             const reopenTask = (id) => {
@@ -1236,6 +1254,19 @@ button:disabled{cursor:default}
                                 if (isPaused) chip = { text: `paused · ${fmtDur(toMins(task.spentMs))} in`, cls: 'chip-paused' };
                             }
 
+                            if (isCompleted && !openDone.has(String(task.id))) return html`
+                                <div key=${task.id} data-task-id=${task.id} class="task card done folded">
+                                    <button class="fold-row" onClick=${() => setDoneOpen(task.id, true)}
+                                        aria-expanded="false" aria-label=${`${name}, ${right}. Show details`}>
+                                        <${Icon} name="Check" size=${14} className="fold-check" />
+                                        <span class="fold-name">${name}</span>
+                                        ${chip && html`<span class=${'mono fold-chip ' + chip.cls}>${chip.text}</span>`}
+                                        <span class="mono fold-when">${right}</span>
+                                    </button>
+                                    <button class="icon-btn" onClick=${() => reopenTask(task.id)} aria-label=${`Reopen ${name}`} title="Reopen"><${Icon} name="RotateCcw" size=${14} /></button>
+                                </div>
+                            `;
+
                             return html`
                                 <div key=${task.id} data-task-id=${task.id} class=${cls}>
                                     <div class="task-times mono">
@@ -1278,6 +1309,7 @@ button:disabled{cursor:default}
                                                 <button class="act pause" onClick=${() => pauseTask(task.id)}><${Icon} name="Pause" size=${12} /> Pause</button>
                                                 <button class="act finish" onClick=${() => completeTask(task.id)}><${Icon} name="Check" size=${12} /> Done</button>
                                             `}
+                                            ${isCompleted && html`<button class="icon-btn" onClick=${() => setDoneOpen(task.id, false)} aria-label=${`Fold ${name}`} title="Fold to one line"><${Icon} name="ChevronDown" size=${14} className="fold-up" /></button>`}
                                             ${isCompleted && html`<button class="act restart" onClick=${() => reopenTask(task.id)}><${Icon} name="RotateCcw" size=${12} /> Reopen</button>`}
                                         </div>
                                     </div>
