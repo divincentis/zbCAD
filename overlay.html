@@ -1,0 +1,1196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Roof Overlay</title>
+<meta name="description" content="Lay a building's floor plan over an aerial photo of its roof, to show where a spot inside the building is on the roof: leaks, ceiling stains, work areas.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c1b19'/%3E%3Cpath d='M6 14.5h8.5L6 23.5h8.5M18.5 8.5v15h7.5v-9h-7.5' fill='none' stroke='%23f4f1ea' stroke-width='2.5' stroke-linecap='square'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f6f4ef; --panel:#fffdf8; --ink:#1c1b19; --muted:#6b675f; --line:#d9d4c9; --soft:#efe9df;
+  --accent:#9a4a1f; --accent-ink:#fff; --sheet:#fbf9f4; --view:#e4dfd5;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#161614; --panel:#1c1b19; --ink:#e9e5dc; --muted:#9a958a; --line:#2f2d29; --soft:#252320;
+    --accent:#e08a55; --accent-ink:#1a0d05; --sheet:#181816; --view:#111110;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+button,input,select{font:inherit;color:inherit}
+.top{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.brand{display:flex;align-items:baseline;font-weight:700;font-size:15px;letter-spacing:-.01em}
+.brand a{color:var(--muted);text-decoration:none}
+.brand a:hover,.brand a:focus-visible{color:var(--accent)}
+.brand .sep{color:var(--line);margin:0 7px;font-weight:400}
+.hist{display:flex;gap:6px}
+.app{display:grid;grid-template-columns:330px 1fr;height:calc(100vh - 52px)}
+.side{border-right:1px solid var(--line);background:var(--panel);overflow:auto;padding:0 16px 28px}
+.step{padding:14px 0 16px;border-bottom:1px solid var(--line)}
+.step:last-child{border-bottom:0}
+.step.off{opacity:.42;pointer-events:none}
+.step h2{display:flex;align-items:center;gap:9px;font-size:14px;margin:0 0 10px;font-weight:650}
+.step h2 b{display:inline-grid;place-items:center;width:21px;height:21px;border-radius:50%;background:var(--soft);color:var(--muted);font-size:11.5px;flex:none}
+.step.done h2 b{background:var(--accent);color:var(--accent-ink)}
+.help{font-size:12px;color:var(--muted);margin:8px 0 0}
+.file{display:flex;align-items:center;gap:10px;min-width:0}
+.fname{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.slider{display:grid;grid-template-columns:104px 1fr 36px;align-items:center;gap:8px;margin:10px 0 0;font-size:13px}
+.slider output{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent);margin:0}
+.chk{display:flex;gap:7px;align-items:center;font-size:13px;margin:10px 0 0;cursor:pointer}
+.chk input[type=color]{margin-left:auto}
+.sub{font-size:13px;margin:12px 0 6px}
+.swatches{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.sw{width:26px;height:26px;border-radius:6px;border:1px solid var(--line);cursor:pointer;padding:0}
+.sw.on{outline:2px solid var(--accent);outline-offset:2px}
+.sw.orig{width:auto;padding:0 8px;font-size:12px;background:linear-gradient(90deg,#1c1b19 0 33%,#c92a2a 33% 66%,#1f6fff 66%);color:#fff;text-shadow:0 1px 2px #000}
+input[type=color]{width:34px;height:26px;padding:0 2px;border:1px solid var(--line);border-radius:6px;background:var(--panel);cursor:pointer}
+.field{display:grid;grid-template-columns:1fr 130px;align-items:center;gap:8px;margin-top:10px;font-size:13px}
+.field input,.field select{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--sheet);font-variant-numeric:tabular-nums}
+.field.wide{grid-template-columns:52px 1fr}
+.field input:focus,.field select:focus,.pins input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.how{margin:0 0 12px;padding-left:18px;font-size:12.5px}
+.how li{margin:2px 0}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:6px 11px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.on{background:var(--ink);border-color:var(--ink);color:var(--panel);font-weight:600}
+.btn.wide{width:100%}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.pins{list-style:none;margin:12px 0 0;padding:0}
+.pins li{display:grid;grid-template-columns:26px 1fr 22px;gap:6px;align-items:center;margin:0 0 6px}
+.pins .num{width:24px;height:24px;border-radius:50%;color:#fff;font-weight:700;font-size:11.5px;border:0;cursor:pointer;padding:0}
+.pins input{padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--sheet);min-width:0;font-size:13px}
+.pins .x{border:0;background:none;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;padding:0}
+.pins .x:hover{color:var(--ink)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.link{border:0;background:none;color:var(--muted);text-decoration:underline;padding:0;margin-top:14px;cursor:pointer;font-size:12.5px}
+.link:hover{color:var(--ink)}
+.work{display:flex;flex-direction:column;min-width:0;min-height:0}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap;min-height:49px}
+.hint{font-size:13px;min-width:0}
+.hint b{color:var(--accent)}
+.actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.fade{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin-right:6px}
+.fade input{width:110px}
+.view{position:relative;flex:1 1 auto;min-height:0;background:var(--view);overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block;outline:none}
+.empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px}
+.empty>div{border:2px dashed var(--line);border-radius:14px;padding:30px 34px;background:var(--panel);max-width:430px}
+.empty b{font-size:16px}
+.empty p{color:var(--muted);margin:8px 0 16px;font-size:13px}
+.view.drop::after{content:'';position:absolute;inset:8px;border:3px dashed var(--accent);border-radius:12px;pointer-events:none}
+.busy{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:7px 14px;border-radius:999px;font-size:13px;white-space:nowrap}
+.toast{position:absolute;left:50%;bottom:16px;transform:translate(-50%,16px);opacity:0;transition:opacity .2s,transform .2s;background:var(--ink);color:var(--panel);padding:9px 14px;border-radius:8px;font-size:13px;width:max-content;max-width:min(520px,90%);pointer-events:none}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.hide{display:none!important}
+#printOut{display:none}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr;height:auto}
+  .work{order:-1;height:66vh;position:sticky;top:0;z-index:1;border-bottom:1px solid var(--line)}
+  .side{border-right:0}
+  .fade input{width:80px}
+}
+@media print{
+  body>*:not(#printOut){display:none!important}
+  #printOut{display:block}
+  #printOut img{display:block;max-width:100%;max-height:96vh;margin:0 auto;object-fit:contain}
+  body{background:#fff}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><a href="/">zbCAD</a><span class="sep">/</span><span>Roof Overlay</span></div>
+  <div class="hist"><button class="btn" id="undo" title="Undo (Ctrl+Z)">Undo</button><button class="btn" id="redo" title="Redo (Ctrl+Y)">Redo</button></div>
+</header>
+<main class="app">
+  <aside class="side" id="side">
+    <section class="step" id="s1" data-drop="aerial">
+      <h2><b>1</b>Roof photo</h2>
+      <div class="file"><button class="btn pri" id="pickAerial">Choose roof photo</button><span class="fname" id="aerialName"></span></div>
+      <p class="help">An aerial or satellite view of the roof. A screenshot from Google Earth or Nearmap works, and you can paste one with Ctrl+V. The photo is never stretched.</p>
+    </section>
+    <section class="step" id="s2" data-drop="plan">
+      <h2><b>2</b>Floor plan</h2>
+      <div class="file"><button class="btn pri" id="pickPlan">Choose floor plan</button><span class="fname" id="planName"></span></div>
+      <div class="field hide" id="pageRow"><label for="page">Page</label><select id="page"></select></div>
+      <div class="row"><button class="btn" id="crop">Crop plan</button><button class="btn" id="uncrop">Show whole plan</button></div>
+      <p class="help">PDF, JPEG, PNG or TIFF. Crop off the title block and border so only the building is left.</p>
+    </section>
+    <section class="step" id="s3">
+      <h2><b>3</b>Make the plan stand out</h2>
+      <label class="chk"><input type="checkbox" id="knock"> Remove white background</label>
+      <div class="slider"><label for="clean">Clean-up</label><input type="range" id="clean" min="0" max="100"><output id="cleanOut"></output></div>
+      <p class="help">Raise it if grey shading or speckles remain. Lower it if faint lines go missing.</p>
+      <div class="sub">Line color</div>
+      <div class="swatches" id="swatches"></div>
+      <div class="slider"><label for="weight">Line thickness</label><input type="range" id="weight" min="0" max="6" step="1"><output id="weightOut"></output></div>
+      <label class="chk"><input type="checkbox" id="halo"> Outline the lines <input type="color" id="haloColor" title="Outline color"></label>
+      <div class="slider"><label for="opacity">Plan visibility</label><input type="range" id="opacity" min="0" max="100"><output id="opacityOut"></output></div>
+    </section>
+    <section class="step" id="s4">
+      <h2><b>4</b>Line it up</h2>
+      <ul class="how">
+        <li><b>Drag the plan</b> to move it.</li>
+        <li><b>Corner grips</b> make it bigger or smaller.</li>
+        <li><b>Side grips</b> stretch it one way only.</li>
+        <li><b>The round grip</b> turns it.</li>
+      </ul>
+      <button class="btn pri wide" id="align">Line up by two points</button>
+      <p class="help">Click a corner on the plan, then the same corner on the roof. Do the same for a second corner, then fine-tune with the grips.</p>
+      <div class="row"><button class="btn" id="rotL" title="Turn 90° left">⟲ 90°</button><button class="btn" id="rotR" title="Turn 90° right">⟳ 90°</button><button class="btn" id="flip" title="Mirror left to right">Mirror</button><button class="btn" id="refit" title="Put the plan back in the middle of the photo">Reset</button></div>
+      <div class="field"><label for="rot">Rotation (degrees)</label><input id="rot" inputmode="decimal"></div>
+      <label class="chk"><input type="checkbox" id="keep"> Corner grips keep proportions</label>
+      <label class="chk"><input type="checkbox" id="lock"> Lock the plan in place</label>
+      <p class="help">The arrow keys nudge the plan; hold Shift to nudge further. Scroll to zoom in for a closer match. Hold Shift while dragging a corner grip to switch proportions on or off for that drag.</p>
+    </section>
+    <section class="step" id="s5">
+      <h2><b>5</b>Mark locations</h2>
+      <button class="btn pri wide" id="mark">Add markers</button>
+      <p class="help">Click a spot on the plan, such as a ceiling stain or a room, and the marker shows where it is on the roof. Drag a marker to move it.</p>
+      <ol class="pins" id="pins"></ol>
+      <label class="chk"><input type="checkbox" id="pinLabels"> Show notes on the image <input type="color" id="pinColor" title="Marker color"></label>
+    </section>
+    <section class="step" id="s6">
+      <h2><b>6</b>Save and share</h2>
+      <div class="field wide"><label for="title">Title</label><input id="title" placeholder="e.g. 1200 Main St, leak survey"></div>
+      <div class="grid2"><button class="btn pri" id="png">Save image</button><button class="btn" id="print">Print</button><button class="btn" id="saveProj">Save project</button><button class="btn" id="openProj">Open project</button></div>
+      <p class="help">The image is the roof photo at full size with the plan and markers on it, and the notes listed underneath. Set plan visibility to 0 for markers on the bare roof. Your work is kept in this browser; Save project makes a file you can keep or send.</p>
+      <button class="link" id="reset">Start over</button>
+    </section>
+  </aside>
+  <section class="work">
+    <div class="bar">
+      <div class="hint" id="hint"></div>
+      <div class="actions">
+        <label class="fade" title="Fade between the roof photo and the floor plan">Roof <input type="range" id="fade" min="0" max="100"> Plan</label>
+        <button class="btn" id="zout" title="Zoom out">−</button><button class="btn" id="zin" title="Zoom in">+</button><button class="btn" id="fitv" title="Fit the photo in the window">Fit</button>
+      </div>
+    </div>
+    <div class="view" id="view">
+      <canvas id="cv" tabindex="0"></canvas>
+      <div class="empty" id="empty"><div><b>Start with a photo of the roof</b><p>Drop an aerial image here, paste a screenshot with Ctrl+V, or</p><button class="btn pri" id="pickAerial2">Choose roof photo</button></div></div>
+      <div class="busy hide" id="busy"></div>
+      <div class="toast" id="toast"></div>
+    </div>
+  </section>
+</main>
+<input type="file" id="fAerial" accept="image/*,.tif,.tiff" hidden>
+<input type="file" id="fPlan" accept=".pdf,application/pdf,image/*,.tif,.tiff" hidden>
+<input type="file" id="fProj" accept=".json,application/json" hidden>
+<div id="printOut"></div>
+<script>
+"use strict";
+/* ============================================================
+   Placement: where the floor plan sits on the roof photo
+   ============================================================
+   World coordinates are the roof photo's own pixels, so the photo is never resampled or
+   stretched; only the plan moves. A plan pixel (x, y), counted in the rendered plan before any
+   crop, lands at  o + R(rot)·diag(fx·sx, sy)·(x, y).  Placing the whole plan rather than the
+   crop is what lets a crop change without moving anything that stays visible, and lets a
+   marker keep plan coordinates through any later adjustment. */
+const MIN_SIDE = 4;     // smallest the plan may be dragged down to, in photo pixels
+
+function normAngle(a) { a %= 2 * Math.PI; return a > Math.PI ? a - 2 * Math.PI : a <= -Math.PI ? a + 2 * Math.PI : a; }
+
+function planMatrix(T) {
+  const c = Math.cos(T.rot), s = Math.sin(T.rot);
+  return { a: c * T.fx * T.sx, b: s * T.fx * T.sx, c: -s * T.sy, d: c * T.sy, e: T.ox, f: T.oy };
+}
+function toWorld(T, x, y) { const m = planMatrix(T); return [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f]; }
+function toPlan(T, X, Y) {
+  const m = planMatrix(T), det = m.a * m.d - m.b * m.c, x = X - m.e, y = Y - m.f;
+  return [(m.d * x - m.c * y) / det, (-m.b * x + m.a * y) / det];
+}
+
+// The crop as a box in the world: centre, unit axes and half sizes. u runs across the plan as
+// it is shown (after any mirror) and v down it, so a grip's (gx, gy) means the same side of the
+// box on screen whether or not the plan is mirrored.
+function boxOf(T, crop) {
+  const c = Math.cos(T.rot), s = Math.sin(T.rot);
+  return { ctr: toWorld(T, crop.x + crop.w / 2, crop.y + crop.h / 2), u: [c, s], v: [-s, c], hw: T.sx * crop.w / 2, hh: T.sy * crop.h / 2 };
+}
+function boxPoint(B, gx, gy) {
+  return [B.ctr[0] + gx * B.hw * B.u[0] + gy * B.hh * B.v[0], B.ctr[1] + gx * B.hw * B.u[1] + gy * B.hh * B.v[1]];
+}
+// T with its rotation, scale and mirror kept and the crop's centre moved to ctr.
+function centreOn(T, crop, ctr) {
+  const n = { ...T, ox: 0, oy: 0 }, p = toWorld(n, crop.x + crop.w / 2, crop.y + crop.h / 2);
+  return { ...n, ox: ctr[0] - p[0], oy: ctr[1] - p[1] };
+}
+
+// Drag grip (gx, gy) to world point p. The opposite corner or side stays put. A side grip
+// changes one dimension only, which is how a plan that was not drawn true to scale gets
+// stretched to fit; a corner grip changes both, in proportion when keep is set.
+function dragGrip(T, crop, gx, gy, p, keep) {
+  const B = boxOf(T, crop), A = boxPoint(B, -gx, -gy);
+  const dx = p[0] - A[0], dy = p[1] - A[1];
+  const du = dx * B.u[0] + dy * B.u[1], dv = dx * B.v[0] + dy * B.v[1];
+  let w = 2 * B.hw, h = 2 * B.hh;
+  if (gx && gy && keep) {
+    const k = Math.max((du * gx * w + dv * gy * h) / (w * w + h * h), MIN_SIDE / Math.min(w, h));
+    w *= k; h *= k;
+  } else {
+    if (gx) w = Math.max(MIN_SIDE, du * gx);
+    if (gy) h = Math.max(MIN_SIDE, dv * gy);
+  }
+  const ctr = [A[0] + (gx * w * B.u[0] + gy * h * B.v[0]) / 2, A[1] + (gx * w * B.u[1] + gy * h * B.v[1]) / 2];
+  return centreOn({ ...T, sx: w / crop.w, sy: h / crop.h }, crop, ctr);
+}
+const rotateTo = (T, crop, rot) => centreOn({ ...T, rot: normAngle(rot) }, crop, boxOf(T, crop).ctr);
+const mirrored = (T, crop) => centreOn({ ...T, fx: -T.fx }, crop, boxOf(T, crop).ctr);
+const movedBy = (T, dx, dy) => ({ ...T, ox: T.ox + dx, oy: T.oy + dy });
+
+// A rotation within tol of a quarter turn becomes that quarter turn, so a plan that is meant to
+// be square to the photo can be put there by hand.
+function snapRot(rot, tol) { const q = Math.round(rot / (Math.PI / 2)) * (Math.PI / 2); return Math.abs(rot - q) < tol ? normAngle(q) : normAngle(rot); }
+
+// The placement that puts plan points a and b on photo points A and B. Two points fix a move,
+// a turn and one scale, so the ratio of the plan's width to its height is kept from T: a plan
+// that was stretched one way before stays stretched, and a side grip fixes the rest.
+function alignTwo(T, a, b, A, B) {
+  const qx = T.fx * T.sx * (b[0] - a[0]), qy = T.sy * (b[1] - a[1]), wx = B[0] - A[0], wy = B[1] - A[1];
+  const q = Math.hypot(qx, qy), w = Math.hypot(wx, wy);
+  if (q < 1e-9 || w < 1e-9) return null;
+  const k = w / q, n = { ...T, rot: normAngle(Math.atan2(wy, wx) - Math.atan2(qy, qx)), sx: T.sx * k, sy: T.sy * k, ox: 0, oy: 0 };
+  const p = toWorld(n, a[0], a[1]);
+  return { ...n, ox: A[0] - p[0], oy: A[1] - p[1] };
+}
+
+// A fresh plan goes in the middle of the photo at 80% of whichever side is tighter.
+function fitPlan(crop, W, H) {
+  const s = 0.8 * Math.min(W / crop.w, H / crop.h);
+  return centreOn({ ox: 0, oy: 0, rot: 0, sx: s, sy: s, fx: 1 }, crop, [W / 2, H / 2]);
+}
+function clampCrop(c, w, h) {
+  if (!c) return { x: 0, y: 0, w, h };
+  const x = Math.min(Math.max(0, c.x), w - 1), y = Math.min(Math.max(0, c.y), h - 1);
+  return { x, y, w: Math.max(1, Math.min(c.w, w - x)), h: Math.max(1, Math.min(c.h, h - y)) };
+}
+
+// A marker is kept on the plan when there is one, so it moves with the plan as the plan is
+// adjusted: the spot inside the building is the fact, and where that is on the roof follows.
+const pinWorld = (T, p) => (p.at === 'plan' ? (T ? toWorld(T, p.x, p.y) : null) : [p.x, p.y]);
+const freezePins = (pins, T) => pins.map(p => { const q = pinWorld(T, p); return q ? { ...p, at: 'roof', x: q[0], y: q[1] } : p; });
+
+/* ============================================================
+   Plan appearance
+   ============================================================ */
+const LOOK = { knockout: true, clean: 40, color: '#1f6fff', original: false, weight: 1, halo: false, haloColor: '#ffffff', opacity: 85 };
+
+function hexRGB(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+
+// Max filter of radius r over a w×h byte image, rows then columns. van Herk / Gil-Werman: the
+// cost per pixel does not grow with r, which matters at sixteen million pixels.
+function maxLines(src, dst, n, lines, step, lineStep, r) {
+  const k = 2 * r + 1, m = n + 2 * r, p = new Uint8Array(m), f = new Uint8Array(m), b = new Uint8Array(m);
+  for (let L = 0; L < lines; L++) {
+    const base = L * lineStep;
+    for (let i = 0; i < n; i++) p[i + r] = src[base + i * step];
+    for (let i = 0; i < m; i++) f[i] = i % k && f[i - 1] > p[i] ? f[i - 1] : p[i];
+    for (let i = m - 1; i >= 0; i--) b[i] = i % k !== k - 1 && i !== m - 1 && b[i + 1] > p[i] ? b[i + 1] : p[i];
+    for (let j = 0; j < n; j++) { const x = b[j], y = f[j + k - 1]; dst[base + j * step] = x > y ? x : y; }
+  }
+}
+function spread(src, w, h, r) {
+  if (r <= 0) return src;
+  const tmp = new Uint8Array(w * h), out = new Uint8Array(w * h);
+  maxLines(src, tmp, w, h, 1, w, r);
+  maxLines(tmp, out, h, w, w, 1, r);
+  return out;
+}
+
+// One step of the thickness slider, in plan pixels: a big render needs a fatter step for the
+// lines to look the same once the plan is scaled down onto the photo.
+const lookUnit = (w, h) => Math.max(1, Math.round(Math.max(w, h) / 2500));
+
+// The plan as it is drawn over the photo, from its own RGBA pixels. How much a pixel reads as
+// line work is its distance from white in its darkest channel, so a red or yellow line counts
+// as fully as a black one, and transparency counts as white. With the background knocked out
+// that becomes the pixel's opacity; without, the paper stays and only the lines are recolored.
+function styledPlan(px, w, h, look) {
+  const n = w * h, ink = new Uint8Array(n), t0 = 8 + look.clean * 1.6, span = 48;
+  for (let i = 0, j = 0; i < n; i++, j += 4) {
+    const r = px[j], g = px[j + 1], b = px[j + 2], m = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    const t = ((255 - m) * px[j + 3] / 255 - t0) / span;
+    ink[i] = t <= 0 ? 0 : t >= 1 ? 255 : t * 255 + 0.5;
+  }
+  const rad = look.weight * lookUnit(w, h), line = spread(ink, w, h, rad);
+  // Original colors, thickened: each channel takes the darkest of its neighbours, the same
+  // spread applied to how far it is from white.
+  let ch = null;
+  if (look.original) {
+    ch = [0, 1, 2].map(c => { const d = new Uint8Array(n); for (let i = 0, j = c; i < n; i++, j += 4) d[i] = (255 - px[j]) * px[j - c + 3] / 255; return spread(d, w, h, rad); });
+  }
+  const [cr, cg, cb] = hexRGB(look.color), [hr, hg, hb] = hexRGB(look.haloColor);
+  const halo = look.knockout && look.halo ? spread(line, w, h, 3 * lookUnit(w, h)) : null;
+  const out = new Uint8ClampedArray(n * 4);
+  for (let i = 0, j = 0; i < n; i++, j += 4) {
+    const la = line[i] / 255;
+    let r = cr, g = cg, b = cb;
+    if (ch) { r = 255 - ch[0][i]; g = 255 - ch[1][i]; b = 255 - ch[2][i]; }
+    if (!look.knockout) {
+      out[j] = 255 + (r - 255) * la; out[j + 1] = 255 + (g - 255) * la; out[j + 2] = 255 + (b - 255) * la; out[j + 3] = 255;
+    } else if (halo) {
+      const ha = halo[i] / 255 * (1 - la), a = la + ha;
+      if (a > 0) { out[j] = (r * la + hr * ha) / a; out[j + 1] = (g * la + hg * ha) / a; out[j + 2] = (b * la + hb * ha) / a; out[j + 3] = a * 255 + 0.5; }
+    } else { out[j] = r; out[j + 1] = g; out[j + 2] = b; out[j + 3] = line[i]; }
+  }
+  return out;
+}
+
+// Shrinks an RGBA image by a whole factor keeping the darkest of each block, so a one-pixel
+// line in a huge scan survives where averaging would fade it to grey. The result is opaque,
+// composited on white.
+function shrinkDarkest(px, w, h, f) {
+  const W = Math.ceil(w / f), H = Math.ceil(h / f), out = new Uint8ClampedArray(W * H * 4).fill(255);
+  for (let y = 0; y < h; y++) {
+    const row = ((y / f) | 0) * W;
+    for (let x = 0; x < w; x++) {
+      const j = (y * w + x) * 4, o = (row + ((x / f) | 0)) * 4, a = px[j + 3] / 255;
+      for (let c = 0; c < 3; c++) { const v = 255 - (255 - px[j + c]) * a; if (v < out[o + c]) out[o + c] = v; }
+    }
+  }
+  return { px: out, w: W, h: H };
+}
+
+/* ============================================================
+   The project: everything but the two images
+   ============================================================ */
+function newProject() {
+  return { v: 1, title: '', look: { ...LOOK }, T: null, crop: null, pins: [], pinColor: '#ff2d55', pinLabels: true, keep: true, locked: false, page: 1 };
+}
+// Everything a file or the autosave brings in passes through here before it is used, so a new
+// field goes here as well as in newProject() or it is dropped on load.
+function checkProject(o) {
+  const P = newProject();
+  if (!o || typeof o !== 'object') return P;
+  const num = (v, d, lo = -Infinity, hi = Infinity) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
+  const hex = (v, d) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : d);
+  const bool = (v, d) => (typeof v === 'boolean' ? v : d);
+  if (typeof o.title === 'string') P.title = o.title.slice(0, 200);
+  const L = o.look && typeof o.look === 'object' ? o.look : {};
+  P.look = {
+    knockout: bool(L.knockout, LOOK.knockout), clean: num(L.clean, LOOK.clean, 0, 100), color: hex(L.color, LOOK.color),
+    original: bool(L.original, LOOK.original), weight: Math.round(num(L.weight, LOOK.weight, 0, 6)), halo: bool(L.halo, LOOK.halo),
+    haloColor: hex(L.haloColor, LOOK.haloColor), opacity: num(L.opacity, LOOK.opacity, 0, 100),
+  };
+  const T = o.T;
+  if (T && ['ox', 'oy', 'rot', 'sx', 'sy'].every(k => Number.isFinite(T[k])) && T.sx > 0 && T.sy > 0) {
+    P.T = { ox: T.ox, oy: T.oy, rot: normAngle(T.rot), sx: T.sx, sy: T.sy, fx: T.fx === -1 ? -1 : 1 };
+  }
+  const c = o.crop;
+  if (c && ['x', 'y', 'w', 'h'].every(k => Number.isFinite(c[k])) && c.w > 0 && c.h > 0) P.crop = { x: c.x, y: c.y, w: c.w, h: c.h };
+  if (Array.isArray(o.pins)) {
+    P.pins = o.pins.filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y)).slice(0, 500)
+      .map(p => ({ at: p.at === 'plan' ? 'plan' : 'roof', x: p.x, y: p.y, label: typeof p.label === 'string' ? p.label.slice(0, 200) : '' }));
+  }
+  P.pinColor = hex(o.pinColor, P.pinColor);
+  P.pinLabels = bool(o.pinLabels, P.pinLabels);
+  P.keep = bool(o.keep, P.keep);
+  P.locked = bool(o.locked, P.locked);
+  P.page = Math.max(1, Math.floor(num(o.page, 1)));
+  return P;
+}
+
+// What a file starts with: a PDF and a TIFF need a reader the browser does not have.
+function sniff(bytes) {
+  const b = bytes;
+  if (b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46) return 'pdf';
+  if ((b[0] === 0x49 && b[1] === 0x49 && b[2] === 42 && b[3] === 0) || (b[0] === 0x4d && b[1] === 0x4d && b[2] === 0 && b[3] === 42)) return 'tiff';
+  return 'image';
+}
+</script>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const view = $('view'), cv = $('cv'), ctx = cv.getContext('2d');
+// The plan is rendered once at up to this many pixels and kept; the photo is kept as it came
+// unless it is bigger than any screen or export needs.
+const PLAN_CAP = 16e6, AERIAL_CAP = 40e6, PLAN_LONG = 5000;
+const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+const PAKO = 'https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js';
+const UTIF_JS = 'https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.js';
+const SWATCHES = [['#1f6fff', 'Blue'], ['#00c2ff', 'Cyan'], ['#ffd400', 'Yellow'], ['#ff2fb3', 'Magenta'], ['#ff3b30', 'Red'], ['#2ee35c', 'Green'], ['#ffffff', 'White'], ['#111111', 'Black']];
+const PIN_R = 11;
+const ALIGN_HINTS = [
+  '<b>1 of 4</b> Click a point you can recognise on the floor plan, such as a corner of the building.',
+  '<b>2 of 4</b> Now click that same point on the roof photo.',
+  '<b>3 of 4</b> Click a second point on the floor plan, far from the first. The opposite corner works best.',
+  '<b>4 of 4</b> Click that point on the roof photo.',
+];
+
+let P = newProject();
+let aerial = null;   // { img, w, h, name, blob }
+let plan = null;     // { data: ImageData, styled: canvas, w, h, name, blob, kind, pages, page, doc }
+let V = { s: 1, tx: 0, ty: 0 }, dpr = 1, cw = 0, ch = 0;
+let mode = 'adjust', align = [], drag = null, spaceDown = false;
+const undoStack = [], redoStack = [], pointers = new Map();
+
+/* ---------- small things ---------- */
+const toS = p => [p[0] * V.s + V.tx, p[1] * V.s + V.ty];
+const toW = p => [(p[0] - V.tx) / V.s, (p[1] - V.ty) / V.s];
+const mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const snap = () => JSON.stringify({ T: P.T, crop: P.crop, pins: P.pins });
+const slug = () => (P.title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'roof-overlay').slice(0, 60);
+let toastTimer;
+function toast(msg, ms = 3800) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms); }
+function busy(msg) { $('busy').textContent = msg || ''; $('busy').classList.toggle('hide', !msg); }
+function loadScript(src, global) {
+  if (window[global]) return Promise.resolve(window[global]);
+  return new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = src;
+    s.onload = () => (window[global] ? res(window[global]) : rej(new Error('reader')));
+    s.onerror = () => rej(new Error('reader'));
+    document.head.appendChild(s);
+  });
+}
+function friendly(e) {
+  if (e && e.name === 'PasswordException') return 'That PDF is password protected. Save a copy without the password and try again.';
+  if (e && e.message === 'reader') return 'Couldn\'t load the file reader. Check the internet connection and try again.';
+  return (e && e.message) || 'Something went wrong reading that file.';
+}
+function download(name, blob) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+const blobToDataURL = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
+
+/* ---------- autosave: IndexedDB, because the images are too big for localStorage ---------- */
+const DB = {
+  db: null,
+  open() {
+    return (this.db ||= new Promise((res, rej) => {
+      const r = indexedDB.open('zbcad-roof-overlay', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('kv');
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    }));
+  },
+  async run(fn) {
+    try {
+      const db = await this.open();
+      return await new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite'), s = t.objectStore('kv'), q = fn(s); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); });
+    } catch (e) { return undefined; }
+  },
+  get(k) { return this.run(s => s.get(k)); },
+  put(k, v) { return this.run(s => s.put(v, k)); },
+  clear() { return this.run(s => s.clear()); },
+};
+let saveTimer;
+function save() { clearTimeout(saveTimer); saveTimer = setTimeout(() => DB.put('project', JSON.stringify(P)), 400); }
+
+/* ---------- undo ---------- */
+function commit(before) {
+  if (before === snap()) return;
+  undoStack.push(before); if (undoStack.length > 200) undoStack.shift();
+  redoStack.length = 0; save(); refresh();
+}
+function restore(s) { const o = JSON.parse(s); P.T = o.T; P.crop = o.crop; P.pins = o.pins; renderPins(); save(); refresh(); }
+function undo() { if (undoStack.length) { redoStack.push(snap()); restore(undoStack.pop()); } }
+function redo() { if (redoStack.length) { undoStack.push(snap()); restore(redoStack.pop()); } }
+
+/* ---------- reading files ---------- */
+function capped(img, cap) {
+  const w = img.width, h = img.height;
+  if (w * h <= cap) return img;
+  const k = Math.sqrt(cap / (w * h)), c = mkCanvas(Math.max(1, Math.floor(w * k)), Math.max(1, Math.floor(h * k))), g = c.getContext('2d');
+  g.imageSmoothingQuality = 'high'; g.drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+async function decodeTiff(buf, page, cap) {
+  await loadScript(PAKO, 'pako');
+  const UTIF = await loadScript(UTIF_JS, 'UTIF');
+  const ifds = UTIF.decode(buf).filter(i => i.t256 && i.t257);
+  if (!ifds.length) throw new Error('No picture found in that TIFF.');
+  const ifd = ifds[Math.min(page, ifds.length) - 1];
+  UTIF.decodeImage(buf, ifd, ifds);
+  let px = UTIF.toRGBA8(ifd), w = ifd.width, h = ifd.height;
+  if (w * h > cap) ({ px, w, h } = shrinkDarkest(px, w, h, Math.ceil(Math.sqrt(w * h / cap))));
+  const c = mkCanvas(w, h);
+  c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.buffer, px.byteOffset, w * h * 4), w, h), 0, 0);
+  return { img: c, pages: ifds.length };
+}
+async function readRaster(blob, buf, cap, page = 1) {
+  if (sniff(new Uint8Array(buf.slice(0, 4))) === 'tiff') return decodeTiff(buf, page, cap);
+  let bm;
+  try { bm = await createImageBitmap(blob); } catch (e) { throw new Error('That file isn\'t a picture this browser can open. Try a PDF, JPEG, PNG or TIFF.'); }
+  return { img: capped(bm, cap), pages: 1 };
+}
+async function pdfDoc(buf) {
+  const lib = await loadScript(PDFJS + 'pdf.min.js', 'pdfjsLib');
+  lib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js';
+  return lib.getDocument({ data: new Uint8Array(buf.slice(0)) }).promise;
+}
+async function renderPdfPage(doc, n) {
+  const page = await doc.getPage(n), v1 = page.getViewport({ scale: 1 });
+  const k = Math.min(PLAN_LONG / Math.max(v1.width, v1.height), Math.sqrt(PLAN_CAP / (v1.width * v1.height)));
+  const vp = page.getViewport({ scale: k }), c = mkCanvas(Math.floor(vp.width), Math.floor(vp.height)), g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: g, viewport: vp }).promise;
+  return c;
+}
+function pixelsOf(img) {
+  const c = mkCanvas(img.width, img.height), g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(img, 0, 0);
+  return g.getImageData(0, 0, c.width, c.height);
+}
+
+async function loadAerial(blob, name, restoring = false) {
+  busy('Opening the roof photo…');
+  try {
+    const { img } = await readRaster(blob, await blob.arrayBuffer(), AERIAL_CAP);
+    const same = aerial && aerial.w === img.width && aerial.h === img.height;
+    const before = snap();
+    aerial = { img, w: img.width, h: img.height, name, blob };
+    if (!restoring) {
+      // A different photo puts the plan back in the middle of it; the same size is most
+      // likely a retake of the same view, so the plan stays where it was.
+      if (plan && !same) { P.T = fitPlan(P.crop, aerial.w, aerial.h); commit(before); }
+      DB.put('aerial', { blob, name }); save();
+    }
+    fitView(); refresh();
+    return true;
+  } catch (e) { console.error(e); toast(friendly(e)); return false; } finally { busy(null); }
+}
+
+async function loadPlan(blob, name, page = 1, restoring = false) {
+  if (!aerial) { toast('Load the roof photo first (step 1), then the floor plan.'); return false; }
+  busy('Reading the floor plan…');
+  try {
+    const buf = await blob.arrayBuffer(), kind = sniff(new Uint8Array(buf.slice(0, 4)));
+    let img, pages = 1, doc = plan && plan.blob === blob ? plan.doc : null;
+    if (kind === 'pdf') {
+      if (!doc) { busy('Loading the PDF reader…'); doc = await pdfDoc(buf); }
+      pages = doc.numPages; page = Math.min(page, pages);
+      busy(pages > 1 ? `Drawing page ${page} of ${pages}…` : 'Drawing the plan…');
+      img = await renderPdfPage(doc, page);
+    } else {
+      if (kind === 'tiff') busy('Loading the TIFF reader…');
+      ({ img, pages } = await readRaster(blob, buf, PLAN_CAP, page));
+      page = Math.min(page, pages);
+    }
+    const w = img.width, h = img.height, data = pixelsOf(img);
+    // Another page of the same file at the same size is most likely another floor of the
+    // same building, so it keeps the placement the last page was given.
+    const same = plan && plan.blob === blob && plan.w === w && plan.h === h;
+    if (!restoring && !same) {
+      P.pins = freezePins(P.pins, P.T);
+      P.crop = { x: 0, y: 0, w, h };
+      P.T = fitPlan(P.crop, aerial.w, aerial.h);
+      undoStack.length = redoStack.length = 0;
+    }
+    P.crop = clampCrop(P.crop, w, h);
+    if (!P.T) P.T = fitPlan(P.crop, aerial.w, aerial.h);
+    P.page = page;
+    plan = { data, styled: mkCanvas(w, h), w, h, name, blob, kind, pages, page, doc };
+    restyleNow();
+    if (!restoring) { DB.put('plan', { blob, name }); save(); }
+    if (mode === 'crop' || mode === 'align') setMode('adjust');
+    renderPins(); refresh();
+    return true;
+  } catch (e) { console.error(e); toast(friendly(e)); return false; } finally { busy(null); }
+}
+
+let styleTimer;
+function restyle() { clearTimeout(styleTimer); styleTimer = setTimeout(restyleNow, 60); }
+function restyleNow() {
+  clearTimeout(styleTimer);
+  if (!plan) return;
+  const { w, h } = plan;
+  plan.styled.getContext('2d').putImageData(new ImageData(styledPlan(plan.data.data, w, h, P.look), w, h), 0, 0);
+  redraw();
+}
+
+// Where a dropped, pasted or picked file goes. A PDF can only be a plan; a picture is the roof
+// photo until there is one.
+function take(file, target) {
+  if (/\.json$/i.test(file.name || '') || file.type === 'application/json') return openProject(file);
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+  if (target === 'plan' || (!target && aerial) || isPdf) return loadPlan(file, file.name || 'Pasted image');
+  return loadAerial(file, file.name || 'Pasted image');
+}
+
+/* ---------- view ---------- */
+function fitView() {
+  if (!aerial || !cw) return;
+  const pad = 24, s = Math.min((cw - 2 * pad) / aerial.w, (ch - 2 * pad) / aerial.h);
+  V = { s, tx: (cw - aerial.w * s) / 2, ty: (ch - aerial.h * s) / 2 };
+  redraw();
+}
+function zoomAt(p, k) {
+  if (!aerial) return;
+  const lo = Math.min(cw / aerial.w, ch / aerial.h) * 0.2, s = Math.min(64, Math.max(lo, V.s * k)), w = toW(p);
+  V = { s, tx: p[0] - w[0] * s, ty: p[1] - w[1] * s };
+  redraw();
+}
+let frame = 0;
+function redraw() { if (!frame) frame = requestAnimationFrame(() => { frame = 0; paint(); }); }
+
+function drawPlanOn(g, alpha, whole) {
+  const m = planMatrix(P.T), c = P.crop;
+  g.save();
+  g.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  if (whole) { g.globalAlpha = alpha * 0.3; g.drawImage(plan.styled, 0, 0); }
+  g.globalAlpha = alpha;
+  g.drawImage(plan.styled, c.x, c.y, c.w, c.h, c.x, c.y, c.w, c.h);
+  g.restore();
+}
+
+// A map pin with its point at (x, y), the number in its head and an optional note beside it.
+function drawPin(g, x, y, r, n, color, label) {
+  const cy = y - 1.9 * r, a = Math.asin(1 / 1.9);
+  g.save();
+  g.beginPath(); g.moveTo(x, y); g.arc(x, cy, r, Math.PI - a, a); g.closePath();
+  g.fillStyle = color; g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = r * 0.5; g.shadowOffsetY = r * 0.12; g.fill();
+  g.shadowColor = 'transparent'; g.lineWidth = Math.max(1.5, r * 0.16); g.strokeStyle = '#fff'; g.stroke();
+  g.fillStyle = '#fff'; g.font = `700 ${Math.round(r * (n > 9 ? 0.95 : 1.15))}px system-ui,-apple-system,"Segoe UI",sans-serif`;
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(n), x, cy + r * 0.05);
+  if (label) {
+    g.font = `600 ${Math.round(r * 1.1)}px system-ui,-apple-system,"Segoe UI",sans-serif`; g.textAlign = 'left';
+    const tw = g.measureText(label).width, px = r * 0.45, bx = x + r * 1.35, bh = r * 1.75;
+    g.fillStyle = 'rgba(255,255,255,.92)';
+    g.beginPath(); g.roundRect ? g.roundRect(bx, cy - bh / 2, tw + 2 * px, bh, r * 0.35) : g.rect(bx, cy - bh / 2, tw + 2 * px, bh); g.fill();
+    g.fillStyle = '#1c1b19'; g.fillText(label, bx + px, cy + r * 0.05);
+  }
+  g.restore();
+}
+
+function gripsOf() {
+  if (!plan || mode !== 'adjust' || P.locked) return [];
+  const B = boxOf(P.T, P.crop), out = [];
+  for (const [gx, gy] of [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [1, 0], [0, 1], [-1, 0]]) out.push({ kind: gx && gy ? 'corner' : 'side', gx, gy, p: toS(boxPoint(B, gx, gy)) });
+  const top = toS(boxPoint(B, 0, -1)), L = 30;
+  out.push({ kind: 'rot', p: [top[0] - B.v[0] * L, top[1] - B.v[1] * L], stem: top });
+  return out;
+}
+function cropGrips() {
+  if (!plan || mode !== 'crop') return [];
+  const c = P.crop, out = [];
+  for (const ex of [-1, 0, 1]) for (const ey of [-1, 0, 1]) {
+    if (!ex && !ey) continue;
+    out.push({ kind: 'crop', ex, ey, p: toS(toWorld(P.T, c.x + (ex + 1) * c.w / 2, c.y + (ey + 1) * c.h / 2)) });
+  }
+  return out;
+}
+function outline(g, pts, dash, color, width) {
+  g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.closePath();
+  g.setLineDash(dash); g.strokeStyle = color; g.lineWidth = width; g.stroke(); g.setLineDash([]);
+}
+function gripBox(g, p, size, round, fill = '#fff') {
+  g.beginPath();
+  if (round) g.arc(p[0], p[1], size / 2 + 1, 0, 2 * Math.PI); else g.rect(p[0] - size / 2, p[1] - size / 2, size, size);
+  g.fillStyle = fill; g.fill(); g.lineWidth = 1.5; g.strokeStyle = '#1c1b19'; g.stroke();
+}
+
+function paint() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  if (!aerial) return;
+  ctx.setTransform(dpr * V.s, 0, 0, dpr * V.s, dpr * V.tx, dpr * V.ty);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = V.s < 1 ? 'high' : 'low';
+  ctx.drawImage(aerial.img, 0, 0);
+  if (plan) {
+    let a = P.look.opacity / 100;
+    if (mode === 'crop') a = Math.max(a, 0.7);
+    if (mode === 'align' && align.length % 2) a *= 0.35;
+    drawPlanOn(ctx, a, mode === 'crop');
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (plan) {
+    const c = P.crop, box = [[c.x, c.y], [c.x + c.w, c.y], [c.x + c.w, c.y + c.h], [c.x, c.y + c.h]].map(q => toS(toWorld(P.T, q[0], q[1])));
+    if (mode === 'crop') {
+      outline(ctx, [[0, 0], [plan.w, 0], [plan.w, plan.h], [0, plan.h]].map(q => toS(toWorld(P.T, q[0], q[1]))), [4, 4], 'rgba(255,255,255,.8)', 1);
+      outline(ctx, box, [], '#ff8a3d', 2);
+      for (const gr of cropGrips()) gripBox(ctx, gr.p, 11, false, '#ff8a3d');
+    } else if (mode === 'adjust' && !P.locked) {
+      outline(ctx, box, [6, 4], 'rgba(255,255,255,.9)', 1.2);
+      const gs = gripsOf(), rot = gs.find(q => q.kind === 'rot');
+      ctx.beginPath(); ctx.moveTo(rot.stem[0], rot.stem[1]); ctx.lineTo(rot.p[0], rot.p[1]); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1.2; ctx.stroke();
+      for (const gr of gs) gripBox(ctx, gr.p, gr.kind === 'side' ? 8 : 11, gr.kind === 'rot');
+    }
+  }
+  P.pins.forEach((p, i) => { const w = pinWorld(P.T, p); if (w) { const s = toS(w); drawPin(ctx, s[0], s[1], PIN_R, i + 1, P.pinColor, P.pinLabels ? p.label.trim() : ''); } });
+  if (mode === 'align') {
+    align.forEach((q, i) => {
+      const s = toS(i % 2 ? q : toWorld(P.T, q[0], q[1])), col = i % 2 ? '#ff8a3d' : '#00c2ff';
+      ctx.beginPath(); ctx.arc(s[0], s[1], 7, 0, 2 * Math.PI); ctx.lineWidth = 2.5; ctx.strokeStyle = col; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(s[0] - 12, s[1]); ctx.lineTo(s[0] + 12, s[1]); ctx.moveTo(s[0], s[1] - 12); ctx.lineTo(s[0], s[1] + 12); ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.font = '700 12px system-ui,sans-serif'; ctx.fillStyle = col; ctx.fillText((i < 2 ? 'A' : 'B') + (i % 2 ? ' roof' : ' plan'), s[0] + 10, s[1] - 10);
+    });
+  }
+}
+
+/* ---------- pointer ---------- */
+const pt = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+function nearest(list, p, touch) {
+  const R = touch ? 22 : 11; let best = null, bd = R;
+  for (const g of list) { const d = Math.hypot(g.p[0] - p[0], g.p[1] - p[1]); if (d <= bd) { best = g; bd = d; } }
+  return best;
+}
+function hitPin(p, touch) {
+  for (let i = P.pins.length - 1; i >= 0; i--) {
+    const w = pinWorld(P.T, P.pins[i]); if (!w) continue;
+    const s = toS(w);
+    if (Math.hypot(s[0] - p[0], s[1] - 1.9 * PIN_R - p[1]) <= PIN_R + (touch ? 8 : 3) || Math.hypot(s[0] - p[0], s[1] - p[1]) <= 4) return i;
+  }
+  return -1;
+}
+function onPlan(w) {
+  if (!plan) return false;
+  const s = toPlan(P.T, w[0], w[1]), c = P.crop;
+  return s[0] >= c.x && s[0] <= c.x + c.w && s[1] >= c.y && s[1] <= c.y + c.h;
+}
+// One of the four double-headed resize cursors, whichever is nearest the grip's direction
+// from the middle of the plan on screen.
+function resizeCursor(gp) {
+  const c = toS(boxOf(P.T, P.crop).ctr), a = Math.atan2(gp[1] - c[1], gp[0] - c[0]) * 180 / Math.PI;
+  return ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'][Math.round(((a % 180) + 180) % 180 / 45) % 4];
+}
+function cursorAt(p) {
+  if (drag) return drag.kind === 'pan' ? 'grabbing' : cv.style.cursor;
+  if (!aerial) return 'default';
+  if (spaceDown) return 'grab';
+  let g;
+  if ((g = nearest(gripsOf(), p)) || (g = nearest(cropGrips(), p))) return g.kind === 'rot' ? 'grab' : resizeCursor(g.p);
+  if ((mode === 'adjust' || mode === 'mark') && hitPin(p) >= 0) return 'move';
+  if (mode === 'mark' || mode === 'align') return 'crosshair';
+  if (mode === 'adjust' && !P.locked && onPlan(toW(p))) return 'move';
+  return 'grab';
+}
+
+cv.addEventListener('pointerdown', e => {
+  cv.focus({ preventScroll: true });
+  const p = pt(e);
+  pointers.set(e.pointerId, p);
+  try { cv.setPointerCapture(e.pointerId); } catch (_) { /* a synthetic pointer has nothing to capture */ }
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    if (drag && drag.before) restoreDrag();
+    drag = { kind: 'pinch', d0: Math.hypot(a[0] - b[0], a[1] - b[1]), V0: { ...V }, mid: toW([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]) };
+    return;
+  }
+  if (!aerial || pointers.size > 2) return;
+  const w = toW(p), touch = e.pointerType === 'touch', before = snap();
+  let g, i;
+  if (e.button === 1 || e.button === 2 || spaceDown) drag = { kind: 'pan', last: p };
+  else if ((g = nearest(cropGrips(), p, touch))) drag = { kind: 'crop', g, before };
+  else if ((g = nearest(gripsOf(), p, touch))) drag = { kind: g.kind === 'rot' ? 'rot' : 'grip', g, T0: P.T, start: w, before };
+  else if ((mode === 'adjust' || mode === 'mark') && (i = hitPin(p, touch)) >= 0) drag = { kind: 'pin', i, before, start: p, moved: false };
+  else if (mode === 'adjust' && !P.locked && onPlan(w)) drag = { kind: 'move', T0: P.T, start: w, before };
+  else drag = { kind: 'pan', last: p, start: p, click: e.button === 0 };
+  cv.style.cursor = cursorAt(p);
+});
+// A drag that a second finger turns into a pinch puts back what the first finger had moved.
+function restoreDrag() { const o = JSON.parse(drag.before); P.T = o.T; P.crop = o.crop; P.pins = o.pins; }
+
+cv.addEventListener('pointermove', e => {
+  const p = pt(e);
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, p);
+  if (!drag) { cv.style.cursor = cursorAt(p); return; }
+  const w = toW(p);
+  switch (drag.kind) {
+    case 'pinch': {
+      if (pointers.size < 2) return;
+      const [a, b] = [...pointers.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      const lo = Math.min(cw / aerial.w, ch / aerial.h) * 0.2, s = Math.min(64, Math.max(lo, drag.V0.s * d / drag.d0));
+      V = { s, tx: m[0] - drag.mid[0] * s, ty: m[1] - drag.mid[1] * s };
+      break;
+    }
+    case 'pan':
+      V.tx += p[0] - drag.last[0]; V.ty += p[1] - drag.last[1]; drag.last = p;
+      if (drag.click && Math.hypot(p[0] - drag.start[0], p[1] - drag.start[1]) > 4) drag.click = false;
+      break;
+    case 'grip':
+      P.T = dragGrip(drag.T0, P.crop, drag.g.gx, drag.g.gy, w, P.keep !== e.shiftKey);
+      break;
+    case 'rot': {
+      const c = boxOf(drag.T0, P.crop).ctr;
+      const rot = drag.T0.rot + Math.atan2(w[1] - c[1], w[0] - c[0]) - Math.atan2(drag.start[1] - c[1], drag.start[0] - c[0]);
+      P.T = rotateTo(drag.T0, P.crop, e.shiftKey ? rot : snapRot(rot, 1.5 * Math.PI / 180));
+      setHint(`Rotation <b>${fmtDeg(P.T.rot)}°</b>. It snaps square near each quarter turn; hold Shift to stop it snapping.`);
+      break;
+    }
+    case 'move':
+      P.T = movedBy(drag.T0, w[0] - drag.start[0], w[1] - drag.start[1]);
+      break;
+    case 'crop': {
+      const s = toPlan(P.T, w[0], w[1]), c = P.crop, MIN = 16;
+      let x0 = c.x, x1 = c.x + c.w, y0 = c.y, y1 = c.y + c.h;
+      if (drag.g.ex < 0) x0 = Math.min(Math.max(0, s[0]), x1 - MIN); else if (drag.g.ex > 0) x1 = Math.max(Math.min(plan.w, s[0]), x0 + MIN);
+      if (drag.g.ey < 0) y0 = Math.min(Math.max(0, s[1]), y1 - MIN); else if (drag.g.ey > 0) y1 = Math.max(Math.min(plan.h, s[1]), y0 + MIN);
+      P.crop = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      break;
+    }
+    case 'pin': {
+      if (!drag.moved && Math.hypot(p[0] - drag.start[0], p[1] - drag.start[1]) < 3) return;
+      drag.moved = true;
+      const pin = P.pins[drag.i], q = pin.at === 'plan' ? toPlan(P.T, w[0], w[1]) : w;
+      P.pins[drag.i] = { ...pin, x: q[0], y: q[1] };
+      break;
+    }
+  }
+  redraw();
+});
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  if (!drag) return;
+  if (drag.kind === 'pinch') { if (!pointers.size) drag = null; return; }
+  const d = drag; drag = null;
+  if (d.kind === 'pan' && d.click && e.type === 'pointerup') click(toW(pt(e)));
+  if (d.before) commit(d.before);
+  if (d.kind === 'rot') refresh();
+  cv.style.cursor = cursorAt(pt(e));
+}
+cv.addEventListener('pointerup', endPointer);
+cv.addEventListener('pointercancel', endPointer);
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+  zoomAt(pt(e), Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015)));
+}, { passive: false });
+
+function click(w) {
+  if (mode === 'mark') {
+    const before = snap(), onP = plan && P.T, q = onP ? toPlan(P.T, w[0], w[1]) : w;
+    P.pins.push({ at: onP ? 'plan' : 'roof', x: q[0], y: q[1], label: '' });
+    commit(before); renderPins();
+    // The new marker's note takes the keyboard, so a note can be typed straight after the click.
+    const inputs = $('pins').querySelectorAll('input'); inputs[inputs.length - 1]?.focus({ preventScroll: true });
+  } else if (mode === 'align') {
+    align.push(align.length % 2 ? w : toPlan(P.T, w[0], w[1]));
+    if (align.length === 4) {
+      const T = alignTwo(P.T, align[0], align[2], align[1], align[3]);
+      if (!T) { toast('Those two points are too close together. Try two corners far apart.'); align = []; }
+      else {
+        const before = snap(); P.T = T; align = []; mode = 'adjust'; commit(before);
+        toast('Lined up. If it is still off in one direction, drag a side grip to stretch it.', 6000);
+      }
+    }
+    refresh();
+  }
+}
+
+/* ---------- keyboard ---------- */
+const typing = () => { const a = document.activeElement; return a && (a.tagName === 'INPUT' && !/^(checkbox|range|color|button)$/.test(a.type) || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA'); };
+let nudgeAt = 0;
+document.addEventListener('keydown', e => {
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && (e.key === 'z' || e.key === 'Z') && !typing()) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (mod && (e.key === 'y' || e.key === 'Y') && !typing()) { e.preventDefault(); redo(); return; }
+  if (typing()) return;
+  if (e.key === 'Escape' && mode !== 'adjust') { setMode('adjust'); return; }
+  // Space and the arrows belong to a focused slider or button; they move the picture only
+  // when nothing else has the keyboard.
+  const free = document.activeElement === cv || document.activeElement === document.body;
+  if (e.key === ' ' && aerial && free) { e.preventDefault(); if (!spaceDown) { spaceDown = true; cv.style.cursor = 'grab'; } return; }
+  const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (dir && free && plan && mode === 'adjust' && !P.locked) {
+    e.preventDefault();
+    // A run of nudges is one step of undo.
+    const now = Date.now();
+    if (now - nudgeAt > 900) { undoStack.push(snap()); redoStack.length = 0; }
+    nudgeAt = now;
+    const k = (e.shiftKey ? 10 : 1) / V.s;
+    P.T = movedBy(P.T, dir[0] * k, dir[1] * k);
+    save(); refresh();
+  }
+});
+document.addEventListener('keyup', e => { if (e.key === ' ') { spaceDown = false; cv.style.cursor = 'default'; } });
+
+/* ---------- controls ---------- */
+function setMode(m) {
+  mode = mode === m ? 'adjust' : m; align = [];
+  refresh();
+}
+function setHint(html) { $('hint').innerHTML = html; }
+const fmtDeg = r => { const d = Math.round(r * 1800 / Math.PI) / 10; return (Object.is(d, -0) ? 0 : d).toFixed(1); };
+
+function hintFor() {
+  if (!aerial) return 'Start by loading a photo of the roof.';
+  if (!plan) return 'Now add the floor plan in step 2.';
+  if (mode === 'crop') return 'Drag the orange grips in to trim the plan to the building. Press <b>Done cropping</b> when finished.';
+  if (mode === 'align') return ALIGN_HINTS[align.length] + ' Press Esc to cancel.';
+  if (mode === 'mark') return 'Click to drop a marker. Drag a marker to move it. Press Esc when done.';
+  if (P.locked) return 'The plan is locked. Drag to look around; scroll to zoom.';
+  return 'Drag the plan to move it. <b>Corners</b> resize, <b>sides</b> stretch, the <b>round grip</b> turns it. Scroll to zoom.';
+}
+
+function refresh() {
+  const has = !!aerial, hp = !!plan;
+  $('s1').classList.toggle('done', has);
+  $('s2').classList.toggle('off', !has); $('s2').classList.toggle('done', hp);
+  for (const id of ['s3', 's4']) $(id).classList.toggle('off', !hp);
+  $('s5').classList.toggle('off', !has); $('s5').classList.toggle('done', P.pins.length > 0);
+  $('s6').classList.toggle('off', !has);
+  $('aerialName').textContent = has ? `${aerial.name} · ${aerial.w} × ${aerial.h}` : 'No photo yet';
+  $('pickAerial').textContent = has ? 'Replace' : 'Choose roof photo';
+  $('planName').textContent = hp ? plan.name : '';
+  $('pickPlan').textContent = hp ? 'Replace' : 'Choose floor plan';
+  $('pageRow').classList.toggle('hide', !hp || plan.pages < 2);
+  if (hp && plan.pages > 1 && $('page').options.length !== plan.pages) $('page').innerHTML = Array.from({ length: plan.pages }, (_, i) => `<option value="${i + 1}">Page ${i + 1} of ${plan.pages}</option>`).join('');
+  if (hp) $('page').value = String(plan.page);
+  $('crop').textContent = mode === 'crop' ? 'Done cropping' : 'Crop plan';
+  $('crop').classList.toggle('on', mode === 'crop');
+  $('uncrop').disabled = !hp || (P.crop.x === 0 && P.crop.y === 0 && P.crop.w === plan.w && P.crop.h === plan.h);
+  $('align').textContent = mode === 'align' ? 'Cancel lining up' : 'Line up by two points';
+  $('align').classList.toggle('on', mode === 'align'); $('align').classList.toggle('pri', mode !== 'align');
+  $('mark').textContent = mode === 'mark' ? 'Done adding markers' : 'Add markers';
+  $('mark').classList.toggle('on', mode === 'mark'); $('mark').classList.toggle('pri', mode !== 'mark');
+  for (const id of ['rotL', 'rotR', 'flip', 'refit', 'rot', 'align']) $(id).disabled = !hp || P.locked;
+  const L = P.look;
+  $('knock').checked = L.knockout;
+  $('clean').value = L.clean; $('cleanOut').textContent = L.clean;
+  $('weight').value = L.weight; $('weightOut').textContent = L.weight;
+  $('halo').checked = L.halo; $('halo').disabled = !L.knockout; $('haloColor').value = L.haloColor;
+  $('opacity').value = L.opacity; $('fade').value = L.opacity; $('opacityOut').textContent = Math.round(L.opacity) + '%';
+  for (const b of $('swatches').querySelectorAll('.sw')) b.classList.toggle('on', b.dataset.c === 'orig' ? L.original : !L.original && b.dataset.c === L.color);
+  $('custom').value = L.color;
+  if (document.activeElement !== $('rot')) $('rot').value = P.T ? fmtDeg(P.T.rot) : '';
+  $('keep').checked = P.keep; $('lock').checked = P.locked;
+  $('pinLabels').checked = P.pinLabels; $('pinColor').value = P.pinColor;
+  if (document.activeElement !== $('title')) $('title').value = P.title;
+  $('undo').disabled = !undoStack.length; $('redo').disabled = !redoStack.length;
+  $('empty').classList.toggle('hide', has);
+  for (const id of ['fade', 'zin', 'zout', 'fitv']) $(id).disabled = !has;
+  $('fade').disabled = !hp;
+  setHint(hintFor());
+  for (const n of $('pins').querySelectorAll('.num')) n.style.background = P.pinColor;
+  redraw();
+}
+
+function renderPins() {
+  const ol = $('pins');
+  ol.innerHTML = '';
+  P.pins.forEach((p, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<button class="num" title="Show this marker">${i + 1}</button><input placeholder="Note, e.g. stain above room 112"><button class="x" title="Remove marker" aria-label="Remove marker ${i + 1}">×</button>`;
+    const [num, inp, x] = li.children;
+    num.style.background = P.pinColor;
+    inp.value = p.label;
+    inp.addEventListener('input', () => { P.pins[i].label = inp.value; save(); redraw(); });
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') inp.blur();
+      if (e.key === 'Escape') { inp.blur(); if (mode === 'mark') setMode('adjust'); }
+    });
+    x.onclick = () => { const before = snap(); P.pins.splice(i, 1); commit(before); renderPins(); };
+    num.onclick = () => {
+      const w = pinWorld(P.T, P.pins[i]); if (!w) return;
+      const s = Math.max(V.s, Math.min(cw / aerial.w, ch / aerial.h) * 2.5);
+      V = { s, tx: cw / 2 - w[0] * s, ty: ch / 2 - w[1] * s }; redraw();
+    };
+    ol.appendChild(li);
+  });
+}
+
+function buildSwatches() {
+  const box = $('swatches');
+  box.innerHTML = SWATCHES.map(([c, n]) => `<button class="sw" data-c="${c}" title="${n}" aria-label="${n}" style="background:${c}"></button>`).join('')
+    + '<button class="sw orig" data-c="orig" title="Keep the plan\'s own colors">Original</button><input type="color" id="custom" title="Any other color">';
+  box.addEventListener('click', e => {
+    const b = e.target.closest('.sw'); if (!b) return;
+    if (b.dataset.c === 'orig') P.look.original = true; else { P.look.original = false; P.look.color = b.dataset.c; }
+    restyle(); save(); refresh();
+  });
+  $('custom').addEventListener('input', e => { P.look.original = false; P.look.color = e.target.value; restyle(); save(); refresh(); });
+}
+
+function bindLook(id, key, parse, heavy = true) {
+  $(id).addEventListener('input', e => {
+    P.look[key] = parse(e.target);
+    if (heavy) restyle(); else redraw();
+    save(); refresh();
+  });
+}
+
+function bind() {
+  buildSwatches();
+  $('pickAerial').onclick = $('pickAerial2').onclick = () => $('fAerial').click();
+  $('pickPlan').onclick = () => $('fPlan').click();
+  $('openProj').onclick = () => $('fProj').click();
+  $('fAerial').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) take(f, 'aerial'); };
+  $('fPlan').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) take(f, 'plan'); };
+  $('fProj').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) openProject(f); };
+  $('page').onchange = e => plan && loadPlan(plan.blob, plan.name, +e.target.value);
+  $('crop').onclick = () => setMode('crop');
+  $('uncrop').onclick = () => { const before = snap(); P.crop = { x: 0, y: 0, w: plan.w, h: plan.h }; commit(before); };
+  bindLook('knock', 'knockout', t => t.checked);
+  bindLook('clean', 'clean', t => +t.value);
+  bindLook('weight', 'weight', t => +t.value);
+  bindLook('halo', 'halo', t => t.checked);
+  bindLook('haloColor', 'haloColor', t => t.value);
+  bindLook('opacity', 'opacity', t => +t.value, false);
+  bindLook('fade', 'opacity', t => +t.value, false);
+  $('align').onclick = () => setMode('align');
+  const edit = fn => () => { if (!plan) return; const before = snap(); P.T = fn(P.T); commit(before); };
+  $('rotL').onclick = edit(T => rotateTo(T, P.crop, T.rot - Math.PI / 2));
+  $('rotR').onclick = edit(T => rotateTo(T, P.crop, T.rot + Math.PI / 2));
+  $('flip').onclick = edit(T => mirrored(T, P.crop));
+  $('refit').onclick = edit(() => fitPlan(P.crop, aerial.w, aerial.h));
+  $('rot').addEventListener('change', e => {
+    const d = parseFloat(e.target.value.replace(/[^\d.+-]/g, ''));
+    if (Number.isFinite(d)) edit(T => rotateTo(T, P.crop, d * Math.PI / 180))();
+    refresh();
+  });
+  $('rot').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+  $('keep').onchange = e => { P.keep = e.target.checked; save(); };
+  $('lock').onchange = e => { P.locked = e.target.checked; if (P.locked && (mode === 'crop' || mode === 'align')) mode = 'adjust'; save(); refresh(); };
+  $('mark').onclick = () => setMode('mark');
+  $('pinLabels').onchange = e => { P.pinLabels = e.target.checked; save(); redraw(); };
+  $('pinColor').addEventListener('input', e => { P.pinColor = e.target.value; save(); refresh(); });
+  $('title').addEventListener('input', e => { P.title = e.target.value; save(); });
+  $('png').onclick = savePNG;
+  $('print').onclick = printIt;
+  $('saveProj').onclick = saveProject;
+  $('reset').onclick = startOver;
+  $('undo').onclick = undo; $('redo').onclick = redo;
+  $('zin').onclick = () => zoomAt([cw / 2, ch / 2], 1.3);
+  $('zout').onclick = () => zoomAt([cw / 2, ch / 2], 1 / 1.3);
+  $('fitv').onclick = fitView;
+
+  // Drop anywhere: onto step 1 or 2 to say which it is, or onto the picture to let take() decide.
+  let dragDepth = 0;
+  document.addEventListener('dragenter', e => { if ([...(e.dataTransfer?.types || [])].includes('Files')) { dragDepth++; view.classList.add('drop'); } });
+  document.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; view.classList.remove('drop'); } });
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('drop', e => {
+    e.preventDefault(); dragDepth = 0; view.classList.remove('drop');
+    const f = e.dataTransfer?.files?.[0]; if (!f) return;
+    const t = e.target.closest?.('[data-drop]');
+    take(f, t && !t.classList.contains('off') ? t.dataset.drop : null);
+  });
+  document.addEventListener('paste', e => {
+    if (typing()) return;
+    const item = [...(e.clipboardData?.items || [])].find(i => i.kind === 'file');
+    const f = item && item.getAsFile();
+    if (f) { e.preventDefault(); take(f); }
+  });
+
+  new ResizeObserver(() => {
+    const first = !cw;
+    dpr = window.devicePixelRatio || 1; cw = view.clientWidth; ch = view.clientHeight;
+    cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+    if (first) fitView();
+    paint();
+  }).observe(view);
+}
+
+/* ---------- output ---------- */
+// The photo at its own size, with the plan and markers drawn as they are on screen, and a
+// strip underneath with the title and each marker's note, which is what makes the picture
+// stand on its own once it is emailed.
+function composite() {
+  const w = aerial.w, h = aerial.h, unit = Math.max(w, h);
+  const pins = P.pins.map((p, i) => ({ n: i + 1, label: p.label.trim(), at: pinWorld(P.T, p) })).filter(p => p.at);
+  const fs = Math.max(13, Math.round(unit / 80)), pad = Math.round(fs * 1.2), lh = Math.round(fs * 1.55);
+  const listed = pins.filter(p => p.label), title = P.title.trim();
+  const cols = Math.max(1, Math.min(3, Math.floor((w - 2 * pad) / (fs * 24))));
+  const rows = Math.ceil(listed.length / cols);
+  const foot = title || listed.length ? Math.round(pad * 2 + fs * 1.4 + (rows ? fs * 0.7 + rows * lh : 0)) : 0;
+  const c = mkCanvas(w, h + foot), g = c.getContext('2d');
+  g.drawImage(aerial.img, 0, 0);
+  if (plan) drawPlanOn(g, P.look.opacity / 100, false);
+  const r = Math.max(8, Math.round(unit / 95));
+  for (const p of pins) drawPin(g, p.at[0], p.at[1], r, p.n, P.pinColor, P.pinLabels ? p.label : '');
+  if (foot) {
+    const font = (wt, s) => `${wt} ${Math.round(s)}px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif`;
+    g.fillStyle = '#ffffff'; g.fillRect(0, h, w, foot);
+    g.textBaseline = 'top';
+    g.fillStyle = '#6b675f'; g.font = font(400, fs * 0.85); g.textAlign = 'right';
+    const stamp = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) + '  ·  zbcad.com';
+    g.fillText(stamp, w - pad, h + pad + fs * 0.25);
+    const stampW = g.measureText(stamp).width;
+    g.textAlign = 'left'; g.fillStyle = '#1c1b19'; g.font = font(650, fs * 1.2);
+    g.fillText(fit(g, title || 'Roof overlay', w - 3 * pad - stampW), pad, h + pad);
+    const colW = (w - 2 * pad) / cols, y0 = h + pad + fs * 2.1;
+    listed.forEach((p, k) => {
+      const x = pad + Math.floor(k / rows) * colW, y = y0 + (k % rows) * lh, rr = fs * 0.62;
+      g.beginPath(); g.arc(x + rr, y + fs * 0.55, rr, 0, 2 * Math.PI); g.fillStyle = P.pinColor; g.fill();
+      g.fillStyle = '#fff'; g.font = font(700, fs * (p.n > 9 ? 0.6 : 0.72)); g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(String(p.n), x + rr, y + fs * 0.57);
+      g.textAlign = 'left'; g.textBaseline = 'top'; g.fillStyle = '#1c1b19'; g.font = font(400, fs);
+      g.fillText(fit(g, p.label, colW - rr * 2 - fs * 1.2), x + rr * 2 + fs * 0.5, y);
+    });
+  }
+  return c;
+}
+function fit(g, s, max) {
+  if (g.measureText(s).width <= max) return s;
+  while (s.length > 1 && g.measureText(s + '…').width > max) s = s.slice(0, -1);
+  return s + '…';
+}
+const canvasBlob = c => new Promise((res, rej) => c.toBlob(b => (b ? res(b) : rej(new Error('The image is too big for this browser to save.'))), 'image/png'));
+async function savePNG() {
+  if (!aerial) return;
+  busy('Making the image…');
+  try { download(slug() + '.png', await canvasBlob(composite())); } catch (e) { toast(friendly(e)); } finally { busy(null); }
+}
+async function printIt() {
+  if (!aerial) return;
+  busy('Getting it ready to print…');
+  try {
+    const c = composite(), url = URL.createObjectURL(await canvasBlob(c)), out = $('printOut');
+    out.innerHTML = `<style>@page{size:${c.width >= c.height ? 'landscape' : 'portrait'};margin:10mm}</style><img alt="">`;
+    const img = out.querySelector('img');
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+    busy(null);
+    window.print();
+    setTimeout(() => { out.innerHTML = ''; URL.revokeObjectURL(url); }, 1000);
+  } catch (e) { toast(friendly(e)); } finally { busy(null); }
+}
+async function saveProject() {
+  if (!aerial) return;
+  busy('Saving the project…');
+  try {
+    const file = {
+      app: 'zbcad-roof-overlay', v: 1, project: P,
+      aerial: { name: aerial.name, data: await blobToDataURL(aerial.blob) },
+      plan: plan ? { name: plan.name, data: await blobToDataURL(plan.blob) } : null,
+    };
+    download(slug() + '.roof-overlay.json', new Blob([JSON.stringify(file)], { type: 'application/json' }));
+  } catch (e) { toast(friendly(e)); } finally { busy(null); }
+}
+const dataBlob = async d => (await fetch(d)).blob();
+async function openProject(f) {
+  let o;
+  try { o = JSON.parse(await f.text()); } catch (e) { toast('That file isn\'t a Roof Overlay project.'); return; }
+  if (!o || o.app !== 'zbcad-roof-overlay' || !o.aerial || typeof o.aerial.data !== 'string') { toast('That file isn\'t a Roof Overlay project.'); return; }
+  await openFrom(checkProject(o.project), o.aerial.name, await dataBlob(o.aerial.data), o.plan && o.plan.name, o.plan && typeof o.plan.data === 'string' ? await dataBlob(o.plan.data) : null, true);
+}
+// Puts a whole project in place: the autosave on boot, or a project file.
+async function openFrom(proj, aName, aBlob, pName, pBlob, store) {
+  P = proj; aerial = null; plan = null; mode = 'adjust'; align = [];
+  undoStack.length = redoStack.length = 0;
+  if (!(await loadAerial(aBlob, aName || 'Roof photo', true))) { P = newProject(); refresh(); return; }
+  if (pBlob && !(await loadPlan(pBlob, pName || 'Floor plan', P.page, true))) toast('The floor plan couldn\'t be reopened. Choose it again in step 2.', 6000);
+  if (store) { DB.put('aerial', { blob: aBlob, name: aName }); if (pBlob) DB.put('plan', { blob: pBlob, name: pName }); save(); }
+  renderPins(); fitView(); refresh();
+}
+async function startOver() {
+  if (!confirm('Clear the roof photo, the floor plan and all markers?')) return;
+  await DB.clear();
+  P = newProject(); aerial = null; plan = null; mode = 'adjust'; align = [];
+  undoStack.length = redoStack.length = 0;
+  renderPins(); refresh();
+}
+
+async function boot() {
+  bind(); refresh();
+  const [proj, a, p] = await Promise.all([DB.get('project'), DB.get('aerial'), DB.get('plan')]);
+  if (!a || !a.blob) return;
+  let o = null; try { o = JSON.parse(proj); } catch (e) { /* no project yet: the images alone still reopen */ }
+  await openFrom(checkProject(o), a.name, a.blob, p && p.name, p && p.blob, false);
+}
+boot();
+})();
+</script>
+</body>
+</html>
