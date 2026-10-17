@@ -221,7 +221,7 @@ button.kpi:hover { background: var(--sel); }
   .zoom { margin-left: 0; }
 }
 @media (max-width: 520px) { #kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kpi { border-bottom: 1px solid var(--line); } .kpi:nth-child(odd) { border-right: 1px solid var(--line) !important; } .kpi:nth-child(even) { border-right: 0; } .rgrid, .facts { grid-template-columns: 1fr; } }
-#dlgHelp { width: min(680px, calc(100vw - 24px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+#dlgHelp { width: min(680px, calc(100vw - 24px)); max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 40px rgba(0,0,0,.25); }
 #dlgHelp::backdrop { background: rgba(20,20,19,.35); }
 #dlgHelp form { padding: 20px 24px 16px; font-size: 13.5px; line-height: 1.55; }
 #dlgHelp h2 { margin: 0 0 8px; font-size: 18px; letter-spacing: -.01em; outline: none; }
