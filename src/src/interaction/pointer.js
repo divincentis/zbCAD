@@ -170,6 +170,11 @@ canvas.addEventListener('wheel', ev => {
 }, {passive:false});
 
 document.addEventListener('keydown', ev => {
+  // F1 is blocked rather than bound, as on every zbCAD tool: an accidental
+  // press should cost nothing, and left alone Chrome opens its own help in a
+  // new tab. It comes before the dialogs below, which return early. Help is
+  // the header link to docs.html.
+  if (ev.key === 'F1') { ev.preventDefault(); return; }
   // The dialog owns the keyboard while it is open, otherwise the catch-all
   // below would type into the command line behind it.
   if (!underlayDialog.hidden) {
