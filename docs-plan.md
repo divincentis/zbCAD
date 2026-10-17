@@ -39,7 +39,7 @@ Work through the tools one at a time, in the order below. When a tool is finishe
 Ordered roughly by how little documentation the tool has now:
 
 - [x] **Taper Studio** (`taper.html`), 2026-10-17. Added a Help button and dialog with every section; the old description is rewritten as its About paragraph. F1 is blocked, and keys pressed while help is open no longer reach the plan. Head tags added, and `<title>` moved from `<body>` into `<head>`. There is no suite; it was checked in headless Chromium.
-- [ ] **Sheet Metal Layout** (`pattern.html`): has a meta description, no help.
+- [x] **Sheet Metal Layout** (`pattern.html`), 2026-10-17. Added a Help button beside the units switch, and a dialog styled like the print dialog (its header and footer stay put while the text scrolls), with the old description as its About paragraph. It also covers the outside-face-up rule and the fact that there are no seam allowances, both of which were previously only in per-fitting notes. F1 is blocked on `window`, because the suite's DOM stub has no `document.addEventListener`. og tags added. The suite passes (54 + 49).
 - [ ] **Roof Overlay** (`overlay.html`): has a meta description, no help.
 - [ ] **360 Photo Viewer** (`pano.html`): has a meta description, no help.
 - [ ] **Wind Zone Visualizer** (`zones/`): this is **build output**. Edit the source in `~/projects/zones` and deploy from there, never in this repo.

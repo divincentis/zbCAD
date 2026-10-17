@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sheet Metal Layout</title>
 <meta name="description" content="Flat pattern development for sheet metal fittings: rectangle to round, transitions, cones, offset reducers, elbows and branches. Export DXF and SVG.">
+<meta property="og:title" content="Sheet Metal Layout">
+<meta property="og:description" content="Flat patterns for transitions, cones, reducers, elbows and branches, printed full size or exported to DXF.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://zbcad.com/pattern.html">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c1b19'/%3E%3Cpath d='M6 14.5h8.5L6 23.5h8.5M18.5 8.5v15h7.5v-9h-7.5' fill='none' stroke='%23f4f1ea' stroke-width='2.5' stroke-linecap='square'/%3E%3C/svg%3E">
 <style>
 :root{
@@ -104,6 +108,20 @@ dialog#pdlg::backdrop{background:rgba(0,0,0,.45)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .hide{display:none!important}
 .work.stale .view svg,.work.stale #c3,.work.stale .tw,.work.stale #notes{opacity:.35}
+.hdr-r{display:flex;align-items:center;gap:10px}
+dialog#dlgHelp{border:0;padding:0;border-radius:12px;background:var(--panel);color:var(--ink);width:min(680px,calc(100vw - 20px));max-height:calc(100vh - 20px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog#dlgHelp::backdrop{background:rgba(0,0,0,.45)}
+#dlgHelp form{display:flex;flex-direction:column;max-height:calc(100vh - 20px)}
+#dlgHelp .dh h2{margin:0;font-size:16px;outline:none}
+#dlgHelp .dbody{padding:4px 20px 12px;font-size:13.5px;line-height:1.55}
+#dlgHelp h3{margin:16px 0 6px;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+#dlgHelp p,#dlgHelp ul{margin:0 0 8px}
+#dlgHelp ul{padding-left:18px}
+#dlgHelp li{margin-bottom:4px}
+#dlgHelp .about{font-size:14.5px;margin-top:12px}
+#dlgHelp code{font-size:12px}
+#dlgHelp .fine{color:var(--muted);font-size:12.5px}
+#dlgHelp .dfoot{justify-content:flex-end}
 @media (max-width:480px){.checks{grid-template-columns:1fr}.dbody .field{grid-template-columns:1fr 150px}}
 @media print{
   .top,.side,.actions,.msgs,.legend,.lower .card:first-child{display:none!important}
@@ -118,7 +136,10 @@ dialog#pdlg::backdrop{background:rgba(0,0,0,.45)}
 <body>
 <header class="top">
   <div class="brand"><a href="/">zbCAD</a><span class="sep">/</span><span>Sheet Metal Layout</span></div>
-  <div class="seg" id="units"><button data-u="in">in</button><button data-u="mm">mm</button></div>
+  <div class="hdr-r">
+    <div class="seg" id="units"><button data-u="in">in</button><button data-u="mm">mm</button></div>
+    <button class="btn" id="helpBtn">Help</button>
+  </div>
 </header>
 <main class="app">
   <aside class="side">
@@ -172,6 +193,44 @@ dialog#pdlg::backdrop{background:rgba(0,0,0,.45)}
     <div class="dfoot"><span>Print at 100% / Actual size.</span><button class="btn pri" id="pgo">Download PDF</button></div>
   </div>
 </dialog>
+<dialog id="dlgHelp" aria-labelledby="helpTitle"><form method="dialog">
+  <div class="dh"><h2 id="helpTitle" tabindex="-1" autofocus>Sheet Metal Layout</h2><button class="x" value="close" aria-label="Close">×</button></div>
+  <div class="dbody">
+    <p class="about">Develops flat patterns for duct and sheet metal fittings: rectangle-to-round transitions, rectangular transitions, cones and reducers, offset round-to-round reducers, elbows and miters, and branches, tees and laterals. Pick a fitting and type its sizes, and the pattern, a 3D check and the layout data follow every keystroke. Patterns export as DXF, SVG and CSV, or print full size across as many sheets as they need.</p>
+
+    <h3>Getting started</h3>
+    <p>Pick a fitting from the list on the left and change its sizes in the form below it. On the drawing, solid lines are <b>cuts</b>, red dashed lines are <b>bends and breaks</b>, and dotted lines are <b>layout and roll lines</b>. Identical pieces are drawn once and marked "cut 2" and so on. Scroll or pinch to zoom, drag to pan, and double-click or press <b>Fit</b> to see everything again. Drag the <b>3D check</b> to turn the assembled fitting and make sure it's the shape you meant.</p>
+
+    <h3>Inputs</h3>
+    <ul>
+      <li><b>Units:</b> <b>in</b> or <b>mm</b> at the top right. Switching converts the values already typed. Inches take fractions, like <code>12 1/2</code> or <code>12-1/2</code>. A value typed with the other unit, like <code>300 mm</code> while in inches, is converted.</li>
+      <li><b>Shape:</b> the fitting's sizes. X is width and Y is depth. An offset moves the top (or the round) away from the center of the bottom.</li>
+      <li><b>Layout:</b> <i>Divisions per quarter</i> sets how many points each quarter of a round is divided into. More divisions give a closer fit on a large fitting. <i>Pieces</i> and <i>Seam</i> set how the pattern is split and where it closes.</li>
+      <li><b>Material:</b> patterns are developed on the mean line, halfway through the metal. Enter the thickness and say whether your sizes are inside, mean or outside dimensions, and the pattern is corrected. With a thickness of 0, the sizes are used as typed.</li>
+      <li>A value that can't work is outlined in red, and a message above the drawing says why. The last good drawing stays up, dimmed, and can't be exported until the value is fixed.</li>
+      <li><b>Point labels</b> number the layout points on the drawing. Those are the points the <i>Layout data</i> table under the drawing gives distances for. The notes under the table explain the numbering for that fitting.</li>
+    </ul>
+
+    <h3>Forming</h3>
+    <ul>
+      <li>Patterns are drawn <b>outside face up</b>. Form them with that side out, or an offset fitting comes out mirrored.</li>
+      <li>No seam or lock allowances are added. Add them to the seam edges the way your shop makes them.</li>
+    </ul>
+
+    <h3>Output</h3>
+    <ul>
+      <li><b>DXF</b> (R12) has the layers CUT, BEND, FORM and TEXT. Each outline is one closed polyline, with true arcs where the pattern has them, ready for nesting and cutting software.</li>
+      <li><b>SVG</b> is drawn at true size in the current units. <b>CSV</b> is the layout data table.</li>
+      <li><b>Print full size</b> makes a PDF that tiles the patterns across letter through ARCH D, A4 through A1, or a plotter roll. Each sheet has a shaded overlap band, a blue match line and crosshairs for lining up and taping. A cover sheet maps the sheets, lists the inputs and explains how to assemble them. <b>Print at 100% / Actual size</b>, and measure the scale-check bar before you cut.</li>
+    </ul>
+
+    <h3>Saving</h3>
+    <p>There is no save file. The link in the address bar holds the fitting, its sizes and the units, and it updates as you type. Bookmark it, or send it to someone, to come back to the same fitting. Nothing is stored in the browser.</p>
+
+    <p class="fine">Cut and form a first piece of any new fitting before cutting a run, and check it against the job.</p>
+  </div>
+  <div class="dfoot"><button class="btn pri" value="ok">Got it</button></div>
+</form></dialog>
 <script>
 "use strict";
 /* ============================================================
@@ -1277,6 +1336,10 @@ if (typeof document !== 'undefined') (function () {
   $('pclose').onclick = () => dlg.close();
   $('pgo').onclick = () => { readPrint(); const b = makePDF(); if (b) download(`${S.tool}-full-scale-${PO.paper}.pdf`, b, 'application/pdf'); };
   $('prt').onclick = openPrint;
+  $('helpBtn').onclick = () => $('dlgHelp').showModal();
+  // F1 is blocked rather than bound: an accidental press should cost nothing, and
+  // left alone Chrome opens its own help in a new tab. Help is the header button.
+  addEventListener('keydown', e => { if (e.key === 'F1') e.preventDefault(); });
 
   let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (autoFit) fit(); render3d(); }, 100); });
 
