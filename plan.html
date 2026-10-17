@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Deadline Planner</title>
 <meta name="description" content="Plan backwards from a deadline: the latest start and finish for every step, a running buffer, and alerts when a step runs over.">
+<meta property="og:title" content="Deadline Planner">
+<meta property="og:description" content="Plan a day's work backwards from a deadline, with alerts before each step.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://zbcad.com/plan.html">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#fffdf8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1c1b19" media="(prefers-color-scheme: dark)">
@@ -83,6 +87,20 @@ button:disabled{cursor:default}
 .header-right{position:relative;display:flex;align-items:center;gap:10px;flex-shrink:0}
 .bell{position:relative;display:flex;padding:7px;border:1px solid var(--line);border-radius:8px;color:var(--muted)}
 .bell:hover{border-color:var(--muted)}
+#dlgHelp{border:0;padding:0;border-radius:12px;background:var(--panel);color:var(--ink);width:min(560px,calc(100vw - 20px));max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px);box-shadow:var(--shadow)}
+#dlgHelp::backdrop{background:rgba(20,18,15,.45)}
+#dlgHelp form{display:flex;flex-direction:column;max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px)}
+#dlgHelp .dh{display:flex;justify-content:space-between;align-items:center;padding:12px 12px 12px 18px;border-bottom:1px solid var(--line)}
+#dlgHelp h2{margin:0;font-size:16px;outline:none}
+#dlgHelp .x{border:0;background:none;font-size:24px;line-height:1;padding:4px 8px;cursor:pointer;color:var(--muted)}
+#dlgHelp .db{padding:4px 18px 12px;overflow:auto;line-height:1.5}
+#dlgHelp h3{margin:16px 0 6px;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+#dlgHelp p,#dlgHelp ul{margin:0 0 8px}
+#dlgHelp ul{padding-left:18px}
+#dlgHelp li{margin-bottom:5px}
+#dlgHelp .about{font-size:15px;margin-top:12px}
+#dlgHelp .df{display:flex;justify-content:flex-end;padding:10px 12px;border-top:1px solid var(--line)}
+#dlgHelp .ok{border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);border-radius:8px;padding:8px 16px;font:inherit;font-weight:600;cursor:pointer}
 .bell.on{color:var(--accent);border-color:var(--accent);background:var(--accent-bg)}
 .bell.partial::after{content:'';position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 2px var(--panel)}
 .clock-time{font-size:20px;font-weight:600;line-height:1;white-space:nowrap}
@@ -247,6 +265,44 @@ button:disabled{cursor:default}
 </style>
 </head>
 <body>
+<dialog id="dlgHelp" aria-labelledby="helpTitle"><form method="dialog">
+  <div class="dh"><h2 id="helpTitle" tabindex="-1" autofocus>Deadline Planner</h2><button class="x" value="close" aria-label="Close">×</button></div>
+  <div class="db">
+    <p class="about">Plan a day's work backwards from a deadline. You get the latest start and finish for every step, a safety buffer that shows how much of it is left, and alerts before each step is due. It works offline and installs to a phone's home screen.</p>
+
+    <h3>Building the plan</h3>
+    <ul>
+      <li>Set the <b>Deadline</b> and a <b>Buffer</b>: minutes of spare time to keep in hand before the deadline. The deadline is the nearest time of that name, so 1:00 set late in the evening means tomorrow morning.</li>
+      <li>Add the <b>steps</b> in the order you'll do them, each with its minutes. The line under the deadline says how long they add up to and when to start. The plan works backwards from the deadline less the buffer.</li>
+      <li>Drag the grip, or use the arrows, to reorder steps. Deleting a step can be undone from the bar at the bottom of the screen.</li>
+    </ul>
+
+    <h3>Running it</h3>
+    <ul>
+      <li>Press <b>Start</b> when you begin a step, then <b>Done</b>. <b>Pause</b> stops its clock, and <b>Resume</b> picks it up again. The check mark marks a step done without timing it.</li>
+      <li><b>Start next step by</b> or <b>Finish current step by</b> is the time to beat right now, with a countdown. <b>Est. finish</b> is when you'll finish at this rate.</li>
+      <li>The status turns yellow when you're behind the plan but still inside the buffer, and red when the deadline itself is at risk. <b>Buffer left</b> is how much of the buffer is still intact.</li>
+      <li>Steps can be done out of order: the times are worked out again from whatever is left. When everything is done, a summary compares each step's estimate with how long it took.</li>
+      <li><b>Reset all</b> clears the progress and keeps the steps. Tap it twice to confirm.</li>
+    </ul>
+
+    <h3>Alerts</h3>
+    <ul>
+      <li>Tap the bell to turn on alerts: one 5 minutes before each start or finish time, one at it, and one if the deadline is projected to slip. Sound, keeping the screen awake and 24-hour time are set there too.</li>
+      <li>Phones pause web apps in the background, so alerts only fire while the planner is open. Keep it on screen, with <i>Keep screen awake</i> on, while you work.</li>
+    </ul>
+
+    <h3>Templates and saving</h3>
+    <ul>
+      <li>Everything is kept on this device as you go. Under <b>Templates &amp; backup</b>, <b>Save current</b> keeps the steps, deadline and buffer to load again another day. Loading one can be undone.</li>
+      <li><b>Export</b> writes the plan and every template to a file, and <b>Import</b> reads one back, on this device or another.</li>
+    </ul>
+
+    <h3>On your home screen</h3>
+    <p>On Android, open the browser's menu and choose <i>Add to Home screen</i> or <i>Install app</i>. On an iPhone, use Safari's Share button, then <i>Add to Home Screen</i>. After the first visit it opens without a connection, and an update shows up the time after it's downloaded.</p>
+  </div>
+  <div class="df"><button class="ok" value="ok">Got it</button></div>
+</form></dialog>
 <div id="root"></div>
 <noscript><div class="fatal">This planner needs JavaScript enabled.</div></noscript>
 
@@ -269,6 +325,7 @@ button:disabled{cursor:default}
         // --- 2. Icons (path data from Lucide) ---
         const ICONS = {
             Clock: "M12 6v6l4 2 M22 12A10 10 0 1 1 12 2a10 10 0 0 1 10 10z",
+            HelpCircle: "M22 12A10 10 0 1 1 12 2a10 10 0 0 1 10 10z M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3 M12 17h.01",
             AlertTriangle: "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01",
             CheckCircle: "M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3",
             PartyPopper: "M5.8 11.3 2 22l10.7-3.79 M4 3h.01 M22 8h.01 M15 2h.01 M22 20h.01 M22 2l-2.24.75a2.9 2.9 0 0 0-1.96 3v0a2.9 2.9 0 0 0 1.96 3L22 9.5V2z M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2z",
@@ -1108,6 +1165,9 @@ button:disabled{cursor:default}
                 <header class="top">
                     <div class="brand"><a href="/">zbCAD</a><span class="sep">/</span><span>Deadline<span class="long"> Planner</span></span></div>
                     <div class="header-right" ref=${headerRight}>
+                        <button class="bell" onClick=${() => document.getElementById('dlgHelp').showModal()} title="Help" aria-label="Help">
+                            <${Icon} name="HelpCircle" size=${18} />
+                        </button>
                         <button
                             class=${'bell' + (alertsOn ? ' on' : '') + (bellPartial ? ' partial' : '')}
                             onClick=${() => setPanelOpen(!panelOpen)}
@@ -1364,6 +1424,9 @@ button:disabled{cursor:default}
             </div>`;
         };
 
+        // F1 is blocked rather than bound, as on every zbCAD tool: an accidental press should
+        // cost nothing, and left alone Chrome opens its own help in a new tab. Help is the ? button.
+        document.addEventListener('keydown', (e) => { if (e.key === 'F1') e.preventDefault(); });
         render(html`<${App} />`, document.getElementById('root'));
     </script>
 </body>
