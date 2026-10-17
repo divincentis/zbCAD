@@ -173,6 +173,8 @@ button:disabled{cursor:default}
 .steps-head .label{margin:0}
 .reset{font-size:12px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;display:flex;align-items:center;gap:5px;color:var(--muted);background:var(--panel)}
 .reset:hover{color:var(--ink);border-color:var(--muted)}
+.reset.on{color:var(--accent);border-color:var(--accent);background:var(--accent-bg)}
+.head-btns{display:flex;gap:6px}
 .reset.armed{background:var(--bad);border-color:var(--bad);color:var(--panel)}
 
 .task-list{display:flex;flex-direction:column;gap:10px}
@@ -221,6 +223,16 @@ button:disabled{cursor:default}
 
 .add{width:100%;margin-top:12px;padding:11px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;font-weight:500}
 .add:hover{color:var(--accent);border-color:var(--accent);background:var(--panel)}
+
+/* Starter plans */
+.starters{padding:12px;margin-bottom:12px}
+.starters-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted);margin-bottom:10px}
+.starters-head .icon-btn{margin:-6px -6px 0 0}
+.starter-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.starter{display:flex;flex-direction:column;gap:2px;padding:9px 10px;border:1px solid var(--soft);border-radius:8px;background:var(--sheet);text-align:left;min-width:0}
+.starter:hover{border-color:var(--accent);background:var(--accent-bg)}
+.starter-name{font-size:13px;font-weight:600}
+.starter-meta{font-size:11.5px;color:var(--muted)}
 
 /* Plans & templates */
 .plans{margin-top:14px;overflow:hidden}
@@ -273,6 +285,7 @@ button:disabled{cursor:default}
     <h3>Building the plan</h3>
     <ul>
       <li>Set the <b>Deadline</b> and a <b>Buffer</b>: minutes of spare time to keep in hand before the deadline. The deadline is the nearest time of that name, so 1:00 set late in the evening means tomorrow morning.</li>
+      <li>To get going quickly, tap <b>Starters</b> above the steps and pick a common plan, such as getting out the door, catching a flight or a dinner party. It fills in typical steps, minutes, a deadline and a buffer; change any of them to fit. Loading one can be undone.</li>
       <li>Add the <b>steps</b> in the order you'll do them, each with its minutes. The line under the deadline says how long they add up to and when to start. The plan works backwards from the deadline less the buffer.</li>
       <li>Drag the grip, or use the arrows, to reorder steps. Deleting a step can be undone from the bar at the bottom of the screen.</li>
     </ul>
@@ -345,7 +358,8 @@ button:disabled{cursor:default}
             Bookmark: "M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z",
             Download: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3",
             Upload: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M17 8l-5-5-5 5 M12 3v12",
-            ChevronDown: "M6 9l6 6 6-6"
+            ChevronDown: "M6 9l6 6 6-6",
+            LayoutGrid: "M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z"
         };
 
         const Icon = ({ name, size = 20, className = '' }) => html`
@@ -500,6 +514,45 @@ button:disabled{cursor:default}
                     .map(s => ({ name: typeof s.name === 'string' ? s.name : '', duration: clampMins(s.duration) }))
             };
         };
+
+        // Starter plans: common days run against a clock, built in so a new user has something to
+        // tap instead of a blank list. They load exactly as a saved template does (and undo the same
+        // way); `due` says what the deadline stands for, since that's the one thing a starter can't
+        // know about the user's day. Not saved or exported: they ship with the page.
+        const STARTERS = [
+            { name: 'Out the door', due: 'you leave the house', deadline: '08:00', buffer: 10, steps: [
+                ['Wake up, water, coffee', 10], ['Shower', 15], ['Get dressed', 10], ['Breakfast', 15],
+                ['Pack bag and lunch', 10], ['Keys, phone, shoes', 5]] },
+            { name: 'School morning', due: 'you leave for school', deadline: '08:00', buffer: 10, steps: [
+                ['Wake the kids', 10], ['Breakfast', 20], ['Get dressed, brush teeth', 15],
+                ['Pack bags and lunches', 10], ['Shoes and coats', 10]] },
+            { name: 'Catch a flight', due: 'you need to be at the gate', deadline: '10:00', buffer: 30, steps: [
+                ['Final packing, check ID', 30], ['Tidy up, trash out, lock up', 15], ['Travel to the airport', 45],
+                ['Park or drop off', 15], ['Bag drop and security', 45], ['Walk to the gate', 15]] },
+            { name: 'Job interview', due: 'the interview starts', deadline: '10:00', buffer: 15, steps: [
+                ['Review notes and the company', 30], ['Get ready and dressed', 30],
+                ['Gather CV, ID, directions', 10], ['Travel there', 30], ['Find the room, check in', 10]] },
+            { name: 'Dinner party', due: 'guests arrive', deadline: '19:00', buffer: 15, steps: [
+                ['Shop for what\'s missing', 45], ['Tidy up and set the table', 30], ['Prep ingredients', 45],
+                ['Cook the main', 60], ['Cook the sides', 30], ['Shower and change', 20], ['Drinks and snacks out', 10]] },
+            { name: 'Tidy for guests', due: 'guests arrive', deadline: '18:00', buffer: 10, steps: [
+                ['Declutter the main rooms', 20], ['Kitchen and dishes', 20], ['Bathroom', 20],
+                ['Vacuum and mop', 25], ['Fresh towels and guest bed', 15], ['Take out the trash', 5]] },
+            { name: 'Kids\' birthday party', due: 'guests arrive', deadline: '14:00', buffer: 15, steps: [
+                ['Pick up the cake', 30], ['Decorate', 45], ['Set out food and drinks', 30],
+                ['Games and party bags ready', 20], ['Get everyone dressed', 20]] },
+            { name: 'Get ready for a wedding', due: 'the ceremony starts', deadline: '15:00', buffer: 20, steps: [
+                ['Hair', 60], ['Make-up or shave', 45], ['Get dressed', 20], ['Gift, card, phone, tissues', 10],
+                ['Photos before leaving', 20], ['Travel to the venue', 30]] },
+            { name: 'Check out of a rental', due: 'you have to be out', deadline: '11:00', buffer: 10, steps: [
+                ['Pack bags', 30], ['Strip beds, gather towels', 15], ['Dishes and kitchen', 20],
+                ['Trash and recycling', 10], ['Final sweep and photos', 10], ['Load the car, return keys', 15]] },
+            { name: 'Bake bread', due: 'the bread should be ready to slice', deadline: '18:00', buffer: 15, steps: [
+                ['Mix and knead', 20], ['First rise', 90], ['Shape', 10], ['Second rise', 60],
+                ['Preheat and bake', 45], ['Cool', 60]] },
+            { name: 'Kids\' bedtime', due: 'lights go out', deadline: '19:30', buffer: 5, steps: [
+                ['Dinner', 30], ['Tidy toys', 10], ['Bath', 20], ['Pajamas and teeth', 10], ['Story', 15]] }
+        ].map((s, i) => ({ ...s, id: `starter-${i}`, steps: s.steps.map(([name, duration]) => ({ name, duration })) }));
 
         // --- 5. Storage ---
         const readJSON = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } };
@@ -660,6 +713,7 @@ button:disabled{cursor:default}
             const [confirmReset, setConfirmReset] = useState(false);
             const [panelOpen, setPanelOpen] = useState(false);
             const [plansOpen, setPlansOpen] = useState(false);
+            const [startersOpen, setStartersOpen] = useState(false);
             const [notif, setNotif] = useState(notifState());
             const [focusId, setFocusId] = useState(null);
             // Finished steps fold to one line; these are the ones opened back up for editing. Not saved:
@@ -1069,7 +1123,23 @@ button:disabled{cursor:default}
                 setBuffer(tpl.buffer);
                 if (tpl.deadline) setDeadlineAt(resolveDeadline(tpl.deadline, Date.now()));
                 setPlansOpen(false);
+                setStartersOpen(false);
                 touch();
+            };
+            // A saved template takes the nearest occurrence of its time, as typing one does. A starter is a
+            // fresh plan, so it takes the next deadline it can still be started for: the morning routine
+            // tapped at 10 AM means tomorrow's, not one that opened two hours late.
+            const applyStarter = (st) => {
+                const now = Date.now();
+                const lead = (st.steps.reduce((s, x) => s + x.duration, 0) + st.buffer) * MIN;
+                const d = new Date(now);
+                const [hh, mm] = st.deadline.split(':').map(Number);
+                d.setHours(hh, mm, 0, 0);
+                if (d.getTime() - lead < now) d.setDate(d.getDate() + 1);
+                applyPlan({ ...st, deadline: null }, `Started from “${st.name}”`);
+                setDeadlineAt(d.getTime());
+                const day = dayLabel(d.getTime(), now);
+                setToast({ kind: 'info', title: st.name, body: `The deadline, ${fmtClockStr(st.deadline)}${day ? ' ' + day : ''}, is when ${st.due}. Change it and the minutes to fit your day.` });
             };
             const saveTemplate = () => {
                 const name = window.prompt('Name this template:', '');
@@ -1276,15 +1346,39 @@ button:disabled{cursor:default}
 
                     <div class="steps-head">
                         <h2 class="label">Steps</h2>
-                        ${hasProgress && html`
-                            <button class=${'reset' + (confirmReset ? ' armed' : '')} onClick=${resetProgress}>
-                                <${Icon} name="RotateCcw" size=${12} /> ${confirmReset ? 'Tap again to reset' : 'Reset all'}
-                            </button>
-                        `}
+                        <div class="head-btns">
+                            ${!isEmpty && html`
+                                <button class=${'reset' + (startersOpen ? ' on' : '')} aria-expanded=${startersOpen ? 'true' : 'false'} onClick=${() => setStartersOpen(!startersOpen)}>
+                                    <${Icon} name="LayoutGrid" size=${12} /> Starters
+                                </button>
+                            `}
+                            ${hasProgress && html`
+                                <button class=${'reset' + (confirmReset ? ' armed' : '')} onClick=${resetProgress}>
+                                    <${Icon} name="RotateCcw" size=${12} /> ${confirmReset ? 'Tap again to reset' : 'Reset all'}
+                                </button>
+                            `}
+                        </div>
                     </div>
 
+                    ${(startersOpen || isEmpty) && html`
+                        <section class="starters card">
+                            <div class="starters-head">
+                                <span>${isEmpty ? 'No steps yet. Add one below, or start from one of these:' : 'Start from a common plan. Your current steps can be got back with Undo.'}</span>
+                                ${!isEmpty && html`<button class="icon-btn" onClick=${() => setStartersOpen(false)} aria-label="Close starters"><${Icon} name="X" size=${14} /></button>`}
+                            </div>
+                            <div class="starter-grid">
+                                ${STARTERS.map(st => html`
+                                    <button class="starter" key=${st.id} onClick=${() => applyStarter(st)}>
+                                        <span class="starter-name">${st.name}</span>
+                                        <span class="starter-meta">${st.steps.length} steps · ${fmtDur(st.steps.reduce((s, x) => s + x.duration, 0))}</span>
+                                        <span class="starter-meta">due ${fmtClockStr(st.deadline)}</span>
+                                    </button>
+                                `)}
+                            </div>
+                        </section>
+                    `}
+
                     <div class="task-list">
-                        ${isEmpty && html`<div class="empty">No steps yet. Add one below to build the plan.</div>`}
                         ${tasks.map((task, index) => {
                             const isCompleted = task.status === 'completed';
                             const isActive = task.status === 'active';
