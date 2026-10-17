@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Roof Overlay</title>
 <meta name="description" content="Lay a building's floor plan over an aerial photo of its roof, to show where a spot inside the building is on the roof: leaks, ceiling stains, work areas.">
+<meta property="og:title" content="Roof Overlay">
+<meta property="og:description" content="Lay a floor plan over an aerial photo to find a leak or a room on the roof.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://zbcad.com/overlay.html">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c1b19'/%3E%3Cpath d='M6 14.5h8.5L6 23.5h8.5M18.5 8.5v15h7.5v-9h-7.5' fill='none' stroke='%23f4f1ea' stroke-width='2.5' stroke-linecap='square'/%3E%3C/svg%3E">
 <style>
 :root{
@@ -27,6 +31,23 @@ button,input,select{font:inherit;color:inherit}
 .brand a:hover,.brand a:focus-visible{color:var(--accent)}
 .brand .sep{color:var(--line);margin:0 7px;font-weight:400}
 .hist{display:flex;gap:6px}
+dialog#dlgHelp{border:0;padding:0;border-radius:12px;background:var(--panel);color:var(--ink);width:min(680px,calc(100vw - 20px));max-height:calc(100vh - 20px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog#dlgHelp::backdrop{background:rgba(0,0,0,.45)}
+#dlgHelp form{display:flex;flex-direction:column;max-height:calc(100vh - 20px)}
+#dlgHelp .dh{display:flex;justify-content:space-between;align-items:center;padding:12px 16px 12px 20px;border-bottom:1px solid var(--line)}
+#dlgHelp .dh h2{margin:0;font-size:16px;outline:none}
+#dlgHelp .dh .x{border:0;background:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted)}
+#dlgHelp .dbody{padding:4px 20px 12px;overflow:auto;font-size:13.5px;line-height:1.55}
+#dlgHelp h3{margin:16px 0 6px;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+#dlgHelp p,#dlgHelp ul{margin:0 0 8px}
+#dlgHelp ul{padding-left:18px}
+#dlgHelp li{margin-bottom:4px}
+#dlgHelp .about{font-size:14.5px;margin-top:12px}
+#dlgHelp table{border-collapse:collapse;margin:0 0 8px}
+#dlgHelp td{padding:2px 14px 2px 0;vertical-align:top}
+#dlgHelp kbd{font:12px ui-monospace,Menlo,Consolas,monospace;border:1px solid var(--line);border-radius:3px;padding:0 4px}
+#dlgHelp .fine{color:var(--muted);font-size:12.5px}
+#dlgHelp .dfoot{display:flex;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line)}
 .app{display:grid;grid-template-columns:330px 1fr;height:calc(100vh - 52px)}
 .side{border-right:1px solid var(--line);background:var(--panel);overflow:auto;padding:0 16px 28px}
 .step{padding:14px 0 16px;border-bottom:1px solid var(--line)}
@@ -107,7 +128,7 @@ input[type=color]{width:34px;height:26px;padding:0 2px;border:1px solid var(--li
 <body>
 <header class="top">
   <div class="brand"><a href="/">zbCAD</a><span class="sep">/</span><span>Roof Overlay</span></div>
-  <div class="hist"><button class="btn" id="undo" title="Undo (Ctrl+Z)">Undo</button><button class="btn" id="redo" title="Redo (Ctrl+Y)">Redo</button></div>
+  <div class="hist"><button class="btn" id="undo" title="Undo (Ctrl+Z)">Undo</button><button class="btn" id="redo" title="Redo (Ctrl+Y)">Redo</button><button class="btn" id="helpBtn">Help</button></div>
 </header>
 <main class="app">
   <aside class="side" id="side">
@@ -181,6 +202,47 @@ input[type=color]{width:34px;height:26px;padding:0 2px;border:1px solid var(--li
     </div>
   </section>
 </main>
+<dialog id="dlgHelp" aria-labelledby="helpTitle"><form method="dialog">
+  <div class="dh"><h2 id="helpTitle" tabindex="-1" autofocus>Roof Overlay</h2><button class="x" value="close" aria-label="Close">×</button></div>
+  <div class="dbody">
+    <p class="about">Lays a building's floor plan over an aerial photo of its roof, so you can show where a leak, a ceiling stain or a room inside the building is on the roof. It reads PDF, JPEG, PNG and TIFF plans, can clear a plan's white background and recolor its lines, and lines the plan up by two matching corners or by dragging grips. A plan that isn't to scale can be stretched one way. The result saves as a marked-up image with your notes listed under it.</p>
+    <p>The six steps on the left walk through the job in order. This covers what they don't.</p>
+
+    <h3>Photos and plans</h3>
+    <ul>
+      <li>Drop a file anywhere, or paste a screenshot with <kbd>Ctrl+V</kbd>. Dropping onto step 1 or step 2 says which one it is. Otherwise a PDF always goes in as the plan, and a picture is the roof photo until there is one, then the plan.</li>
+      <li>A PDF with several pages shows a <b>Page</b> list. Opening a PDF or TIFF needs an internet connection the first time, to load its reader.</li>
+      <li>The roof photo is never moved or stretched; the plan is placed on top of it. <b>Crop plan</b> only hides part of the plan, and <b>Show whole plan</b> brings it back.</li>
+    </ul>
+
+    <h3>Lining up</h3>
+    <ul>
+      <li><b>Line up by two points</b> sets the plan's position, turn and size in one go, but keeps its width-to-height ratio. Two corners far apart give the closest match. If the drawing isn't to scale in one direction, finish with a side grip.</li>
+      <li>The <b>Roof – Plan</b> slider above the picture fades between the two, for checking the match. <b>Lock the plan in place</b> once it's right, so a stray drag can't move it.</li>
+      <li>Markers are pinned to the plan, so they follow it if you adjust the plan later.</li>
+    </ul>
+
+    <h3>Shortcuts</h3>
+    <table>
+      <tr><td><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></td><td>Nudge the plan. Hold <kbd>Shift</kbd> to nudge ten times as far.</td></tr>
+      <tr><td>Scroll, <b>−</b> <b>+</b></td><td>Zoom</td></tr>
+      <tr><td>Drag off the plan, right or middle drag, <kbd>Space</kbd> + drag</td><td>Look around</td></tr>
+      <tr><td><kbd>Shift</kbd> + corner grip</td><td>Switch keeping proportions on or off for that drag</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Leave cropping, two-point line-up or markers</td></tr>
+      <tr><td><kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd></td><td>Undo / redo</td></tr>
+    </table>
+
+    <h3>Files</h3>
+    <ul>
+      <li>Your work, images included, is kept in this browser until you press <b>Start over</b>.</li>
+      <li><b>Save image</b> writes a JPEG of the roof photo with the plan and markers on it, and the title and notes listed underneath, sized to print sharp. Set <i>Plan visibility</i> to 0 for markers on the bare roof.</li>
+      <li><b>Print</b> sends the same image to the printer. To get a PDF, choose <i>Save as PDF</i> there; it's named after the title.</li>
+      <li><b>Save project</b> writes one .json file with both images and everything else in it. Open it with <b>Open project</b>, or drop it on the page, on any computer.</li>
+    </ul>
+    <p class="fine">The overlay is only as accurate as its sources. Aerial photos lean, and plans aren't always as built. Confirm a location on the roof before opening anything up.</p>
+  </div>
+  <div class="dfoot"><button class="btn pri" value="ok">Got it</button></div>
+</form></dialog>
 <input type="file" id="fAerial" accept="image/*,.tif,.tiff" hidden>
 <input type="file" id="fPlan" accept=".pdf,application/pdf,image/*,.tif,.tiff" hidden>
 <input type="file" id="fProj" accept=".json,application/json" hidden>
@@ -933,6 +995,11 @@ function click(w) {
 const typing = () => { const a = document.activeElement; return a && (a.tagName === 'INPUT' && !/^(checkbox|range|color|button)$/.test(a.type) || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA'); };
 let nudgeAt = 0;
 document.addEventListener('keydown', e => {
+  // F1 is blocked rather than bound: an accidental press should cost nothing, and left
+  // alone Chrome opens its own help in a new tab. Help is the header button. While it is
+  // open, nothing here acts on the picture behind it (Esc there closes the help only).
+  if (e.key === 'F1') { e.preventDefault(); return; }
+  if ($('dlgHelp').open) return;
   const mod = e.ctrlKey || e.metaKey;
   if (mod && (e.key === 'z' || e.key === 'Z') && !typing()) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (mod && (e.key === 'y' || e.key === 'Y') && !typing()) { e.preventDefault(); redo(); return; }
@@ -1100,6 +1167,7 @@ function bind() {
   $('title').addEventListener('input', e => { P.title = e.target.value; save(); });
   $('png').onclick = savePNG;
   $('print').onclick = printIt;
+  $('helpBtn').onclick = () => $('dlgHelp').showModal();
   $('saveProj').onclick = saveProject;
   $('reset').onclick = startOver;
   $('undo').onclick = undo; $('redo').onclick = redo;
@@ -1119,7 +1187,7 @@ function bind() {
     take(f, t && !t.classList.contains('off') ? t.dataset.drop : null);
   });
   document.addEventListener('paste', e => {
-    if (typing()) return;
+    if (typing() || $('dlgHelp').open) return;
     const item = [...(e.clipboardData?.items || [])].find(i => i.kind === 'file');
     const f = item && item.getAsFile();
     if (f) { e.preventDefault(); take(f); }
