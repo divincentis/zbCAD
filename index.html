@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>zbCAD</title>
-<meta name="description" content="Browser-based drafting, layout and takeoff tools for construction: 2D CAD, sheet metal flat patterns, tapered insulation layout and roof and wall wind zones.">
+<meta name="description" content="Browser-based drafting, layout and takeoff tools for construction: 2D CAD, sheet metal flat patterns, roof wind zones, tapered insulation, metal panel layout, roof overlays, 360 photos and CPM scheduling.">
 <meta property="og:title" content="zbCAD">
 <meta property="og:description" content="Browser-based drafting, layout and takeoff tools for construction.">
 <meta property="og:type" content="website">
@@ -45,7 +45,7 @@
   }
 
   .wrap {
-    max-width: 640px;
+    max-width: 860px;
     margin: 0 auto;
     padding: 72px 20px 56px;
   }
@@ -57,8 +57,18 @@
     margin: 0 0 20px;
   }
   header h1 a { color: inherit; text-decoration: none; }
-  .intro { margin: 0; }
+  .intro { margin: 0; max-width: 600px; }
 
+  /* Category in a left gutter on wide screens, so a heading costs no
+     vertical space and a one-tool category doesn't leave a hole. */
+  main { margin-top: 56px; }
+  section {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    gap: 0 32px;
+    padding: 28px 0;
+    border-top: 1px solid var(--rule);
+  }
   h2 {
     font-family: var(--sans);
     font-size: 12px;
@@ -66,52 +76,53 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--muted);
-    margin: 64px 0 8px;
+    margin: 7px 0 0;
   }
 
-  .tools { list-style: none; margin: 0; padding: 0; }
-  .tool {
-    padding: 22px 0;
-    border-bottom: 1px solid var(--rule);
-  }
-  .tool:last-child { border-bottom: 0; }
-
+  .tools { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
+  .tool .row { display: block; color: inherit; text-decoration: none; }
   .tool-name {
-    font-size: 21px;
+    font-size: 20px;
     font-weight: 600;
-    color: var(--text);
-    text-decoration: none;
     background-image: linear-gradient(var(--rule), var(--rule));
     background-size: 100% 1px;
     background-position: 0 100%;
     background-repeat: no-repeat;
     transition: background-image .15s, color .15s;
   }
-  .tool-name:hover, .tool-name:focus-visible {
+  .tool .row:hover .tool-name, .tool .row:focus-visible .tool-name {
     color: var(--accent);
     background-image: linear-gradient(var(--accent), var(--accent));
-    outline: none;
   }
+  .tool .row:focus-visible { outline: 1px dotted var(--accent); outline-offset: 4px; }
   .tool p {
-    margin: 6px 0 0;
+    margin: 2px 0 0;
     color: var(--muted);
-    font-size: 17px;
-    line-height: 1.55;
+    font-size: 16.5px;
+    line-height: 1.5;
+  }
+  .tag {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    padding: 0 5px;
+    margin-left: 8px;
+    vertical-align: 3px;
   }
   .tool .links {
-    margin-top: 8px;
+    margin-top: 2px;
     font-family: var(--sans);
     font-size: 13px;
   }
-  .tool .links a {
-    color: var(--accent);
-    text-decoration: none;
-  }
+  .tool .links a { color: var(--accent); text-decoration: none; }
   .tool .links a:hover { text-decoration: underline; }
-  .tool .links span { color: var(--rule); margin: 0 6px; }
 
   footer {
-    margin-top: 72px;
     padding-top: 20px;
     border-top: 1px solid var(--rule);
     font-family: var(--sans);
@@ -121,11 +132,14 @@
   }
   footer p { margin: 0 0 6px; }
 
+  @media (max-width: 700px) {
+    section { grid-template-columns: 1fr; padding: 24px 0; }
+    h2 { margin: 0 0 12px; }
+  }
   @media (max-width: 480px) {
     body { font-size: 18px; }
     .wrap { padding-top: 48px; }
     header h1 { font-size: 26px; }
-    h2 { margin-top: 48px; }
   }
 </style>
 </head>
@@ -134,89 +148,84 @@
 
   <header>
     <h1><a href="/">zbCAD</a></h1>
-    <p class="intro">A small set of drafting, layout, scheduling and takeoff tools for construction work, plus guides on the fundamentals. Each tool runs in the browser: no install, no account, just open it and start working.</p>
+    <p class="intro">Drafting, layout, scheduling and takeoff tools for construction work, plus guides on the fundamentals. Everything runs in the browser: no install, no account.</p>
   </header>
 
   <main>
-    <h2>Drafting</h2>
-    <ul class="tools">
+    <section>
+      <h2>Drafting</h2>
+      <ul class="tools">
+        <li class="tool">
+          <a class="row" href="cad.html"><span class="tool-name">zbCAD</span>
+          <p>2D drafting with a typed command line, snaps, layers and associative dimensions. DXF in and out, plots to scaled PDF.</p></a>
+          <div class="links"><a href="docs.html">Documentation</a></div>
+        </li>
+        <li class="tool">
+          <a class="row" href="pattern.html"><span class="tool-name">Sheet Metal Layout</span>
+          <p>Flat patterns for transitions, cones, reducers, elbows and branches, printed full size or exported to DXF.</p></a>
+        </li>
+      </ul>
+    </section>
 
-      <li class="tool">
-        <a class="tool-name" href="cad.html">zbCAD</a>
-        <p>2D drafting with a typed command line, object snaps, layers and associative dimensions. Opens and saves DXF and plots to scaled vector PDF.</p>
-        <div class="links"><a href="cad.html">Open</a><span>/</span><a href="docs.html">Documentation</a></div>
-      </li>
+    <section>
+      <h2>Roofing</h2>
+      <ul class="tools">
+        <li class="tool">
+          <a class="row" href="zones/"><span class="tool-name">Wind Zone Visualizer</span>
+          <p>FM Global 1-28 roof and wall wind zones, drawn to the building's real dimensions in 3D and plan.</p></a>
+        </li>
+        <li class="tool">
+          <a class="row" href="taper.html"><span class="tool-name">Taper Studio</span>
+          <p>Tapered insulation layout with crickets and saddles, takeoff and average R-value.</p></a>
+        </li>
+        <li class="tool">
+          <a class="row" href="panels.html"><span class="tool-name">Metal Panel Layout</span>
+          <p>Numbered panel layouts and rollformer-ready cut lists from field dimensions.</p></a>
+        </li>
+      </ul>
+    </section>
 
-      <li class="tool">
-        <a class="tool-name" href="pattern.html">Sheet Metal Layout</a>
-        <p>Flat patterns for rectangle-to-round transitions, cones, offset reducers, elbows and branches. Exports DXF and SVG, or prints full size across multiple sheets.</p>
-      </li>
+    <section>
+      <h2>Field</h2>
+      <ul class="tools">
+        <li class="tool">
+          <a class="row" href="overlay.html"><span class="tool-name">Roof Overlay</span>
+          <p>Lay a floor plan over an aerial photo to find a leak or a room on the roof.</p></a>
+        </li>
+        <li class="tool">
+          <a class="row" href="pano.html"><span class="tool-name">360 Photo Viewer</span>
+          <p>Look around a 360° photo and save ordinary photos of any part of it.</p></a>
+        </li>
+      </ul>
+    </section>
 
-    </ul>
+    <section>
+      <h2>Scheduling</h2>
+      <ul class="tools">
+        <li class="tool">
+          <a class="row" href="schedule.html"><span class="tool-name">CPM Scheduler</span>
+          <p>Critical path scheduling on a Gantt chart, with MS Project XML in and out.</p></a>
+        </li>
+        <li class="tool">
+          <a class="row" href="plan.html"><span class="tool-name">Deadline Planner</span><span class="tag">Phone</span>
+          <p>Plan a day's work backwards from a deadline, with alerts before each step.</p></a>
+        </li>
+      </ul>
+    </section>
 
-    <h2>Roofing</h2>
-    <ul class="tools">
-
-      <li class="tool">
-        <a class="tool-name" href="zones/">Wind Zone Visualizer</a>
-        <p>Roof and wall wind zone geometry from the FM Global Data Sheet 1-28 zone figures, drawn to the building's actual dimensions. Low-slope, gable and monoslope roofs, stepped buildings and tall buildings, in 3D and plan, with zone areas and a PDF.</p>
-      </li>
-
-      <li class="tool">
-        <a class="tool-name" href="taper.html">Taper Studio</a>
-        <p>Tapered roof insulation layout: drains, crickets and saddles, panel layout and takeoff, and average R-value. Exports a plan along with DXF, Excel and CSV.</p>
-      </li>
-
-      <li class="tool">
-        <a class="tool-name" href="panels.html">Metal Panel Layout</a>
-        <p>Metal roof and wall panel layout from field dimensions: every panel numbered on a layout drawing, a rollformer-ready cut list by location and by length, long runs split with laps and splices flagged, and area and waste broken down by cause. Exports a vector PDF package and CSV.</p>
-      </li>
-
-      <li class="tool">
-        <a class="tool-name" href="overlay.html">Roof Overlay</a>
-        <p>Lay a building's floor plan over an aerial photo of its roof, to show where a leak, a ceiling stain or a room inside is on the roof. Opens PDF, JPEG, PNG and TIFF plans, clears the white background and recolors the lines, and lines the plan up by two matching corners or by dragging grips, stretching it one way when the drawing isn't to scale. Saves a marked-up image with notes.</p>
-      </li>
-
-    </ul>
-
-    <h2>Scheduling</h2>
-    <ul class="tools">
-
-      <li class="tool">
-        <a class="tool-name" href="schedule.html">CPM Scheduler</a>
-        <p>Critical path scheduling with a Gantt chart: finish-to-start, start-to-start, finish-to-finish and start-to-finish links with lag, work calendars and holidays, float, baselines and progress. Imports and exports MS Project XML.</p>
-      </li>
-
-      <li class="tool">
-        <a class="tool-name" href="plan.html">Deadline Planner</a>
-        <p>Plan a day's work backwards from a deadline: the latest start and finish for every step, a safety buffer that shows how much of it is left, and alerts before each step is due. Works offline and installs to a phone's home screen.</p>
-      </li>
-
-    </ul>
-
-    <h2>Photos</h2>
-    <ul class="tools">
-
-      <li class="tool">
-        <a class="tool-name" href="pano.html">360 Photo Viewer</a>
-        <p>Look around a 360° photo from an Insta360 or any other 360 camera, and save ordinary photos of any part of it: any direction, any zoom, a straightened horizon, landscape, square or portrait, at as many pixels as the photo holds. A wide lens and a little-planet view for the overview shot.</p>
-      </li>
-
-    </ul>
-
-    <h2>Guides</h2>
-    <ul class="tools">
-
-      <li class="tool">
-        <a class="tool-name" href="estimating.html">Estimating from First Principles</a>
-        <p>How to build a construction estimate from the ground up: scope, logistics, quantity takeoff, materials, labor by crew and production rate, and general conditions, with what usually gets missed at each step.</p>
-      </li>
-
-    </ul>
+    <section>
+      <h2>Guides</h2>
+      <ul class="tools">
+        <li class="tool">
+          <a class="row" href="estimating.html"><span class="tool-name">Estimating from First Principles</span>
+          <p>Building an estimate from scope and takeoff through labor and general conditions.</p></a>
+        </li>
+      </ul>
+    </section>
   </main>
 
   <footer>
-    <p>These tools are built for a desktop with a mouse and keyboard, except the Deadline Planner, which is made for a phone. All of them are works in progress. Check anything that matters against the governing code and manufacturer data.</p>
+    <p>Built for a desktop with a mouse and keyboard unless marked otherwise. All of it is a work in progress: check anything that matters against the governing code and manufacturer data.</p>
     <p>&copy; <span id="yr">2026</span> zbCAD</p>
   </footer>
 
