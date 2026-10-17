@@ -31,9 +31,9 @@ button,input,select{font:inherit;color:inherit}
 .brand a:hover,.brand a:focus-visible{color:var(--accent)}
 .brand .sep{color:var(--line);margin:0 7px;font-weight:400}
 .hist{display:flex;gap:6px}
-dialog#dlgHelp{border:0;padding:0;border-radius:12px;background:var(--panel);color:var(--ink);width:min(680px,calc(100vw - 20px));max-height:calc(100vh - 20px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog#dlgHelp{border:0;padding:0;border-radius:12px;background:var(--panel);color:var(--ink);width:min(680px,calc(100vw - 20px));max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
 dialog#dlgHelp::backdrop{background:rgba(0,0,0,.45)}
-#dlgHelp form{display:flex;flex-direction:column;max-height:calc(100vh - 20px)}
+#dlgHelp form{display:flex;flex-direction:column;max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px)}
 #dlgHelp .dh{display:flex;justify-content:space-between;align-items:center;padding:12px 16px 12px 20px;border-bottom:1px solid var(--line)}
 #dlgHelp .dh h2{margin:0;font-size:16px;outline:none}
 #dlgHelp .dh .x{border:0;background:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted)}
@@ -48,7 +48,7 @@ dialog#dlgHelp::backdrop{background:rgba(0,0,0,.45)}
 #dlgHelp kbd{font:12px ui-monospace,Menlo,Consolas,monospace;border:1px solid var(--line);border-radius:3px;padding:0 4px}
 #dlgHelp .fine{color:var(--muted);font-size:12.5px}
 #dlgHelp .dfoot{display:flex;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line)}
-.app{display:grid;grid-template-columns:330px 1fr;height:calc(100vh - 52px)}
+.app{display:grid;grid-template-columns:330px 1fr;height:calc(100vh - 52px);height:calc(100dvh - 52px)}
 .side{border-right:1px solid var(--line);background:var(--panel);overflow:auto;padding:0 16px 28px}
 .step{padding:14px 0 16px;border-bottom:1px solid var(--line)}
 .step:last-child{border-bottom:0}
