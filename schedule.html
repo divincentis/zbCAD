@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CPM Scheduler</title>
 <meta name="description" content="Browser-based critical path scheduler with a Gantt chart: FS/SS/FF/SF links with lag, work calendars, constraints, baselines, MS Project XML import and export.">
+<meta property="og:title" content="CPM Scheduler">
+<meta property="og:description" content="Critical path scheduling on a Gantt chart, with MS Project XML in and out.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://zbcad.com/schedule.html">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c1b19'/%3E%3Cpath d='M6 14.5h8.5L6 23.5h8.5M18.5 8.5v15h7.5v-9h-7.5' fill='none' stroke='%23f4f1ea' stroke-width='2.5' stroke-linecap='square'/%3E%3C/svg%3E">
 <style>
@@ -102,7 +106,7 @@ svg text{font-family:var(--sans)}
 .foot b{color:var(--text);font-weight:600}
 #toast{position:fixed;left:50%;bottom:42px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:6px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90vw}
 #toast.on{opacity:.95}
-dialog{border:1px solid var(--rule2);border-radius:10px;background:var(--panel);color:var(--text);padding:20px 22px;width:min(560px,94vw);box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog{border:1px solid var(--rule2);border-radius:10px;background:var(--panel);color:var(--text);padding:20px 22px;width:min(560px,94vw);max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px);box-shadow:0 20px 60px rgba(0,0,0,.25)}
 dialog::backdrop{background:rgba(20,18,15,.35)}
 dialog h3{margin:0 0 14px;font-size:16px}
 dialog label{display:block;font-size:12px;color:var(--muted);margin:0 0 10px}
@@ -128,7 +132,7 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
 .facts td{padding:3px 0;border-bottom:1px solid var(--rule)}
 .facts td:nth-child(even){text-align:right;padding-right:14px}
 .facts td:nth-child(odd){color:var(--muted)}
-.help{font-size:13px;line-height:1.55}.help code{background:var(--bg);padding:1px 4px;border-radius:3px}
+.help{font-size:13px;line-height:1.55}.help .about{font-size:14px}.help .fine{color:var(--muted);font-size:12px}.help h4{margin:16px 0 6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}#helpTitle{outline:none}.help code{background:var(--bg);padding:1px 4px;border-radius:3px}
 .help table{border-collapse:collapse;width:100%}.help td{padding:2px 8px 2px 0;vertical-align:top}
 #narrow{position:fixed;inset:0;z-index:100;background:var(--bg);display:none;align-items:center;justify-content:center;padding:24px;text-align:center}
 #narrow div{max-width:360px}#narrow button{margin-top:14px;padding:8px 16px;border:1px solid var(--rule2);border-radius:6px;background:var(--panel);cursor:pointer}
@@ -183,7 +187,7 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
     <button data-cmd="zin" title="Zoom in (Ctrl+=)">+</button>
     <button data-cmd="goto" title="Scroll to project start">Start</button>
     <button data-cmd="trace" id="btnTrace" title="Highlight what drives the selected task's start (Alt+T)">Trace</button>
-    <button data-cmd="help" title="Help (F1)">Help</button>
+    <button data-cmd="help">Help</button>
   </div>
   <div class="grp"><span>Filter</span>
     <select id="fShow" title="Which tasks to show">
@@ -262,21 +266,26 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
   <menu><button value="cancel">Cancel</button><button value="ok" class="pri">Print</button></menu>
 </form></dialog>
 
-<dialog id="dlgHelp"><form method="dialog" class="help">
-  <h3>How it works</h3>
+<dialog id="dlgHelp" aria-labelledby="helpTitle"><form method="dialog" class="help">
+  <h3 id="helpTitle" tabindex="-1" autofocus>CPM Scheduler</h3>
+  <p class="about">Critical path scheduling with a Gantt chart. Tasks link finish-to-start, start-to-start, finish-to-finish or start-to-finish, with lag, over a work calendar with holidays. It works out float and the critical path, keeps a baseline to measure slipping against, and tracks progress from a status date. Schedules open from and save to MS Project XML as well as their own file.</p>
+  <h4>Getting started</h4>
+  <p><b>New</b> offers a blank schedule or a template for a common job type. A template is only a starting point: check its durations and links against your own job.</p>
   <p>Type tasks in the table. Durations are in workdays (<code>5</code>, <code>5d</code>, <code>2w</code>); <code>0</code> makes a milestone. Indent a task under another to make the one above it a summary.</p>
+  <h4>Links and dates</h4>
   <p><b>Predecessors</b> use row numbers: <code>4</code> (finish-to-start), <code>4SS</code>, <code>4FF+2d</code>, <code>4SF</code>, <code>7FS-1d</code> (lead). Use <code>ed</code> or <code>ew</code> for calendar-day lags that run through weekends and holidays, like cure time: <code>4FS+7ed</code>. Separate several with commas. You can also drag a bar up or down onto another bar to link them.</p>
   <p>Typing a date in <b>Start</b> or <b>Finish</b> sets a start/finish-no-earlier-than constraint, like MS Project. Dragging a bar sideways does the same. Clear it in Info.</p>
   <p><b>Other constraints</b> (Info): start/finish no later than, must start on, must finish on. The no-later-than types never move a task; they cap its late dates, so a task pushed past one shows negative float. Must-start/finish pin the task even if its predecessors say otherwise.</p>
   <p><b>Calendar</b> (Settings): pick the workdays and list holidays, one per line; the buttons load US federal or common construction holidays. Every duration, lag and float is counted in workdays on that calendar. One calendar covers the whole project.</p>
-  <p><b>Paste from Excel</b>: copy cells and paste into any cell here — columns fill left to right from that cell in table order (Name, Trade, Duration, Start, Finish, Predecessors, Float is skipped, % done). Paste with rows selected (not in a cell) to insert the rows above.</p>
-  <p><b>Trade</b> labels who does the work. Use <b>Color by trade</b> and the <b>Filter</b> menus for a sub's tasks or a 2–6 week lookahead; Print prints what's shown. <b>Banded rows</b> shades every other row to make a wide chart easier to read across.</p>
+  <h4>Progress</h4>
   <p><b>Status date</b> (in Settings) drives updates: tasks not started yet can't start before the day after it, and unfinished work on in-progress tasks is pushed past it and still waits for its predecessors. Actual dates are never moved to fit the links: progress recorded ahead of an unfinished predecessor is marked with a red “!”. Slipping shows as a later finish, and as finish variance in Info once a baseline is saved; float only goes negative when a no-later-than or must-finish date is being missed.</p>
-  <p><b>Trace</b> highlights the chain of tasks that sets the selected task's start. Info and the bar tooltip also say what drives each start.</p>
-  <p><b>Float</b> is total float in workdays; tasks with zero or negative float are critical and shown in red; <b>Critical path</b> in the Filter group turns the red off, on screen and in print, without changing any dates or float. Summary tasks span their subtasks, with % done weighted by duration, and are never critical themselves; their dates, duration and % can't be typed over.</p>
   <p><b>Baseline</b>: Set baseline saves every task's current dates, and gray bars show them from then on. Re-setting overwrites the old one; Clear removes it. Duplicated tasks start without progress or baseline.</p>
-  <p><b>New</b> offers a blank schedule or a template for a common job type. A template is only a starting point: check its durations and links against your own job.</p>
-  <p><b>Files</b>: Save writes a .json file that keeps everything. MSP XML exports to MS Project (File › Open there) and Open reads Project XML back in. Check the calendar after an import, since Project calendars carry more detail than this tool uses. CSV is a one-way export for spreadsheets.</p>
+  <h4>Reading the schedule</h4>
+  <p><b>Float</b> is total float in workdays; tasks with zero or negative float are critical and shown in red; <b>Critical path</b> in the Filter group turns the red off, on screen and in print, without changing any dates or float. Summary tasks span their subtasks, with % done weighted by duration, and are never critical themselves; their dates, duration and % can't be typed over.</p>
+  <p><b>Trace</b> highlights the chain of tasks that sets the selected task's start. Info and the bar tooltip also say what drives each start.</p>
+  <p><b>Trade</b> labels who does the work. Use <b>Color by trade</b> and the <b>Filter</b> menus for a sub's tasks or a 2–6 week lookahead; Print prints what's shown. <b>Banded rows</b> shades every other row to make a wide chart easier to read across.</p>
+  <p><b>Paste from Excel</b>: copy cells and paste into any cell here — columns fill left to right from that cell in table order (Name, Trade, Duration, Start, Finish, Predecessors, Float is skipped, % done). Paste with rows selected (not in a cell) to insert the rows above.</p>
+  <h4>Shortcuts</h4>
   <table>
     <tr><td><code>Enter</code></td><td>Commit and move down</td></tr>
     <tr><td><code>Insert</code></td><td>Insert a task above the selection</td></tr>
@@ -290,7 +299,9 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
     <tr><td><code>Ctrl+Z</code> / <code>Ctrl+Y</code></td><td>Undo / redo</td></tr>
     <tr><td><code>Ctrl+S</code> / <code>Ctrl+O</code> / <code>Ctrl+P</code></td><td>Save / open / print</td></tr>
   </table>
-  <p style="color:var(--muted);font-size:12px">Everything stays in this browser tab. Work is autosaved to this browser; use Save to keep a file.</p>
+  <h4>Files</h4>
+  <p><b>Files</b>: Save writes a .json file that keeps everything. MSP XML exports to MS Project (File › Open there) and Open reads Project XML back in. Check the calendar after an import, since Project calendars carry more detail than this tool uses. CSV is a one-way export for spreadsheets.</p>
+  <p class="fine">Everything stays in this browser tab. Work is autosaved to this browser; use Save to keep a file.</p>
   <menu><button value="ok" class="pri">Got it</button></menu>
 </form></dialog>
 
@@ -1451,7 +1462,15 @@ document.getElementById('toolbar').addEventListener('click',e=>{const b=e.target
 
 /* ===== Keyboard ===== */
 document.addEventListener('keydown',e=>{
-  if(document.querySelector('dialog[open]'))return;
+  // F1 is blocked rather than bound: an accidental press should cost nothing, and left alone
+  // Chrome opens its own help in a new tab. Help is the toolbar button.
+  if(e.key==='F1'){e.preventDefault();return;}
+  if(document.querySelector('dialog[open]')){
+    // Nothing here acts behind an open dialog, and the browser's own Save page, Open and
+    // Print should not take over either.
+    if((e.ctrlKey||e.metaKey)&&/^[sop]$/i.test(e.key))e.preventDefault();
+    return;
+  }
   const inInput=e.target.matches&&e.target.matches('input,textarea,select'),k=e.key,ctrl=e.ctrlKey||e.metaKey;
   const dirty=inInput&&e.target.value!==e.target.defaultValue;
   if(ctrl&&!e.shiftKey&&k.toLowerCase()==='z'&&!dirty){e.preventDefault();if(inInput)e.target.blur();CMD.undo();}
@@ -1465,7 +1484,6 @@ document.addEventListener('keydown',e=>{
   else if(e.altKey&&e.shiftKey&&k.startsWith('Arrow')){e.preventDefault();if(inInput)e.target.blur();setTimeout(()=>({ArrowRight:CMD.indent,ArrowLeft:CMD.outdent,ArrowUp:CMD.up,ArrowDown:CMD.down})[k](),10);}
   else if(k==='F2'&&ctrl){e.preventDefault();if(inInput)e.target.blur();setTimeout(e.shiftKey?CMD.unlink:CMD.link,10);}
   else if(k==='F2'&&e.shiftKey){e.preventDefault();if(inInput)e.target.blur();setTimeout(CMD.info,10);}
-  else if(k==='F1'){e.preventDefault();CMD.help();}
   else if(ctrl&&!e.shiftKey&&k.toLowerCase()==='d'&&!dirty){e.preventDefault();if(inInput)e.target.blur();setTimeout(CMD.dup,10);}
   else if(e.altKey&&!ctrl&&!e.shiftKey&&e.code==='KeyT'){e.preventDefault();CMD.trace();}
   else if(k==='Insert'){e.preventDefault();if(inInput)e.target.blur();setTimeout(CMD.insert,10);}
