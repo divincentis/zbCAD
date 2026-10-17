@@ -6,27 +6,39 @@ The home page (`index.html`) was cut down to one line per tool on 2026-10-17. Th
 
 Work through the tools one at a time, in the order below. When a tool is finished, tick it off and note where its text ended up. Delete this file once every box is ticked and the preserved text has all been placed.
 
-## Decide once, before the first tool
+## Decided (2026-10-17)
 
-- [ ] **One help pattern for every tool.** Today it differs by tool: zbCAD links out to `docs.html`, Metal Panel Layout and the CPM Scheduler have a Help button (the scheduler's also opens on F1), and the rest have nothing. Choose one entry point (a Help button, or `?` / F1) and one shape for what it opens, such as an About paragraph, then how to use it, then shortcuts, then file formats. Every tool then follows the same pattern.
-- [ ] **Where the long description lives.** It could be the About section of that help panel, a first-run empty state, or both.
-- [ ] **Head tags.** Every tool page should have `<meta name="description">`, plus `og:title` / `og:description` / `og:url` the way `index.html` does it. Only `zones/` has `og:description` today, and `cad.html` and `taper.html` have no meta description at all.
+- [x] **One help pattern for every tool.** A **Help** button in the tool's toolbar opens a `<dialog>` that is already in the page, so nothing loads. Esc or "Got it" closes it. Every tool's help has the same sections, in this order:
+  1. **About**: the long description (preserved below), rewritten for the tool's own page.
+  2. **How to use it**: how to start, what each input means, what each output contains.
+  3. **Shortcuts**, if the tool has any.
+  4. **Files and storage**: what Save, Open and Export write and read, and what stays in the browser.
+  5. A last line saying what to check against the governing code and manufacturer data, where that applies.
+- [x] **F1 does nothing.** The user hates hitting F1 by accident. Every tool blocks it (`preventDefault` on keydown), which also stops Chrome opening its own help tab, and help opens **only** from the button. The CPM Scheduler loses its F1 shortcut, and its "Help (F1)" tooltip becomes "Help".
+- [x] **The long description goes at the top of the Help panel**, not on an empty start screen.
+- [x] **Head tags.** Every tool page gets `<meta name="description">`, `og:title`, `og:description`, `og:type` and `og:url`, the way `index.html` has them.
 
 ## For each tool
 
 1. Read the tool's existing help, empty state and head tags.
-2. Place the preserved description from below, rewritten as needed now that it sits on the tool's own page.
+2. Add a Help button and dialog with the sections above, or bring an existing one into that shape, with the preserved description from below as its About section. Block F1.
 3. Fill in the documentation gaps: how to start, what each input means, what each output contains, and its limits ("check against …").
 4. Add or fix the head tags.
 5. If the tool has a suite and the change touches its script, run it (commands are in `CLAUDE.md`).
 6. If the tool's one-liner on `index.html` no longer fits, update it too.
 7. Tick the box below and say where the text went.
 
+## Things learned along the way
+
+- **Make the dialog open at the top.** Without it, `showModal()` focuses the first button, here "Got it" at the very bottom, and a long help opens scrolled to the end. Put `tabindex="-1" autofocus` on the dialog's heading (Taper Studio does this). Check whether the Panels and Scheduler help dialogs have the same problem.
+- **Guard the keyboard handler.** It must return early while the help is open. Otherwise Delete or a tool key acts on the drawing behind it.
+- Taper Studio still has dead claude.ai artifact code (`window.claude.use('downloads')`, a JSZip path for DXF). It is harmless, but worth removing in a cleanup pass.
+
 ## Tools
 
 Ordered roughly by how little documentation the tool has now:
 
-- [ ] **Taper Studio** (`taper.html`): no help, no meta description.
+- [x] **Taper Studio** (`taper.html`), 2026-10-17. Added a Help button and dialog with every section; the old description is rewritten as its About paragraph. F1 is blocked, and keys pressed while help is open no longer reach the plan. Head tags added, and `<title>` moved from `<body>` into `<head>`. There is no suite; it was checked in headless Chromium.
 - [ ] **Sheet Metal Layout** (`pattern.html`): has a meta description, no help.
 - [ ] **Roof Overlay** (`overlay.html`): has a meta description, no help.
 - [ ] **360 Photo Viewer** (`pano.html`): has a meta description, no help.

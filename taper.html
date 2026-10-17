@@ -1,5 +1,11 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c1b19'/%3E%3Cpath d='M6 14.5h8.5L6 23.5h8.5M18.5 8.5v15h7.5v-9h-7.5' fill='none' stroke='%23f4f1ea' stroke-width='2.5' stroke-linecap='square'/%3E%3C/svg%3E"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html lang="en"><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c1b19'/%3E%3Cpath d='M6 14.5h8.5L6 23.5h8.5M18.5 8.5v15h7.5v-9h-7.5' fill='none' stroke='%23f4f1ea' stroke-width='2.5' stroke-linecap='square'/%3E%3C/svg%3E"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
 <title>Taper Studio</title>
+<meta name="description" content="Tapered roof insulation layout: taper to drains, crickets between drains and behind curbs, panels matched from your series with flat fill, average R-value and a material takeoff. Exports a shop drawing, DXF, Excel and CSV.">
+<meta property="og:title" content="Taper Studio">
+<meta property="og:description" content="Tapered roof insulation layout with crickets, panel matching, average R-value and a material takeoff.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://zbcad.com/taper.html">
+</head><body>
 <style>
 /* Layout: drafting-table workspace. Header strip, inputs on the left, plan sheet on the right with KPIs on top. */
 :root {
@@ -215,6 +221,20 @@ button.kpi:hover { background: var(--sel); }
   .zoom { margin-left: 0; }
 }
 @media (max-width: 520px) { #kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kpi { border-bottom: 1px solid var(--line); } .kpi:nth-child(odd) { border-right: 1px solid var(--line) !important; } .kpi:nth-child(even) { border-right: 0; } .rgrid, .facts { grid-template-columns: 1fr; } }
+#dlgHelp { width: min(680px, calc(100vw - 24px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+#dlgHelp::backdrop { background: rgba(20,20,19,.35); }
+#dlgHelp form { padding: 20px 24px 16px; font-size: 13.5px; line-height: 1.55; }
+#dlgHelp h2 { margin: 0 0 8px; font-size: 18px; letter-spacing: -.01em; outline: none; }
+#dlgHelp h3 { margin: 18px 0 6px; }
+#dlgHelp p, #dlgHelp ul { margin: 0 0 8px; }
+#dlgHelp ul { padding-left: 18px; }
+#dlgHelp li { margin-bottom: 4px; }
+#dlgHelp .about { font-size: 14.5px; }
+#dlgHelp table { border-collapse: collapse; margin: 0 0 8px; }
+#dlgHelp td { padding: 2px 14px 2px 0; vertical-align: top; }
+#dlgHelp kbd, #dlgHelp code { font-family: var(--f-mono); font-size: 12px; background: var(--sheet); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+#dlgHelp .fine { color: var(--muted); font-size: 12.5px; }
+#dlgHelp menu { margin: 14px 0 0; padding: 0; display: flex; justify-content: flex-end; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -233,6 +253,7 @@ button.kpi:hover { background: var(--sel); }
       <label class="btn" for="openJSON">Open</label><input type="file" id="openJSON" accept=".json,application/json" class="vis">
       <button type="button" id="newBlank">New</button>
       <button type="button" id="resetSample">Sample</button>
+      <button type="button" id="helpBtn" style="margin-left:8px">Help</button>
     </div>
   </header>
 
@@ -297,6 +318,59 @@ button.kpi:hover { background: var(--sel); }
   </div>
 </div>
 <div id="toast" role="status" hidden></div>
+
+<dialog id="dlgHelp" aria-labelledby="helpTitle"><form method="dialog">
+  <h2 id="helpTitle" tabindex="-1" autofocus>Taper Studio</h2>
+  <p class="about">Lays out tapered insulation for a low-slope roof. Draw the roof, place the drains and curbs, and it builds the taper down to the drains, adds crickets between drains and behind curbs, matches every module to a panel from your tapered series with flat fill under it, and works out the R-value and a material takeoff. The result exports as a shop drawing, a layered DXF, an Excel workbook and a CSV.</p>
+
+  <h3>Getting started</h3>
+  <p><b>Sample</b> loads a worked example. <b>New</b> starts a blank 100′ × 60′ roof with no drains. Undo takes either one back. Everything recalculates as you type or drag. The tabs on the left are worked in order: Roof, then Taper, Panels, R-value and Takeoff.</p>
+
+  <h3>Roof</h3>
+  <ul>
+    <li><b>Outline:</b> type a width and length and choose <b>Make rectangle</b>. For any other shape, pick the <b>Roof</b> tool and click each corner, then click the first corner, double-click or press Enter to close it. You can also type the corners into the table. Distances are in feet, and fractions like <code>3 1/2</code> work. North is up the screen, X runs east and Y runs south.</li>
+    <li><b>Edge drains:</b> an edge that drains off the roof (a gutter or an edge scupper run) is set with the <b>Edge</b> tool or the <i>Edge drain</i> box beside its corner. The taper falls to it like a drain.</li>
+    <li><b>Drains and scuppers:</b> click with the <b>Drain</b> tool. The <b>Scupper</b> tool places one on the nearest edge, and it stays on that edge when you drag it. Tags read D-1, SC-2 and so on.</li>
+    <li><b>Curbs and penetrations:</b> drag a rectangle with the <b>Curb</b> tool. Curb area is taken out of the insulated area. <b>Snap</b> sets the step everything you place or drag moves in.</li>
+  </ul>
+
+  <h3>Taper</h3>
+  <ul>
+    <li><b>Four-way</b> slopes the field straight to each drain, with mitered hips and valleys. <b>Two-way + crickets</b> slopes the field to a line through the drains and puts crickets between them. Drains less than 1′ apart across the slope count as one drain line. <i>Field slope runs</i> sets which way that is.</li>
+    <li><b>Field slope</b> and <b>cricket slope</b> are in inches per foot. <b>Min. at drain</b> is the taper's thickness at the drain, not counting the base layers.</li>
+    <li><b>Cricket ratio</b> is width to length: at 3 : 1, a cricket across 30′ between two drains reaches 10′ up the slope on each side of the drain line. If a cricket is too short to shed water across the line at its slope, the takeoff says so.</li>
+    <li><b>Panel grid:</b> the module is the panel size the roof is cut into, and it starts at drain D-1 unless you set an origin. <b>Max fill layers</b> limits how many flat boards can be stacked under a panel. <b>Waste</b> is added to every quantity.</li>
+  </ul>
+
+  <h3>Panels</h3>
+  <p>A <b>series</b> is one manufacturer's set of tapered panels at one slope. Enter its panels from the thinnest up, with the low and high edge of each. The series repeats as a cycle: after its last panel it starts over on flat fill equal to the cycle's rise. The <i>Progression</i> line shows the sequence that results. A red step there means the fill thicknesses you listed can't make that step exactly. Crickets use whichever series is closest to the cricket slope. The presets are generic profiles; check codes and sizes against your manufacturer's data.</p>
+
+  <h3>R-value and takeoff</h3>
+  <ul>
+    <li><b>R-value</b> adds the tapered R per inch to the base layers, the cover board and any other R, then reports it two ways: <i>average thickness</i> and <i>area-weighted U</i>. Energy codes differ on which one applies to tapered insulation, and many also set a minimum at the low point.</li>
+    <li><b>Takeoff</b> lists panels, fill and cricket panels by area, rounded up to whole boards with waste. Cricket panels sit on top of the field taper, so they are in addition to it. The <b>Checks</b> box at the top lists any module that no panel and fill combination matches within ⅛″. Those modules are shaded red on the plan.</li>
+    <li>The status bar under the plan shows the taper, the total thickness and the panel at the cursor. <i>Panel codes</i>, <i>Slope arrows</i> and <i>Thickness map</i> change what the plan shows.</li>
+  </ul>
+
+  <h3>Shortcuts</h3>
+  <table>
+    <tr><td><kbd>V</kbd> <kbd>R</kbd> <kbd>D</kbd> <kbd>S</kbd> <kbd>C</kbd> <kbd>E</kbd> <kbd>H</kbd></td><td>Select, Roof, Drain, Scupper, Curb, Edge, Pan</td></tr>
+    <tr><td><kbd>F</kbd></td><td>Fit the roof in view</td></tr>
+    <tr><td>Scroll, pinch</td><td>Zoom</td></tr>
+    <tr><td><kbd>Space</kbd> + drag, middle drag</td><td>Pan from any tool</td></tr>
+    <tr><td><kbd>Delete</kbd></td><td>Remove the selected drain, curb or corner</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Cancel the outline being drawn, clear the selection</td></tr>
+    <tr><td><kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd></td><td>Undo / redo</td></tr>
+  </table>
+
+  <h3>Files</h3>
+  <ul>
+    <li>Your work is kept in this browser automatically. <b>Save</b> writes a .json file with everything in it, and <b>Open</b> reads one back.</li>
+    <li><b>Plan SVG</b> is a shop drawing with a title block, panel key and legend. <b>DXF</b> is the plan in layers, for CAD. <b>Excel</b> has the takeoff, a panel schedule, a cricket schedule, the R-value and the design inputs on separate sheets. It needs an internet connection the first time, to load the spreadsheet library. <b>CSV</b> is the takeoff alone.</li>
+  </ul>
+  <p class="fine">This is a layout and estimating aid. Check panel sizes and R-values against the manufacturer's data, the R-value method against the governing energy code, and slopes and crickets against the roof system's requirements.</p>
+  <menu><button value="ok" class="btn primary">Got it</button></menu>
+</form></dialog>
 
 <script>
 /* Tapered insulation design engine
@@ -1405,6 +1479,10 @@ if (typeof module !== 'undefined') module.exports = DEFAULT_PROJECT;
   }
 
   document.addEventListener('keydown', e => {
+    // F1 is blocked rather than bound: an accidental press should cost nothing, and
+    // left alone Chrome opens its own help in a new tab. Help is the header button.
+    if (e.key === 'F1') { e.preventDefault(); return; }
+    if ($('#dlgHelp').open) return;
     const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName);
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { if (typing) return; e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (typing) return;
@@ -1787,6 +1865,7 @@ if (typeof module !== 'undefined') module.exports = DEFAULT_PROJECT;
     const el = $('#v-' + k); el.checked = show[k];
     el.addEventListener('change', () => { show[k] = el.checked; $('#legendHeat').hidden = !show.heat; renderPlan(); });
   });
+  $('#helpBtn').onclick = () => $('#dlgHelp').showModal();
   $('#resetSample').onclick = () => { checkpoint(); P = clone(DEFAULT_PROJECT); sel = null; changed(true); fit(); toast('Sample roof loaded. Undo to go back.'); };
   $('#newBlank').onclick = () => {
     checkpoint();
