@@ -141,6 +141,13 @@
     line-height: 1.6;
   }
   footer p { margin: 0 0 6px; }
+  .maker { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .maker a { display: inline-flex; opacity: .7; }
+  .maker a:hover { opacity: 1; }
+  .maker img { height: 16px; width: auto; display: block; }
+  @media (prefers-color-scheme: dark) {
+    .maker img { filter: brightness(0) invert(.85); }
+  }
 
   @media (max-width: 700px) {
     section { grid-template-columns: 1fr; padding: 24px 0; }
@@ -238,6 +245,8 @@
   <footer>
     <p>Built for a desktop with a mouse and keyboard unless marked otherwise. All of it is a work in progress: check anything that matters against the governing code and manufacturer data.</p>
     <p>&copy; <span id="yr">2026</span> zbCAD</p>
+    <p class="maker">zbCAD is a product of
+      <a href="https://divincentis.com"><img src="divincentis.png" alt="DiVincentis" width="83" height="16"></a></p>
   </footer>
 
 </div>
