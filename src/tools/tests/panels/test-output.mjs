@@ -122,21 +122,28 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
     t.eq(clash, 0, `${f.mark}: no two IDs overlap`);
   }
   {
-    // A long low facet, where every strip is too thin to label and they all lead out. Neighbors
-    // with one ID share a label that says how many, on a line spanning just those strips.
-    const was = JSON.parse(JSON.stringify(app.P)), p = app.ev('newProject')();
-    app.ev('newFacet')(p, p.packages[0], { template: 'custom', pts: [[0, 0], [300, 0], [300, 4], [876, 4], [876, 178], [0, 178]] });
-    app.load(p);
-    const Lf = app.ev('compute')().L.get(p.facets[0].id), ops = app.ev('facetPlan')(Lf, 416, 430).ops, ids = ops.filter(o => o.id);
-    const counted = ids.flatMap(o => { const m = /^(\S+)(?: ×(\d+))?$/.exec(o.s); return Array(+(m[2] || 1)).fill(m[1]); }).sort();
-    t.eq(counted, Lf.pieces.map(q => q.id).sort(), 'a long facet: the shared labels count every piece, by its own ID');
-    t.ok(ids.length < 8 && ids.some(o => / ×\d+$/.test(o.s)), 'and there are a handful of them, not one per strip');
-    const run = ids.find(o => / ×\d+$/.test(o.s)), m = +/×(\d+)$/.exec(run.s)[1];
-    const dim = ops.filter(o => o.k === 'line' && Math.abs(o.y1 - o.y2) < 1e-9 && (o.x1 + o.x2) / 2 > run.x - 0.01 && (o.x1 + o.x2) / 2 < run.x + 0.01);
-    const sameId = Lf.pieces.filter(q => q.id === run.s.split(' ')[0]), w = Math.abs(dim[0].x2 - dim[0].x1);
-    t.ok(dim.length === 1 && sameId.length >= m && near(w, m * Lf.e.W * (416 - 24) / 876, 0.5 * w), 'its dimension line spans the strips it counts');
-    const bx = ids.map(box);
-    t.ok(bx.every((a, i) => bx.every((b, j) => j <= i || !(a[0] < b[2] - 0.2 && b[0] < a[2] - 0.2 && a[1] < b[3] - 0.2 && b[1] < a[3] - 0.2))) && bx.every(b => b[0] >= 0 && b[2] <= 416 && b[1] >= 0 && b[3] <= 430), 'and none of them overlap or run off the sheet');
+    // Long low facets, where every strip is too thin to label and they all lead out. Neighbors
+    // with one ID share a label that says how many, on a line spanning just those strips. With an
+    // opening the length of the facet, each strip's pieces come below, above, below, above.
+    const was = JSON.parse(JSON.stringify(app.P));
+    for (const [name, row, wide] of [['a stepped eave', { template: 'custom', pts: [[0, 0], [300, 0], [300, 4], [876, 4], [876, 178], [0, 178]] }, 876],
+      ['an opening the length of it', { template: 'rect', params: { w: 1236, h: 166 }, openings: [{ x: 48, y: 60, w: 1060, h: 6 }] }, 1236]]) {
+      const p = app.ev('newProject')();
+      app.ev('newFacet')(p, p.packages[0], row);
+      app.load(p);
+      const Lf = app.ev('compute')().L.get(p.facets[0].id), ops = app.ev('facetPlan')(Lf, 416, 430).ops, ids = ops.filter(o => o.id);
+      const counted = ids.flatMap(o => { const m = /^(\S+)(?: ×(\d+))?$/.exec(o.s); return Array(+(m[2] || 1)).fill(m[1]); }).sort();
+      t.eq(counted, Lf.pieces.map(q => q.id).sort(), `${name}: the shared labels count every piece, by its own ID`);
+      t.ok(ids.length < 8 && ids.some(o => / ×\d+$/.test(o.s)), `${name}: and there are a handful of them, not one per strip`);
+      const run = ids.reduce((a, o) => (+(/×(\d+)$/.exec(o.s) || [0, 0])[1] > +(/×(\d+)$/.exec(a.s) || [0, 0])[1] ? o : a)), m = +/×(\d+)$/.exec(run.s)[1];
+      const dim = ops.filter(o => o.k === 'line' && Math.abs(o.y1 - o.y2) < 1e-9 && (o.x1 + o.x2) / 2 > run.x - 0.01 && (o.x1 + o.x2) / 2 < run.x + 0.01 && Math.abs(o.y1 - run.y) <= 10.01);
+      const w = dim.length ? Math.abs(dim[0].x2 - dim[0].x1) : 0;
+      t.ok(dim.length === 1 && near(w, m * Lf.e.W * (416 - 24) / wide, 0.5 * w), `${name}: the longest run's dimension line spans the strips it counts`);
+      const bx = ids.map(box);
+      t.ok(bx.every((a, i) => bx.every((b, j) => j <= i || !(a[0] < b[2] - 0.2 && b[0] < a[2] - 0.2 && a[1] < b[3] - 0.2 && b[1] < a[3] - 0.2))) && bx.every(b => b[0] >= 0 && b[2] <= 416 && b[1] >= 0 && b[3] <= 430), `${name}: none of them overlap or run off the sheet`);
+      const legs = ops.filter(o => o.k === 'line' && Math.abs(o.x1 - o.x2) < 1e-9);
+      t.ok(!legs.some(l => bx.some(b => l.x1 > b[0] + 0.2 && l.x1 < b[2] - 0.2 && Math.min(l.y1, l.y2) < b[3] - 0.2 && Math.max(l.y1, l.y2) > b[1] + 0.2)), `${name}: and no leader or extension line runs through one`);
+    }
     app.load(was); app.ev('compute')();
   }
 
