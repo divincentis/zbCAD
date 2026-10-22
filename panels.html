@@ -217,7 +217,7 @@ menu button.pri{background:var(--accent);border-color:var(--accent);color:#fff;f
     <h4>Entering facets</h4>
     <p><b>Enter each facet from field dimensions.</b> A facet is one flat face of roof or wall, seen from in front with the eave or base at the bottom. Pick a template and type its sizes; the preview follows every keystroke. <b>Slope</b> mode takes dimensions as taped on the roof. <b>Plan + pitch</b> takes horizontal dimensions and stretches everything square to the eave by the slope factor.</p>
     <p><b>Lengths</b> can be typed any way: <code>126</code>, <code>126 1/2</code>, <code>10'-6 1/2"</code>, <code>10.5 ft</code>, <code>3.2 m</code>, or a sum like <code>=96+24</code>. What a bare number means, and how lengths and areas are shown, are project settings. Pitch takes <code>6:12</code>, <code>26.6 deg</code> or <code>50%</code>.</p>
-    <p><b>Edges</b> are typed from the shape and can be changed by clicking the edge on the drawing. A length typed there sets the dimension that edge belongs to; on a hip or a rake it solves the height and leaves the lengths along the eave alone. Each type takes its allowance from the project defaults, and any one edge can override it. Eave, valley and wall-base allowances push the panel past the line; ridge, headwall, hip and top allowances cut it back; rake, sidewall, jamb and corner allowances pull the layout in from the edge, which changes the edge rip and not the length. The dashed line on the drawing is where the metal ends.</p>
+    <p><b>Edges</b> are typed from the shape and can be changed by clicking the edge on the drawing. A length typed there sets the dimension that edge belongs to; on a hip or a rake it solves the height and leaves the lengths along the eave alone. Each type takes its allowance from the project defaults, and any one edge can override it. Eave, valley and wall-base allowances push the panel past the line; ridge, headwall, hip and top allowances cut it back; rake, sidewall, jamb and corner allowances pull the layout in from the edge, which changes the edge rip and not the length. The sides of an opening are typed the same way: on a roof the bottom is a headwall, the top an eave and the sides sidewalls; on a wall the sill is a top, the head a base and the sides jambs. A side drawn hard against the outline follows the outline. The dashed line on the drawing is where the metal ends.</p>
     <h4>Panels and waste</h4>
     <p><b>Panel IDs</b> read <code>R2-07</code>: facet R2, its seventh different panel counting from the start edge. Panels in a facet that can be swapped for one another share an ID, and the cut list gives how many to make: same length, same rip, same end cuts and laps. A mirror-image cut is a different panel.</p>
     <p><b>Long runs</b> are split when they pass the profile's maximum length, and the pieces together are longer than the run by one lap per joint. On standing seam every transverse seam is marked as needing a splice. Laps can line up across the facet, stagger on alternate strips, or snap to purlin lines.</p>
@@ -336,6 +336,11 @@ const EDGE={eave:'Eave',rake:'Rake',ridge:'Ridge',hip:'Hip',valley:'Valley',head
 const KIND_EDGES={roof:['eave','rake','ridge','hip','valley','headwall','sidewall'],wall:['base','top','jamb','corner']};
 // These push the metal past the facet line; every other type pulls it back.
 const OUTWARD={eave:1,valley:1,base:1};
+// An opening's sides, in the order its outline runs: bottom, right, top, left. Each is typed as
+// the edge the metal meets there: the panel below a curb dies into it as into a headwall, and the
+// one above starts from it as from an eave. On a wall, the sill is a top and the head a base.
+const OPEN_SIDE=['Bottom','Right','Top','Left'],OPEN_AUTO={roof:['headwall','sidewall','eave','sidewall'],wall:['top','jamb','base','jamb']};
+const newSides=()=>[0,1,2,3].map(()=>({type:null,allow:null}));
 const ALLOW_LABEL={eave:'Eave overhang / hook',ridge:'Ridge cutback',headwall:'Headwall cutback',hip:'Hip cutback',valley:'Valley extension',rake:'Rake inset',sidewall:'Sidewall inset',base:'Base extension',top:'Top cutback',jamb:'Jamb inset',corner:'Corner inset'};
 const TEMPLATES={rect:['Rectangle','rw'],trap:['Trapezoid (hip roof side)','r'],tri:['Triangle (hip end)','r'],para:['Parallelogram','r'],angled:['One angled side (valley or hip)','r'],gable:['Rectangle with gable top','w'],shed:['Rectangle with shed top','w'],custom:['Custom perimeter','rw']};
 const STARTS={left:'Left edge',right:'Right edge','center-panel':'Centered panel','center-seam':'Centered seam'};
@@ -426,7 +431,7 @@ function checkProject(raw){
     facets.set(str(f.id),{id:fresh(f.id),mark:str(f.mark).trim().slice(0,4)||'?',name:str(f.name),kind,inputMode:kind==='roof'&&f.inputMode==='plan'?'plan':'slope',pitch:num(f.pitch,null,0,120),template,
       params:{w:num(m.w,n0.w,1),h:num(m.h,n0.h,1),top:num(m.top,n0.top,0),inset:num(m.inset,null),apex:num(m.apex,null),skew:num(m.skew,n0.skew),side:m.side==='left'?'left':'right',h2:num(m.h2,n0.h2,1)},
       custom,pts,walk,walk0:num(f.walk0,0,-360,360),edges:(Array.isArray(f.edges)?f.edges:[]).map(e=>({type:pick(obj(e).type,EDGE,null),allow:num(obj(e).allow,null,-600,600)})),
-      openings:arr(f.openings).map(q=>({x:num(q.x,0),y:num(q.y,0),w:num(q.w,36,0),h:num(q.h,36,0)})),ov,north:num(f.north,null,-360,360),
+      openings:arr(f.openings).map(q=>({x:num(q.x,0),y:num(q.y,0),w:num(q.w,36,0),h:num(q.h,36,0),sides:[0,1,2,3].map(j=>{const s=obj(Array.isArray(q.sides)?q.sides[j]:null);return {type:pick(s.type,EDGE,null),allow:num(s.allow,null,-600,600)};})})),ov,north:num(f.north,null,-360,360),
       layout:{dir:pick(y.dir,{eave:1,edge:1,angle:1},'eave'),dirEdge:Math.round(num(y.dirEdge,0,0,999)),angle:num(y.angle,0,-89,89),start:pick(y.start,STARTS,'left'),offset:num(y.offset,0),balance:!!y.balance,wind:pick(y.wind,WIND,'')}});
   }
   const checkDef=d0=>{
@@ -660,9 +665,17 @@ function layoutFacet(f,e){
   // `rows` keeps each opening's row in the inputs, which is what a warning has to name.
   const rows=f.openings.map((o,i)=>i).filter(i=>f.openings[i].w>EPS&&f.openings[i].h>EPS);
   const holes=rows.map(i=>f.openings[i]).map(o=>[[o.x,o.y*k],[o.x+o.w,o.y*k],[o.x+o.w,(o.y+o.h)*k],[o.x,(o.y+o.h)*k]]);
+  // Each side's allowance is worked out here; where it lands is decided once the outline is offset.
+  const sides=holes.map((r,h)=>{
+    const o=f.openings[rows[h]];
+    return r.map((p,j)=>{
+      const c=r[(j+1)%4],sd=(o.sides||[])[j]||{},auto=OPEN_AUTO[f.kind][j],type=sd.type||auto,val=sd.allow??e.allow[type]??0;
+      return {o:rows[h],j,x1:p[0],y1:p[1],x2:c[0],y2:c[1],auto,type,val,d:(OUTWARD[type]?1:-1)*val,on:false};
+    });
+  });
   const holeArea=holes.reduce((s,r)=>s+Math.abs(signedArea(r)),0),area=Math.max(Math.abs(A)-holeArea,0);
   // `bad` says which dimensions a geometry warning is about, so the inputs can point at them.
-  const bad={cross:false,gap:false,short:[],open:[]},L={f,e,k,pts,edges,holes,off:pts,theta:0,strips:[],pieces:[],seams:[],laps:[],warn,q,bad};
+  const bad={cross:false,gap:false,short:[],open:[]},L={f,e,k,pts,edges,holes,sides,cut:holes,off:pts,theta:0,strips:[],pieces:[],seams:[],laps:[],warn,q,bad};
   q.slope=area/144;q.planKnown=f.pitch!=null;q.plan=q.planKnown?q.slope*12/Math.hypot(12,f.pitch):0;
   for(const ed of edges)q.trim[ed.type]=(q.trim[ed.type]||0)+ed.len/12;
   if(n<3||area<1){warn.push('This facet has no area yet.');return L;}
@@ -680,9 +693,11 @@ function layoutFacet(f,e){
   }));
   if(bad.open.length)return L;
   if(!(W>=1)){warn.push('The profile coverage width must be at least 1".');return L;}
-  const shortE=edges.filter(ed=>ed.len<W-EPS);
+  // Short edges are ordinary (a jog in an eave, a stepped wall, a hip clipped at the corner), so
+  // only one with next to no length is taken for a mistake: a corner typed twice, or a slip.
+  const shortE=edges.filter(ed=>ed.len<1-EPS);
   bad.short=shortE.map(ed=>ed.i);
-  if(shortE.length)warn.push(`Edge ${shortE.map(ed=>ed.i+1).join(', ')} is shorter than one ${fmtU(W)} panel. Check the dimensions.`);
+  if(shortE.length)warn.push(`Edge ${shortE.map(ed=>ed.i+1).join(', ')} is shorter than one inch. Check the dimensions.`);
   if(f.inputMode==='plan'&&f.pitch==null)warn.push('Plan mode needs a pitch; until one is entered the dimensions are being used as slope lengths.');
   if(f.kind==='roof'&&f.pitch!=null&&f.pitch<e.profile.minSlope-EPS)warn.push(`Pitch ${fmtPitch(f.pitch)} is below this profile's minimum of ${e.profile.minSlope}:12.`);
   const eaves=edges.filter(ed=>(ed.type==='eave'||ed.type==='base')&&Math.abs(ed.val)<EPS);
@@ -701,7 +716,32 @@ function layoutFacet(f,e){
   // An opening hard against the facet's edge (a door at the base) has to follow that edge out
   // to where the metal ends, or the allowance would leave a sliver of panel across it.
   const bb=r=>[Math.min(...r.map(p=>p[0])),Math.max(...r.map(p=>p[0])),Math.min(...r.map(p=>p[1])),Math.max(...r.map(p=>p[1]))],bp=bb(pts),bo=bb(off);
-  const cut=holes.map(r=>{const b=bb(r),v=[0,1,2,3].map(i=>Math.abs(b[i]-bp[i])<0.01?bo[i]:b[i]);return [[v[0],v[2]],[v[1],v[2]],[v[1],v[3]],[v[0],v[3]]];});
+  // Every other side moves by its own allowance: a positive one on a side that pushes the metal
+  // past the line closes the opening up, and on one that cuts the metal back opens it out.
+  // bb's order is left, right, bottom, top; the sides' is bottom, right, top, left.
+  const SIDE_OF=[3,1,0,2],SIGN=[1,-1,1,-1],shut=[],astray2=[],cut=[],cutRow=[];
+  holes.forEach((r,h)=>{
+    const b=bb(r),v=[0,1,2,3].map(i=>{
+      const sd=sides[h][SIDE_OF[i]];
+      if(Math.abs(b[i]-bp[i])<0.01){sd.on=true;sd.d=0;return bo[i];}
+      return b[i]+SIGN[i]*sd.d;
+    });
+    if(v[1]-v[0]<0.01||v[3]-v[2]<0.01){shut.push(rows[h]);return;}
+    const c=[[v[0],v[2]],[v[1],v[2]],[v[1],v[3]],[v[0],v[3]]];
+    if(!rectOnFacet(c,off))astray2.push(rows[h]);
+    cut.push(c);cutRow.push(rows[h]);
+  });
+  L.cut=cut;
+  if(shut.length)warn.push(`The allowances on opening ${shut.map(i=>i+1).join(', ')} close it up, so the panels run across it.`);
+  // Opened out by its allowances, an opening can reach where the metal ends or another opening,
+  // and the strips below would then pair its edges with the wrong ones.
+  if(astray2.length)warn.push(`The allowances on opening ${astray2.map(i=>i+1).join(', ')} carry it past where the metal ends. Fix the openings before using this layout.`);
+  bad.open.push(...astray2);
+  cut.forEach((a,i)=>cut.forEach((c,j)=>{
+    if(j<=i||Math.min(a[2][0],c[2][0])-Math.max(a[0][0],c[0][0])<=0.01||Math.min(a[2][1],c[2][1])-Math.max(a[0][1],c[0][1])<=0.01)return;
+    bad.open.push(cutRow[i],cutRow[j]);warn.push(`With their allowances, openings ${cutRow[i]+1} and ${cutRow[j]+1} overlap. Fix the openings before using this layout.`);
+  }));
+  if(bad.open.length)return L;
   const rings=[off,...cut].map(r=>r.map(p=>rot(p,th))),slant=[];
   for(const r of rings)r.forEach((p,i)=>{const c=r[(i+1)%r.length];if(Math.abs(c[0]-p[0])>EPS)slant.push({x1:p[0],y1:p[1],x2:c[0],y2:c[1],xl:Math.min(p[0],c[0]),xr:Math.max(p[0],c[0])});});
   // Strips stop at the roof's own width. Where an eave overhang meets a hip the metal's corner
@@ -987,13 +1027,16 @@ function facetPlan(L,w,h,o={}){
   const UN=p=>XY(th?rot(p,-th):p);
   const line=(a,b,st)=>ops.push({k:'line',x1:a[0],y1:a[1],x2:b[0],y2:b[1],...st});
   for(const b of blanks)ops.push({k:'poly',pts:b.map(XY),stroke:'seam',lw:0.4,dash:true,blank:1});
+  // An opening is blanked under the metal, not over it: an allowance can carry a panel into it.
+  for(const r of L.holes)ops.push({k:'poly',pts:r.map(XY),fill:'bg'});
   for(const p of L.pieces)for(const c of p.polys)ops.push({k:'poly',pts:c.map(UN),fill:p.strip%2?'tA':'tB'});
   for(const v of L.seams)line(UN([v.x,v.ya]),UN([v.x,v.yb]),{stroke:'seam',lw:0.6});
   for(const l of L.laps)line(UN([l.xa,l.y]),UN([l.xb,l.y]),{stroke:'seam',lw:l.dash?0.5:0.9,dash:l.dash});
   // Dashed where the metal ends, solid where the roof does.
   if(L.edges.some(e=>Math.abs(e.d)>EPS))ops.push({k:'poly',pts:L.off.map(XY),stroke:'accent',lw:0.6,dash:true});
   ops.push({k:'poly',pts:L.pts.map(XY),stroke:'ink',lw:1.4});
-  for(const r of L.holes)ops.push({k:'poly',pts:r.map(XY),fill:'bg',stroke:'ink',lw:1});
+  for(const r of L.holes)ops.push({k:'poly',pts:r.map(XY),stroke:'ink',lw:1});
+  for(const r of L.cut)if(!L.holes.some(h=>h.every((p,i)=>Math.abs(p[0]-r[i][0])<EPS&&Math.abs(p[1]-r[i][1])<EPS)))ops.push({k:'poly',pts:r.map(XY),stroke:'accent',lw:0.6,dash:true});
   if(o.thumb){
     ops.push({k:'text',x:X((x0+x1)/2),y:Y((y0+y1)/2)+5,s:L.f.mark,size:15,bold:true,anchor:'middle',color:'accent'});
     return {ops,tx};
@@ -1421,6 +1464,7 @@ function renderInputs(){
       h+=`<table class="mini"><tr><th>From left</th><th>From bottom</th><th>Width</th><th>Height</th><th></th></tr>`;
       f.openings.forEach((q,i)=>{h+='<tr>'+['x','y','w','h'].map(kk=>`<td><input data-b="op.${i}.${kk}" data-t="len" value="${esc(len(q[kk]))}"${kk==='w'||kk==='h'?' data-min="0"':''}></td>`).join('')+`<td class="n"><button class="sb" data-act="delOpen" data-i="${i}">×</button></td></tr>`;});
       h+='</table>';
+      h+='<p class="hint">Click a side of an opening on the drawing to change its type or allowance.</p>';
     }else if(S.open.op)h+='<p class="hint">Rectangular cut-outs for chimneys, skylights, curbs, windows and doors.</p>';
   }
   $('#inputs').innerHTML=h;
@@ -1445,7 +1489,7 @@ function badFields(L){
 function markBad(){
   const f=curF(),L=f&&R.L.get(f.id),pre=L?badFields(L):[],msg=$('#shapeMsg');
   for(const el of $('#inputs').querySelectorAll('[data-b]'))if(el.classList&&/^(m|pt|wk|op)\./.test(el.dataset.b))el.classList.toggle('bad',pre.some(k=>el.dataset.b.startsWith(k)));
-  if(msg)msg.textContent=L?L.warn.filter(w=>/crosses itself|does not close|shorter than one/.test(w)).join(' '):'';
+  if(msg)msg.textContent=L?L.warn.filter(w=>/crosses itself|does not close|shorter than one inch/.test(w)).join(' '):'';
 }
 
 // ---- preview ------------------------------------------------------------------------
@@ -1468,6 +1512,8 @@ function renderMain(keepTx){
     const {s,ox,oy,xmin,ymax}=plan.tx,X=x=>ox+(x-xmin)*s,Y=y=>oy+(ymax-y)*s;
     // Wide invisible lines over each edge, so a tap anywhere near one picks it.
     for(const e of L.edges)hs+=`<line class="eh${S.edge===e.i?' on':''}" data-edge="${e.i}" x1="${n2(X(e.x1))}" y1="${n2(Y(e.y1))}" x2="${n2(X(e.x2))}" y2="${n2(Y(e.y2))}"><title>Edge ${e.i+1}: ${EDGE[e.type]}. Click to change.</title></line>`;
+    // A side hard against the outline is not an edge of its own: the metal there follows the outline.
+    for(const sd of L.sides.flat())if(!sd.on)hs+=`<line class="eh${S.edge===`h${sd.o}.${sd.j}`?' on':''}" data-edge="h${sd.o}.${sd.j}" x1="${n2(X(sd.x1))}" y1="${n2(Y(sd.y1))}" x2="${n2(X(sd.x2))}" y2="${n2(Y(sd.y2))}"><title>Opening ${sd.o+1}, ${OPEN_SIDE[sd.j].toLowerCase()}: ${EDGE[sd.type]}. Click to change.</title></line>`;
     if(f.template==='custom'&&f.custom==='xy'){
       L.pts.forEach((p,i)=>{const c=L.pts[(i+1)%L.pts.length];hs+=`<circle class="hm" data-m="${i}" cx="${n2(X((p[0]+c[0])/2))}" cy="${n2(Y((p[1]+c[1])/2))}" r="5"/>`;});
       L.pts.forEach((p,i)=>{hs+=`<circle class="h" data-v="${i}" cx="${n2(X(p[0]))}" cy="${n2(Y(p[1]))}" r="6"/>`;});
@@ -1481,6 +1527,13 @@ function renderMain(keepTx){
     if(typingPop){pop.hidden=false;return;}
     pop.innerHTML=`<b>Edge ${e.i+1}<button class="sb" data-act="closeEdge">×</button></b>${fld('Length','e.'+e.i+'.len','len',fmtField(e.len),'data-min="1"')}<p class="hint">${edgeLenNote(f,e.i)}</p><label>Type<select data-b="e.${e.i}.type" data-t="selnull">${opt({'':`${EDGE[e.auto]} (auto)`,...Object.fromEntries(KIND_EDGES[f.kind].map(t=>[t,EDGE[t]]))},ed.type)}</select></label><label>${ALLOW_LABEL[e.type]}<em></em><input data-b="e.${e.i}.allow" data-t="lenopt" ${lim(-600,600)} value="${esc(len(ed.allow))}" placeholder="${esc(fmtField(L.e.allow[e.type]||0))} from project"></label>`;
     pop.style.left=Math.max(6,Math.min(w-220,S.edgeXY[0]))+'px';pop.style.top=Math.max(6,Math.min(h-250,S.edgeXY[1]))+'px';pop.hidden=false;
+  }
+  const sd=typeof S.edge==='string'&&L.sides.flat().find(x=>!x.on&&S.edge===`h${x.o}.${x.j}`);
+  if(sd){
+    const o=f.openings[sd.o].sides[sd.j],b=`op.${sd.o}.s.${sd.j}`,pop=$('#edgePop');
+    if(typingPop){pop.hidden=false;return;}
+    pop.innerHTML=`<b>Opening ${sd.o+1}, ${OPEN_SIDE[sd.j].toLowerCase()}<button class="sb" data-act="closeEdge">×</button></b><label>Type<select data-b="${b}.type" data-t="selnull">${opt({'':`${EDGE[sd.auto]} (auto)`,...Object.fromEntries(KIND_EDGES[f.kind].map(t=>[t,EDGE[t]]))},o.type)}</select></label><label>${ALLOW_LABEL[sd.type]}<em></em><input data-b="${b}.allow" data-t="lenopt" ${lim(-600,600)} value="${esc(len(o.allow))}" placeholder="${esc(fmtField(L.e.allow[sd.type]||0))} from project"></label>`;
+    pop.style.left=Math.max(6,Math.min(w-220,S.edgeXY[0]))+'px';pop.style.top=Math.max(6,Math.min(h-180,S.edgeXY[1]))+'px';pop.hidden=false;
   }
 }
 function cutHTML(){
@@ -1675,6 +1728,7 @@ function applyField(el){
   else if(root==='e'){while(f.edges.length<=i)f.edges.push({type:null,allow:null});f.edges[i][ks[1]]=v;}
   else if(root==='pt')f.pts[i][+ks[1]]=v;
   else if(root==='wk')f.walk[i][ks[1]]=v;
+  else if(root==='op'&&ks[1]==='s')f.openings[i].sides[+ks[2]][ks[3]]=v;
   else if(root==='op')f.openings[i][ks[1]]=v;
   else if(root==='o'){if(v==null)delete f.ov[ks[0]];else f.ov[ks[0]]=v;}
   else if(b==='k.prefix')pk.prefix=v.trim().slice(0,3);
@@ -1718,7 +1772,7 @@ function mirrorFacet(c){
   const from=c.template==='custom'?pts.map((_,i)=>(2*n-2-i)%n):n===3?[0,2,1]:n===5?[0,4,3,2,1]:[0,3,2,1],y=c.layout;
   c.edges=from.map(i=>c.edges[i]||{...blank});
   y.dirEdge=Math.max(0,from.indexOf(y.dirEdge%n));
-  c.openings=c.openings.map(o=>({...o,x:x0+x1-o.x-o.w}));
+  c.openings=c.openings.map(o=>({...o,x:x0+x1-o.x-o.w,sides:[0,3,2,1].map(j=>({...o.sides[j]}))}));
   if(y.start==='left'||y.start==='right')y.start=y.start==='left'?'right':'left';else y.offset=-y.offset;
   if(y.wind)y.wind=y.wind==='left'?'right':'left';
   y.angle=-y.angle;if(c.north!=null)c.north=-c.north;
@@ -1759,7 +1813,7 @@ const ACT={
   upFacet(){return moveFacet(-1);},downFacet(){return moveFacet(1);},
   addRow(){const f=curF();if(f.custom==='walk')f.walk.push({len:60,turn:90});else{const a=f.pts[f.pts.length-1],b=f.pts[0];f.pts.push([(a[0]+b[0])/2,(a[1]+b[1])/2]);}},
   delRow(el){const f=curF(),i=+el.dataset.i,list=f.custom==='walk'?f.walk:f.pts;if(list.length<=3)return false;list.splice(i,1);f.edges.splice(i,1);},
-  addOpen(){curF().openings.push({x:36,y:36,w:36,h:48});S.open.op=true;},
+  addOpen(){curF().openings.push({x:36,y:36,w:36,h:48,sides:newSides()});S.open.op=true;},
   delOpen(el){curF().openings.splice(+el.dataset.i,1);},
   cloneProfile(){const q=curProf(),c={...q,id:'p'+P.seq++,name:q.name+' (copy)',mfr:q.mfr.replace(/^Generic starter, verify with manufacturer$/,'')};P.profiles.push(c);S.prof=c.id;},
   delProfile(){
@@ -1818,7 +1872,7 @@ cv.addEventListener('dblclick',e=>{
 });
 cv.addEventListener('click',e=>{
   const d=e.target.dataset||{};if(d.edge==null)return;
-  const r=cv.getBoundingClientRect();S.edge=+d.edge;S.edgeXY=[e.clientX-r.left+10,e.clientY-r.top+10];renderMain();
+  const r=cv.getBoundingClientRect();S.edge=d.edge[0]==='h'?d.edge:+d.edge;S.edgeXY=[e.clientX-r.left+10,e.clientY-r.top+10];renderMain();
 });
 
 // ---- commands ----------------------------------------------------------------------------

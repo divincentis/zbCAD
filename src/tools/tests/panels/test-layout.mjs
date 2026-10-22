@@ -229,16 +229,22 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   L = app.layout('R1');
   t.ok(L.pieces.length === 0 && L.warn.some(w => /crosses itself/.test(w)), 'a self-crossing outline is refused');
   mk({}, [{ template: 'trap', params: { w: 300, top: 9, h: 120 } }]);
-  t.ok(app.layout('R1').warn.some(w => /shorter than one/.test(w)), 'an edge shorter than the coverage width is flagged');
+  t.ok(!app.layout('R1').warn.some(w => /shorter than one/.test(w)), 'an edge shorter than a panel is not a mistake');
+  mk({}, [{ template: 'custom', pts: [[0, 0], [120, 0], [120, 6], [240, 6], [240, 144], [0, 144]] }]);
+  L = app.layout('R1');
+  t.ok(L.pieces.length > 0 && !L.warn.some(w => /shorter than one/.test(w)), 'and nor is a jog in the eave');
+  mk({}, [{ template: 'custom', pts: [[0, 0], [240, 0], [240, 144], [240, 144.5], [0, 144]] }]);
+  L = app.layout('R1');
+  t.ok(L.warn.some(w => /^Edge 3 is shorter than one inch/.test(w)), 'one with next to no length is flagged');
+  t.eq(app.ev('badFields')(L), ['pt.2.', 'pt.3.'], 'and its corners are pointed at');
 
   // The inputs are told which dimensions each of those is about.
   const bf = () => app.ev('badFields')(app.layout('R1')).sort();
+  mk({}, [{ template: 'trap', params: { w: 300, top: 0.5, h: 120 } }]);
   t.eq(bf(), ['m.top'], 'a short ridge points at the ridge length');
-  mk({}, [{ template: 'rect', params: { w: 300, h: 9 } }]);
-  t.eq(bf(), ['m.h'], 'a short rake points at the slope height');
   mk({}, [{ template: 'custom', pts: [[0, 0], [200, 100], [200, 0], [0, 150]] }]);
   t.eq(bf(), ['m.', 'pt.', 'wk.'], 'a self-crossing outline points at every shape dimension');
-  mk({}, [{ template: 'custom', pts: [[0, 0], [200, 0], [200, 100], [195, 100], [0, 100]] }]);
+  mk({}, [{ template: 'custom', pts: [[0, 0], [200, 0], [200, 100], [199.5, 100], [0, 100]] }]);
   t.eq(bf(), ['pt.2.', 'pt.3.'], 'a short edge of a custom outline points at its two corners');
   mk({}, [{ template: 'custom', custom: 'walk', walk: [{ len: 200, turn: 90 }, { len: 100, turn: 90 }, { len: 150, turn: 90 }, { len: 100, turn: 90 }] }]);
   t.eq(bf(), ['wk.'], 'a perimeter that does not close points at the walk');
@@ -424,6 +430,42 @@ const wasteAdds = (L, msg) => { const q = L.q; t.ok(Math.abs(q.wAllow + q.wLap +
   wasteAdds(B, 'openings that touch');
   mk({}, [{ template: 'custom', pts: [[0, 0], [240, 0], [240, 144], [140, 144], [140, 72], [100, 72], [100, 144], [0, 144]], openings: [{ x: 80, y: 90, w: 80, h: 30 }] }]);
   t.ok(app.layout('R1').warn.some(w => /^Opening 1 is not wholly/.test(w)), 'an opening across a notch is off the facet though all four of its corners are on it');
+}
+
+// ===== allowances round an opening =====
+{
+  // A skylight on a roof: the panel below dies into it as into a headwall, the one above starts
+  // from it as from an eave, and the strips beside it are pulled back as from a sidewall.
+  mk({ def: { allow: { eave: 2, headwall: 1, sidewall: 0.5 } } }, [{ template: 'rect', params: { w: 160, h: 200 }, openings: [{ x: 40, y: 60, w: 40, h: 40 }] }]);
+  let L = app.layout('R1');
+  t.eq(L.sides[0].map(s => s.type), ['headwall', 'sidewall', 'eave', 'sidewall'], 'a roof opening\'s sides default to headwall, sidewall, eave, sidewall');
+  const under = L.pieces.filter(p => p.ca >= 48 && p.cb <= 64 && p.y1 < 100), over = L.pieces.filter(p => p.ca >= 48 && p.cb <= 64 && p.y0 > 50);
+  t.ok(under.length === 1 && near(under[0].y0, -2) && near(under[0].y1, 59), 'the piece below takes the eave overhang and the headwall cutback at the opening');
+  t.ok(over.length === 1 && near(over[0].y0, 98) && near(over[0].y1, 200), 'the piece above reaches down past the opening by the eave allowance');
+  t.ok(near(L.cut[0][0][0], 39.5) && near(L.cut[0][1][0], 80.5), 'the sides are pulled back by the sidewall inset');
+  wasteAdds(L, 'opening allowances');
+  // One side overridden, through the binding the popup uses, and kept through a save.
+  app.select('R1'); app.type('op.0.s.2.type', 'selnull', 'headwall'); app.type('op.0.s.2.allow', 'lenopt', '3');
+  L = app.layout('R1');
+  t.ok(L.sides[0][2].type === 'headwall' && near(L.cut[0][2][1], 103), 'a side can be retyped and given its own allowance');
+  t.eq(app.ev('checkProject')(JSON.parse(JSON.stringify(app.P))).facets[0].openings[0].sides[2], { type: 'headwall', allow: 3 }, 'and keeps both through a save');
+  // A wall: the sill is a top and the head a base, and a side on the outline follows the outline.
+  mk({ def: { allow: { base: 1, top: 0.5, jamb: 0.25 } } }, [{ kind: 'wall', template: 'rect', params: { w: 240, h: 120 }, openings: [{ x: 61, y: 0, w: 38, h: 84 }] }]);
+  L = app.layout('W1');
+  t.eq(L.sides[0].map(s => [s.type, s.on]), [['top', true], ['jamb', false], ['base', false], ['jamb', false]], 'a wall opening\'s sides are top, jamb, base, jamb, and a door\'s sill is on the outline');
+  t.ok(L.pieces.filter(p => p.ca >= 61 && p.cb <= 99).every(p => near(p.y0, 83)) && near(L.cut[0][0][1], -1), 'the head piece takes the base extension, and the doorway still runs out to where the metal ends');
+  // Allowances that close an opening up, or carry it past the metal, are said so.
+  mk({ def: { allow: { eave: 30 } } }, [{ template: 'rect', params: { w: 160, h: 200 }, openings: [{ x: 40, y: 60, w: 40, h: 20 }] }]);
+  L = app.layout('R1');
+  t.ok(L.warn.some(w => /^The allowances on opening 1 close it up/.test(w)) && L.cut.length === 0 && L.pieces.length > 0, 'an opening its allowances close is run across, with a warning');
+  mk({ def: { allow: { headwall: 10 } } }, [{ template: 'rect', params: { w: 160, h: 200 }, openings: [{ x: 40, y: 5, w: 40, h: 20 }, { x: 40, y: 30, w: 40, h: 20 }] }]);
+  L = app.layout('R1');
+  t.ok(L.pieces.length === 0 && L.warn.some(w => /^The allowances on opening 1 carry it past/.test(w)) && L.warn.some(w => /^With their allowances, openings 1 and 2 overlap/.test(w)), 'one carried past the eave, or into another, stops the layout');
+  t.eq(app.ev('badFields')(L).sort(), ['op.0.', 'op.1.'], 'and points at the rows');
+  // Mirrored, the left and right sides trade places.
+  mk({}, [{ template: 'rect', params: { w: 160, h: 200 }, openings: [{ x: 20, y: 60, w: 40, h: 40, sides: [null, { type: 'rake', allow: 2 }] }] }]);
+  app.select('R1'); app.ev('copyFacet')(true); app.ev('changed')();
+  t.eq(app.P.facets[1].openings[0].sides.map(s => s.type), [null, null, null, 'rake'], 'a mirrored opening keeps each side with its edge');
 }
 
 // ===== warnings about profile and wind =====

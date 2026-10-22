@@ -378,7 +378,7 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
 {
   const p = app.ev('sampleProject')();
   p.packages.push({ id: 'kw', name: 'East wall', prefix: '', facetIds: [] });
-  app.ev('newFacet')(p, p.packages[1], { kind: 'wall', params: { ...app.ev('newParams')(), w: 240, h: 6 } });
+  app.ev('newFacet')(p, p.packages[1], { kind: 'wall', template: 'custom', pts: [[0, 0], [240, 0], [240, 6], [239.5, 6], [0, 6]] });
   app.load(p);
   const pane = () => app.$('#inputs').innerHTML;
   // Catch what would be downloaded, inside the page, and put the real thing back afterwards.
