@@ -1043,7 +1043,7 @@ function facetPlan(L,w,h,o={}){
   }
   // The ID reads up the panel, where a strip has length to spare and the text can be large;
   // it lies flat only where that is the bigger of the two, and goes outside on a leader last.
-  const yb=Y(y0),yt=Y(y1),ripY=new Map(),CAP=13;let below=0,above=0;
+  const yb=Y(y0),yt=Y(y1),ripY=new Map(),CAP=13,outside=[];let below=0,above=0;
   for(const p of L.pieces){
     const pw=(p.cb-p.ca)*s,xm=(p.ca+p.cb)/2,sl=p.slabs.find(v=>v.xa<=xm&&v.xb>=xm),t=sl?(xm-sl.xa)/(sl.xb-sl.xa):0;
     const lo=sl?Math.max(p.y0,sl.loA+t*(sl.loB-sl.loA)):p.y0,hi=sl?Math.min(p.y1,sl.hiA+t*(sl.hiB-sl.hiA)):p.y1,ok=hi>lo,ym=ok?(lo+hi)/2:(p.y0+p.y1)/2;
@@ -1053,13 +1053,32 @@ function facetPlan(L,w,h,o={}){
     else if(turned>=4.5){
       const d=th/DEG,r=th?(d>0?d-90:d+90):-90,a=(r+90)*DEG;
       ops.push({k:'text',x:c[0]+turned*0.35*Math.cos(a),y:c[1]+turned*0.35*Math.sin(a),s:p.id,size:turned,anchor:'middle',rot:r,color:'ink',id:1});
-    }else{
-      const up=c[1]<(yb+yt)/2,ly=up?yt-24-9*(above++%3):yb+30+16*(below++%2);
+    }else outside.push({p,c,up:c[1]<(yb+yt)/2});
+  }
+  // Neighboring strips too thin to label that carry the same ID share one label, on a line
+  // dimensioned across them, rather than each leading out its own: on a long facet at sheet
+  // scale those stack three deep and cannot be read. Only square to the sheet, where a strip's
+  // width runs across the page.
+  const runs=[];
+  for(const o of outside){
+    const r=runs[runs.length-1],q=r&&r[r.length-1];
+    if(!th&&q&&q.up===o.up&&q.p.id===o.p.id&&o.p.strip===q.p.strip+1)r.push(o);else runs.push([o]);
+  }
+  for(const r of runs){
+    const {p,c,up}=r[0],ly=up?yt-24-9*(above++%3):yb+30+16*(below++%2);
+    if(r.length===1){
       line(c,[c[0],ly+(up?2:-7)],{stroke:'muted',lw:0.4});
       // A ripped edge strip is usually the one too thin to label, so its rip width goes under its leader.
       if(!up)ripY.set(p,ly+8);
       ops.push({k:'text',x:c[0],y:ly,s:p.id,size:6.5,anchor:'middle',color:'ink',id:1});
+      continue;
     }
+    const z=r[r.length-1].p,xa=X(p.ca),xb=X(z.cb),dy=ly+(up?4:-10),tk=2;
+    // Extension lines from the metal's end at each side of the run, the dimension line, and its ticks.
+    for(const [x,q] of [[xa,p],[xb,z]]){line([x,Y(up?q.y1:q.y0)+(up?-2:2)],[x,dy+(up?-3:3)],{stroke:'muted',lw:0.4});line([x-tk,dy+tk],[x+tk,dy-tk],{stroke:'ink',lw:0.6});}
+    line([xa,dy],[xb,dy],{stroke:'muted',lw:0.4});
+    for(const o of r)if(!up)ripY.set(o.p,ly+8);
+    ops.push({k:'text',x:(xa+xb)/2,y:ly,s:`${p.id} ×${r.length}`,size:6.5,anchor:'middle',color:'ink',id:1});
   }
   if(!th)for(const st of L.strips){
     const p=st.pieces[0];

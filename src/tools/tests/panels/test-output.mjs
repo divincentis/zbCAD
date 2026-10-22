@@ -121,6 +121,24 @@ const SNAP = '1-3/4" snap-lock, 17-3/4" on 23-7/8" coil';
     for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) { const a = ids[i], b = ids[j]; if (a[0] < b[2] - 0.2 && b[0] < a[2] - 0.2 && a[1] < b[3] - 0.2 && b[1] < a[3] - 0.2) clash++; }
     t.eq(clash, 0, `${f.mark}: no two IDs overlap`);
   }
+  {
+    // A long low facet, where every strip is too thin to label and they all lead out. Neighbors
+    // with one ID share a label that says how many, on a line spanning just those strips.
+    const was = JSON.parse(JSON.stringify(app.P)), p = app.ev('newProject')();
+    app.ev('newFacet')(p, p.packages[0], { template: 'custom', pts: [[0, 0], [300, 0], [300, 4], [876, 4], [876, 178], [0, 178]] });
+    app.load(p);
+    const Lf = app.ev('compute')().L.get(p.facets[0].id), ops = app.ev('facetPlan')(Lf, 416, 430).ops, ids = ops.filter(o => o.id);
+    const counted = ids.flatMap(o => { const m = /^(\S+)(?: ×(\d+))?$/.exec(o.s); return Array(+(m[2] || 1)).fill(m[1]); }).sort();
+    t.eq(counted, Lf.pieces.map(q => q.id).sort(), 'a long facet: the shared labels count every piece, by its own ID');
+    t.ok(ids.length < 8 && ids.some(o => / ×\d+$/.test(o.s)), 'and there are a handful of them, not one per strip');
+    const run = ids.find(o => / ×\d+$/.test(o.s)), m = +/×(\d+)$/.exec(run.s)[1];
+    const dim = ops.filter(o => o.k === 'line' && Math.abs(o.y1 - o.y2) < 1e-9 && (o.x1 + o.x2) / 2 > run.x - 0.01 && (o.x1 + o.x2) / 2 < run.x + 0.01);
+    const sameId = Lf.pieces.filter(q => q.id === run.s.split(' ')[0]), w = Math.abs(dim[0].x2 - dim[0].x1);
+    t.ok(dim.length === 1 && sameId.length >= m && near(w, m * Lf.e.W * (416 - 24) / 876, 0.5 * w), 'its dimension line spans the strips it counts');
+    const bx = ids.map(box);
+    t.ok(bx.every((a, i) => bx.every((b, j) => j <= i || !(a[0] < b[2] - 0.2 && b[0] < a[2] - 0.2 && a[1] < b[3] - 0.2 && b[1] < a[3] - 0.2))) && bx.every(b => b[0] >= 0 && b[2] <= 416 && b[1] >= 0 && b[3] <= 430), 'and none of them overlap or run off the sheet');
+    app.load(was); app.ev('compute')();
+  }
 
   // The package.
   const pages = app.ev('reportPages')(DATE), titles = pages.map(x => x.title), pdf = app.ev('buildPDF')(DATE);
