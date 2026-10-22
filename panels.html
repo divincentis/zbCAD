@@ -1059,27 +1059,61 @@ function facetPlan(L,w,h,o={}){
   // dimensioned across them, rather than each leading out its own: on a long facet at sheet
   // scale those stack three deep and cannot be read. Only square to the sheet, where a strip's
   // width runs across the page.
-  const runs=[];
+  // Each side is grouped on its own: where an opening splits every strip, the pieces come
+  // below, above, below, above, and neighbors on one side are never next to each other here.
+  const runs=[],open=new Map();
   for(const o of outside){
-    const r=runs[runs.length-1],q=r&&r[r.length-1];
-    if(!th&&q&&q.up===o.up&&q.p.id===o.p.id&&o.p.strip===q.p.strip+1)r.push(o);else runs.push([o]);
+    const key=(o.up?'u':'d')+o.p.id,r=open.get(key),q=r&&r[r.length-1];
+    if(!th&&q&&o.p.strip===q.p.strip+1)r.push(o);else{runs.push([o]);open.set(key,runs[runs.length-1]);}
   }
-  for(const r of runs){
-    const {p,c,up}=r[0],ly=up?yt-24-9*(above++%3):yb+30+16*(below++%2);
-    if(r.length===1){
+  // Each label takes the first row out from the facet where it fits: clear of what is already in
+  // that row, and with no extension line or leader from a row further out crossing its text, or
+  // its own crossing text nearer in. A rip width under a label holds the row beyond it there too.
+  // The longest runs go in first, nearest the facet, so a short one's label is not what keeps a
+  // long one's extension lines from coming out past it.
+  runs.sort((a,b)=>b.length-a.length||a[0].c[0]-b[0].c[0]);
+  const ROWS=4,fs=6.5,placed={u:[],d:[]},hit=(a,b)=>a[0]<b[1]&&b[0]<a[1];
+  const geo=runs.map(r=>{
+    const {p,c,up}=r[0],z=r[r.length-1].p,one=r.length===1,label=one?p.id:`${p.id} ×${r.length}`,xa=one?c[0]:X(p.ca),xb=one?c[0]:X(z.cb);
+    return {r,p,z,c,up,one,label,xa,xb,legs:one?[c[0]]:[xa,xb],tw:textW(label,fs)/2,
+      rips:up?[]:r.filter(o=>o.p.rip!=null).map(o=>{const x=X((o.p.ca+o.p.cb)/2),w=textW('rip '+fmtLen(o.p.rip),fs)/2+2;return [x-w,x+w];})};
+  });
+  geo.forEach((g,gi)=>{
+    const {r,p,z,c,up,one,label,xa,xb,legs,tw,rips}=g,rows=placed[up?'u':'d'];
+    // A label wider than what it names can slide along it, as far as still standing over its leader
+    // or its dimension line; it would sooner do that than go out a row.
+    const later=geo.slice(gi+1).filter(h=>h.up===up).flatMap(h=>h.legs);
+    const at=d=>{const xm=(xa+xb)/2+d,text=[xm-tw-2,xm+tw+2];return {xm,text,span:[Math.min(text[0],xa-3),Math.max(text[1],xb+3)]};};
+    const fits=(k,{text,span},strict)=>!rows.some(q=>(q.k===k&&(hit(q.span,span)||q.rips.some(v=>hit(v,span))))||(q.k===k-1&&q.rips.some(v=>hit(v,span)))||(q.k===k+1&&rips.some(v=>hit(v,q.span)))
+      ||(q.k>k&&q.legs.some(x=>x>text[0]&&x<text[1]))||(q.k<k&&legs.some(x=>x>q.text[0]&&x<q.text[1])))
+      // Leaders still to come are kept clear of too where that can be done, since a label already
+      // placed is not moved for them.
+      &&!(strict&&later.some(x=>x>text[0]&&x<text[1]));
+    // As many rows as the sheet has room for past the facet; the outermost when nothing fits.
+    const room=k=>k===0||(up?yt-24-12*k-8>=(o.y||0)+4:yb+30+16*k+10<=(o.y||0)+h-2);
+    let k=-1,pos=at(0);
+    find:for(const strict of [true,false])for(let kk=0;kk<ROWS&&room(kk);kk++)for(const f of [0,-0.5,0.5,-0.9,0.9]){
+      const cand=at(f*tw);if(fits(kk,cand,strict)){k=kk;pos=cand;break find;}
+    }
+    if(k<0)while(k+1<ROWS&&room(k+1))k++;
+    const {xm,text,span}=pos;
+    rows.push({k,span,text,legs,rips});
+    const ly=up?yt-24-12*k:yb+30+16*k;
+    if(up)above=Math.max(above,k+1);else below=Math.max(below,k+1);
+    if(one){
       line(c,[c[0],ly+(up?2:-7)],{stroke:'muted',lw:0.4});
       // A ripped edge strip is usually the one too thin to label, so its rip width goes under its leader.
       if(!up)ripY.set(p,ly+8);
-      ops.push({k:'text',x:c[0],y:ly,s:p.id,size:6.5,anchor:'middle',color:'ink',id:1});
-      continue;
+      ops.push({k:'text',x:xm,y:ly,s:p.id,size:fs,anchor:'middle',color:'ink',id:1});
+      return;
     }
-    const z=r[r.length-1].p,xa=X(p.ca),xb=X(z.cb),dy=ly+(up?4:-10),tk=2;
+    const dy=ly+(up?4:-10),tk=2;
     // Extension lines from the metal's end at each side of the run, the dimension line, and its ticks.
     for(const [x,q] of [[xa,p],[xb,z]]){line([x,Y(up?q.y1:q.y0)+(up?-2:2)],[x,dy+(up?-3:3)],{stroke:'muted',lw:0.4});line([x-tk,dy+tk],[x+tk,dy-tk],{stroke:'ink',lw:0.6});}
     line([xa,dy],[xb,dy],{stroke:'muted',lw:0.4});
     for(const o of r)if(!up)ripY.set(o.p,ly+8);
-    ops.push({k:'text',x:(xa+xb)/2,y:ly,s:`${p.id} ×${r.length}`,size:6.5,anchor:'middle',color:'ink',id:1});
-  }
+    ops.push({k:'text',x:xm,y:ly,s:label,size:fs,anchor:'middle',color:'ink',id:1});
+  });
   if(!th)for(const st of L.strips){
     const p=st.pieces[0];
     if(p.rip!=null)ops.push({k:'text',x:X((p.ca+p.cb)/2),y:ripY.get(p)??yb+19,s:'rip '+fmtLen(p.rip),size:6.5,anchor:'middle',color:'accent'});
@@ -1097,7 +1131,7 @@ function facetPlan(L,w,h,o={}){
     if(e.len*s<34)continue;
     // IDs led out above the facet stack up over the ridge, so its label steps up past them.
     // A raking edge has the blanks' offcuts stepping up outside it, and its label clears those too.
-    const nx=e.nx,ny=-e.ny,size=8,gap=10+Math.max(0,e.d)*s+(ny<-0.9&&above?26+9*Math.min(above,3):0)+(blanks.length&&Math.abs(nx)>0.1&&Math.abs(ny)>0.1?L.e.W*s*0.75:0);
+    const nx=e.nx,ny=-e.ny,size=8,gap=10+Math.max(0,e.d)*s+(ny<-0.9&&above?26+12*above:0)+(blanks.length&&Math.abs(nx)>0.1&&Math.abs(ny)>0.1?L.e.W*s*0.75:0);
     ops.push({k:'text',x:X((e.x1+e.x2)/2)+nx*gap,y:Y((e.y1+e.y2)/2)+ny*gap+(ny>0.3?size*0.8:ny<-0.3?0:size*0.35),
       s:`${EDGE[e.type]} ${fmtLen(e.len)}`,size,anchor:nx>0.3?'start':nx<-0.3?'end':'middle',color:'muted'});
   }
