@@ -99,6 +99,14 @@ sh src/tools/tests/pano/run.sh
 
 Screen points are scaled so ±1 is the frame's *long* side, which is what the field of view measures. Photos wider than `MAX_TEXTURE_SIZE` (an 8K Insta360 photo is 11904 px) are cut into padded tiles, one draw pass each, and the shader samples with `textureGrad` after taking the longitude wrap out of the derivatives — plain `texture()` draws a line of the smallest mip level down the seam behind the camera. Nothing is stored but the snapshot settings.
 
+`forecast.html` (Labor Forecast) is the overlay's arrangement again: hand-edited, two classic scripts, the first never touching the DOM. It forecasts labor **hours only** (no dollars) from a budget of lines and a weekly report per line:
+
+```sh
+sh src/tools/tests/forecast/run.sh
+```
+
+`analyze(P, upto)` is the engine and everything on screen is drawn from it. A line is *measured* (quantity installed each week), *percent done* (cumulative %, turned by `series` into 100 units so it forecasts exactly like a measured line) or *time-based* (hours a week, forecast as weekly burn × the weeks of measured work left, so a slow crew drives it up too). Each forecast method (`plan`, `recent`, `sofar`) is a rate applied to what is left, with an unmeasurable rate falling back recent → so far → plan; `recent` is the headline. Change orders (`co: true`) are their own group and never color the original scope. The page is aimed at people who aren't comfortable with numbers, so results are pictures plus one plain sentence (`headline`, `lineTxt`, `trendTxt`, all in the engine and tested); keep new output that way. Its `checkProject` has the usual rule: a new field goes there as well as in `newProject`/`newCode`/`newWeek`.
+
 `plan.html` (Deadline Planner) is hand-edited too, with no suite: a Preact + htm app inlined into the page, state in localStorage. Its companion `plan-sw.js` (offline reopening, and phone notifications) is registered **scoped to `plan.html` alone**, and its manifest is scoped the same way. Keep it so: every page on zbcad.com shares the origin, and a worker scoped to the folder would serve the whole site from its cache.
 
 ## Runtime architecture
