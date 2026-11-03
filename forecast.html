@@ -306,6 +306,7 @@ dialog#dlgHelp::backdrop{background:rgba(0,0,0,.45)}
       <li>Your job is kept in this browser as you work, until you press <b>New job</b>.</li>
       <li><b>Save</b> writes one small .json file you can keep or send. <b>Open</b> reads it back on any computer.</li>
       <li><b>Print</b> prints the Forecast tab, whichever tab you're on. Choose <i>Save as PDF</i> there for a PDF.</li>
+      <li><button type="button" class="link" id="helpExample">Open the example job</button> to look around one six weeks in. It takes the place of the job that's open, so save yours first.</li>
     </ul>
     <p class="fine">A forecast is a judgment, not a promise. It's only as good as the quantities reported, and it can't see weather, material delays or a scope change coming. Use it to spot trouble early, and check it against what the foreman is seeing.</p>
   </div>
@@ -665,7 +666,7 @@ function renderBudget() {
       <div><b>Time-based</b>Hours that run as long as the job does: a foreman, a lift operator. Only the hours are reported.</div>
     </div>
   </div>
-  <div class="no-print" style="text-align:right"><button class="btn pri" data-act="goWeeks">Next: weekly reports →</button></div>`;
+  <div class="no-print" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><button class="link" data-act="example">Look at the example job</button><button class="btn pri" data-act="goWeeks">Next: weekly reports →</button></div>`;
 }
 $('tBudget').addEventListener('input', e => {
   const el = e.target, f = el.dataset.f;
@@ -694,6 +695,7 @@ $('tBudget').addEventListener('click', e => {
   const act = e.target.closest('[data-act]')?.dataset.act;
   if (!act) return;
   if (act === 'goWeeks') return setTab('weeks');
+  if (act === 'example') return loadExample();
   if (act === 'addCode' || act === 'addCO') {
     if (P.codes.length >= LIMIT.codes) return toast('That is as many lines as one job can hold.');
     const c = newCode(nextId('c', P.codes), { co: act === 'addCO', unit: 'SQ' });
@@ -1064,7 +1066,7 @@ $('tForecast').addEventListener('click', e => {
   const act = e.target.closest('[data-act]')?.dataset.act;
   if (act === 'goBudget') setTab('budget');
   if (act === 'goWeeks') setTab('weeks');
-  if (act === 'example') { P = exampleProject(); save(); setTab('forecast'); }
+  if (act === 'example') loadExample();
 });
 
 /* ---------- files and header ---------- */
@@ -1073,6 +1075,12 @@ function newJob() {
   if (!P.example && (P.codes.length || P.weeks.length) && !confirm('Start a new job? The one that’s open is cleared from this browser, so save it first if you want to keep it.')) return;
   P = newProject(); P.codes.push(newCode('c1', { unit: 'SQ' })); selWeek = null; save(); setTab('budget');
 }
+// The way back to the example once a job of your own has replaced it.
+function loadExample() {
+  if (!P.example && (P.codes.length || P.weeks.length) && !confirm('Open the example job? The one that\u2019s open is cleared from this browser, so save it first if you want to keep it.')) return;
+  P = exampleProject(); selWeek = null; save(); setTab('forecast');
+}
+$('helpExample').addEventListener('click', () => { $('dlgHelp').close(); loadExample(); });
 $('newJob').addEventListener('click', newJob);
 $('exNew').addEventListener('click', newJob);
 const slug = () => (P.title || 'labor-forecast').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'labor-forecast';
