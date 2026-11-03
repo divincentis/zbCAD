@@ -1,0 +1,1125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Labor Forecast</title>
+<meta name="description" content="See how many labor hours a job will really take, from what the crew has installed so far. Enter the budget and a weekly report, and the forecast is drawn as pictures: work done against hours used, where the hours are headed, and whether it is getting better or worse.">
+<meta property="og:title" content="Labor Forecast">
+<meta property="og:description" content="Forecast the hours a job will really take, from what the crew has installed so far.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://zbcad.com/forecast.html">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c1b19'/%3E%3Cpath d='M6 14.5h8.5L6 23.5h8.5M18.5 8.5v15h7.5v-9h-7.5' fill='none' stroke='%23f4f1ea' stroke-width='2.5' stroke-linecap='square'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f6f4ef; --panel:#fffdf8; --ink:#1c1b19; --muted:#6b675f; --line:#d9d4c9; --soft:#efe9df;
+  --accent:#9a4a1f; --accent-ink:#fff; --sheet:#fbf9f4;
+  --good:#2f7d4f; --good-soft:#dcefe2; --watch:#b26b00; --watch-soft:#f8e8cc; --over:#b8322a; --over-soft:#f6dcd9;
+  --used:#57534b; --work:#2d5f8a;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#161614; --panel:#1c1b19; --ink:#e9e5dc; --muted:#9a958a; --line:#2f2d29; --soft:#252320;
+    --accent:#e08a55; --accent-ink:#1a0d05; --sheet:#181816;
+    --good:#5cc386; --good-soft:#1c3326; --watch:#e9a73c; --watch-soft:#3a2c14; --over:#f0786d; --over-soft:#3d1f1c;
+    --used:#b5afa3; --work:#6fa8dc;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+button,input,select{font:inherit;color:inherit}
+.top{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.brand{display:flex;align-items:baseline;font-weight:700;font-size:15px;letter-spacing:-.01em;min-width:0;white-space:nowrap}
+.brand a{color:var(--muted);text-decoration:none}
+.brand a:hover,.brand a:focus-visible{color:var(--accent)}
+.brand .sep{color:var(--line);margin:0 7px;font-weight:400}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:6px 11px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.sm{padding:4px 9px;font-size:13px}
+.link{border:0;background:none;color:var(--muted);text-decoration:underline;padding:0;cursor:pointer;font-size:13px}
+.link:hover{color:var(--ink)}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:2}
+.tabs{display:flex;gap:4px}
+.tab{border:0;background:none;padding:7px 12px;border-radius:999px;cursor:pointer;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:7px}
+.tab b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--soft);font-size:11.5px}
+.tab:hover{color:var(--ink)}
+.tab.on{background:var(--ink);color:var(--panel)}
+.tab.on b{background:var(--accent);color:var(--accent-ink)}
+.files{display:flex;gap:6px;flex-wrap:wrap}
+.wrap{max-width:1080px;margin:0 auto;padding:18px 16px 60px}
+.hide{display:none!important}
+.banner{background:var(--soft);border-radius:10px;padding:10px 14px;margin:0 0 16px;font-size:14px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin:0 0 16px}
+.card>h2{margin:0 0 4px;font-size:17px}
+.why{color:var(--muted);font-size:13.5px;margin:4px 0 0;max-width:68ch}
+.lead{color:var(--muted);margin:0 0 14px;max-width:70ch}
+h3.grp{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:20px 0 8px}
+.num{font-variant-numeric:tabular-nums}
+input.in{padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--sheet);min-width:0;width:100%}
+input.in:focus,select.in:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+select.in{padding:7px 6px;border:1px solid var(--line);border-radius:6px;background:var(--sheet);min-width:0;width:100%}
+input[type=number]{-moz-appearance:textfield}
+input[type=number]::-webkit-inner-spin-button{display:none}
+.x{border:0;background:none;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;padding:4px}
+.x:hover{color:var(--over)}
+
+/* ---- budget ---- */
+.title-row{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center;margin:0 0 6px;max-width:520px}
+.blist .bh,.blist .brow{display:grid;grid-template-columns:minmax(150px,1fr) 170px 90px 64px 90px 130px 30px;gap:8px;align-items:center}
+.blist .bh{font-size:12px;color:var(--muted);padding:0 0 4px}
+.blist .brow{padding:6px 0;border-top:1px solid var(--line)}
+.blist .fixed{color:var(--muted);font-size:13px;padding-left:4px}
+.blist .rate{color:var(--muted);font-size:13px}
+.blist .lbl{display:none}
+.btot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;border-top:2px solid var(--line);padding:10px 0 0;margin-top:2px}
+.kinds{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0 0}
+.kinds div{background:var(--soft);border-radius:8px;padding:10px 12px;font-size:13px}
+.kinds b{display:block;margin-bottom:2px;font-size:13.5px}
+@media (max-width:760px){
+  .blist .bh{display:none}
+  .blist .brow{grid-template-columns:1fr 1fr 1fr 30px;grid-template-areas:"nm nm nm x" "kd kd kd ." "qt un hr ." "rt rt rt .";padding:10px 0}
+  .blist .brow>.c-nm{grid-area:nm} .blist .brow>.c-kd{grid-area:kd} .blist .brow>.c-qt{grid-area:qt} .blist .brow>.c-un{grid-area:un}
+  .blist .brow>.c-hr{grid-area:hr} .blist .brow>.c-rt{grid-area:rt} .blist .brow>.c-x{grid-area:x}
+  .blist .lbl{display:block;font-size:11.5px;color:var(--muted)}
+  .kinds{grid-template-columns:1fr}
+}
+
+/* ---- weekly reports ---- */
+.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 8px;margin:0 0 8px}
+.wk{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:6px 12px;cursor:pointer;text-align:left;flex:none;line-height:1.25}
+.wk small{display:block;color:var(--muted);font-size:12px}
+.wk.on{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+.wk.on small{color:var(--line)}
+.wkhead{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:0 0 6px}
+.wkhead label{display:flex;gap:8px;align-items:center;font-weight:600}
+.wkhead input{width:auto}
+.wrow{display:grid;grid-template-columns:minmax(160px,1fr) 170px 120px 170px;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.wrow .wn b{display:block}
+.wrow .wn small{color:var(--muted);font-size:12.5px}
+.wrow label{display:block;font-size:12px;color:var(--muted)}
+.wrow label span{display:flex;gap:6px;align-items:center;color:var(--ink);font-size:14px;margin-top:2px}
+.wrow .none{color:var(--muted);font-size:13px}
+.pchip{display:inline-block;border-radius:999px;padding:3px 10px;font-size:12.5px;font-weight:600;background:var(--soft);color:var(--muted)}
+.pchip.good{background:var(--good-soft);color:var(--good)}
+.pchip.watch{background:var(--watch-soft);color:var(--watch)}
+.pchip.over{background:var(--over-soft);color:var(--over)}
+.wtot{display:flex;justify-content:space-between;border-top:2px solid var(--line);padding:10px 0 0;font-weight:600}
+@media (max-width:760px){
+  .wrow{grid-template-columns:1fr 1fr;gap:8px 12px}
+  .wrow .wn,.wrow .wp{grid-column:1/-1}
+}
+
+/* ---- forecast ---- */
+.hero{border-width:2px}
+.hero.good{border-color:var(--good)} .hero.watch{border-color:var(--watch)} .hero.over{border-color:var(--over)}
+.status{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:4px 12px 4px 9px;font-weight:700;font-size:13px;letter-spacing:.02em}
+.status::before{content:'';width:10px;height:10px;border-radius:50%;background:currentColor}
+.status.good{background:var(--good-soft);color:var(--good)}
+.status.watch{background:var(--watch-soft);color:var(--watch)}
+.status.over{background:var(--over-soft);color:var(--over)}
+.hero h1{font-size:26px;line-height:1.2;margin:10px 0 4px;letter-spacing:-.01em}
+.hero .sub{color:var(--muted);margin:0}
+.hgrid{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:20px}
+.vis h4{margin:0 0 10px;font-size:14px}
+@media (max-width:760px){ .hgrid{grid-template-columns:1fr} .hero h1{font-size:22px} }
+
+.pair{display:grid;grid-template-columns:96px 1fr 50px;gap:6px 10px;align-items:center;font-size:13.5px}
+.pair .t{height:22px;background:var(--soft);border-radius:5px;position:relative;overflow:hidden}
+.pair .f{position:absolute;left:0;top:0;bottom:0;border-radius:5px}
+.pair .f.work{background:var(--work)}
+.pair .f.good{background:var(--good)} .pair .f.watch{background:var(--watch)} .pair .f.over{background:var(--over)}
+.pair .v{font-weight:700;text-align:right}
+.pair.sm{grid-template-columns:82px 1fr 42px;font-size:12.5px}
+.pair.sm .t{height:14px}
+
+.fb{position:relative;height:30px;margin:6px 0 22px}
+.fb .s{position:absolute;top:0;bottom:0}
+.fb .used{background:var(--used)}
+.fb .used.ov{background:var(--over)}
+.fb .rem{background:repeating-linear-gradient(135deg,var(--used) 0 3px,transparent 3px 7px);opacity:.55;border:1px solid var(--used);border-left:0}
+.fb .rem.ov{background:repeating-linear-gradient(135deg,var(--over) 0 3px,transparent 3px 7px);border-color:var(--over);opacity:.9}
+.fb .spare{border:2px dashed var(--good);border-left:0;background:var(--good-soft)}
+.fb .bud{position:absolute;top:-5px;bottom:-5px;width:0;border-left:2px solid var(--ink)}
+.fb .bud span{position:absolute;top:100%;left:0;transform:translateX(-50%);font-size:11.5px;font-weight:700;white-space:nowrap;margin-top:2px}
+.fb.sm{height:16px;margin:4px 0 18px}
+.fb.sm .bud span{font-size:10.5px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:10px;margin-right:5px;vertical-align:-1px}
+.legend .l-used{background:var(--used)}
+.legend .l-rem{background:repeating-linear-gradient(135deg,var(--used) 0 2px,transparent 2px 5px);border:1px solid var(--used)}
+.legend .l-ov{background:var(--over)}
+.legend .l-spare{border:2px dashed var(--good);background:var(--good-soft)}
+.timeline{display:flex;gap:5px;flex-wrap:wrap;margin:14px 0 4px;align-items:center}
+.timeline i{width:16px;height:16px;border-radius:50%;background:var(--used);display:inline-block}
+.timeline i.left{background:none;border:2px dashed var(--muted)}
+.timeline span{font-size:13px;color:var(--muted);margin-left:6px}
+
+.ways{display:grid;gap:4px}
+.way{display:grid;grid-template-columns:minmax(200px,280px) 1fr 150px;gap:14px;align-items:center;padding:8px 10px;border-radius:8px}
+.way.main{background:var(--soft)}
+.way .wl b{display:block;font-size:14px}
+.way .wl small{color:var(--muted);font-size:12.5px}
+.way .tag{display:inline-block;background:var(--accent);color:var(--accent-ink);font-size:10.5px;font-weight:700;border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:1px;letter-spacing:.03em}
+.way .fb{margin:4px 0 18px}
+.way .wv{text-align:right;font-weight:700}
+.way .wv small{display:block;font-weight:600;font-size:12.5px}
+.wv .good{color:var(--good)} .wv .watch{color:var(--watch)} .wv .over{color:var(--over)}
+@media (max-width:760px){ .way{grid-template-columns:1fr auto} .way .fb{grid-column:1/-1;grid-row:2} }
+.recent{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted);margin-top:10px}
+.recent select{width:auto}
+
+.chart{width:100%;margin-top:10px}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart text{font:12px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;fill:var(--muted)}
+.chart .lbl{font-weight:700;fill:var(--ink)}
+.trendmsg{font-weight:600;margin:10px 0 0}
+
+.cols{display:flex;align-items:flex-end;gap:6px;height:170px;position:relative;margin:24px 0 0;padding-bottom:22px;border-bottom:1px solid var(--line)}
+.cols .ref{position:absolute;left:0;right:0;border-top:2px dashed var(--ink);pointer-events:none}
+.cols .ref span{position:absolute;right:0;bottom:2px;font-size:11.5px;font-weight:700;background:var(--panel);padding:0 4px}
+.col{flex:1 1 0;max-width:70px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;position:relative;min-width:0}
+.col .c{width:100%;border-radius:4px 4px 0 0;min-height:2px;position:relative;display:flex;justify-content:center}
+.col .c.good{background:var(--good)} .col .c.watch{background:var(--watch)} .col .c.over{background:var(--over)}
+.col .pv{font-size:12px;font-weight:700;color:var(--panel);margin-top:4px}
+.col .lo .pv{position:absolute;bottom:100%;margin:0 0 2px;color:var(--ink)}
+.col .wkl{position:absolute;bottom:-20px;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.col.empty .pv{color:var(--muted);font-weight:400}
+
+.cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.cc{border:1px solid var(--line);border-left:5px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--panel)}
+.cc.good{border-left-color:var(--good)} .cc.watch{border-left-color:var(--watch)} .cc.over{border-left-color:var(--over)}
+.cch{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin:0 0 10px}
+.cch b{font-size:15px}
+.cch .status{font-size:11.5px;padding:2px 9px 2px 7px;flex:none}
+.cch .status::before{width:8px;height:8px}
+.cc p{margin:2px 0 8px;font-size:13.5px}
+.cc .warn{color:var(--watch);font-size:12.5px}
+.spark{display:flex;align-items:flex-end;gap:3px;height:32px;margin-top:6px;position:relative}
+.spark .r{position:absolute;left:0;right:0;border-top:1px dashed var(--muted)}
+.spark i{flex:1 1 0;max-width:18px;border-radius:2px 2px 0 0;min-height:2px}
+.spark i.good{background:var(--good)} .spark i.watch{background:var(--watch)} .spark i.over{background:var(--over)} .spark i.none{background:var(--soft)}
+.sparkl{font-size:11.5px;color:var(--muted)}
+
+details.how{margin-top:6px}
+details.how summary{cursor:pointer;font-weight:600}
+.tbl{overflow-x:auto;margin-top:10px}
+.tbl table{border-collapse:collapse;font-size:13px;width:100%;font-variant-numeric:tabular-nums}
+.tbl th,.tbl td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl th{font-size:12px;color:var(--muted);font-weight:600}
+.empty{text-align:center;padding:40px 20px}
+.empty p{color:var(--muted);max-width:52ch;margin:8px auto 16px}
+
+dialog#dlgHelp{border:0;padding:0;border-radius:12px;background:var(--panel);color:var(--ink);width:min(680px,calc(100vw - 20px));max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog#dlgHelp::backdrop{background:rgba(0,0,0,.45)}
+#dlgHelp form{display:flex;flex-direction:column;max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px)}
+#dlgHelp .dh{display:flex;justify-content:space-between;align-items:center;padding:12px 16px 12px 20px;border-bottom:1px solid var(--line)}
+#dlgHelp .dh h2{margin:0;font-size:16px;outline:none}
+#dlgHelp .dh .x{font-size:22px}
+#dlgHelp .dbody{padding:4px 20px 12px;overflow:auto;font-size:13.5px;line-height:1.55}
+#dlgHelp h3{margin:16px 0 6px;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+#dlgHelp p,#dlgHelp ul{margin:0 0 8px}
+#dlgHelp ul{padding-left:18px}
+#dlgHelp li{margin-bottom:4px}
+#dlgHelp .about{font-size:14.5px;margin-top:12px}
+#dlgHelp table{border-collapse:collapse;margin:0 0 8px}
+#dlgHelp td{padding:2px 14px 2px 0;vertical-align:top}
+#dlgHelp kbd{font:12px ui-monospace,Menlo,Consolas,monospace;border:1px solid var(--line);border-radius:3px;padding:0 4px}
+#dlgHelp .fine{color:var(--muted);font-size:12.5px}
+#dlgHelp .dfoot{display:flex;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line)}
+.toast{position:fixed;left:50%;bottom:16px;transform:translate(-50%,16px);opacity:0;transition:opacity .2s,transform .2s;background:var(--ink);color:var(--panel);padding:9px 14px;border-radius:8px;font-size:13px;max-width:min(520px,90vw);pointer-events:none;z-index:5}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media (max-width:560px){ .tab{padding:6px 9px} .tab .tl{font-size:13px} }
+@media print{
+  .top,.bar,.banner,#tBudget,#tWeeks,.recent,.no-print{display:none!important}
+  #tForecast{display:block!important}
+  body{background:#fff}
+  .wrap{padding:0;max-width:none}
+  .card{break-inside:avoid}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><a href="/">zbCAD</a><span class="sep">/</span><span>Labor Forecast</span></div>
+  <button class="btn" id="helpBtn">Help</button>
+</header>
+<nav class="bar">
+  <div class="tabs" role="tablist">
+    <button class="tab" data-tab="budget" role="tab"><b>1</b><span class="tl">Budget</span></button>
+    <button class="tab" data-tab="weeks" role="tab"><b>2</b><span class="tl">Weekly reports</span></button>
+    <button class="tab" data-tab="forecast" role="tab"><b>3</b><span class="tl">Forecast</span></button>
+  </div>
+  <div class="files">
+    <button class="btn sm" id="newJob">New job</button>
+    <button class="btn sm" id="openFile">Open</button>
+    <button class="btn sm" id="saveFile">Save</button>
+    <button class="btn sm" id="printBtn">Print</button>
+  </div>
+</nav>
+<div class="wrap">
+  <div class="banner hide" id="exBanner"><span><b>This is an example job</b>, a metal re-roof six weeks in. Look around the Forecast, then press New job to start your own.</span><button class="btn sm pri" id="exNew">Start my own job</button></div>
+  <section id="tBudget" class="hide"></section>
+  <section id="tWeeks" class="hide"></section>
+  <section id="tForecast" class="hide"></section>
+</div>
+<div class="toast" id="toast"></div>
+<input type="file" id="fProj" accept=".json,application/json" hidden>
+
+<dialog id="dlgHelp" aria-labelledby="helpTitle"><form method="dialog">
+  <div class="dh"><h2 id="helpTitle" tabindex="-1" autofocus>Labor Forecast</h2><button class="x" value="close" aria-label="Close">×</button></div>
+  <div class="dbody">
+    <p class="about">Shows how many labor hours a job will really take, from what the crew has actually installed so far. Enter the budget from your estimate, then a short report each week. The forecast is drawn as pictures, so you can tell at a glance whether the job is on track, how far over or under it is heading, and whether it is getting better or worse.</p>
+
+    <h3>How to use it</h3>
+    <ul>
+      <li><b>1 Budget.</b> One line for each part of the job, with the quantity and hours from your estimate. Put change orders in their own list, so they never hide how the original work is going.</li>
+      <li><b>2 Weekly reports.</b> Each week, how much the crew installed and how many hours went into each line. That's all; the page works out the rest.</li>
+      <li><b>3 Forecast.</b> Where the job is headed. Green is on track, amber needs watching, red is heading over budget.</li>
+    </ul>
+
+    <h3>The idea behind it</h3>
+    <p>Judge progress by <b>what's installed</b>, not by hours spent. A job that has used half its hours is not half done unless half the work is in place. Every picture here compares the two.</p>
+
+    <h3>Three kinds of line</h3>
+    <ul>
+      <li><b>Measured</b>: work you can count, like squares of roofing or feet of trim. The forecast takes what's left and multiplies by the hours each unit is taking.</li>
+      <li><b>Percent done</b>: work you can't count, like setup, cleanup or punch list. Report how far along it is each week.</li>
+      <li><b>Time-based</b>: hours that run for as long as the job does, like a foreman or a lift operator. Their forecast depends on how many weeks of work are left, so a slow crew drives them up too.</li>
+    </ul>
+
+    <h3>Three ways to look at it</h3>
+    <p>The hours still to come depend on what pace you expect from here: the <b>planned</b> pace, the <b>recent</b> pace (the last few weeks), or the <b>average</b> since the start. The page shows all three and leads with the recent pace, because a crew's last few weeks are usually the best guide to its next few. Change how many weeks count as recent under the three bars.</p>
+
+    <h3>Shortcuts</h3>
+    <table>
+      <tr><td><kbd>Ctrl+S</kbd></td><td>Save the job to a file</td></tr>
+      <tr><td><kbd>Ctrl+O</kbd></td><td>Open a saved job</td></tr>
+      <tr><td><kbd>Ctrl+P</kbd></td><td>Print the forecast</td></tr>
+    </table>
+
+    <h3>Files</h3>
+    <ul>
+      <li>Your job is kept in this browser as you work, until you press <b>New job</b>.</li>
+      <li><b>Save</b> writes one small .json file you can keep or send. <b>Open</b> reads it back on any computer.</li>
+      <li><b>Print</b> prints the Forecast tab, whichever tab you're on. Choose <i>Save as PDF</i> there for a PDF.</li>
+    </ul>
+    <p class="fine">A forecast is a judgment, not a promise. It's only as good as the quantities reported, and it can't see weather, material delays or a scope change coming. Use it to spot trouble early, and check it against what the foreman is seeing.</p>
+  </div>
+  <div class="dfoot"><button class="btn pri" value="ok">Got it</button></div>
+</form></dialog>
+
+<script>
+/* The engine. Nothing in this script touches the DOM: it is the budget and the weekly reports
+   in, the forecast out, and the suite boots it on its own. Hours are the only currency. */
+
+const KIND = { qty: 'Measured', lump: 'Percent done', time: 'Time-based' };
+const METHODS = ['plan', 'recent', 'sofar'];
+const LIMIT = { codes: 200, weeks: 260, name: 120, unit: 12, title: 200 };
+
+function newProject() { return { v: 1, title: '', recent: 3, example: false, codes: [], weeks: [] }; }
+function newCode(id, o = {}) { return { id, name: '', kind: 'qty', unit: '', qty: 0, hours: 0, co: false, ...o }; }
+// e maps a code id to that week's report: q installed this week (measured), p percent done so
+// far (percent done; cumulative, because that is how a foreman answers it), h hours this week.
+function newWeek(id, end) { return { id, end, e: {} }; }
+function nextId(prefix, list) {
+  let n = 0;
+  for (const x of list) { const m = /^[a-z](\d+)$/.exec(x.id); if (m) n = Math.max(n, +m[1]); }
+  return prefix + (n + 1);
+}
+function isDate(s) {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(s + 'T00:00:00Z');
+  return !isNaN(d) && d.toISOString().slice(0, 10) === s;
+}
+function addDays(s, n) { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+
+// Everything a file or the autosave brings in passes through here before it is used, so a new
+// field goes here as well as in its factory (newProject, newCode, newWeek) or it is dropped on load.
+function checkProject(o) {
+  const P = newProject();
+  if (!o || typeof o !== 'object') return P;
+  const num = (v, hi = 1e7) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(0, v)) : 0);
+  const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '');
+  const ID = /^[a-z]\d{1,6}$/;
+  P.title = str(o.title, LIMIT.title);
+  if (Number.isInteger(o.recent)) P.recent = Math.min(8, Math.max(1, o.recent));
+  P.example = o.example === true;
+  const ids = new Set();
+  for (const c of Array.isArray(o.codes) ? o.codes : []) {
+    if (P.codes.length >= LIMIT.codes) break;
+    if (!c || typeof c !== 'object' || typeof c.id !== 'string' || !ID.test(c.id) || ids.has(c.id)) continue;
+    ids.add(c.id);
+    P.codes.push(newCode(c.id, {
+      name: str(c.name, LIMIT.name), kind: Object.hasOwn(KIND, c.kind) ? c.kind : 'qty', unit: str(c.unit, LIMIT.unit),
+      qty: num(c.qty), hours: num(c.hours), co: c.co === true,
+    }));
+  }
+  const wids = new Set();
+  for (const w of Array.isArray(o.weeks) ? o.weeks : []) {
+    if (P.weeks.length >= LIMIT.weeks) break;
+    if (!w || typeof w !== 'object' || typeof w.id !== 'string' || !ID.test(w.id) || wids.has(w.id) || !isDate(w.end)) continue;
+    wids.add(w.id);
+    const W = newWeek(w.id, w.end), e = w.e && typeof w.e === 'object' ? w.e : {};
+    for (const id of ids) {
+      const x = Object.hasOwn(e, id) ? e[id] : null;
+      if (!x || typeof x !== 'object') continue;
+      const y = {};
+      if (Number.isFinite(x.q)) y.q = num(x.q);
+      if (Number.isFinite(x.p)) y.p = num(x.p, 100);
+      if (Number.isFinite(x.h)) y.h = num(x.h, 1e5);
+      if (Object.keys(y).length) W.e[id] = y;
+    }
+    P.weeks.push(W);
+  }
+  return P;
+}
+
+// By week-ending date; weeks on the same date keep the order they were added in.
+function sortedWeeks(P) { return [...P.weeks].sort((a, b) => (a.end < b.end ? -1 : a.end > b.end ? 1 : 0)); }
+
+const sum = (a, k) => a.reduce((t, x) => t + x[k], 0);
+const avg = a => (a.length ? a.reduce((t, x) => t + x, 0) / a.length : 0);
+
+// One line's weeks as {q, h}: q is units of work done that week. A percent-done line becomes a
+// measured one of 100 units, its weekly q the change in the percent, so both forecast alike. A
+// week that leaves the percent blank keeps the last one reported.
+function series(code, weeks) {
+  let last = 0;
+  return weeks.map(w => {
+    const x = (Object.hasOwn(w.e, code.id) && w.e[code.id]) || {}, h = x.h || 0;
+    if (code.kind === 'lump') {
+      const p = x.p == null ? last : x.p, q = p - last;
+      last = p;
+      return { q, h, has: q !== 0 || h > 0 };
+    }
+    const q = code.kind === 'qty' ? x.q || 0 : 0;
+    return { q, h, has: q > 0 || h > 0 };
+  });
+}
+
+// A measured or percent-done line. Each method is a rate in hours per unit applied to what is
+// left; a rate that cannot be measured yet falls back to the one before it in the list
+// recent → so far → plan, and `measured` says which ones were real.
+function measure(code, s, N) {
+  const budQ = code.kind === 'lump' ? 100 : code.qty;
+  const done = sum(s, 'q'), spent = sum(s, 'h');
+  const planRate = budQ > 0 ? code.hours / budQ : 0;
+  const soFar = done > 0 ? spent / done : null;
+  // The recent window is this line's last N weeks of activity, not the job's last N weeks:
+  // a line that paused for two weeks still has a recent pace.
+  const win = s.filter(x => x.has).slice(-N), wq = sum(win, 'q'), wh = sum(win, 'h');
+  const recent = wq > 0 ? wh / wq : null;
+  const rate = { plan: planRate, sofar: soFar ?? planRate, recent: recent ?? soFar ?? planRate };
+  const remainQ = Math.max(0, budQ - done);
+  const eac = {};
+  for (const m of METHODS) eac[m] = spent + remainQ * rate[m];
+  const pct = budQ > 0 ? Math.min(1, Math.max(0, done / budQ)) : 0;
+  return {
+    budQ, done, spent, pct, earned: pct * code.hours, remainQ, rate, eac,
+    measured: { sofar: soFar != null, recent: recent != null },
+    // Hours the plan allowed for each week's work; divided by the hours it took, that is the pace.
+    planned: s.map(x => x.q * planRate),
+    finished: budQ > 0 && done >= budQ, beyond: budQ > 0 && done > budQ + 1e-9, noQty: budQ <= 0 && code.hours > 0,
+  };
+}
+
+// A time-based line burns hours by the week, so what is left of it is its weekly burn times the
+// weeks of work left, and those weeks come from the measured lines (weeksLeft, per method).
+function burn(code, s, N, weeksLeft) {
+  const spent = sum(s, 'h'), n = s.length;
+  const weekly = { recent: avg(s.slice(-N).map(x => x.h)), sofar: n ? spent / n : 0 };
+  weekly.plan = weekly.recent;
+  const eac = {};
+  for (const m of METHODS) {
+    const wl = weeksLeft[m];
+    eac[m] = !n || wl == null ? Math.max(spent, code.hours) : spent + weekly[m] * wl;
+  }
+  return { spent, weekly, eac, earned: 0, pct: null, planned: s.map(() => 0) };
+}
+
+function status(budget, eac) {
+  if (!(budget > 0)) return eac > 0.5 ? 'over' : 'good';
+  const v = (eac - budget) / budget;
+  return v <= 0.03 ? 'good' : v <= 0.10 ? 'watch' : 'over';
+}
+
+function group(rows) {
+  const prod = rows.filter(r => r.code.kind !== 'time');
+  const budget = rows.reduce((t, r) => t + r.code.hours, 0), budgetProd = prod.reduce((t, r) => t + r.code.hours, 0);
+  const spent = sum(rows, 'spent'), earned = sum(prod, 'earned');
+  const eac = {};
+  for (const m of METHODS) eac[m] = rows.reduce((t, r) => t + r.eac[m], 0);
+  return {
+    n: rows.length, budget, spent, earned, eac, status: status(budget, eac.recent), varH: eac.recent - budget,
+    // Work done is weighed by budget hours, so a big line counts for more than a small one;
+    // time-based lines do no work of their own and are left out of it.
+    workPct: budgetProd > 0 ? earned / budgetProd : null, usedPct: budget > 0 ? spent / budget : null,
+  };
+}
+
+// The whole forecast, as of the first `upto` weeks (all of them when left out).
+function analyze(P, upto) {
+  const weeks = sortedWeeks(P).slice(0, upto ?? P.weeks.length), N = P.recent;
+  const rows = P.codes.map(code => ({ code, s: series(code, weeks) }));
+  const prod = rows.filter(r => r.code.kind !== 'time');
+  for (const r of prod) Object.assign(r, measure(r.code, r.s, N));
+  for (const r of rows) r.status = 'good';
+  // Weeks left: the production hours still to come, at the hours a week the crew has been putting in.
+  const crew = weeks.map((w, i) => prod.reduce((t, r) => t + r.s[i].h, 0));
+  const crewRate = { plan: avg(crew.slice(-N)), recent: avg(crew.slice(-N)), sofar: avg(crew) };
+  const weeksLeft = {};
+  for (const m of METHODS) {
+    const rem = prod.reduce((t, r) => t + r.eac[m] - r.spent, 0);
+    weeksLeft[m] = rem <= 1e-9 ? 0 : crewRate[m] > 0 ? rem / crewRate[m] : null;
+  }
+  for (const r of rows) if (r.code.kind === 'time') Object.assign(r, burn(r.code, r.s, N, weeksLeft));
+  for (const r of rows) r.status = status(r.code.hours, r.eac.recent);
+  const pace = weeks.map((w, i) => {
+    const planned = prod.reduce((t, r) => t + r.planned[i], 0), hours = crew[i];
+    return { end: w.end, planned, hours, pace: hours > 0 ? planned / hours : null };
+  });
+  return {
+    weeks, rows, weeksLeft, crewRate, pace,
+    orig: group(rows.filter(r => !r.code.co)), co: group(rows.filter(r => r.code.co)), all: group(rows),
+  };
+}
+
+// The recent-pace forecast as it stood at the end of each week.
+function trend(P) {
+  const out = [];
+  for (let k = 1; k <= P.weeks.length; k++) {
+    const a = analyze(P, k);
+    out.push({ end: a.weeks[k - 1].end, orig: a.orig.eac.recent, co: a.co.eac.recent, all: a.all.eac.recent });
+  }
+  return out;
+}
+
+function paceStatus(p) { return p == null ? 'none' : p >= 0.97 ? 'good' : p >= 0.85 ? 'watch' : 'over'; }
+
+/* ---- words ---- */
+const fmt = (n, d = 0) => (Number.isFinite(n) ? n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) : '–');
+// "About" figures are rounded to what is worth saying: a forecast of 1,563 hours is not that exact.
+const about = n => { const a = Math.abs(n); return a < 30 ? Math.round(a) : a < 300 ? Math.round(a / 5) * 5 : Math.round(a / 10) * 10; };
+const hrs = n => fmt(n) + (Math.round(n) === 1 ? ' hour' : ' hours');
+const pctTxt = p => Math.round(100 * p) + '%';
+function weeksTxt(w) {
+  if (w == null) return '';
+  const h = Math.round(w * 2) / 2;
+  if (h <= 0) return w > 0 ? 'less than half a week' : 'no time';
+  const whole = Math.floor(h), half = h % 1 ? '½' : '';
+  return (whole || '') + half + (h <= 1 ? ' week' : ' weeks');
+}
+
+// The one sentence at the top of a group: where it is heading, at the recent pace.
+function headline(g) {
+  if (!g.n) return '';
+  const d = g.eac.recent - g.budget, a = about(d), v = g.budget > 0 ? d / g.budget : 0;
+  const p = g.budget > 0 ? ' (' + pctTxt(Math.abs(v)) + ')' : '';
+  if (g.status === 'good') {
+    if (a === 0 || Math.abs(v) < 0.01) return 'On track to finish right about on budget';
+    return d < 0 ? `On track to finish about ${hrs(a)} under budget` : `Close to budget: about ${hrs(a)} over${p}`;
+  }
+  if (g.status === 'watch') return `Running a little over: about ${hrs(a)} over budget${p}`;
+  return `Heading over budget: about ${hrs(a)} over${p}`;
+}
+
+function rateTxt(r, unit) {
+  if (!Number.isFinite(r)) return '–';
+  const d = r >= 10 ? 0 : r >= 1 ? 1 : 2;
+  // "per sheet", not "per sheets"; short units like SQ and LF are left alone.
+  return fmt(r, d) + ' hrs per ' + (unit ? unit.replace(/^(\w{3,}?)s$/i, '$1') : 'unit');
+}
+
+// What one line's card says under its pictures.
+function lineTxt(r, A) {
+  const c = r.code, unit = c.unit || 'units';
+  const d = r.eac.recent - c.hours, end = d > 0.5 ? `, about ${hrs(about(d))} over` : d < -0.5 ? `, about ${hrs(about(d))} under` : ', right on budget';
+  if (c.kind === 'time') {
+    if (!r.weekly || !A.weeks.length) return `Nothing reported yet. Budget ${hrs(c.hours)}.`;
+    const wl = A.weeksLeft.recent;
+    if (wl == null) return `About ${hrs(about(r.weekly.recent))} a week so far. Its forecast needs the measured work to show how many weeks are left.`;
+    if (wl === 0) return `The measured work is finished, so this should stop here: ${hrs(r.spent)}${end}.`;
+    return `About ${hrs(about(r.weekly.recent))} a week. With about ${weeksTxt(wl)} of work left, that's about ${hrs(about(r.eac.recent))}${end}.`;
+  }
+  const what = c.kind === 'lump' ? `${pctTxt(r.pct)} done` : `${fmt(r.done, r.done % 1 ? 1 : 0)} of ${fmt(c.qty, c.qty % 1 ? 1 : 0)} ${unit} installed`;
+  if (!r.spent && !r.done) return `Not started. Budget ${hrs(c.hours)}.`;
+  if (r.finished) return `Finished in ${hrs(r.spent)}${end}.`;
+  if (!r.measured.sofar) return `${hrs(r.spent)} in with nothing to show yet, so this assumes the planned pace from here.`;
+  const per = c.kind === 'lump' ? '' : ` (${rateTxt(r.rate.recent, c.unit)}; the plan was ${fmt(r.rate.plan, r.rate.plan >= 10 ? 0 : r.rate.plan >= 1 ? 1 : 2)})`;
+  return `${what}. At the recent pace${per} it should take about ${hrs(about(r.eac.recent))}${end}.`;
+}
+
+// Which way the forecast moved since the week before.
+function trendTxt(t, key, budget) {
+  if (t.length < 2) return '';
+  const now = t[t.length - 1][key], was = t[t.length - 2][key], d = now - was;
+  if (Math.abs(d) < Math.max(2, budget * 0.005)) return 'Holding steady since last week.';
+  return d < 0 ? `Getting better: about ${hrs(about(d))} less than last week’s forecast.` : `Getting worse: about ${hrs(about(d))} more than last week’s forecast.`;
+}
+
+/* ---- the example job: a metal re-roof, six weeks in ---- */
+function exampleProject() {
+  const P = newProject();
+  P.title = 'Example: 22,000 sf metal re-roof';
+  P.example = true;
+  const c = (id, name, kind, unit, qty, hours, co = false) => P.codes.push(newCode(id, { name, kind, unit, qty, hours, co }));
+  c('c1', 'Mobilize, setup and cleanup', 'lump', '', 0, 60);
+  c('c2', 'Tear-off', 'qty', 'SQ', 220, 330);
+  c('c3', 'Underlayment', 'qty', 'SQ', 220, 110);
+  c('c4', 'Metal panels', 'qty', 'SQ', 220, 440);
+  c('c5', 'Trim and flashing', 'qty', 'LF', 1400, 280);
+  c('c6', 'Foreman', 'time', '', 0, 280);
+  c('c7', 'Replace rotted deck', 'qty', 'sheets', 120, 72, true);
+  const wk = [
+    { c1: { p: 70, h: 40 }, c2: { q: 30, h: 60 }, c6: { h: 40 } },
+    { c1: { p: 80, h: 6 }, c2: { q: 55, h: 95 }, c3: { q: 40, h: 24 }, c6: { h: 40 }, c7: { q: 30, h: 24 } },
+    { c2: { q: 70, h: 100 }, c3: { q: 60, h: 30 }, c4: { q: 15, h: 45 }, c6: { h: 40 }, c7: { q: 40, h: 28 } },
+    { c2: { q: 65, h: 90 }, c3: { q: 70, h: 36 }, c4: { q: 40, h: 96 }, c5: { q: 100, h: 30 }, c6: { h: 40 }, c7: { q: 30, h: 18 } },
+    { c1: { p: 85, h: 4 }, c3: { q: 50, h: 24 }, c4: { q: 55, h: 118 }, c5: { q: 200, h: 46 }, c6: { h: 40 } },
+    { c4: { q: 60, h: 124 }, c5: { q: 250, h: 55 }, c6: { h: 40 } },
+  ];
+  wk.forEach((e, i) => { const W = newWeek('w' + (i + 1), addDays('2026-09-11', 7 * i)); W.e = e; P.weeks.push(W); });
+  return P;
+}
+</script>
+<script>
+/* The UI: three tabs over one project, P. Typing into a field changes P and the figures next to
+   it but never rebuilds the form, so the cursor stays put; adding, removing or retyping a line
+   rebuilds the tab. The Forecast is rebuilt whenever it is shown. */
+const $ = id => document.getElementById(id);
+const KEY = 'forecast.autosave';
+let P = newProject(), tab = 'forecast', selWeek = null;
+
+const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+const valOf = n => (n ? String(+n.toFixed(4)) : '');
+const parse = v => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 ? n : 0; };
+const shortDate = s => new Date(s + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+
+let saveT = 0;
+function save() { clearTimeout(saveT); saveT = setTimeout(saveNow, 300); }
+function saveNow() { clearTimeout(saveT); try { localStorage.setItem(KEY, JSON.stringify(P)); } catch (e) {} }
+window.addEventListener('beforeunload', saveNow);
+
+let toastT = 0;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
+
+function setTab(t) { tab = t; render(); window.scrollTo(0, 0); }
+function render() {
+  for (const b of document.querySelectorAll('.tab')) b.classList.toggle('on', b.dataset.tab === tab);
+  $('tBudget').classList.toggle('hide', tab !== 'budget');
+  $('tWeeks').classList.toggle('hide', tab !== 'weeks');
+  $('tForecast').classList.toggle('hide', tab !== 'forecast');
+  $('exBanner').classList.toggle('hide', !P.example);
+  if (tab === 'budget') renderBudget();
+  else if (tab === 'weeks') renderWeeks();
+  else renderForecast();
+}
+
+/* ---------- 1 Budget ---------- */
+function rateCell(c) {
+  if (c.kind === 'time') return c.hours ? 'runs as long as the job' : '';
+  if (c.kind === 'lump') return '';
+  return c.qty > 0 && c.hours > 0 ? rateTxt(c.hours / c.qty, c.unit) : '';
+}
+function budgetRow(c) {
+  const kinds = Object.entries(KIND).map(([k, v]) => `<option value="${k}"${k === c.kind ? ' selected' : ''}>${v}</option>`).join('');
+  const qty = c.kind === 'qty'
+    ? `<label class="lbl">Quantity</label><input class="in num" data-f="qty" type="number" inputmode="decimal" min="0" step="any" value="${valOf(c.qty)}" aria-label="Quantity">`
+    : `<span class="fixed">${c.kind === 'lump' ? '100%' : 'by the week'}</span>`;
+  const unit = c.kind === 'qty' ? `<label class="lbl">Unit</label><input class="in" data-f="unit" value="${esc(c.unit)}" placeholder="SQ" aria-label="Unit" maxlength="${LIMIT.unit}">` : '<span></span>';
+  return `<div class="brow" data-id="${c.id}">
+    <div class="c-nm"><input class="in" data-f="name" value="${esc(c.name)}" placeholder="${c.co ? 'e.g. Replace rotted deck' : 'e.g. Metal panels'}" aria-label="Name" maxlength="${LIMIT.name}"></div>
+    <div class="c-kd"><select class="in" data-f="kind" aria-label="Kind">${kinds}</select></div>
+    <div class="c-qt">${qty}</div>
+    <div class="c-un">${unit}</div>
+    <div class="c-hr"><label class="lbl">Budget hours</label><input class="in num" data-f="hours" type="number" inputmode="decimal" min="0" step="any" value="${valOf(c.hours)}" aria-label="Budget hours"></div>
+    <div class="c-rt rate" data-d="rate">${rateCell(c)}</div>
+    <div class="c-x"><button class="x" data-act="delCode" title="Remove this line" aria-label="Remove">×</button></div>
+  </div>`;
+}
+function budgetList(co) {
+  const list = P.codes.filter(c => c.co === co);
+  const head = '<div class="bh"><span>What</span><span>Kind</span><span>Quantity</span><span>Unit</span><span>Budget hours</span><span></span><span></span></div>';
+  const tot = list.reduce((t, c) => t + c.hours, 0);
+  return `<div class="blist">${list.length ? head : ''}${list.map(budgetRow).join('')}</div>
+    <div class="btot"><button class="btn sm" data-act="${co ? 'addCO' : 'addCode'}">+ Add ${co ? 'a change order' : 'a line'}</button>
+    <span>Total <b class="num" data-d="tot${co ? 'co' : ''}">${hrs(tot)}</b></span></div>`;
+}
+function renderBudget() {
+  $('tBudget').innerHTML = `
+  <div class="card">
+    <div class="title-row"><label for="jobTitle"><b>Job</b></label><input class="in" id="jobTitle" data-f="title" value="${esc(P.title)}" placeholder="e.g. 1200 Main St re-roof" maxlength="${LIMIT.title}"></div>
+    <p class="lead">Copy the labor from your estimate: one line for each part of the job you can track on its own, with its quantity and the hours you allowed for it.</p>
+    <h3 class="grp">Original scope</h3>
+    ${budgetList(false)}
+    <h3 class="grp">Change orders</h3>
+    <p class="why" style="margin:0 0 8px">Extra work added after the job was sold, with the hours you priced it at. Kept apart so it never hides how the original work is doing.</p>
+    ${budgetList(true)}
+    <div class="kinds">
+      <div><b>Measured</b>Work you can count: squares of roofing, feet of trim, sheets of deck. The crew reports how much they installed.</div>
+      <div><b>Percent done</b>Work you can't count, like setup, cleanup or punch list. The crew reports how far along it is.</div>
+      <div><b>Time-based</b>Hours that run as long as the job does: a foreman, a lift operator. Only the hours are reported.</div>
+    </div>
+  </div>
+  <div class="no-print" style="text-align:right"><button class="btn pri" data-act="goWeeks">Next: weekly reports →</button></div>`;
+}
+$('tBudget').addEventListener('input', e => {
+  const el = e.target, f = el.dataset.f;
+  if (!f || f === 'kind') return;
+  if (f === 'title') { P.title = el.value.slice(0, LIMIT.title); save(); return; }
+  const row = el.closest('.brow'), c = row && P.codes.find(x => x.id === row.dataset.id);
+  if (!c) return;
+  if (f === 'name' || f === 'unit') c[f] = el.value;
+  else c[f] = parse(el.value);
+  row.querySelector('[data-d="rate"]').textContent = rateCell(c);
+  for (const co of [false, true]) {
+    const t = $('tBudget').querySelector(`[data-d="tot${co ? 'co' : ''}"]`);
+    if (t) t.textContent = hrs(P.codes.filter(x => x.co === co).reduce((s, x) => s + x.hours, 0));
+  }
+  save();
+});
+$('tBudget').addEventListener('change', e => {
+  const el = e.target;
+  if (el.dataset.f !== 'kind') return;
+  const c = P.codes.find(x => x.id === el.closest('.brow').dataset.id);
+  c.kind = el.value;
+  save(); renderBudget();
+  const s = $('tBudget').querySelector(`.brow[data-id="${c.id}"] select`); if (s) s.focus();
+});
+$('tBudget').addEventListener('click', e => {
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (!act) return;
+  if (act === 'goWeeks') return setTab('weeks');
+  if (act === 'addCode' || act === 'addCO') {
+    if (P.codes.length >= LIMIT.codes) return toast('That is as many lines as one job can hold.');
+    const c = newCode(nextId('c', P.codes), { co: act === 'addCO', unit: 'SQ' });
+    P.codes.push(c); save(); renderBudget();
+    $('tBudget').querySelector(`.brow[data-id="${c.id}"] input`).focus();
+  }
+  if (act === 'delCode') {
+    const id = e.target.closest('.brow').dataset.id, c = P.codes.find(x => x.id === id);
+    const used = P.weeks.some(w => w.e[id]);
+    if (used && !confirm(`Remove “${c.name || 'this line'}”? Its weekly reports are removed with it.`)) return;
+    P.codes = P.codes.filter(x => x !== c);
+    for (const w of P.weeks) delete w.e[id];
+    save(); renderBudget();
+  }
+});
+
+/* ---------- 2 Weekly reports ---------- */
+function weekPace(c, w) {
+  // This line's pace in one week, for the chip beside its fields.
+  const weeks = sortedWeeks(P), i = weeks.indexOf(w);
+  const s = series(c, weeks.slice(0, i + 1))[i];
+  const plan = c.kind === 'lump' ? c.hours / 100 : c.qty > 0 ? c.hours / c.qty : 0;
+  if (!s || !(s.h > 0) || c.kind === 'time') return null;
+  return (s.q * plan) / s.h;
+}
+function paceChip(p) {
+  if (p == null) return '';
+  return `<span class="pchip ${paceStatus(p)}">${pctTxt(p)} of planned pace</span>`;
+}
+function soFar(c, w) {
+  const weeks = sortedWeeks(P), i = weeks.indexOf(w), s = series(c, weeks.slice(0, i + 1));
+  const done = sum(s, 'q'), h = sum(s, 'h');
+  if (c.kind === 'time') return `${hrs(h)} so far of ${fmt(c.hours)}`;
+  if (c.kind === 'lump') return `${hrs(h)} so far of ${fmt(c.hours)}`;
+  return `${fmt(done, done % 1 ? 1 : 0)} of ${fmt(c.qty)} ${esc(c.unit)} so far · plan ${esc(rateTxt(c.qty ? c.hours / c.qty : NaN, c.unit))}`;
+}
+function weekRow(c, w) {
+  const x = w.e[c.id] || {};
+  let work;
+  if (c.kind === 'qty') work = `<label>Installed this week<span><input class="in num" data-e="q" type="number" inputmode="decimal" min="0" step="any" value="${valOf(x.q)}"> ${esc(c.unit)}</span></label>`;
+  else if (c.kind === 'lump') {
+    const weeks = sortedWeeks(P), i = weeks.indexOf(w), prev = series(c, weeks.slice(0, i)).reduce((t, s) => t + s.q, 0);
+    work = `<label>Done so far<span><input class="in num" data-e="p" type="number" inputmode="decimal" min="0" max="100" step="any" value="${x.p == null ? '' : valOf(x.p) || '0'}" placeholder="${fmt(prev)}"> %</span></label>`;
+  } else work = '<span class="none">Hours only</span>';
+  return `<div class="wrow" data-id="${c.id}">
+    <div class="wn"><b>${esc(c.name || '(unnamed)')}</b><small data-d="sofar">${soFar(c, w)}</small></div>
+    <div>${work}</div>
+    <div><label>Hours this week<span><input class="in num" data-e="h" type="number" inputmode="decimal" min="0" step="any" value="${valOf(x.h)}"></span></label></div>
+    <div class="wp" data-d="pace">${c.kind === 'time' ? '' : paceChip(weekPace(c, w))}</div>
+  </div>`;
+}
+function renderWeeks() {
+  const el = $('tWeeks');
+  if (!P.codes.length) {
+    el.innerHTML = `<div class="card empty"><b>Set up the budget first</b><p>The weekly report asks about each line of the budget, so it needs at least one.</p><button class="btn pri" data-act="goBudget">Go to the budget</button></div>`;
+    return;
+  }
+  const weeks = sortedWeeks(P);
+  if (!weeks.some(w => w.id === selWeek)) selWeek = weeks.length ? weeks[weeks.length - 1].id : null;
+  const w = weeks.find(x => x.id === selWeek);
+  const chips = weeks.map((x, i) => `<button class="wk${x.id === selWeek ? ' on' : ''}" data-w="${x.id}">Week ${i + 1}<small>ending ${shortDate(x.end)}</small></button>`).join('');
+  let body;
+  if (!w) body = `<div class="card empty"><b>No weekly reports yet</b><p>At the end of each week, add one: how much the crew installed and how many hours went into each part of the job.</p><button class="btn pri" data-act="addWeek">Add the first week</button></div>`;
+  else {
+    const rows = co => P.codes.filter(c => c.co === co).map(c => weekRow(c, w)).join('');
+    const hasCO = P.codes.some(c => c.co);
+    const tot = Object.values(w.e).reduce((t, x) => t + (x.h || 0), 0);
+    body = `<div class="card">
+      <div class="wkhead"><label>Week ending <input class="in" type="date" data-wf="end" value="${w.end}"></label><button class="link" data-act="delWeek">Delete this week</button></div>
+      <p class="why">Fill in what happened <b>this week</b> only. Leave a line blank if nobody worked on it. For a percent-done line, give how far along it is now.</p>
+      <h3 class="grp">Original scope</h3>${rows(false)}
+      ${hasCO ? `<h3 class="grp">Change orders</h3>${rows(true)}` : ''}
+      <div class="wtot"><span>Hours this week</span><span class="num" data-d="wtot">${hrs(tot)}</span></div>
+    </div>
+    <div class="no-print" style="text-align:right"><button class="btn pri" data-act="goForecast">See the forecast →</button></div>`;
+  }
+  el.innerHTML = `<div class="chips">${chips}<button class="wk" data-act="addWeek"><b>+ Add week</b><small>&nbsp;</small></button></div>${body}`;
+}
+$('tWeeks').addEventListener('input', e => {
+  const el = e.target, k = el.dataset.e;
+  const w = P.weeks.find(x => x.id === selWeek);
+  if (!w) return;
+  if (el.dataset.wf === 'end') return;
+  if (!k) return;
+  const row = el.closest('.wrow'), c = P.codes.find(x => x.id === row.dataset.id);
+  const x = w.e[c.id] || (w.e[c.id] = {});
+  if (el.value === '') delete x[k];
+  else x[k] = k === 'p' ? Math.min(100, Math.max(0, parseFloat(el.value) || 0)) : parse(el.value);
+  if (!Object.keys(x).length) delete w.e[c.id];
+  // Later weeks' "so far" lines depend on this one, but only this week's are on screen.
+  row.querySelector('[data-d="sofar"]').innerHTML = soFar(c, w);
+  if (c.kind !== 'time') row.querySelector('[data-d="pace"]').innerHTML = paceChip(weekPace(c, w));
+  $('tWeeks').querySelector('[data-d="wtot"]').textContent = hrs(Object.values(w.e).reduce((t, y) => t + (y.h || 0), 0));
+  save();
+});
+$('tWeeks').addEventListener('change', e => {
+  if (e.target.dataset.wf !== 'end') return;
+  const w = P.weeks.find(x => x.id === selWeek);
+  if (w && isDate(e.target.value)) { w.end = e.target.value; save(); renderWeeks(); }
+});
+$('tWeeks').addEventListener('click', e => {
+  const wk = e.target.closest('[data-w]');
+  if (wk) { selWeek = wk.dataset.w; renderWeeks(); return; }
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (act === 'goBudget') return setTab('budget');
+  if (act === 'goForecast') return setTab('forecast');
+  if (act === 'addWeek') {
+    if (P.weeks.length >= LIMIT.weeks) return toast('That is as many weeks as one job can hold.');
+    const weeks = sortedWeeks(P);
+    // A week after the last one; the first ends on the coming Friday.
+    let end;
+    if (weeks.length) end = addDays(weeks[weeks.length - 1].end, 7);
+    else { const d = new Date(); d.setDate(d.getDate() + ((5 - d.getDay() + 7) % 7)); end = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString().slice(0, 10); }
+    const w = newWeek(nextId('w', P.weeks), end);
+    P.weeks.push(w); selWeek = w.id; save(); renderWeeks();
+  }
+  if (act === 'delWeek') {
+    const w = P.weeks.find(x => x.id === selWeek);
+    if (w && Object.keys(w.e).length && !confirm(`Delete the week ending ${shortDate(w.end)} and everything reported in it?`)) return;
+    P.weeks = P.weeks.filter(x => x !== w); selWeek = null; save(); renderWeeks();
+  }
+});
+
+/* ---------- 3 Forecast: the pictures ---------- */
+// Work done against hours used, on one scale. The hours bar takes the line's color, so when
+// it runs ahead of the work bar the color says how much that matters.
+function pairBars(work, used, st, sm, workLabel = 'Work done') {
+  const scale = Math.max(1, work || 0, used || 0), w = v => (100 * Math.max(0, v) / scale).toFixed(2) + '%';
+  return `<div class="pair${sm ? ' sm' : ''}">
+    <span>${workLabel}</span><div class="t"><div class="f work" style="width:${w(work)}"></div></div><span class="v num">${pctTxt(work)}</span>
+    <span>Hours used</span><div class="t"><div class="f ${st}" style="width:${w(used)}"></div></div><span class="v num">${pctTxt(used)}</span>
+  </div>`;
+}
+// Hours used, hours still to come and the budget mark, on a scale shared by everything it is
+// compared with. What lies past the budget mark is red; room left under it is a dashed box.
+function fbar(spent, eac, budget, scale, sm) {
+  const x = v => (100 * v / scale).toFixed(2) + '%', segs = [];
+  const seg = (a, b, cls) => { if (b - a > scale * 0.0005) segs.push(`<div class="s ${cls}" style="left:${x(a)};width:${x(b - a)}"></div>`); };
+  seg(0, Math.min(spent, budget), 'used');
+  if (spent > budget) seg(budget, spent, 'used ov');
+  if (eac > spent && spent < budget) seg(spent, Math.min(eac, budget), 'rem');
+  if (eac > Math.max(spent, budget)) seg(Math.max(spent, budget), eac, 'rem ov');
+  if (eac < budget) seg(Math.max(eac, spent), budget, 'spare');
+  return `<div class="fb${sm ? ' sm' : ''}">${segs.join('')}<div class="bud" style="left:${x(budget)}"><span>Budget</span></div></div>`;
+}
+const LEGEND = '<div class="legend"><span><i class="l-used"></i>Used so far</span><span><i class="l-rem"></i>Still to come</span><span><i class="l-ov"></i>Over budget</span><span><i class="l-spare"></i>Left to spare</span></div>';
+
+function timeline(done, left) {
+  if (left == null || !done) return '';
+  const n = Math.ceil(left - 0.25);
+  if (done + n > 40) return '';
+  return `<div class="timeline" aria-hidden="true">${'<i></i>'.repeat(done)}${'<i class="left"></i>'.repeat(Math.max(0, n))}<span>${done} week${done === 1 ? '' : 's'} in, about ${weeksTxt(left)} to go</span></div>`;
+}
+
+function hero(g, A, scopeName) {
+  const wl = A.weeksLeft.recent;
+  const scale = Math.max(g.budget, g.eac.recent, g.spent) * 1.04 || 1;
+  const stName = { good: 'On track', watch: 'Watch it', over: 'Over budget' }[g.status];
+  const n = Math.min(P.recent, A.weeks.length), sub = `${scopeName}, at the crew's pace over the last ${n} week${n === 1 ? '' : 's'}.`;
+  return `<div class="card hero ${g.status}">
+    <span class="status ${g.status}">${stName}</span>
+    <h1>${esc(headline(g))}</h1>
+    <p class="sub">${sub}</p>
+    ${timeline(A.weeks.length, wl)}
+    <div class="hgrid">
+      <div class="vis">
+        <h4>Is the work keeping up with the hours?</h4>
+        ${g.workPct == null ? '<p class="why">Add a measured or percent-done line to compare.</p>' : pairBars(g.workPct, g.usedPct, g.status)}
+        <p class="why">The blue bar is how much of the work is in place. The other is how much of the budget hours are gone. They should be about the same length. When the hours bar runs ahead, the work is costing more than planned.</p>
+      </div>
+      <div class="vis">
+        <h4>Where the hours are headed</h4>
+        ${fbar(g.spent, g.eac.recent, g.budget, scale)}
+        ${LEGEND}
+        <p class="why">Budget ${hrs(g.budget)} · used ${hrs(g.spent)} · forecast about ${hrs(about(g.eac.recent))}.</p>
+      </div>
+    </div>
+  </div>`;
+}
+
+function ways(g, A) {
+  const scale = Math.max(g.budget, g.spent, ...METHODS.map(m => g.eac[m])) * 1.04 || 1;
+  const n = Math.min(P.recent, A.weeks.length) || P.recent;
+  const label = {
+    plan: ['If the crew gets back to the planned pace', 'Usually the best case'],
+    recent: [`If they keep up the pace of the last ${n} week${n === 1 ? '' : 's'}`, 'A crew’s latest weeks are the best guide to its next ones'],
+    sofar: ['If they keep their average pace since the start', 'Counts the slow start against them'],
+  };
+  const row = m => {
+    const d = g.eac[m] - g.budget, st = status(g.budget, g.eac[m]);
+    const dt = Math.abs(d) < 0.5 ? 'on budget' : `${fmt(about(d))} ${d > 0 ? 'over' : 'under'}`;
+    return `<div class="way${m === 'recent' ? ' main' : ''}">
+      <div class="wl"><b>${label[m][0]}${m === 'recent' ? '<span class="tag">MOST LIKELY</span>' : ''}</b><small>${label[m][1]}</small></div>
+      ${fbar(g.spent, g.eac[m], g.budget, scale, true)}
+      <div class="wv num">${fmt(about(g.eac[m]))} hrs<small class="${st}">${dt}</small></div>
+    </div>`;
+  };
+  const opts = [1, 2, 3, 4, 5, 6, 8].map(k => `<option value="${k}"${k === P.recent ? ' selected' : ''}>${k} week${k === 1 ? '' : 's'}</option>`).join('');
+  return `<div class="card">
+    <h2>Three ways to look at it</h2>
+    <p class="why">The hours still to come depend on how fast the crew works from here. Nobody knows that for sure, so here are three reasonable guesses. The truth usually lands somewhere among them.</p>
+    <div class="ways" style="margin-top:12px">${METHODS.map(row).join('')}</div>
+    <label class="recent">Count as recent: <select class="in" id="recentSel">${opts}</select></label>
+  </div>`;
+}
+
+// The forecast as it stood each week against the budget line: above the line is over.
+function trendSvg(t, key, budget, W) {
+  const H = 210, L = 8, R = 92, T = 16, B = 30;
+  const vals = t.map(p => p[key]), lo0 = Math.min(budget, ...vals), hi0 = Math.max(budget, ...vals);
+  const pad = Math.max((hi0 - lo0) * 0.25, budget * 0.04, 10), lo = Math.max(0, lo0 - pad), hi = hi0 + pad;
+  const X = i => L + (t.length === 1 ? (W - L - R) / 2 : (i * (W - L - R)) / (t.length - 1));
+  const Y = v => T + ((hi - v) * (H - T - B)) / (hi - lo);
+  const yb = Y(budget);
+  const pts = vals.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  const every = Math.max(1, Math.ceil(t.length / Math.max(1, Math.floor((W - L - R) / 60))));
+  const labels = t.map((p, i) => (i % every && i !== t.length - 1 ? '' : `<text x="${X(i)}" y="${H - 8}" text-anchor="middle">Wk ${i + 1}</text>`)).join('');
+  const dots = vals.map((v, i) => `<circle cx="${X(i)}" cy="${Y(v)}" r="${i === vals.length - 1 ? 6 : 4}" fill="var(--${status(budget, v)})" stroke="var(--panel)" stroke-width="2"/>`).join('');
+  const last = vals[vals.length - 1];
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Forecast hours each week compared with the budget">
+    <rect x="0" y="${T}" width="${W - R + 4}" height="${Math.max(0, yb - T)}" fill="var(--over-soft)"/>
+    <rect x="0" y="${yb}" width="${W - R + 4}" height="${Math.max(0, H - B - yb)}" fill="var(--good-soft)"/>
+    <text x="6" y="${T + 14}" fill="var(--over)" style="fill:var(--over);font-weight:700">Over budget</text>
+    <text x="6" y="${H - B - 6}" style="fill:var(--good);font-weight:700">Under budget</text>
+    <line x1="0" x2="${W - R + 4}" y1="${yb}" y2="${yb}" stroke="var(--ink)" stroke-width="2" stroke-dasharray="6 4"/>
+    <text x="${W - R + 10}" y="${yb + 4}" class="lbl">Budget</text>
+    <text x="${W - R + 10}" y="${yb + 19}">${fmt(budget)}</text>
+    <polyline points="${pts}" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-linejoin="round"/>
+    ${dots}
+    <text x="${X(vals.length - 1) + 10}" y="${Y(last) - 10}" class="lbl" text-anchor="${t.length === 1 ? 'start' : 'end'}">${fmt(about(last))}</text>
+    ${labels}
+  </svg>`;
+}
+
+function trendCard(t, A) {
+  if (!A.orig.n) return '';
+  const msg = trendTxt(t, 'orig', A.orig.budget);
+  return `<div class="card">
+    <h2>Is it getting better or worse?</h2>
+    <p class="why">Each dot is where the forecast stood at the end of that week. A line heading down toward the green is a job recovering. One climbing into the red is getting away from you.</p>
+    ${msg ? `<p class="trendmsg">${msg}</p>` : '<p class="trendmsg">Add a second week to see which way it’s going.</p>'}
+    <div class="chart" id="trendChart"></div>
+  </div>`;
+}
+
+function paceCard(A) {
+  const pts = A.pace;
+  if (!pts.some(p => p.pace != null)) return '';
+  const top = Math.max(1.3, ...pts.map(p => p.pace || 0)) * 1.08;
+  const cols = pts.map((p, i) => {
+    if (p.pace == null) return `<div class="col empty"><span class="pv">–</span><span class="wkl">Wk ${i + 1}</span></div>`;
+    // The figure sits inside its bar, clear of the planned-pace line, unless the bar is too short to hold it.
+    const h = (100 * p.pace) / top;
+    return `<div class="col" title="Week ${i + 1}: ${fmt(p.planned)} planned hours of work done in ${fmt(p.hours)} hours"><div class="c ${paceStatus(p.pace)}${h < 14 ? ' lo' : ''}" style="height:${h.toFixed(1)}%"><span class="pv">${pctTxt(p.pace)}</span></div><span class="wkl">Wk ${i + 1}</span></div>`;
+  }).join('');
+  return `<div class="card">
+    <h2>How fast the crew worked each week</h2>
+    <p class="why">The dashed line is the planned pace. A bar that reaches it means the crew got a week’s worth of planned work done in a week’s hours. Taller is faster. The slowest weeks are worth asking the foreman about.</p>
+    <div class="cols">${cols}<div class="ref" style="bottom:calc(22px + ${(100 / top).toFixed(1)}% * (170 - 22) / 170)"><span>Planned pace</span></div></div>
+  </div>`;
+}
+
+function lineCard(r, A) {
+  const c = r.code, g = c.co ? A.co : A.orig;
+  const scale = Math.max(c.hours, r.eac.recent, r.spent) * 1.04 || 1;
+  const stName = { good: 'On track', watch: 'Watch', over: 'Over' }[r.status];
+  const notStarted = c.kind !== 'time' && !r.spent && !r.done;
+  const used = c.hours > 0 ? r.spent / c.hours : r.spent > 0 ? 1 : 0;
+  let pair;
+  if (c.kind === 'time') pair = g.workPct == null ? '' : pairBars(g.workPct, used, r.status, true, 'Job done');
+  else pair = pairBars(r.pct, used, r.status, true);
+  let spark = '';
+  if (c.kind !== 'time' && r.s.some(x => x.h > 0)) {
+    const ps = r.s.map((x, i) => (x.h > 0 ? r.planned[i] / x.h : null));
+    const top = Math.max(1.3, ...ps.map(p => p || 0));
+    spark = `<div class="spark">${ps.map(p => `<i class="${paceStatus(p)}" style="height:${p == null ? 2 : Math.max(2, (100 * p) / top).toFixed(1)}${p == null ? 'px' : '%'}"></i>`).join('')}<div class="r" style="bottom:${(100 / top).toFixed(1)}%"></div></div><div class="sparkl">Pace each week · dashed line is the plan</div>`;
+  }
+  const warn = [];
+  if (r.noQty) warn.push('Give this line a quantity on the Budget tab, or its forecast can’t see how much is left.');
+  if (r.beyond) warn.push(`More has been installed than the budget quantity. If the takeoff was short, raise it on the Budget tab.`);
+  return `<div class="cc ${notStarted ? '' : r.status}">
+    <div class="cch"><b>${esc(c.name || '(unnamed)')}</b>${notStarted ? '<span class="status" style="color:var(--muted);background:var(--soft)">Not started</span>' : `<span class="status ${r.status}">${stName}</span>`}</div>
+    ${pair}
+    ${fbar(r.spent, r.eac.recent, c.hours, scale, true)}
+    <p>${esc(lineTxt(r, A))}</p>
+    ${warn.map(w => `<p class="warn">${esc(w)}</p>`).join('')}
+    ${spark}
+  </div>`;
+}
+
+function detailTable(A) {
+  const rows = A.rows.map(r => {
+    const c = r.code, t = c.kind === 'time';
+    const done = t ? '–' : c.kind === 'lump' ? pctTxt(r.pct) : `${fmt(r.done, r.done % 1 ? 1 : 0)} / ${fmt(c.qty)} ${esc(c.unit)}`;
+    const rate = m => (t ? `${fmt(r.weekly[m === 'plan' ? 'recent' : m], 1)}/wk` : c.kind === 'lump' ? fmt(r.rate[m], 2) : fmt(r.rate[m], 2));
+    return `<tr><td>${esc(c.name || '(unnamed)')}${c.co ? ' <small>(CO)</small>' : ''}</td><td>${fmt(c.hours)}</td><td>${done}</td><td>${fmt(r.spent)}</td>
+      <td>${t ? '–' : fmt(r.earned)}</td><td>${rate('plan')}</td><td>${rate('recent')}</td><td>${rate('sofar')}</td>
+      <td>${fmt(r.eac.plan)}</td><td><b>${fmt(r.eac.recent)}</b></td><td>${fmt(r.eac.sofar)}</td></tr>`;
+  }).join('');
+  const tot = (g, name) => `<tr><th>${name}</th><th>${fmt(g.budget)}</th><th>${g.workPct == null ? '' : pctTxt(g.workPct)}</th><th>${fmt(g.spent)}</th><th>${fmt(g.earned)}</th><th></th><th></th><th></th><th>${fmt(g.eac.plan)}</th><th>${fmt(g.eac.recent)}</th><th>${fmt(g.eac.sofar)}</th></tr>`;
+  const wl = A.weeksLeft;
+  return `<details class="how no-print"><summary>How the numbers are worked out</summary>
+    <ul class="why" style="max-width:none">
+      <li><b>Earned hours</b> are the budget hours for the work that's in place: 40% of a 400-hour line installed has earned 160 hours, however many it took.</li>
+      <li>A <b>rate</b> is hours per unit. The forecast is the hours used plus what's left times the rate: plan from the budget, recent from this line's last ${P.recent} weeks of activity, so far from everything to date. A percent-done line counts each percent as one unit.</li>
+      <li>A <b>time-based</b> line's forecast is its weekly hours times the weeks of work left. Weeks left are the measured hours still to come divided by the crew's weekly hours: ${wl.recent == null ? 'not known yet' : weeksTxt(wl.recent)} at the recent pace, ${wl.plan == null ? 'not known' : weeksTxt(wl.plan)} at the planned pace, ${wl.sofar == null ? 'not known' : weeksTxt(wl.sofar)} at the average pace.</li>
+      <li><b>Pace</b> in a week is the budget hours for the work done that week divided by the hours spent. 100% is exactly as planned.</li>
+      <li>Green is within 3% of budget, amber up to 10% over, red beyond that.</li>
+    </ul>
+    <div class="tbl"><table>
+      <tr><th>Line</th><th>Budget</th><th>Done</th><th>Used</th><th>Earned</th><th>Rate: plan</th><th>recent</th><th>so far</th><th>Forecast: plan</th><th>recent</th><th>so far</th></tr>
+      ${rows}${tot(A.orig, 'Original scope')}${A.co.n ? tot(A.co, 'Change orders') + tot(A.all, 'Whole job') : ''}
+    </table></div></details>`;
+}
+
+let lastTrend = null;
+function renderForecast() {
+  const el = $('tForecast');
+  if (!P.codes.length) {
+    el.innerHTML = `<div class="card empty"><b>Nothing to forecast yet</b><p>Start with the budget: the parts of the job and the hours you allowed for each. Then add a report at the end of every week.</p><button class="btn pri" data-act="goBudget">Set up the budget</button> <button class="btn" data-act="example">Look at an example</button></div>`;
+    return;
+  }
+  // With no reports there is nothing to judge, and a green "on track" over an empty job would
+  // be read as good news. Say what comes next instead.
+  if (!P.weeks.length) {
+    const tot = P.codes.reduce((s, c) => s + c.hours, 0);
+    el.innerHTML = tot > 0
+      ? `<div class="card empty"><b>Add the first weekly report</b><p>The budget is ${hrs(tot)} across ${P.codes.length} line${P.codes.length === 1 ? '' : 's'}. Once the crew reports what they did in a week, this is where you'll see how the job is going.</p><button class="btn pri" data-act="goWeeks">Add a week</button></div>`
+      : `<div class="card empty"><b>Finish the budget first</b><p>Give each line the hours you allowed for it in your estimate. Then add a report at the end of every week.</p><button class="btn pri" data-act="goBudget">Go to the budget</button></div>`;
+    return;
+  }
+  const A = analyze(P), t = trend(P);
+  lastTrend = { t, budget: A.orig.budget };
+  const cards = rows => `<div class="cgrid">${rows.map(r => lineCard(r, A)).join('')}</div>`;
+  const orig = A.rows.filter(r => !r.code.co), co = A.rows.filter(r => r.code.co);
+  let coBlock = '';
+  if (co.length) {
+    const g = A.co, sc = Math.max(g.budget, g.eac.recent, g.spent) * 1.04 || 1;
+    coBlock = `<h3 class="grp">Change orders</h3>
+      <div class="card"><div class="cch"><b>${esc(headline(g))}</b><span class="status ${g.status}">${{ good: 'On track', watch: 'Watch it', over: 'Over budget' }[g.status]}</span></div>
+      ${fbar(g.spent, g.eac.recent, g.budget, sc)}${LEGEND}
+      <p class="why">Kept apart from the original scope. Budget ${hrs(g.budget)} as priced, used ${hrs(g.spent)}. The whole job together is heading for about ${hrs(about(A.all.eac.recent))} against ${hrs(A.all.budget)}.</p></div>
+      ${cards(co)}`;
+  }
+  el.innerHTML = `${P.title ? `<p class="lead" style="margin:0 0 8px"><b style="color:var(--ink)">${esc(P.title)}</b>${A.weeks.length ? ` · through the week ending ${shortDate(A.weeks[A.weeks.length - 1].end)}` : ''}</p>` : ''}
+    ${A.orig.n ? hero(A.orig, A, 'Original scope') : ''}
+    ${A.orig.n ? ways(A.orig, A) : ''}
+    ${trendCard(t, A)}
+    ${paceCard(A)}
+    ${orig.length ? `<h3 class="grp">Each part of the job</h3>${cards(orig)}` : ''}
+    ${coBlock}
+    <div class="card" style="margin-top:16px">${detailTable(A)}</div>`;
+  drawTrend();
+}
+function drawTrend() {
+  const box = $('trendChart');
+  if (!box || !lastTrend) return;
+  const W = Math.max(280, box.clientWidth || 700);
+  box.innerHTML = trendSvg(lastTrend.t, 'orig', lastTrend.budget, W);
+}
+let rsT = 0;
+window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (tab === 'forecast') drawTrend(); }, 120); });
+window.addEventListener('beforeprint', () => { renderForecast(); });
+$('tForecast').addEventListener('change', e => {
+  if (e.target.id === 'recentSel') { P.recent = +e.target.value; save(); renderForecast(); }
+});
+$('tForecast').addEventListener('click', e => {
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (act === 'goBudget') setTab('budget');
+  if (act === 'goWeeks') setTab('weeks');
+  if (act === 'example') { P = exampleProject(); save(); setTab('forecast'); }
+});
+
+/* ---------- files and header ---------- */
+for (const b of document.querySelectorAll('.tab')) b.addEventListener('click', () => setTab(b.dataset.tab));
+function newJob() {
+  if (!P.example && (P.codes.length || P.weeks.length) && !confirm('Start a new job? The one that’s open is cleared from this browser, so save it first if you want to keep it.')) return;
+  P = newProject(); P.codes.push(newCode('c1', { unit: 'SQ' })); selWeek = null; save(); setTab('budget');
+}
+$('newJob').addEventListener('click', newJob);
+$('exNew').addEventListener('click', newJob);
+const slug = () => (P.title || 'labor-forecast').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'labor-forecast';
+function saveFile() {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify({ app: 'zbcad-labor-forecast', ...P }, null, 1)], { type: 'application/json' }));
+  a.download = slug() + '.labor-forecast.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+$('saveFile').addEventListener('click', saveFile);
+$('openFile').addEventListener('click', () => $('fProj').click());
+$('fProj').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  let o;
+  try { o = JSON.parse(await f.text()); } catch (err) { toast('That file isn’t a saved job.'); return; }
+  if (!o || !Array.isArray(o.codes)) { toast('That file isn’t a saved job.'); return; }
+  if (!P.example && P.codes.length && !confirm('Replace the job that’s open with this one?')) return;
+  P = checkProject(o); selWeek = null; save(); setTab('forecast');
+  toast('Opened ' + (P.title || f.name));
+});
+$('printBtn').addEventListener('click', () => window.print());
+$('helpBtn').addEventListener('click', () => $('dlgHelp').showModal());
+
+document.addEventListener('keydown', e => {
+  // F1 is blocked rather than bound: an accidental press should cost nothing, and left
+  // alone Chrome opens its own help in a new tab. Help is the header button.
+  if (e.key === 'F1') { e.preventDefault(); return; }
+  const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+  if ($('dlgHelp').open) { if (mod && 'sop'.includes(k)) e.preventDefault(); return; }
+  if (mod && k === 's') { e.preventDefault(); saveFile(); }
+  else if (mod && k === 'o') { e.preventDefault(); $('fProj').click(); }
+});
+
+/* ---------- boot ---------- */
+{
+  let s = null;
+  try { s = localStorage.getItem(KEY); } catch (e) {}
+  let o = null;
+  if (s) { try { o = JSON.parse(s); } catch (e) { try { localStorage.setItem(KEY + '.bad', s); } catch (e2) {} } }
+  P = o ? checkProject(o) : exampleProject();
+  tab = P.codes.length ? 'forecast' : 'budget';
+  render();
+}
+</script>
+<script data-goatcounter="https://zbfraser.goatcounter.com/count"
+        async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
