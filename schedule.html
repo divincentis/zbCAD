@@ -56,6 +56,10 @@ button{font:inherit;color:inherit}
 .row input{width:100%;height:25px;border:0;background:transparent;color:inherit;font:inherit;padding:0 4px;outline:none;min-width:0}
 .row input:focus{box-shadow:inset 0 0 0 2px var(--accent);background:var(--panel)}
 .row input[readonly]{color:var(--muted)}
+.dt input:not([readonly]){padding-right:20px}
+.dt .cal{position:absolute;right:2px;top:4px;width:18px;height:18px;padding:0;border:0;border-radius:3px;background:transparent;color:var(--muted);cursor:pointer;display:none;align-items:center;justify-content:center}
+.dt:hover .cal,.dt:focus-within .cal{display:flex}.dt .cal:hover{color:var(--accent);background:var(--panel)}
+#calPick{position:fixed;opacity:0;pointer-events:none;border:0;padding:0;margin:0}
 .r input,.r{justify-content:flex-end;text-align:right}
 .num{justify-content:space-between;overflow:hidden;padding:0 3px 0 4px;color:var(--muted);cursor:pointer;user-select:none;font-size:12px}
 .num .m{display:flex;gap:2px}
@@ -206,6 +210,7 @@ menu .pri{background:var(--accent);border-color:var(--accent);color:#fff}
     <div id="tpane">
       <div id="thead"><div class="grid"><div>#</div><div>Task name</div><div>Trade</div><div>Duration</div><div>Start</div><div>Finish</div><div>Predecessors</div><div>Float</div><div>% done</div></div></div>
       <div id="tbody"></div>
+      <input type="date" id="calPick" tabindex="-1" aria-hidden="true">
       <div id="resizer" title="Drag to resize"></div>
     </div>
     <div id="gpane"><svg id="ghead"></svg><svg id="gbody"></svg></div>
@@ -939,6 +944,7 @@ function traceSet(){ // tasks and links on the driving chain back from the selec
   while(q.length){const t=q.pop();for(const p of t._drv||[]){links.add(p.t.uid+'>'+t.uid);if(!tasks.has(p.t.uid)){tasks.add(p.t.uid);q.push(p.t);}}}
   return {tasks,links,root:t0};
 }
+const CAL_BTN='<button class="cal" data-act="cal" tabindex="-1" title="Pick a date"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1" y="2" width="10" height="9" rx="1"/><path d="M1 5h10M4 1v2M8 1v2"/></svg></button>';
 function rowHTML(t,i){
   const s=t._sum,ro=s?' readonly':'';
   const marks=(t.cons&&t.cons.type?`<i title="${esc(CT_LABEL[t.cons.type]+' '+fmtD(dn(t.cons.date)))}">${esc(t.cons.type)}</i>`:'')+(t._err?`<i class="e" title="${esc(t._err)}">!</i>`:'')+(t.notes?`<i title="${esc(t.notes)}">n</i>`:'');
@@ -948,8 +954,8 @@ function rowHTML(t,i){
    `<div class="name nm" style="--l:${t.level}">${s?`<button class="tog" data-act="tog" tabindex="-1">${t.collapsed?'▸':'▾'}</button>`:'<span class="tog"></span>'}<input data-col="name" value="${esc(t.name)}"></div>`+
    `<div class="trd">${!s&&t.trade&&prefs.color==='trade'?`<span class="sw" style="background:${tradeColor(t.trade)}"></span>`:''}<input data-col="trade" list="tradeList" value="${s?'':esc(t.trade||'')}"${ro}></div>`+
    `<div class="r"><input data-col="dur" value="${esc((s?t._sdur:t.dur)+'d')}"${ro}></div>`+
-   `<div><input data-col="start" value="${fmtD(t._sd)}"${ro}></div>`+
-   `<div><input data-col="finish" value="${fmtD(t._fd)}"${ro}></div>`+
+   `<div class="dt"><input data-col="start" value="${fmtD(t._sd)}"${ro}>${s?'':CAL_BTN}</div>`+
+   `<div class="dt"><input data-col="finish" value="${fmtD(t._fd)}"${ro}>${s?'':CAL_BTN}</div>`+
    `<div><input data-col="pred" value="${s?'':esc(fmtPreds(t))}"${ro}></div>`+
    `<div class="r tf${!s&&!t._done&&t._tf<0?' neg':''}">${tf}</div>`+
    `<div class="r"><input data-col="pct" value="${esc(s?t._pct:t.pct)}%"${ro}></div></div>`;
@@ -1166,6 +1172,22 @@ tbody.addEventListener('change',e=>{
   const uid=i.closest('.row').dataset.uid,col=i.dataset.col,val=i.value;
   setTimeout(()=>commitCell(uid,col,val),0);
 });
+/* Start and Finish stay typed text, for the weekday display and the loose typing. The calendar
+   borrows the browser's own picker from one shared date input laid over the cell, outside the
+   rows so a render can't take it away; a pick goes through commitCell exactly as typing does.
+   Opened on mousedown with the default prevented, so the cell never blurs: a blur would commit
+   and re-render the row out from under the click. */
+const calPick=$('#calPick');let calFor=null;
+function openCal(btn,uid){
+  const cell=btn.parentNode,inp=cell.querySelector('input'),col=inp.dataset.col,t=U.get(uid);if(!t)return;
+  const cur=col==='start'?t._sd:t._fd,d=parseDate(inp.value,ymd(cur)[0]);
+  if(document.activeElement===inp){inp.value=inp.defaultValue;inp.blur();}
+  const r=cell.getBoundingClientRect();
+  Object.assign(calPick.style,{left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});
+  calPick.value=isoOf(d==null?cur:d);calFor={uid,col};
+  try{calPick.showPicker();}catch(e){calFor=null;focusCell(uid,col);}
+}
+calPick.addEventListener('change',()=>{const c=calFor;calFor=null;if(c&&calPick.value)commitCell(c.uid,c.col,calPick.value);});
 function focusCell(uid,col){const r=tbody.querySelector(`.row[data-uid="${uid}"]`),i=r&&r.querySelector(`[data-col="${col}"]`);if(i){i.focus();i.select();}}
 tbody.addEventListener('keydown',e=>{
   const i=e.target;if(!i.dataset||!i.dataset.col)return;
@@ -1189,6 +1211,7 @@ tbody.addEventListener('mousedown',e=>{
   const a=e.target.closest('[data-act]');if(!a)return;
   const r=a.closest('.row');if(!r||r.dataset.uid==='new')return;const u=+r.dataset.uid;
   if(a.dataset.act==='tog'){e.preventDefault();const t=U.get(u);t.collapsed=!t.collapsed;render();autosave();return;}
+  if(a.dataset.act==='cal'){e.preventDefault();openCal(a,u);return;}
   e.preventDefault();if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
   if(e.shiftKey&&anchor!=null){
     const ids=visRows.map(t=>t.uid),a1=ids.indexOf(anchor),b1=ids.indexOf(u);
