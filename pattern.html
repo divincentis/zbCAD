@@ -228,6 +228,7 @@ dialog#dlgHelp::backdrop{background:rgba(0,0,0,.45)}
     <p>There is no save file. The link in the address bar holds the fitting, its sizes and the units, and it updates as you type. Bookmark it, or send it to someone, to come back to the same fitting. Nothing is stored in the browser.</p>
 
     <p class="fine">Cut and form a first piece of any new fitting before cutting a run, and check it against the job.</p>
+    <p class="fine">Free to use, provided as is, with no warranty: see the <a href="terms.html" target="_blank">terms of use</a>.</p>
   </div>
   <div class="dfoot"><button class="btn pri" value="ok">Got it</button></div>
 </form></dialog>
@@ -1193,7 +1194,7 @@ if (typeof document !== 'undefined') (function () {
     const [W, H] = paperDims(), m = Math.max(PO.margin, 18), o = Ops(), { p } = parsed();
     const shown = toolDef().fields.filter(f => f.k && !(f.show && !f.show(p)));
     let pw = Math.max(W, H), ph = Math.min(W, H);
-    if (isRoll()) { pw = ph; ph = Math.min(Math.max(W, H), Math.max(612, 2 * m + 240 + shown.length * 11 + plans.length * 24)); }
+    if (isRoll()) { pw = ph; ph = Math.min(Math.max(W, H), Math.max(612, 2 * m + 290 + shown.length * 11 + plans.length * 24)); }
     o.fill([0, 0, 0]);
     o.text(m, ph - m - 16, 16, `${title} — full-scale layout`, { bold: true });
     brand(o, pw - m, ph - m - 16, pw - 2 * m - tw(`${title} — full-scale layout`, 16, true) - 14);
@@ -1205,6 +1206,8 @@ if (typeof document !== 'undefined') (function () {
     ['Turn off "Fit to page" / "Shrink oversized pages".', 'Measure the scale-check bar on a sheet before', 'assembling. It must measure exactly.', ''].forEach(s => line(s));
     line('ASSEMBLY', 9, true);
     ['Lay sheets out by row (A, B, ...) and column (1, 2, ...).', 'Trim each sheet along its TRIM & MATCH edges', '(top and left), then lap it over the shaded band of', 'its neighbor so the trimmed edge sits on the blue', 'match line. Line up the crosshairs and tape.', ''].forEach(s => line(s));
+    line('BEFORE CUTTING A RUN', 9, true);
+    ['Cut and form a first piece and check it against the', 'job. Provided as is, with no warranty: see', 'zbcad.com/terms.html.', ''].forEach(s => line(s));
     line('INPUTS', 9, true);
     shown.forEach(f => {
       const v = vals()[f.k], disp = f.type === 'select' ? (f.opts.find(q => q[0] === v) || [, v])[1] : v + (f.type === 'len' && !/[a-z″"]\s*$/i.test(v) ? (S.u === 'in' ? ' in' : ' mm') : '');

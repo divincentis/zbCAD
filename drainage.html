@@ -256,6 +256,7 @@ dialog#dlgHelp::backdrop{background:rgba(0,0,0,.45)}
       <li><button type="button" class="link" id="helpExample">Open the example job</button>. It takes the place of the job that's open, so save yours first.</li>
     </ul>
     <p class="fine">Check the results against the code your jurisdiction has adopted and against manufacturer data. Roof drain flow rates come from the drain manufacturer, and the roof's design water depth comes from the structural engineer. This tool reports the rain-load heads; it does not check the structure.</p>
+    <p class="fine">Free to use, provided as is, with no warranty: see the <a href="terms.html" target="_blank">terms of use</a>.</p>
   </div>
   <div class="dfoot"><button class="btn pri" value="ok">Got it</button></div>
 </form></dialog>
@@ -1123,6 +1124,7 @@ function renderResults() {
       <li>Downspout spacing and the gutter outlet check are practice and advice, not code, and never fail an item on their own.</li>
       <li>Not covered: gutters inside a parapet, valley gutters, horizontal storm drains, siphonic and controlled-flow systems, and the roof structure.</li>
     </ul>
+    <p class="why">This package is an aid to checking a design, not a sealed engineering calculation. Confirm the sizes with the authority having jurisdiction and the drain manufacturer, and with a registered design professional where the code or the job calls for one, before building. The tool is free to use and provided as is, with no warranty (zbcad.com/terms.html).</p>
   </div>`;
 }
 $('tResults').addEventListener('click', e => { if (e.target.closest('[data-act="csv"]')) saveCsv(); });

@@ -236,6 +236,7 @@ menu button.pri{background:var(--accent);border-color:var(--accent);color:#fff;f
     <h4>Files</h4>
     <p>The project is kept in this browser as you work. <b>Save</b> writes a .json file to keep or send, and <b>Open</b> reads one back. Profiles can also be brought in from another project's file, to build up a library.</p>
     <p class="fine">Nothing here checks structure, wind uplift, clips or fasteners. The starter profiles are generic: check them against the manufacturer's data.</p>
+    <p class="fine">Free to use, provided as is, with no warranty: see the <a href="terms.html" target="_blank">terms of use</a>.</p>
   </div>
   <form method="dialog"><menu><button class="pri">Got it</button></menu></form>
 </dialog>
@@ -1288,7 +1289,7 @@ function reportSheets(date,only){
   }
   if(gs.length>1)table(qCols,[qRow('Project total',tq,1)],{size:8});
   sub('Waste is coverage area less roof slope area. Gross area is the stretch out times ordered length: the metal bought.',8);
-  sub('Starter profiles are generic. Verify coverage, lengths, laps and minimum slope with the panel manufacturer. This package does not check structure, wind uplift, clips or fasteners.',8);
+  sub('Starter profiles are generic. Verify coverage, lengths, laps and minimum slope with the panel manufacturer. This package does not check structure, wind uplift, clips or fasteners. Provided as is, with no warranty: see zbcad.com/terms.html.',8);
   // Overview: every facet as a tile.
   for(const g of gs){
     if(!g.facets.length)continue;
