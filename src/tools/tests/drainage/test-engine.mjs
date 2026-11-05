@@ -6,7 +6,8 @@ import {boot, suite} from './harness.mjs';
 const ev = boot(), t = suite();
 const E = ev(`({ T1106_2, T1106_3, T1106_6, EQ11_1, flowOf, designArea, rateLeader, rateGutter, drainSize, weirHead,
   weirWidth, outletCap, placeOutlets, tributary, analyze, rates, newProject, newArea, newRun, checkProject, exampleProject,
-  materialsCsv, headline, shapeArea, frac })`);
+  materialsCsv, headline, shapeArea, frac, gpm })`);
+const gpm = E.gpm;
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
 const box = (w, h) => ({ kind: 'box', w, h });
 const half = d => ({ kind: 'half', d });
@@ -157,6 +158,30 @@ t.ok(near(E.rates(job(3, [], { rain15: 1.4 })).r15, 5.6), 'a 15-minute depth bec
   t.ok(csv.startsWith('Group,Item,Qty,Unit,Areas\n') && csv.split('\n').length === J.materials.length + 2, 'CSV: a header and one line per item');
 }
 t.eq(E.headline(E.analyze(job(0, []))).status, 'empty', 'no rainfall: nothing to say yet');
+
+// ---- a job of one kind only ----
+{
+  const P = E.newProject(); P.rain1 = 3;
+  P.areas.push(E.newArea('a1', 'low', { name: 'Roof', height: 20, plan: 20000, pType: 'drain', pN: 4, sType: 'drain', sN: 4, rise: 2, depth: 6, sHead: 2, parapet: true }));
+  const J = E.analyze(P);
+  t.eq(J.status, 'ok', 'drains only: passes');
+  t.ok(J.materials.length === 2 && J.materials.every(m => m.group === 'Roof drain'), 'drains only: the list is just drains');
+  const bars = J.areas[0].units.flatMap(u => u.checks).filter(c => c.cap != null);
+  t.ok(bars.length === 3 && bars.every(c => /^Each drain takes|^Water would stand/.test(c.say)), 'drains only: every bar says what its numbers are');
+}
+{
+  const P = E.newProject(); P.rain1 = 3;
+  const a = E.newArea('a1', 'steep', { name: 'House', height: 12 }), r = E.newRun('r1');
+  Object.assign(r, { len: 40, area: 1200 }); a.runs.push(r); P.areas.push(a);
+  let J = E.analyze(P);
+  t.eq(J.status, 'ok', 'gutters only: passes');
+  t.ok(J.materials.every(m => m.group === 'Gutter' || m.group === 'Downspout'), 'gutters only: no scuppers or drains listed');
+  const p = J.areas[0].runs[0].pick;
+  t.ok(p.checks.filter(c => c.cap != null).every(c => c.say && c.say.includes(gpm(c.flow)) && c.say.includes(gpm(c.cap))), 'each bar names both its flow and what is allowed');
+  t.ok(p.checks[0].say.startsWith(p.n > 1 ? 'The busiest downspout' : 'The downspout'), 'one downspout is not called the busiest');
+  a.runs = []; J = E.analyze(P);
+  t.eq(E.headline(J).text, 'Fill in a roof area to size its drainage.', 'an area with nothing in it asks to be filled in, not added');
+}
 
 // ---- files ----
 {

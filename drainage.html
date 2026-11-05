@@ -123,7 +123,8 @@ input[type=number]::-webkit-inner-spin-button{display:none}
 .ck .v{text-align:right;font-variant-numeric:tabular-nums}
 .ck .v small{display:block;color:var(--muted);font-size:11.5px}
 .ck .txt{font-size:13px}
-@media (max-width:640px){ .ck{grid-template-columns:1fr auto} .ck .t,.ck .txt{grid-column:1/-1;grid-row:2} }
+.ck .say{grid-column:2/-1;font-size:12.5px;color:var(--muted);margin-top:-4px}
+@media (max-width:640px){ .ck{grid-template-columns:1fr auto} .ck .t,.ck .txt{grid-column:1/-1;grid-row:2} .ck .say{grid-column:1/-1;grid-row:3} }
 
 /* ---- results ---- */
 .hero{border-width:2px}
@@ -167,9 +168,19 @@ dialog#dlgHelp::backdrop{background:rgba(0,0,0,.45)}
 #dlgHelp .dfoot{display:flex;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line)}
 .toast{position:fixed;left:50%;bottom:16px;transform:translate(-50%,16px);opacity:0;transition:opacity .2s,transform .2s;background:var(--ink);color:var(--panel);padding:9px 14px;border-radius:8px;font-size:13px;max-width:min(520px,90vw);pointer-events:none;z-index:5}
 .toast.show{opacity:1;transform:translate(-50%,0)}
+.pbrand{display:none}
 @media (max-width:560px){ .tab{padding:6px 9px} .tab .tl{font-size:13px} }
+@page{
+  margin:.5in .5in .6in;
+  @bottom-left{content:"zbCAD / Roof Drainage · zbcad.com/drainage.html";font:9px system-ui,sans-serif;color:#6b675f}
+  @bottom-right{content:"Page " counter(page) " of " counter(pages);font:9px system-ui,sans-serif;color:#6b675f}
+}
 @media print{
   .top,.bar,.banner,#tJob,#tAreas,.no-print{display:none!important}
+  .pbrand{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;border-bottom:2px solid #1c1b19;padding:0 0 8px;margin:0 0 14px}
+  .pbrand .pb{font-weight:700;font-size:20px;letter-spacing:-.01em}
+  .pbrand .pb span{font-weight:400;color:#6b675f;margin:0 6px}
+  .pbrand .pm{text-align:right;font-size:10.5px;color:#6b675f;line-height:1.5}
   #tResults{display:block!important}
   body{background:#fff;font-size:12px}
   .wrap{padding:0;max-width:none}
@@ -583,10 +594,13 @@ function runChecks(p, r, P) {
     : p.grate.rule === 'slope' ? `listed at ${SLOPE_TXT[p.grate.basis.slope]}"/ft${p.grate.adj ? `, reduced to ${SLOPE_TXT[r.run.slope]}"/ft` : ''}`
     : `rated as ${tableTxt(p.grate.basis)} at ${SLOPE_TXT[p.grate.basis.slope]}"/ft${p.grate.adj ? `, reduced to ${SLOPE_TXT[r.run.slope]}"/ft` : ''}${past(p.grate, 'Table 1106.6')}`;
   return [
-    { label: `Downspouts: ${p.n} × ${shapeTxt(p.ds)}`, sub: lb, flow: p.qMax, cap: p.lead.gpm, ok: p.qMax <= p.lead.gpm + 1e-9, ref: 'IPC 1106.3, Table 1106.3' },
-    { label: `Gutter: ${shapeTxt(p.gutter)}`, sub: gb, flow: p.qGut, cap: p.grate.gpm, ok: p.qGut <= p.grate.gpm + 1e-9, ref: 'IPC 1106.6, Table 1106.6' },
+    { label: `Downspouts: ${p.n} × ${shapeTxt(p.ds)}`, sub: lb, flow: p.qMax, cap: p.lead.gpm, ok: p.qMax <= p.lead.gpm + 1e-9, ref: 'IPC 1106.3, Table 1106.3',
+      say: `${p.n > 1 ? 'The busiest downspout takes' : 'The downspout takes'} ${gpm(p.qMax)}. IPC Table 1106.3 allows ${gpm(p.lead.gpm)} through ${an(shapeTxt(p.ds))}.` },
+    { label: `Gutter: ${shapeTxt(p.gutter)}`, sub: gb, flow: p.qGut, cap: p.grate.gpm, ok: p.qGut <= p.grate.gpm + 1e-9, ref: 'IPC 1106.6, Table 1106.6',
+      say: `The busiest stretch of gutter carries ${gpm(p.qGut)}. IPC Table 1106.6 allows ${gpm(p.grate.gpm)} in ${an(shapeTxt(p.gutter))} at ${SLOPE_TXT[r.run.slope]}"/ft.` },
     { label: 'Downspout spacing', sub: 'practice, not code', text: `${p.gap.toFixed(1)} ft at most, limit ${P.maxSpacing} ft`, ok: p.gap <= P.maxSpacing + 1e-6, adv: true, ref: 'Practice' },
-    { label: 'Gutter outlet', sub: `${p.outlet.mode} with the gutter full; advice`, flow: p.qMax, cap: p.outlet.gpm, ok: p.outlet.gpm >= p.qMax, adv: true, ref: 'Advice' },
+    { label: 'Gutter outlet', sub: `${p.outlet.mode} with the gutter full; advice`, flow: p.qMax, cap: p.outlet.gpm, ok: p.outlet.gpm >= p.qMax, adv: true, ref: 'Advice',
+      say: `The hole into ${p.n > 1 ? 'the busiest downspout' : 'the downspout'} has to take ${gpm(p.qMax)}. With the gutter full it passes about ${gpm(p.outlet.gpm)}.` },
   ];
 }
 
@@ -619,13 +633,15 @@ function scuppers(P, ar, role, n, Q1, Q15, ds) {
   u.checks.push({ label: `Opening width ${frac(u.b)}"`, sub: `at least the ${frac(drain.size)}" drain's circumference, ${circ.toFixed(1)}"`, text: `${frac(u.b)}" ≥ ${circ.toFixed(1)}"`, ok: u.b >= circ - 1e-9, ref: sec ? 'IPC 1108.3' : 'IPC 1106.5' });
   u.checks.push({ label: `Opening height ${frac(ar.sH)}"`, sub: 'at least 4"', text: `${frac(ar.sH)}" ≥ 4"`, ok: ar.sH >= 4 - 1e-9, ref: sec ? 'IPC 1108.3, IBC 1502.3' : 'IPC 1106.5' });
   u.checks.push({ label: 'Water over the inlet', sub: `at ${q15.toFixed(1)} gpm, the rain-load rate`, text: `${u.dh.toFixed(2)}" within the ${frac(ar.sH)}" opening`, ok: u.dh <= ar.sH + 1e-9, ref: 'Weir, Q = 2.9·b·h^1.5' });
-  if (ar.depth > 0) u.checks.push({ label: 'Design water depth', sub: `static ${frac(ds)}" + hydraulic ${u.dh.toFixed(2)}"`, flow: ds + u.dh, cap: ar.depth, unit: 'in', ok: ds + u.dh <= ar.depth + 1e-9, ref: sec ? 'IPC 1108.3, IBC 1611.1' : 'IPC 1106.5, IBC 1611.1' });
+  if (ar.depth > 0) u.checks.push({ label: 'Design water depth', sub: `static ${frac(ds)}" + hydraulic ${u.dh.toFixed(2)}"`, flow: ds + u.dh, cap: ar.depth, unit: 'in', ok: ds + u.dh <= ar.depth + 1e-9, ref: sec ? 'IPC 1108.3, IBC 1611.1' : 'IPC 1106.5, IBC 1611.1',
+    say: `Water would stand ${(ds + u.dh).toFixed(2)}" deep on the roof ${sec ? 'with the primary scuppers blocked' : 'at the scuppers'}. The roof is designed for ${frac(ar.depth)}".` });
   if (role === 'primary') {
     const L = pickLeader(P, q1);
     if (!L) { u.msgs.push(['fail', `No catalog downspout carries ${q1.toFixed(0)} gpm. Use more scuppers or turn on larger sizes.`]); u.fail = true; }
     else {
       u.leader = L; u.head = u.b + 4;
-      u.checks.push({ label: `Downspout: ${shapeTxt(L.ds)}`, sub: L.lead.rule === 'listed' ? `listed as ${tableTxt(L.lead.basis)}` : `rated as ${tableTxt(L.lead.basis)} (no more area)`, flow: q1, cap: L.lead.gpm, ok: true, ref: 'IPC 1106.3, Table 1106.3' });
+      u.checks.push({ label: `Downspout: ${shapeTxt(L.ds)}`, sub: L.lead.rule === 'listed' ? `listed as ${tableTxt(L.lead.basis)}` : `rated as ${tableTxt(L.lead.basis)} (no more area)`, flow: q1, cap: L.lead.gpm, ok: true, ref: 'IPC 1106.3, Table 1106.3',
+        say: `Each downspout takes ${gpm(q1)}. IPC Table 1106.3 allows ${gpm(L.lead.gpm)} through ${an(shapeTxt(L.ds))}.` });
     }
   }
   return u;
@@ -635,11 +651,13 @@ function drains(P, ar, role, n, Q1, ds) {
   const u = { role, type: 'drain', n, q1, msgs: [], checks: [], ds };
   if (!drain) { u.msgs.push(['fail', `${q1.toFixed(0)} gpm through one drain is beyond IPC Table 1106.2. Use more drains.`]); u.fail = true; return u; }
   u.drain = drain;
-  u.checks.push({ label: `Drain and leader: ${frac(drain.size)}"`, sub: 'vertical drain capacity', flow: q1, cap: drain.gpm, ok: true, ref: 'IPC 1106.2, Table 1106.2' });
+  u.checks.push({ label: `Drain and leader: ${frac(drain.size)}"`, sub: 'vertical drain capacity', flow: q1, cap: drain.gpm, ok: true, ref: 'IPC 1106.2, Table 1106.2',
+    say: `Each drain takes ${gpm(q1)}. IPC Table 1106.2 allows ${gpm(drain.gpm)} through a ${frac(drain.size)}" drain and leader.` });
   u.msgs.push(['note', `Check that the drain model's published flow at the design head is at least ${q1.toFixed(1)} gpm (IPC 1105.2, 1106.2).`]);
   if (role === 'secondary') {
     if (ar.sHead > 0) { u.dh = ar.sHead; u.R = 5.2 * (ds + u.dh); }
-    if (ar.depth > 0 && ar.sHead > 0) u.checks.push({ label: 'Design water depth', sub: `static ${frac(ds)}" + hydraulic ${frac(ar.sHead)}" from drain data`, flow: ds + ar.sHead, cap: ar.depth, unit: 'in', ok: ds + ar.sHead <= ar.depth + 1e-9, ref: 'IPC 1108.3, IBC 1611.1' });
+    if (ar.depth > 0 && ar.sHead > 0) u.checks.push({ label: 'Design water depth', sub: `static ${frac(ds)}" + hydraulic ${frac(ar.sHead)}" from drain data`, flow: ds + ar.sHead, cap: ar.depth, unit: 'in', ok: ds + ar.sHead <= ar.depth + 1e-9, ref: 'IPC 1108.3, IBC 1611.1',
+      say: `Water would stand ${frac(ds + ar.sHead)}" deep on the roof with the primary drains blocked. The roof is designed for ${frac(ar.depth)}".` });
   }
   return u;
 }
@@ -745,7 +763,7 @@ function lowTxt(a) {
 function headline(J) {
   const live = J.areas.filter(a => a.status !== 'empty');
   if (!(J.R.r1 > 0)) return { status: 'empty', text: 'Enter the design rainfall to size the job.' };
-  if (!live.length) return { status: 'empty', text: 'Add a roof area to size its drainage.' };
+  if (!live.length) return { status: 'empty', text: J.areas.length ? 'Fill in a roof area to size its drainage.' : 'Add a roof area to size its drainage.' };
   const fails = live.filter(a => a.status === 'fail').length, warns = live.filter(a => a.status === 'warn').length;
   const total = live.reduce((t, a) => t + a.Q, 0);
   if (fails) return { status: 'fail', text: `${fails} of ${live.length} roof area${live.length > 1 ? 's' : ''} ${fails > 1 ? 'need' : 'needs'} changes before ${fails > 1 ? 'they pass' : 'it passes'}.` };
@@ -882,11 +900,13 @@ $('tJob').addEventListener('click', e => {
 /* ---------- 2 Roof areas ---------- */
 function checkRow(c) {
   if (c.text) return `<div class="ck"><div class="cl">${esc(c.label)}<small>${esc(c.sub || '')} · ${esc(c.ref)}</small></div><div class="txt">${c.ok ? '✓' : '✗'} ${esc(c.text)}</div><div class="v">${c.ok ? 'OK' : c.adv ? 'Advice' : 'Fails'}</div></div>`;
-  const u = c.cap > 0 ? c.flow / c.cap : 1, cls = c.ok ? (c.adv ? 'adv' : '') : c.adv ? 'warn' : 'fail';
-  const f = c.unit === 'in' ? x => `${x.toFixed(2)}"` : gpm;
+  // The bar is how much of what the code allows is used; the sentence under it says what both numbers are.
+  const u = c.cap > 0 ? c.flow / c.cap : 1, pct = Math.round(u * 100), cls = c.ok ? (c.adv ? 'adv' : '') : c.adv ? 'warn' : 'fail';
+  const used = c.unit === 'in' ? 'of the depth' : 'of capacity';
   return `<div class="ck"><div class="cl">${esc(c.label)}<small>${esc(c.sub || '')} · ${esc(c.ref)}</small></div>
-    <div class="t" title="${Math.round(u * 100)}% of capacity"><div class="f ${cls}" style="width:${Math.min(100, u * 100).toFixed(1)}%"></div></div>
-    <div class="v">${f(c.flow)} <small>of ${f(c.cap)} · ${Math.round(u * 100)}%</small></div></div>`;
+    <div class="t" title="${pct}% ${used}"><div class="f ${cls}" style="width:${Math.min(100, u * 100).toFixed(1)}%"></div></div>
+    <div class="v">${pct}% ${used}<small>${u > 1 + 1e-9 ? `over by ${pct - 100}%` : `${100 - pct}% to spare`}</small></div>
+    <div class="say">${esc(c.say)}</div></div>`;
 }
 function runResult(r) {
   if (r.status === 'empty') return `<p class="msg note">${esc(runTxt(r))}</p>`;
@@ -1074,6 +1094,8 @@ function renderResults() {
   const h = headline(J);
   const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   $('tResults').innerHTML = `
+  <div class="pbrand"><div class="pb">zbCAD<span>/</span>Roof Drainage</div>
+    <div class="pm">Calculation package · zbcad.com/drainage.html</div></div>
   <div class="card hero ${h.status}">
     ${pill(h.status)}
     <h1>${esc(P.name || 'Roof drainage')}</h1>
