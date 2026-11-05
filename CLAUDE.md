@@ -107,6 +107,14 @@ sh src/tools/tests/forecast/run.sh
 
 `analyze(P, upto)` is the engine and everything on screen is drawn from it. A line is *measured* (quantity installed each week), *percent done* (cumulative %, turned by `series` into 100 units so it forecasts exactly like a measured line) or *time-based* (hours a week, forecast as weekly burn × the weeks of measured work left, so a slow crew drives it up too). Each forecast method (`plan`, `recent`, `sofar`) is a rate applied to what is left, with an unmeasurable rate falling back recent → so far → plan; `recent` is the headline. Change orders (`co: true`) are their own group and never color the original scope. The page is aimed at people who aren't comfortable with numbers, so results are pictures plus one plain sentence (`headline`, `lineTxt`, `trendTxt`, all in the engine and tested); keep new output that way. Its `checkProject` has the usual rule: a new field goes there as well as in `newProject`/`newCode`/`newWeek`.
 
+`drainage.html` (Roof Drainage) is the forecast's arrangement again: hand-edited, two classic scripts, the first never touching the DOM. It sizes gutters, downspouts, scuppers and roof drains for a whole job to the 2021 IPC and IBC:
+
+```sh
+sh src/tools/tests/drainage/run.sh
+```
+
+`analyze(P)` is the engine. The IPC tables (`T1106_2`, `T1106_3`, `T1106_6`) are transcribed as printed and the suite checks every row rates as printed; keep it so. Sizes the tables don't list are rated by `rateLeader`/`rateGutter` as the best listed section with no more area, only ever rating down, and a gutter with no row at its slope takes its own next steeper row reduced by √(slope ratio). Every check carries its code section (`ref`); practice and advice (`adv: true`) never fail an item. Its `checkProject` has the usual rule: a new field goes there as well as in `newProject`/`newArea`/`newRun`.
+
 `plan.html` (Deadline Planner) is hand-edited too, with no suite: a Preact + htm app inlined into the page, state in localStorage. Its companion `plan-sw.js` (offline reopening, and phone notifications) is registered **scoped to `plan.html` alone**, and its manifest is scoped the same way. Keep it so: every page on zbcad.com shares the origin, and a worker scoped to the folder would serve the whole site from its cache.
 
 ## Runtime architecture

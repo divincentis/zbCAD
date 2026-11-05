@@ -1,0 +1,1179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Roof Drainage</title>
+<meta name="description" content="Size every gutter, downspout, scupper, conductor head and roof drain on a job to the 2021 IPC and IBC, at once. Picks the downspout size, count and spacing for you, and prints a calculation package with the code section behind every check, plus a material list.">
+<meta property="og:title" content="Roof Drainage">
+<meta property="og:description" content="Gutters, downspouts, scuppers and roof drains for a whole job, sized to the 2021 IPC and IBC.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://zbcad.com/drainage.html">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c1b19'/%3E%3Cpath d='M6 14.5h8.5L6 23.5h8.5M18.5 8.5v15h7.5v-9h-7.5' fill='none' stroke='%23f4f1ea' stroke-width='2.5' stroke-linecap='square'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f6f4ef; --panel:#fffdf8; --ink:#1c1b19; --muted:#6b675f; --line:#d9d4c9; --soft:#efe9df;
+  --accent:#9a4a1f; --accent-ink:#fff; --sheet:#fbf9f4; --water:#2d5f8a;
+  --good:#2f7d4f; --good-soft:#dcefe2; --watch:#b26b00; --watch-soft:#f8e8cc; --over:#b8322a; --over-soft:#f6dcd9;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#161614; --panel:#1c1b19; --ink:#e9e5dc; --muted:#9a958a; --line:#2f2d29; --soft:#252320;
+    --accent:#e08a55; --accent-ink:#1a0d05; --sheet:#181816; --water:#6fa8dc;
+    --good:#5cc386; --good-soft:#1c3326; --watch:#e9a73c; --watch-soft:#3a2c14; --over:#f0786d; --over-soft:#3d1f1c;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+button,input,select{font:inherit;color:inherit}
+a{color:var(--accent)}
+.top{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.brand{display:flex;align-items:baseline;font-weight:700;font-size:15px;letter-spacing:-.01em;min-width:0;white-space:nowrap}
+.brand a{color:var(--muted);text-decoration:none}
+.brand a:hover,.brand a:focus-visible{color:var(--accent)}
+.brand .sep{color:var(--line);margin:0 7px;font-weight:400}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:6px 11px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.sm{padding:4px 9px;font-size:13px}
+.link{border:0;background:none;color:var(--muted);text-decoration:underline;padding:0;cursor:pointer;font-size:13px}
+.link:hover{color:var(--ink)}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:2}
+.tabs{display:flex;gap:4px}
+.tab{border:0;background:none;padding:7px 12px;border-radius:999px;cursor:pointer;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:7px}
+.tab b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--soft);font-size:11.5px}
+.tab:hover{color:var(--ink)}
+.tab.on{background:var(--ink);color:var(--panel)}
+.tab.on b{background:var(--accent);color:var(--accent-ink)}
+.files{display:flex;gap:6px;flex-wrap:wrap}
+.wrap{max-width:1080px;margin:0 auto;padding:18px 16px 60px}
+.hide{display:none!important}
+.banner{background:var(--soft);border-radius:10px;padding:10px 14px;margin:0 0 16px;font-size:14px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin:0 0 16px}
+.card>h2{margin:0 0 4px;font-size:17px}
+.why{color:var(--muted);font-size:13.5px;margin:4px 0 0;max-width:72ch}
+.lead{color:var(--muted);margin:0 0 14px;max-width:72ch}
+h3.grp{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:20px 0 8px}
+.num{font-variant-numeric:tabular-nums}
+input.in,select.in{padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--sheet);min-width:0;width:100%}
+select.in{padding:7px 6px}
+input.in:focus,select.in:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+input[type=number]{-moz-appearance:textfield}
+input[type=number]::-webkit-inner-spin-button{display:none}
+.x{border:0;background:none;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;padding:4px}
+.x:hover{color:var(--over)}
+.fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px 14px}
+.fields label,.f{display:block;font-size:12px;color:var(--muted)}
+.fields label>input,.fields label>select{margin-top:3px;color:var(--ink);font-size:15px}
+.fields .wide{grid-column:span 2}
+.fields .hint{font-size:12px;color:var(--muted);margin-top:3px}
+.chk{display:flex!important;gap:8px;align-items:center;font-size:14px!important;color:var(--ink)!important}
+@media (max-width:560px){ .fields .wide{grid-column:auto} }
+
+/* ---- catalog ---- */
+.cat{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.cat ul{list-style:none;margin:0;padding:0;columns:2;column-gap:14px}
+.cat li{break-inside:avoid;display:flex;align-items:center;gap:6px;padding:2px 0;font-size:14px}
+.cat li .rt{color:var(--muted);font-size:12px;margin-left:auto}
+.addc{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:13px}
+.addc input.in,.addc select.in{width:auto;max-width:90px;padding:4px 6px}
+.addc select.in{max-width:130px}
+@media (max-width:760px){ .cat{grid-template-columns:1fr} }
+
+/* ---- areas ---- */
+.ahead{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:0 0 12px}
+.ahead input.in{font-weight:700;font-size:16px;max-width:360px}
+.kindtag{font-size:12px;color:var(--muted);white-space:nowrap}
+.run{border-top:1px solid var(--line);padding:12px 0 6px}
+.rgrid{display:grid;grid-template-columns:minmax(120px,1.4fr) repeat(3,minmax(70px,.8fr)) minmax(80px,.8fr) minmax(110px,1.1fr) minmax(110px,1.1fr) minmax(90px,1fr) 30px;gap:8px;align-items:end}
+.rgrid label{font-size:11.5px;color:var(--muted);display:block}
+.rgrid label>input,.rgrid label>select{margin-top:2px;color:var(--ink)}
+@media (max-width:900px){
+  .rgrid{grid-template-columns:repeat(3,minmax(0,1fr));position:relative}
+  .rgrid .c-nm{grid-column:1/-1;padding-right:34px}
+  .rgrid .c-k{grid-column:1/-1}
+  .rgrid .c-x{position:absolute;right:0;top:16px}
+}
+.res{margin:10px 0 4px}
+.rline{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:14px}
+.rline b{font-size:14.5px}
+.alts{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 0}
+.alt{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:5px 10px;cursor:pointer;text-align:left;font-size:13px;line-height:1.3}
+.alt small{display:block;color:var(--muted);font-size:11.5px}
+.alt.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.msg{font-size:13px;margin:6px 0 0}
+.msg.fail{color:var(--over)} .msg.warn{color:var(--watch)} .msg.note{color:var(--muted)}
+.addrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+
+.status{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:3px 11px 3px 8px;font-weight:700;font-size:12.5px;letter-spacing:.02em;white-space:nowrap}
+.status::before{content:'';width:9px;height:9px;border-radius:50%;background:currentColor}
+.status.ok{background:var(--good-soft);color:var(--good)}
+.status.warn{background:var(--watch-soft);color:var(--watch)}
+.status.fail{background:var(--over-soft);color:var(--over)}
+.status.empty{background:var(--soft);color:var(--muted)}
+
+/* ---- checks ---- */
+.checks{display:grid;gap:7px;margin:10px 0 0}
+.ck{display:grid;grid-template-columns:minmax(150px,230px) 1fr 140px;gap:12px;align-items:center;font-size:13.5px}
+.ck .cl small{display:block;color:var(--muted);font-size:11.5px}
+.ck .t{height:16px;background:var(--soft);border-radius:4px;position:relative;overflow:hidden}
+.ck .f{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--good)}
+.ck .f.warn{background:var(--watch)} .ck .f.fail{background:var(--over)} .ck .f.adv{background:var(--muted)}
+.ck .v{text-align:right;font-variant-numeric:tabular-nums}
+.ck .v small{display:block;color:var(--muted);font-size:11.5px}
+.ck .txt{font-size:13px}
+@media (max-width:640px){ .ck{grid-template-columns:1fr auto} .ck .t,.ck .txt{grid-column:1/-1;grid-row:2} }
+
+/* ---- results ---- */
+.hero{border-width:2px}
+.hero.ok{border-color:var(--good)} .hero.warn{border-color:var(--watch)} .hero.fail{border-color:var(--over)}
+.hero h1{font-size:24px;line-height:1.2;margin:10px 0 4px;letter-spacing:-.01em}
+.hero .sub{color:var(--muted);margin:0}
+.cover{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px 18px;margin:14px 0 0;font-size:13.5px}
+.cover div span{display:block;color:var(--muted);font-size:12px}
+.asec h2{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.given{font-size:13px;color:var(--muted);margin:2px 0 0}
+.given b{color:var(--ink);font-weight:600}
+.unit{border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+.unit h4{margin:0;font-size:14.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.tbl{overflow-x:auto;margin-top:10px}
+.tbl table{border-collapse:collapse;font-size:13px;width:100%;font-variant-numeric:tabular-nums}
+.tbl th,.tbl td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.tbl th:first-child,.tbl td:first-child,.tbl .l{text-align:left}
+.tbl th{font-size:12px;color:var(--muted);font-weight:600}
+.tbl td.wrapok{white-space:normal}
+.notes{font-size:13px;color:var(--muted);margin:0;padding-left:18px}
+.notes li{margin-bottom:4px}
+.empty{text-align:center;padding:40px 20px}
+.empty p{color:var(--muted);max-width:52ch;margin:8px auto 16px}
+
+dialog#dlgHelp{border:0;padding:0;border-radius:12px;background:var(--panel);color:var(--ink);width:min(680px,calc(100vw - 20px));max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog#dlgHelp::backdrop{background:rgba(0,0,0,.45)}
+#dlgHelp form{display:flex;flex-direction:column;max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px)}
+#dlgHelp .dh{display:flex;justify-content:space-between;align-items:center;padding:12px 16px 12px 20px;border-bottom:1px solid var(--line)}
+#dlgHelp .dh h2{margin:0;font-size:16px;outline:none}
+#dlgHelp .dh .x{font-size:22px}
+#dlgHelp .dbody{padding:4px 20px 12px;overflow:auto;font-size:13.5px;line-height:1.55}
+#dlgHelp h3{margin:16px 0 6px;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+#dlgHelp p,#dlgHelp ul{margin:0 0 8px}
+#dlgHelp ul{padding-left:18px}
+#dlgHelp li{margin-bottom:4px}
+#dlgHelp .about{font-size:14.5px;margin-top:12px}
+#dlgHelp table{border-collapse:collapse;margin:0 0 8px}
+#dlgHelp td{padding:2px 14px 2px 0;vertical-align:top}
+#dlgHelp kbd{font:12px ui-monospace,Menlo,Consolas,monospace;border:1px solid var(--line);border-radius:3px;padding:0 4px}
+#dlgHelp .fine{color:var(--muted);font-size:12.5px}
+#dlgHelp .dfoot{display:flex;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line)}
+.toast{position:fixed;left:50%;bottom:16px;transform:translate(-50%,16px);opacity:0;transition:opacity .2s,transform .2s;background:var(--ink);color:var(--panel);padding:9px 14px;border-radius:8px;font-size:13px;max-width:min(520px,90vw);pointer-events:none;z-index:5}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media (max-width:560px){ .tab{padding:6px 9px} .tab .tl{font-size:13px} }
+@media print{
+  .top,.bar,.banner,#tJob,#tAreas,.no-print{display:none!important}
+  #tResults{display:block!important}
+  body{background:#fff;font-size:12px}
+  .wrap{padding:0;max-width:none}
+  .card{break-inside:auto;border-color:#bbb}
+  .asec{break-before:page}
+  .unit,.ck,.tbl tr{break-inside:avoid}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><a href="/">zbCAD</a><span class="sep">/</span><span>Roof Drainage</span></div>
+  <button class="btn" id="helpBtn">Help</button>
+</header>
+<nav class="bar">
+  <div class="tabs" role="tablist">
+    <button class="tab" data-tab="job" role="tab"><b>1</b><span class="tl">Job</span></button>
+    <button class="tab" data-tab="areas" role="tab"><b>2</b><span class="tl">Roof areas</span></button>
+    <button class="tab" data-tab="results" role="tab"><b>3</b><span class="tl">Results</span></button>
+  </div>
+  <div class="files">
+    <button class="btn sm" id="newJob">New job</button>
+    <button class="btn sm" id="openFile">Open</button>
+    <button class="btn sm" id="saveFile">Save</button>
+    <button class="btn sm" id="csvBtn">Material CSV</button>
+    <button class="btn sm" id="printBtn">Print</button>
+  </div>
+</nav>
+<div class="wrap">
+  <div class="banner hide" id="exBanner"><span><b>This is an example job</b>: a two-story office with gutters and a warehouse with scuppers. Look around, then press New job to start your own.</span><button class="btn sm pri" id="exNew">Start my own job</button></div>
+  <section id="tJob" class="hide"></section>
+  <section id="tAreas" class="hide"></section>
+  <section id="tResults" class="hide"></section>
+</div>
+<div class="toast" id="toast"></div>
+<input type="file" id="fProj" accept=".json,application/json" hidden>
+
+<dialog id="dlgHelp" aria-labelledby="helpTitle"><form method="dialog">
+  <div class="dh"><h2 id="helpTitle" tabindex="-1" autofocus>Roof Drainage</h2><button class="x" value="close" aria-label="Close">×</button></div>
+  <div class="dbody">
+    <p class="about">Sizes every gutter, downspout, scupper, conductor head and roof drain on a job to the 2021 IPC and IBC, all at once. It picks the downspout size, count and spacing for you, and prints a calculation package with the code section behind every check, plus a material list.</p>
+
+    <h3>How to use it</h3>
+    <ul>
+      <li><b>1 Job.</b> The job details and the design rainfall. Look the rainfall up with the NOAA link beside the field. Turn off any gutter or downspout sizes you don't stock, or add your own.</li>
+      <li><b>2 Roof areas.</b> Add each part of the roof. A <b>sloped roof</b> drains to eave gutters: give each gutter run its length and the roof area that drains into it. A <b>low-slope roof</b> drains through scuppers or roof drains, with secondary (overflow) drainage. Results appear under each one as you type.</li>
+      <li><b>3 Results.</b> The calculation package: every check with its code section, an outlet schedule and the material list. Print it, or save the material list as CSV.</li>
+    </ul>
+
+    <h3>What it decides</h3>
+    <ul>
+      <li><b>Downspouts:</b> for each gutter run, the fewest downspouts of each catalog size that pass, evenly spaced around any keep-outs you give (for example <i>0-4, 30-34</i> in feet from the left end), and the smallest gutter that carries the flow between them. It shows up to three choices; click one to use it.</li>
+      <li><b>Scuppers:</b> the opening width from the IPC's circumference rule, widened if needed so the water stays within the depth the roof was designed for, plus the conductor head and downspout under each primary scupper.</li>
+      <li><b>Roof drains:</b> the drain and leader size for the flow each one carries. Check the drain model's published flow rate against it.</li>
+    </ul>
+
+    <h3>How sizes are rated</h3>
+    <p>Downspouts are rated from IPC Table 1106.3 and gutters from Table 1106.6. A size the table lists is rated directly. A size it doesn't list is rated as the best listed size with no more cross-sectional area. Where the table has no row at a gutter's slope, the next steeper row is reduced by the square root of the slope ratio, the relation the table approximately follows between its own columns. The package says which rule was used for each item.</p>
+
+    <h3>Shortcuts</h3>
+    <table>
+      <tr><td><kbd>Ctrl+S</kbd></td><td>Save the job to a file</td></tr>
+      <tr><td><kbd>Ctrl+O</kbd></td><td>Open a saved job</td></tr>
+      <tr><td><kbd>Ctrl+P</kbd></td><td>Print the calculation package</td></tr>
+    </table>
+
+    <h3>Files</h3>
+    <ul>
+      <li>Your job is kept in this browser as you work, until you press <b>New job</b>.</li>
+      <li><b>Save</b> writes one small .json file you can keep or send. <b>Open</b> reads it back on any computer.</li>
+      <li><b>Print</b> prints the Results tab, whichever tab you're on. Choose <i>Save as PDF</i> there for a PDF.</li>
+      <li><button type="button" class="link" id="helpExample">Open the example job</button>. It takes the place of the job that's open, so save yours first.</li>
+    </ul>
+    <p class="fine">Check the results against the code your jurisdiction has adopted and against manufacturer data. Roof drain flow rates come from the drain manufacturer, and the roof's design water depth comes from the structural engineer. This tool reports the rain-load heads; it does not check the structure.</p>
+  </div>
+  <div class="dfoot"><button class="btn pri" value="ok">Got it</button></div>
+</form></dialog>
+
+<script>
+/* The engine. Nothing in this script touches the DOM: a job in, every outlet sized and every
+   check with its code section out, and the suite boots it on its own. Units are inches, feet,
+   square feet, inches per hour and gallons per minute throughout. */
+
+const CODE = { id: '2021', name: '2021 IPC and IBC' };
+// IPC Equation 11-1: GPM = R × A × 0.0104.
+const EQ11_1 = 0.0104;
+const SLOPES = [1 / 16, 1 / 8, 1 / 4, 1 / 2];
+const SLOPE_TXT = { 0.0625: '1/16', 0.125: '1/8', 0.25: '1/4', 0.5: '1/2' };
+const LIMIT = { areas: 60, runs: 40, catalog: 60, name: 120, text: 200, maxDS: 60 };
+
+// The 2021 IPC tables, as printed. Shapes: round {d}, rect {w, h} (width × depth for gutters),
+// half {d} (a semicircular gutter of diameter d).
+const T1106_2 = [[2, 34], [3, 87], [4, 180], [5, 311], [6, 538], [8, 1117], [10, 2050], [12, 3272], [15, 5543]]
+  .map(([size, gpm]) => ({ size, gpm }));
+const T1106_3 = [
+  ['round', 2, 0, 30], ['rect', 2, 2, 30], ['rect', 1.5, 2.5, 30],
+  ['round', 2.5, 0, 54], ['rect', 2.5, 2.5, 54],
+  ['round', 3, 0, 92], ['rect', 2, 4, 92], ['rect', 2.5, 3, 92],
+  ['round', 4, 0, 192], ['rect', 3, 4.25, 192], ['rect', 3.5, 4, 192],
+  ['round', 5, 0, 360], ['rect', 4, 5, 360], ['rect', 4.5, 4.5, 360],
+  ['round', 6, 0, 563], ['rect', 5, 6, 563], ['rect', 5.5, 5.5, 563],
+  ['round', 8, 0, 1208], ['rect', 6, 8, 1208],
+].map(([kind, a, b, gpm]) => (kind === 'round' ? { kind, d: a, gpm } : { kind, w: a, h: b, gpm }));
+const T1106_6 = [
+  ['rect', 1.5, 2.5, 1 / 4, 26], ['rect', 1.5, 2.5, 1 / 2, 40], ['half', 4, 0, 1 / 8, 39],
+  ['rect', 2.25, 3, 1 / 4, 55], ['rect', 2.25, 3, 1 / 2, 87], ['half', 5, 0, 1 / 8, 74],
+  ['rect', 4, 2.5, 1 / 4, 106], ['rect', 3, 3.5, 1 / 2, 156], ['half', 6, 0, 1 / 8, 110],
+  ['rect', 3, 5, 1 / 4, 157], ['rect', 3, 5, 1 / 2, 225], ['half', 8, 0, 1 / 16, 172],
+  ['half', 8, 0, 1 / 8, 247], ['rect', 4.5, 6, 1 / 4, 348], ['rect', 4.5, 6, 1 / 2, 494],
+  ['half', 10, 0, 1 / 16, 331], ['half', 10, 0, 1 / 8, 472], ['rect', 5, 8, 1 / 4, 651],
+  ['rect', 4, 10, 1 / 2, 1055],
+].map(([kind, a, b, slope, gpm]) => (kind === 'half' ? { kind, d: a, slope, gpm } : { kind, w: a, h: b, slope, gpm }));
+
+/* ---------- shapes ---------- */
+// The largest section each table lists. Anything bigger is held to the table's largest figure,
+// because the code gives no capacity past it; the package says so on every item it affects.
+let MAX_AREA = null;
+// Catalog gutters: k {top, bottom, depth}, half {d}, box {w, h}. Downspouts: rect {w, h}, round {d}.
+function shapeArea(s) {
+  if (s.kind === 'round') return Math.PI * s.d * s.d / 4;
+  if (s.kind === 'half') return Math.PI * s.d * s.d / 8;
+  if (s.kind === 'k') return (s.top + s.bottom) / 2 * s.depth;
+  return s.w * s.h;
+}
+function shapePerim(s) { return s.kind === 'round' ? Math.PI * s.d : 2 * (s.w + s.h); }
+function gutterDepth(g) { return g.kind === 'k' ? g.depth : g.kind === 'half' ? g.d / 2 : g.h; }
+const near = (a, b) => Math.abs(a - b) < 1e-9;
+const sameDims = (a, b) => a.kind === 'round' || a.kind === 'half'
+  ? b.kind === a.kind && near(a.d, b.d)
+  : (b.kind === 'rect' || b.kind === 'box') && ((near(a.w, b.w) && near(a.h, b.h)) || (a.kind === 'rect' && b.kind === 'rect' && near(a.w, b.h) && near(a.h, b.w)));
+
+MAX_AREA = { leader: Math.max(...T1106_3.map(shapeArea)), gutter: Math.max(...T1106_6.map(shapeArea)) };
+const FR = { 0.25: '¼', 0.5: '½', 0.75: '¾', 0.125: '⅛', 0.375: '⅜', 0.625: '⅝', 0.875: '⅞' };
+function frac(x) {
+  const r = Math.round(x * 8) / 8, w = Math.floor(r), f = +(r - w).toFixed(3);
+  if (!f) return String(w);
+  return (w ? w : '') + (FR[f] || '.' + String(f).slice(2));
+}
+function shapeTxt(s) {
+  if (s.kind === 'round') return `${frac(s.d)}" round`;
+  if (s.kind === 'half') return `${frac(s.d)}" half-round`;
+  if (s.kind === 'k') return `${frac(s.top)}" K-style`;
+  if (s.kind === 'box') return `${frac(s.w)}×${frac(s.h)} box`;
+  return `${frac(s.w)}×${frac(s.h)}`;
+}
+const tableTxt = e => (e.kind === 'round' ? `${frac(e.d)}" round` : e.kind === 'half' ? `${frac(e.d)}" semicircular` : `${frac(e.w)}×${frac(e.h)}`);
+
+/* ---------- the code checks ---------- */
+function flowOf(R, A) { return EQ11_1 * R * A; }
+// IPC 1106.4: half of any vertical wall that sheds onto the roof is added to its projected area.
+function designArea(plan, wall) { return (plan || 0) + (wall || 0) / 2; }
+
+// Table 1106.3. A listed size is rated directly; any other is rated as the best listed size with
+// no more cross-sectional area than it has, which can only under-rate it.
+function rateLeader(s) {
+  const exact = T1106_3.find(e => sameDims(e, s));
+  if (exact) return { gpm: exact.gpm, basis: exact, rule: 'listed' };
+  const a = shapeArea(s);
+  let best = null;
+  for (const e of T1106_3) if (shapeArea(e) <= a + 1e-9 && (!best || e.gpm > best.gpm)) best = e;
+  return best ? { gpm: best.gpm, basis: best, rule: 'area', beyond: a > MAX_AREA.leader + 1e-9 } : { gpm: 0, basis: null, rule: 'none' };
+}
+// Table 1106.6 at slope s (in/ft). Sections are compared by area, as leaders are, and each is
+// rated at s by sectionRate.
+// One listed section at slope s: its row at s if printed (the table is not exactly √ between
+// columns, so a printed figure always wins), else the better of its flatter rows as printed and
+// its next steeper row reduced.
+function sectionRate(rows, s) {
+  const at = rows.find(e => near(e.slope, s));
+  if (at) return { gpm: at.gpm, basis: at, adj: false };
+  let best = null;
+  const steeper = rows.filter(e => e.slope > s).sort((a, b) => a.slope - b.slope)[0];
+  if (steeper) best = { gpm: steeper.gpm * Math.sqrt(s / steeper.slope), basis: steeper, adj: true };
+  for (const e of rows) if (e.slope < s && (!best || e.gpm > best.gpm)) best = { gpm: e.gpm, basis: e, adj: false };
+  return best;
+}
+function rateGutter(g, s) {
+  const a = shapeArea(g), self = g.kind === 'box' ? { kind: 'rect', w: g.w, h: g.h } : g;
+  // A section the table lists is rated from its own rows only, so it never borrows a better
+  // figure from a differently shaped section of the same area.
+  const sections = [];
+  for (const e of T1106_6) { const s0 = sections.find(x => sameDims(x[0], e)); if (s0) s0.push(e); else sections.push([e]); }
+  const own = sections.find(x => sameDims(x[0], self));
+  let best = null;
+  for (const rows of own ? [own] : sections) {
+    if (shapeArea(rows[0]) > a + 1e-9) continue;
+    const r = sectionRate(rows, s);
+    if (!best || r.gpm > best.gpm + 1e-9) best = r;
+  }
+  if (!best) return { gpm: 0, basis: null, rule: 'none', adj: false };
+  const rule = own ? (near(best.basis.slope, s) ? 'listed' : 'slope') : 'area';
+  return { gpm: best.gpm, basis: best.basis, rule, adj: best.adj, beyond: a > MAX_AREA.gutter + 1e-9 };
+}
+// Table 1106.2, vertical drain column: the smallest pipe that carries q.
+function drainSize(q) { return T1106_2.find(r => r.gpm >= q - 1e-9) || null; }
+
+// Weir flow over a scupper, Q = 2.9·b·h^1.5 (gpm, b and h in inches).
+function weirHead(q, b) { return b > 0 ? Math.pow(q / (2.9 * b), 2 / 3) : Infinity; }
+function weirWidth(q, h) { return h > 0 ? q / (2.9 * Math.pow(h, 1.5)) : Infinity; }
+// The drop from a gutter into a downspout, with the gutter full: a weir around the outlet's edge
+// while the water is shallow, an orifice once it is deep. Whichever passes less governs. The IPC
+// does not check this; it is reported as advice.
+function outletCap(ds, h) {
+  const weir = 2.9 * shapePerim(ds) * Math.pow(h, 1.5);
+  const orifice = 0.6 * (shapeArea(ds) / 144) * Math.sqrt(2 * 32.174 * h / 12) * 448.83;
+  return weir < orifice ? { gpm: weir, mode: 'weir' } : { gpm: orifice, mode: 'orifice' };
+}
+
+/* ---------- the job ---------- */
+function newProject() {
+  return { v: 1, code: CODE.id, name: '', jobNo: '', address: '', by: '', rain1: 0, rain15: 0,
+    maxSpacing: 50, example: false, catalog: defaultCatalog(), areas: [] };
+}
+function defaultCatalog() {
+  const g = (id, o) => ({ id, on: true, custom: false, ...o });
+  return {
+    gutters: [
+      g('k5', { kind: 'k', top: 5, bottom: 3.5, depth: 3.25 }), g('k6', { kind: 'k', top: 6, bottom: 4.25, depth: 4 }),
+      g('k7', { kind: 'k', top: 7, bottom: 5, depth: 4.5 }), g('k8', { kind: 'k', top: 8, bottom: 5.75, depth: 5 }),
+      g('h5', { kind: 'half', d: 5 }), g('h6', { kind: 'half', d: 6 }), g('h8', { kind: 'half', d: 8 }),
+      g('b6x4', { kind: 'box', w: 6, h: 4 }), g('b6x6', { kind: 'box', w: 6, h: 6 }), g('b8x6', { kind: 'box', w: 8, h: 6 }),
+      g('b8x8', { kind: 'box', w: 8, h: 8 }), g('b10x8', { kind: 'box', w: 10, h: 8 }), g('b12x8', { kind: 'box', w: 12, h: 8 }),
+    ],
+    downspouts: [
+      g('d2x3', { kind: 'rect', w: 2, h: 3 }), g('d3x4', { kind: 'rect', w: 3, h: 4 }), g('d4x5', { kind: 'rect', w: 4, h: 5 }),
+      g('d4x6', { kind: 'rect', w: 4, h: 6 }), g('d5x5', { kind: 'rect', w: 5, h: 5 }), g('d6x6', { kind: 'rect', w: 6, h: 6 }),
+      g('d4x8', { kind: 'rect', w: 4, h: 8 }), g('d6x8', { kind: 'rect', w: 6, h: 8 }),
+      g('r3', { kind: 'round', d: 3 }), g('r4', { kind: 'round', d: 4 }), g('r5', { kind: 'round', d: 5 }),
+      g('r6', { kind: 'round', d: 6 }), g('r8', { kind: 'round', d: 8 }),
+    ],
+  };
+}
+// A sloped roof drains to eave gutters, one run each. A low-slope roof drains through scuppers or
+// roof drains, with a secondary system that must carry the whole flow on its own.
+function newArea(id, kind, o = {}) {
+  const a = { id, kind, name: '', height: 20 };
+  if (kind === 'steep') a.runs = [];
+  else Object.assign(a, { plan: 0, wall: 0, parapet: true, pType: 'scupper', pN: 2, sType: 'scupper', sN: 2,
+    rise: 2, sH: 4, depth: 0, sHead: 0 });
+  return Object.assign(a, o);
+}
+function newRun(id, o = {}) { return { id, name: '', len: 0, area: 0, wall: 0, slope: 1 / 16, gutter: 'auto', ds: 'auto', keep: [], ...o }; }
+function nextId(prefix, list) {
+  let n = 0;
+  for (const x of list) { const m = new RegExp('^' + prefix + '(\\d+)$').exec(x.id); if (m) n = Math.max(n, +m[1]); }
+  return prefix + (n + 1);
+}
+
+// Anything a file or the autosave brings in passes through here before it can become the open
+// job. A new field has to be added here as well as in its factory, or it is dropped on load.
+function checkProject(o) {
+  const P = newProject();
+  if (!o || typeof o !== 'object') return P;
+  const num = (v, d, lo = 0, hi = 1e7) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
+  const str = (v, n = LIMIT.text) => (typeof v === 'string' ? v.slice(0, n) : '');
+  const id = (v, d) => (typeof v === 'string' && /^[\w-]{1,24}$/.test(v) ? v : d);
+  for (const k of ['name', 'jobNo', 'address', 'by']) P[k] = str(o[k]);
+  P.rain1 = num(o.rain1, 0, 0, 20); P.rain15 = num(o.rain15, 0, 0, 10);
+  P.maxSpacing = num(o.maxSpacing, 50, 5, 500);
+  P.example = o.example === true;
+  const c = o.catalog && typeof o.catalog === 'object' ? o.catalog : null;
+  if (c) {
+    const dims = { k: ['top', 'bottom', 'depth'], half: ['d'], box: ['w', 'h'], rect: ['w', 'h'], round: ['d'] };
+    for (const [list, kinds] of [['gutters', ['k', 'half', 'box']], ['downspouts', ['rect', 'round']]]) {
+      if (!Array.isArray(c[list])) continue;
+      const out = [], seen = new Set();
+      for (const x of c[list].slice(0, LIMIT.catalog)) {
+        if (!x || !kinds.includes(x.kind)) continue;
+        const e = { id: id(x.id, ''), on: x.on !== false, custom: x.custom === true, kind: x.kind };
+        let bad = false;
+        for (const k of dims[x.kind]) { e[k] = num(x[k], 0, 0, 48); if (!(e[k] > 0)) bad = true; }
+        if (bad || !e.id || seen.has(e.id)) continue;
+        seen.add(e.id); out.push(e);
+      }
+      if (out.length) P.catalog[list] = out;
+    }
+  }
+  const slope = v => SLOPES.find(s => near(s, v)) || 1 / 16;
+  const ids = new Set();
+  for (const a of (Array.isArray(o.areas) ? o.areas : []).slice(0, LIMIT.areas)) {
+    if (!a || typeof a !== 'object') continue;
+    const kind = a.kind === 'low' ? 'low' : 'steep';
+    let aid = id(a.id, ''); if (!aid || ids.has(aid)) aid = nextId('a', P.areas); ids.add(aid);
+    const A = newArea(aid, kind, { name: str(a.name, LIMIT.name), height: num(a.height, 20, 0, 400) });
+    if (kind === 'steep') {
+      const rids = new Set();
+      for (const r of (Array.isArray(a.runs) ? a.runs : []).slice(0, LIMIT.runs)) {
+        if (!r || typeof r !== 'object') continue;
+        let rid = id(r.id, ''); if (!rid || rids.has(rid)) rid = nextId('r', A.runs); rids.add(rid);
+        const keep = (Array.isArray(r.keep) ? r.keep : []).filter(k => Array.isArray(k) && k.length === 2 && k.every(Number.isFinite) && k[1] > k[0])
+          .slice(0, 40).map(k => [Math.max(0, k[0]), k[1]]);
+        A.runs.push(newRun(rid, { name: str(r.name, LIMIT.name), len: num(r.len, 0, 0, 5000), area: num(r.area, 0, 0, 1e7),
+          wall: num(r.wall, 0, 0, 1e7), slope: slope(r.slope), gutter: id(r.gutter, 'auto'), ds: id(r.ds, 'auto'), keep }));
+      }
+    } else {
+      Object.assign(A, { plan: num(a.plan, 0, 0, 1e8), wall: num(a.wall, 0, 0, 1e7), parapet: a.parapet !== false,
+        pType: a.pType === 'drain' ? 'drain' : 'scupper', pN: Math.round(num(a.pN, 2, 1, 200)),
+        sType: ['scupper', 'drain', 'none'].includes(a.sType) ? a.sType : 'scupper', sN: Math.round(num(a.sN, 2, 1, 200)),
+        rise: num(a.rise, 2, 0, 48), sH: num(a.sH, 4, 1, 48), depth: num(a.depth, 0, 0, 96), sHead: num(a.sHead, 0, 0, 48) });
+    }
+    P.areas.push(A);
+  }
+  return P;
+}
+
+/* ---------- analysis ---------- */
+// The design rates. R1 sizes everything (IPC 1106.1). R15 is the rain-load rate (IBC 1611.1): the
+// 100-year, 15-minute rate, or twice the hourly rate where it has not been looked up.
+function rates(P) {
+  const r1 = P.rain1 || 0, r15 = P.rain15 > 0 ? P.rain15 * 4 : 2 * r1;
+  return { r1, r15, r15From: P.rain15 > 0 ? 'nws' : 'double' };
+}
+const enabled = list => list.filter(x => x.on);
+function byArea(list) { return list.slice().sort((a, b) => shapeArea(a) - shapeArea(b)); }
+
+// Evenly spaced outlets on a run of length L, each moved to the nearer edge of any keep-out it
+// lands in. Returns sorted positions, or null when one can't be placed.
+function placeOutlets(L, n, keep) {
+  const xs = [];
+  for (let i = 0; i < n; i++) {
+    let x = (i + 0.5) * L / n;
+    const inside = x => keep.some(([a, b]) => x > a + 1e-9 && x < b - 1e-9);
+    if (inside(x)) {
+      const k = keep.find(([a, b]) => x > a && x < b);
+      const opts = [k[0], k[1]].filter(v => v >= 0 && v <= L && !inside(v)).sort((p, q) => Math.abs(p - x) - Math.abs(q - x));
+      if (!opts.length) return null;
+      x = opts[0];
+    }
+    xs.push(x);
+  }
+  return xs.sort((a, b) => a - b);
+}
+// What each outlet collects and the longest stretch of gutter feeding one. The high points are
+// midway between outlets; each end drains to its nearest outlet.
+function tributary(L, xs) {
+  const bounds = [0];
+  for (let i = 1; i < xs.length; i++) bounds.push((xs[i - 1] + xs[i]) / 2);
+  bounds.push(L);
+  const share = xs.map((x, i) => bounds[i + 1] - bounds[i]);
+  let seg = 0;
+  xs.forEach((x, i) => { seg = Math.max(seg, x - bounds[i], bounds[i + 1] - x); });
+  let gap = Math.max(xs[0], L - xs[xs.length - 1]) * 2;
+  for (let i = 1; i < xs.length; i++) gap = Math.max(gap, xs[i] - xs[i - 1]);
+  return { share, seg, gap };
+}
+
+function analyzeRun(P, run, R) {
+  const cat = P.catalog, A = designArea(run.area, run.wall), Q = flowOf(R.r1, A);
+  const out = { run, A, Q, alts: [], pick: null, status: 'empty', msgs: [] };
+  if (!(run.len > 0) || !(A > 0) || !(R.r1 > 0)) return out;
+  const qft = Q / run.len;
+  const gutters = run.gutter !== 'auto' ? cat.gutters.filter(g => g.id === run.gutter) : byArea(enabled(cat.gutters));
+  const dss = run.ds !== 'auto' ? cat.downspouts.filter(d => d.id === run.ds) : byArea(enabled(cat.downspouts));
+  if (!gutters.length || !dss.length) { out.status = 'fail'; out.msgs.push(['fail', 'Turn on at least one gutter and one downspout size in the catalog.']); return out; }
+  // Layouts that also clear the outlet advice are preferred; only when none does are layouts that
+  // pass the code alone offered, so Auto never trades a clean answer for one fewer downspout size.
+  const search = strict => {
+    const found = [];
+    for (const ds of dss) {
+      const lead = rateLeader(ds);
+      if (!(lead.gpm > 0)) continue;
+      for (let n = Math.max(1, Math.ceil(run.len / P.maxSpacing - 1e-9)); n <= LIMIT.maxDS; n++) {
+        const xs = placeOutlets(run.len, n, run.keep);
+        if (!xs) continue;
+        const t = tributary(run.len, xs);
+        if (t.gap > P.maxSpacing + 1e-6) continue;
+        const qs = t.share.map(s => s * qft), qMax = Math.max(...qs);
+        if (qMax > lead.gpm + 1e-9) continue;
+        const qGut = t.seg * qft;
+        let gut = null;
+        for (const g of gutters) {
+          const r = rateGutter(g, run.slope);
+          if (r.gpm < qGut - 1e-9) continue;
+          const oc = outletCap(ds, gutterDepth(g));
+          if (strict && oc.gpm < qMax) continue;
+          gut = { g, r, oc }; break;
+        }
+        if (!gut) continue;
+        found.push({ ds, lead, n, xs, qs, qMax, gutter: gut.g, grate: gut.r, qGut, seg: t.seg, gap: t.gap, outlet: gut.oc });
+        break;
+      }
+    }
+    return found;
+  };
+  let all = search(true);
+  if (!all.length) all = search(false);
+  // One choice per count: the smallest downspout that works with that many.
+  const seen = new Set();
+  for (const a of all.sort((p, q) => p.n - q.n || shapeArea(p.ds) - shapeArea(q.ds))) {
+    if (seen.has(a.n)) continue;
+    seen.add(a.n); out.alts.push(a);
+  }
+  if (!out.alts.length) {
+    out.status = 'fail';
+    out.msgs.push(['fail', run.ds !== 'auto' || run.gutter !== 'auto'
+      ? `No layout of up to ${LIMIT.maxDS} downspouts works with the size you chose. Set it back to Auto to see what does.`
+      : `No catalog size works, even with ${LIMIT.maxDS} downspouts. Check the roof area and keep-outs, or turn on larger sizes.`]);
+    return out;
+  }
+  const p = out.pick = out.alts[0];
+  p.checks = runChecks(p, out, P);
+  out.status = p.checks.some(c => c.ok === false && !c.adv) ? 'fail' : p.checks.some(c => c.adv && c.ok === false) ? 'warn' : 'ok';
+  if (p.outlet.gpm < p.qMax) out.msgs.push(['warn', `The drop into ${an(shapeTxt(p.ds))} passes about ${p.outlet.gpm.toFixed(0)} gpm with the ${shapeTxt(p.gutter)} full, less than the ${p.qMax.toFixed(1)} gpm it collects. The IPC doesn't check this, but an oversized outlet or a funnel drop would.`]);
+  return out;
+}
+function runChecks(p, r, P) {
+  const past = (r, t) => (r.beyond ? `; larger than any section in ${t}, so held to its largest` : '');
+  const lb = (p.lead.rule === 'listed' ? `listed as ${tableTxt(p.lead.basis)}` : `rated as ${tableTxt(p.lead.basis)} (no more area)`) + past(p.lead, 'Table 1106.3');
+  const gb = p.grate.rule === 'listed' ? `listed at ${SLOPE_TXT[r.run.slope]}"/ft`
+    : p.grate.rule === 'slope' ? `listed at ${SLOPE_TXT[p.grate.basis.slope]}"/ft${p.grate.adj ? `, reduced to ${SLOPE_TXT[r.run.slope]}"/ft` : ''}`
+    : `rated as ${tableTxt(p.grate.basis)} at ${SLOPE_TXT[p.grate.basis.slope]}"/ft${p.grate.adj ? `, reduced to ${SLOPE_TXT[r.run.slope]}"/ft` : ''}${past(p.grate, 'Table 1106.6')}`;
+  return [
+    { label: `Downspouts: ${p.n} × ${shapeTxt(p.ds)}`, sub: lb, flow: p.qMax, cap: p.lead.gpm, ok: p.qMax <= p.lead.gpm + 1e-9, ref: 'IPC 1106.3, Table 1106.3' },
+    { label: `Gutter: ${shapeTxt(p.gutter)}`, sub: gb, flow: p.qGut, cap: p.grate.gpm, ok: p.qGut <= p.grate.gpm + 1e-9, ref: 'IPC 1106.6, Table 1106.6' },
+    { label: 'Downspout spacing', sub: 'practice, not code', text: `${p.gap.toFixed(1)} ft at most, limit ${P.maxSpacing} ft`, ok: p.gap <= P.maxSpacing + 1e-6, adv: true, ref: 'Practice' },
+    { label: 'Gutter outlet', sub: `${p.outlet.mode} with the gutter full; advice`, flow: p.qMax, cap: p.outlet.gpm, ok: p.outlet.gpm >= p.qMax, adv: true, ref: 'Advice' },
+  ];
+}
+
+function pickLeader(P, q) {
+  for (const d of byArea(enabled(P.catalog.downspouts))) { const r = rateLeader(d); if (r.gpm >= q - 1e-9) return { ds: d, lead: r }; }
+  return null;
+}
+const up = (x, step = 1) => Math.ceil(x / step - 1e-9) * step;
+
+// One set of scuppers. Width: at least the circumference of the drain the same flow would need
+// (IPC 1106.5, 1108.3), widened until the water over the inlet stays inside the opening and
+// within the roof's design depth. Heads are at the rain-load rate, because that is the depth the
+// roof is designed for (IBC 1611.1).
+function scuppers(P, ar, role, n, Q1, Q15, ds) {
+  const q1 = Q1 / n, q15 = Q15 / n, drain = drainSize(q1);
+  const u = { role, type: 'scupper', n, q1, q15, ds, msgs: [], checks: [] };
+  if (!drain) { u.msgs.push(['fail', `${q1.toFixed(0)} gpm through one scupper is beyond IPC Table 1106.2. Use more scuppers.`]); u.fail = true; return u; }
+  const circ = Math.PI * drain.size;
+  const need = [['circumference', circ]];
+  need.push(['opening', weirWidth(q15, ar.sH)]);
+  if (ar.depth > 0) {
+    const room = ar.depth - ds;
+    if (room <= 0) { u.msgs.push(['fail', `The inlet is ${frac(ds)}" up, at or above the ${frac(ar.depth)}" design depth. Lower it.`]); u.fail = true; }
+    else need.push(['depth', weirWidth(q15, room)]);
+  }
+  const top = need.reduce((m, x) => (x[1] > m[1] ? x : m));
+  u.b = up(Math.min(top[1], 1e5)); u.why = top[0]; u.h = ar.sH; u.drain = drain;
+  u.dh = weirHead(q15, u.b); u.ds = ds; u.R = 5.2 * (ds + u.dh);
+  const sec = role === 'secondary';
+  u.checks.push({ label: `Opening width ${frac(u.b)}"`, sub: `at least the ${frac(drain.size)}" drain's circumference, ${circ.toFixed(1)}"`, text: `${frac(u.b)}" ≥ ${circ.toFixed(1)}"`, ok: u.b >= circ - 1e-9, ref: sec ? 'IPC 1108.3' : 'IPC 1106.5' });
+  u.checks.push({ label: `Opening height ${frac(ar.sH)}"`, sub: 'at least 4"', text: `${frac(ar.sH)}" ≥ 4"`, ok: ar.sH >= 4 - 1e-9, ref: sec ? 'IPC 1108.3, IBC 1502.3' : 'IPC 1106.5' });
+  u.checks.push({ label: 'Water over the inlet', sub: `at ${q15.toFixed(1)} gpm, the rain-load rate`, text: `${u.dh.toFixed(2)}" within the ${frac(ar.sH)}" opening`, ok: u.dh <= ar.sH + 1e-9, ref: 'Weir, Q = 2.9·b·h^1.5' });
+  if (ar.depth > 0) u.checks.push({ label: 'Design water depth', sub: `static ${frac(ds)}" + hydraulic ${u.dh.toFixed(2)}"`, flow: ds + u.dh, cap: ar.depth, unit: 'in', ok: ds + u.dh <= ar.depth + 1e-9, ref: sec ? 'IPC 1108.3, IBC 1611.1' : 'IPC 1106.5, IBC 1611.1' });
+  if (role === 'primary') {
+    const L = pickLeader(P, q1);
+    if (!L) { u.msgs.push(['fail', `No catalog downspout carries ${q1.toFixed(0)} gpm. Use more scuppers or turn on larger sizes.`]); u.fail = true; }
+    else {
+      u.leader = L; u.head = u.b + 4;
+      u.checks.push({ label: `Downspout: ${shapeTxt(L.ds)}`, sub: L.lead.rule === 'listed' ? `listed as ${tableTxt(L.lead.basis)}` : `rated as ${tableTxt(L.lead.basis)} (no more area)`, flow: q1, cap: L.lead.gpm, ok: true, ref: 'IPC 1106.3, Table 1106.3' });
+    }
+  }
+  return u;
+}
+function drains(P, ar, role, n, Q1, ds) {
+  const q1 = Q1 / n, drain = drainSize(q1);
+  const u = { role, type: 'drain', n, q1, msgs: [], checks: [], ds };
+  if (!drain) { u.msgs.push(['fail', `${q1.toFixed(0)} gpm through one drain is beyond IPC Table 1106.2. Use more drains.`]); u.fail = true; return u; }
+  u.drain = drain;
+  u.checks.push({ label: `Drain and leader: ${frac(drain.size)}"`, sub: 'vertical drain capacity', flow: q1, cap: drain.gpm, ok: true, ref: 'IPC 1106.2, Table 1106.2' });
+  u.msgs.push(['note', `Check that the drain model's published flow at the design head is at least ${q1.toFixed(1)} gpm (IPC 1105.2, 1106.2).`]);
+  if (role === 'secondary') {
+    if (ar.sHead > 0) { u.dh = ar.sHead; u.R = 5.2 * (ds + u.dh); }
+    if (ar.depth > 0 && ar.sHead > 0) u.checks.push({ label: 'Design water depth', sub: `static ${frac(ds)}" + hydraulic ${frac(ar.sHead)}" from drain data`, flow: ds + ar.sHead, cap: ar.depth, unit: 'in', ok: ds + ar.sHead <= ar.depth + 1e-9, ref: 'IPC 1108.3, IBC 1611.1' });
+  }
+  return u;
+}
+
+function analyzeLow(P, ar, R) {
+  const A = designArea(ar.plan, ar.wall), Q1 = flowOf(R.r1, A), Q15 = flowOf(R.r15, A);
+  const out = { A, Q1, Q15, units: [], msgs: [], status: 'empty' };
+  if (!(A > 0) || !(R.r1 > 0)) return out;
+  const prim = ar.pType === 'drain' ? drains(P, ar, 'primary', ar.pN, Q1, 0) : scuppers(P, ar, 'primary', ar.pN, Q1, Q15, 0);
+  out.units.push(prim);
+  // The secondary system is sized as though the primary were blocked: the full flow, on its own.
+  if (ar.sType === 'scupper') out.units.push(scuppers(P, ar, 'secondary', ar.sN, Q1, Q15, ar.rise));
+  else if (ar.sType === 'drain') out.units.push(drains(P, ar, 'secondary', ar.sN, Q1, ar.rise));
+  else if (ar.parapet) {
+    const sev = ar.pType === 'drain' ? 'fail' : 'warn';
+    out.msgs.push([sev, 'The roof edge would trap water, so secondary (emergency overflow) drainage is required (IPC 1108.1, IBC 1502.2).']);
+  }
+  const rl = out.units.find(u => u.R != null && (u.role === 'secondary' || ar.sType === 'none'));
+  out.rain = rl ? { ds: rl.ds, dh: rl.dh, R: rl.R } : null;
+  if (out.units.some(u => u.type === 'drain' && u.role === 'secondary') && !(ar.sHead > 0))
+    out.msgs.push(['note', 'Enter the secondary drain’s published head at the design flow to report the rain load (IBC 1611.1).']);
+  if (!(ar.depth > 0)) out.msgs.push(['note', 'No design water depth entered. Give the depths reported here to the structural engineer (IBC 1611.1).']);
+  const bad = out.units.some(u => u.fail || u.checks.some(c => c.ok === false && !c.adv)) || out.msgs.some(m => m[0] === 'fail');
+  out.status = bad ? 'fail' : out.msgs.some(m => m[0] === 'warn') || out.units.some(u => u.msgs.some(m => m[0] === 'warn')) ? 'warn' : 'ok';
+  return out;
+}
+
+const RANK = { empty: 0, ok: 1, warn: 2, fail: 3 };
+const worst = list => list.reduce((w, s) => (RANK[s] > RANK[w] ? s : w), 'empty');
+function analyze(P) {
+  const R = rates(P);
+  const areas = P.areas.map(ar => {
+    if (ar.kind === 'steep') {
+      const runs = ar.runs.map(r => analyzeRun(P, r, R));
+      return { area: ar, kind: 'steep', runs, status: worst(runs.map(r => r.status)), Q: runs.reduce((t, r) => t + r.Q, 0) };
+    }
+    const lo = analyzeLow(P, ar, R);
+    return { area: ar, kind: 'low', ...lo, Q: lo.Q1 };
+  });
+  const J = { R, areas, status: worst(areas.map(a => a.status)) };
+  J.materials = materials(J);
+  return J;
+}
+
+/* ---------- the material list ---------- */
+function materials(J) {
+  const rows = new Map();
+  const add = (group, item, unit, qty, where) => {
+    if (!(qty > 0)) return;
+    const k = group + '|' + item + '|' + unit;
+    const r = rows.get(k) || { group, item, unit, qty: 0, where: [] };
+    r.qty += qty; if (!r.where.includes(where)) r.where.push(where);
+    rows.set(k, r);
+  };
+  for (const a of J.areas) {
+    const nm = a.area.name || 'Unnamed area', h = a.area.height;
+    if (a.kind === 'steep') for (const r of a.runs) {
+      const p = r.pick; if (!p) continue;
+      add('Gutter', shapeTxt(p.gutter) + ' gutter', 'LF', r.run.len, nm);
+      add('Gutter', shapeTxt(p.gutter) + ' end caps', 'EA', 2, nm);
+      add('Gutter', `Outlets for ${shapeTxt(p.ds)}`, 'EA', p.n, nm);
+      add('Gutter', shapeTxt(p.gutter) + ' expansion joints (practice: 50 ft max between)', 'EA', Math.max(0, Math.ceil(r.run.len / 50 - 1e-9) - 1), nm);
+      add('Downspout', shapeTxt(p.ds) + ' downspout', 'LF', p.n * h, nm);
+      add('Downspout', shapeTxt(p.ds) + ' elbows', 'EA', p.n * 3, nm);
+    } else for (const u of a.units) {
+      if (u.fail) continue;
+      if (u.type === 'scupper') {
+        add('Scupper', `${frac(u.b)}" × ${frac(u.h)}" ${u.role} scupper`, 'EA', u.n, nm);
+        if (u.leader) {
+          add('Scupper', `Conductor head, ${frac(u.head)}" wide`, 'EA', u.n, nm);
+          add('Downspout', shapeTxt(u.leader.ds) + ' downspout', 'LF', u.n * h, nm);
+          add('Downspout', shapeTxt(u.leader.ds) + ' elbows', 'EA', u.n, nm);
+        }
+      } else add('Roof drain', `${frac(u.drain.size)}" ${u.role} roof drain and leader`, 'EA', u.n, nm);
+    }
+  }
+  const order = ['Gutter', 'Downspout', 'Scupper', 'Roof drain'];
+  return [...rows.values()].sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group) || a.item.localeCompare(b.item, 'en', { numeric: true }));
+}
+function materialsCsv(P, J) {
+  const q = s => /[",\n]/.test(s) ? '"' + String(s).replace(/"/g, '""') + '"' : String(s);
+  const lines = [['Group', 'Item', 'Qty', 'Unit', 'Areas'].join(',')];
+  for (const r of J.materials) lines.push([r.group, r.item, +r.qty.toFixed(2), r.unit, r.where.join('; ')].map(q).join(','));
+  return lines.join('\n') + '\n';
+}
+
+/* ---------- words ---------- */
+const an = w => (/^(8|11|18)/.test(w) ? 'an ' : 'a ') + w;
+const gpm = q => `${q < 10 ? q.toFixed(1) : Math.round(q).toLocaleString('en-US')} gpm`;
+function runTxt(r) {
+  if (r.status === 'empty') return 'Give the run a length and the roof area that drains to it.';
+  const p = r.pick;
+  if (!p) return r.msgs[0][1];
+  return `${p.n} × ${shapeTxt(p.ds)} downspout${p.n > 1 ? 's' : ''} and ${an(shapeTxt(p.gutter))} gutter carry ${gpm(r.Q)}.`;
+}
+function lowTxt(a) {
+  if (a.status === 'empty') return 'Give the roof area to size its drainage.';
+  const parts = a.units.filter(u => !u.fail).map(u => u.type === 'scupper'
+    ? `${u.n} ${u.role} scupper${u.n > 1 ? 's' : ''} ${frac(u.b)}" × ${frac(u.h)}"`
+    : `${u.n} ${u.role} ${frac(u.drain.size)}" drain${u.n > 1 ? 's' : ''}`);
+  return parts.length ? `${parts.join(' and ')} for ${gpm(a.Q1)}.` : 'Nothing could be sized; see below.';
+}
+function headline(J) {
+  const live = J.areas.filter(a => a.status !== 'empty');
+  if (!(J.R.r1 > 0)) return { status: 'empty', text: 'Enter the design rainfall to size the job.' };
+  if (!live.length) return { status: 'empty', text: 'Add a roof area to size its drainage.' };
+  const fails = live.filter(a => a.status === 'fail').length, warns = live.filter(a => a.status === 'warn').length;
+  const total = live.reduce((t, a) => t + a.Q, 0);
+  if (fails) return { status: 'fail', text: `${fails} of ${live.length} roof area${live.length > 1 ? 's' : ''} ${fails > 1 ? 'need' : 'needs'} changes before ${fails > 1 ? 'they pass' : 'it passes'}.` };
+  if (warns) return { status: 'warn', text: `Everything passes the code; ${warns} area${warns > 1 ? 's have' : ' has'} advice worth a look.` };
+  return { status: 'ok', text: `Every outlet passes the code, ${gpm(total)} in all at ${J.R.r1} in/hr.` };
+}
+
+/* ---------- the example ---------- */
+function exampleProject() {
+  const P = newProject();
+  Object.assign(P, { name: 'Example: office and warehouse', jobNo: '26-114', address: '400 Industrial Pkwy', by: '', rain1: 3.2, rain15: 1.45, example: true });
+  const office = newArea('a1', 'steep', { name: 'Office, two story', height: 24 });
+  office.runs.push(newRun('r1', { name: 'Front eave', len: 96, area: 2880, wall: 0, slope: 1 / 16, keep: [[44, 52]] }));
+  office.runs.push(newRun('r2', { name: 'Back eave', len: 96, area: 2880, wall: 480, slope: 1 / 16 }));
+  const wh = newArea('a2', 'low', { name: 'Warehouse', height: 28, plan: 18000, wall: 1200, pType: 'scupper', pN: 4, sType: 'scupper', sN: 4, rise: 2, sH: 4, depth: 6 });
+  P.areas.push(office, wh);
+  return P;
+}
+</script>
+<script>
+/* The UI: three tabs over one job, P. Typing into a field changes P and redraws the results
+   beside it but never rebuilds the form, so the cursor stays put; adding, removing or choosing
+   rebuilds the tab. The Results tab is rebuilt whenever it is shown or printed. */
+const $ = id => document.getElementById(id);
+const KEY = 'drainage.autosave';
+let P = newProject(), tab = 'areas', J = null;
+
+const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+const valOf = n => (n ? String(+(+n).toFixed(4)) : '');
+const parse = v => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 ? n : 0; };
+const fmt = (n, d = 0) => n.toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
+const sf = n => fmt(n) + ' sf';
+
+let saveT = 0;
+function save() { clearTimeout(saveT); saveT = setTimeout(saveNow, 300); }
+function saveNow() { clearTimeout(saveT); try { localStorage.setItem(KEY, JSON.stringify(P)); } catch (e) {} }
+window.addEventListener('beforeunload', saveNow);
+let toastT = 0;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
+
+function setTab(t) { tab = t; render(); window.scrollTo(0, 0); }
+function render() {
+  for (const b of document.querySelectorAll('.tab')) b.classList.toggle('on', b.dataset.tab === tab);
+  for (const [t, id] of [['job', 'tJob'], ['areas', 'tAreas'], ['results', 'tResults']]) $(id).classList.toggle('hide', tab !== t);
+  $('exBanner').classList.toggle('hide', !P.example);
+  if (tab === 'job') renderJob();
+  else if (tab === 'areas') renderAreas();
+  else renderResults();
+}
+const statusTxt = { ok: 'Passes', warn: 'Passes, with advice', fail: 'Needs changes', empty: 'Not sized yet' };
+const pill = s => `<span class="status ${s}">${statusTxt[s]}</span>`;
+const msgs = list => list.map(([k, t]) => `<p class="msg ${k}">${esc(t)}</p>`).join('');
+
+/* ---------- 1 Job ---------- */
+function catItem(x, list) {
+  const r = list === 'gutters' ? rateGutter(x, 1 / 16) : rateLeader(x);
+  return `<li><label class="chk"><input type="checkbox" data-cat="${list}" data-id="${x.id}"${x.on ? ' checked' : ''}> ${esc(shapeTxt(x))}</label>
+    <span class="rt"${r.beyond ? ' title="Larger than any section the IPC table lists, so held to its largest figure"' : ''}>${r.gpm ? gpm(r.gpm) + (list === 'gutters' ? ' at ⅟₁₆' : '') + (r.beyond ? ' (table max)' : '') : 'not rated'}</span>${x.custom ? `<button class="x" data-act="delCat" data-cat="${list}" data-id="${x.id}" aria-label="Remove">×</button>` : ''}</li>`;
+}
+function renderJob() {
+  const c = P.catalog;
+  $('tJob').innerHTML = `
+  <div class="card">
+    <h2>Job</h2>
+    <div class="fields" style="margin-top:10px">
+      <label class="wide">Job name<input class="in" data-p="name" value="${esc(P.name)}" placeholder="e.g. 1200 Main St re-roof" maxlength="200"></label>
+      <label>Job number<input class="in" data-p="jobNo" value="${esc(P.jobNo)}" maxlength="200"></label>
+      <label>Prepared by<input class="in" data-p="by" value="${esc(P.by)}" maxlength="200"></label>
+      <label class="wide">Address<input class="in" data-p="address" value="${esc(P.address)}" maxlength="200"></label>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Design rainfall</h2>
+    <p class="why">Sized to the ${CODE.name}. Look up the job's address on the <a href="https://hdsc.nws.noaa.gov/pfds/" target="_blank" rel="noopener">NOAA precipitation frequency server</a> and read the <b>100-year</b> column. IPC Figure 1106.1 gives the same 1-hour value on a map.</p>
+    <div class="fields" style="margin-top:12px">
+      <label>100-year, 1-hour rainfall (in)<input class="in num" data-p="rain1" type="number" inputmode="decimal" min="0" step="any" value="${valOf(P.rain1)}" placeholder="e.g. 3.2"><span class="hint">Sizes every gutter, leader, drain and scupper (IPC 1106.1).</span></label>
+      <label>100-year, 15-minute rainfall (in)<input class="in num" data-p="rain15" type="number" inputmode="decimal" min="0" step="any" value="${valOf(P.rain15)}" placeholder="optional"><span class="hint">The depth NOAA lists for 15 minutes. Used for the water depth on the roof (IBC 1611.1). Left blank, twice the hourly rate is used, as the IBC allows.</span></label>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Downspout spacing</h2>
+    <div class="fields" style="margin-top:10px">
+      <label>Most between downspouts (ft)<input class="in num" data-p="maxSpacing" type="number" inputmode="decimal" min="5" step="any" value="${valOf(P.maxSpacing)}"><span class="hint">Practice, not code. No point on a gutter is more than half this from a downspout.</span></label>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Catalog</h2>
+    <p class="why">The sizes the tool may choose from. Turn off what you don't stock. Ratings are from IPC Tables 1106.3 and 1106.6; gutters are shown at ⅟₁₆" per foot.</p>
+    <div class="cat" style="margin-top:12px">
+      <div><h3 class="grp" style="margin-top:0">Gutters</h3><ul>${c.gutters.map(x => catItem(x, 'gutters')).join('')}</ul>
+        <div class="addc no-print">Add <select class="in" id="ngKind"><option value="box">Box</option><option value="half">Half-round</option><option value="k">K-style</option></select>
+        <span id="ngDims"></span><button class="btn sm" data-act="addGutter">Add</button></div></div>
+      <div><h3 class="grp" style="margin-top:0">Downspouts</h3><ul>${c.downspouts.map(x => catItem(x, 'downspouts')).join('')}</ul>
+        <div class="addc no-print">Add <select class="in" id="ndKind"><option value="rect">Rectangular</option><option value="round">Round</option></select>
+        <span id="ndDims"></span><button class="btn sm" data-act="addDs">Add</button></div></div>
+    </div>
+  </div>
+  <div style="text-align:right"><button class="btn pri" data-act="goAreas">Next: roof areas →</button></div>`;
+  dimInputs();
+}
+const DIMS = { box: [['w', 'width'], ['h', 'depth']], half: [['d', 'diameter']], k: [['top', 'top'], ['bottom', 'bottom'], ['depth', 'depth']], rect: [['w', 'w'], ['h', 'h']], round: [['d', 'diameter']] };
+function dimInputs() {
+  for (const [sel, box] of [['ngKind', 'ngDims'], ['ndKind', 'ndDims']]) {
+    const k = $(sel).value;
+    $(box).innerHTML = DIMS[k].map(([f, l]) => `<input class="in num" data-dim="${f}" type="number" step="any" min="0" placeholder="${l}" aria-label="${l} in inches">`).join(' ') + ' in';
+  }
+}
+$('tJob').addEventListener('input', e => {
+  const el = e.target, f = el.dataset.p;
+  if (!f) return;
+  P[f] = el.type === 'number' ? parse(el.value) : el.value.slice(0, 200);
+  if (f === 'maxSpacing' && P[f] < 5) P[f] = 50;
+  save();
+});
+$('tJob').addEventListener('change', e => {
+  const el = e.target;
+  if (el.id === 'ngKind' || el.id === 'ndKind') return dimInputs();
+  if (el.dataset.cat) { const x = P.catalog[el.dataset.cat].find(y => y.id === el.dataset.id); if (x) { x.on = el.checked; save(); } }
+});
+$('tJob').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'goAreas') return setTab('areas');
+  if (act === 'delCat') { P.catalog[b.dataset.cat] = P.catalog[b.dataset.cat].filter(x => x.id !== b.dataset.id); save(); return renderJob(); }
+  if (act === 'addGutter' || act === 'addDs') {
+    const list = act === 'addGutter' ? 'gutters' : 'downspouts', kind = $(act === 'addGutter' ? 'ngKind' : 'ndKind').value;
+    const box = $(act === 'addGutter' ? 'ngDims' : 'ndDims'), x = { id: nextId('c', P.catalog[list]), on: true, custom: true, kind };
+    for (const [f] of DIMS[kind]) { x[f] = parse(box.querySelector(`[data-dim="${f}"]`).value); if (!(x[f] > 0) || x[f] > 48) return toast('Give every dimension, in inches.'); }
+    if (P.catalog[list].length >= LIMIT.catalog) return toast('The catalog is full.');
+    P.catalog[list].push(x); save(); renderJob();
+  }
+});
+
+/* ---------- 2 Roof areas ---------- */
+function checkRow(c) {
+  if (c.text) return `<div class="ck"><div class="cl">${esc(c.label)}<small>${esc(c.sub || '')} · ${esc(c.ref)}</small></div><div class="txt">${c.ok ? '✓' : '✗'} ${esc(c.text)}</div><div class="v">${c.ok ? 'OK' : c.adv ? 'Advice' : 'Fails'}</div></div>`;
+  const u = c.cap > 0 ? c.flow / c.cap : 1, cls = c.ok ? (c.adv ? 'adv' : '') : c.adv ? 'warn' : 'fail';
+  const f = c.unit === 'in' ? x => `${x.toFixed(2)}"` : gpm;
+  return `<div class="ck"><div class="cl">${esc(c.label)}<small>${esc(c.sub || '')} · ${esc(c.ref)}</small></div>
+    <div class="t" title="${Math.round(u * 100)}% of capacity"><div class="f ${cls}" style="width:${Math.min(100, u * 100).toFixed(1)}%"></div></div>
+    <div class="v">${f(c.flow)} <small>of ${f(c.cap)} · ${Math.round(u * 100)}%</small></div></div>`;
+}
+function runResult(r) {
+  if (r.status === 'empty') return `<p class="msg note">${esc(runTxt(r))}</p>`;
+  const p = r.pick;
+  const alts = r.alts.slice(0, 3).map(a => `<button class="alt${p && a === p && r.run.ds !== 'auto' ? ' on' : ''}" data-act="pickDs" data-ds="${a.ds.id}">${a.n} × ${esc(shapeTxt(a.ds))}<small>with ${esc(an(shapeTxt(a.gutter)))} gutter</small></button>`).join('');
+  return `<div class="rline">${pill(r.status)}<b>${esc(runTxt(r))}</b>${p ? `<span class="kindtag">downspouts at ${p.xs.map(x => fmt(x, 1) + "'").join(', ')} from the left end</span>` : ''}</div>
+    ${p ? `<div class="checks">${p.checks.map(checkRow).join('')}</div>` : ''}
+    ${msgs(r.msgs)}
+    ${r.alts.length > 1 || r.run.ds !== 'auto' ? `<div class="alts no-print">${r.run.ds !== 'auto' ? '<button class="alt" data-act="pickDs" data-ds="auto">Auto<small>fewest downspouts</small></button>' : ''}${r.run.ds === 'auto' ? alts : ''}</div>` : ''}`;
+}
+const opt = (v, cur, label) => `<option value="${v}"${v === cur ? ' selected' : ''}>${esc(label)}</option>`;
+const keepTxt = k => k.map(([a, b]) => `${+a.toFixed(2)}-${+b.toFixed(2)}`).join(', ');
+function parseKeep(s) {
+  const out = [];
+  for (const m of String(s).matchAll(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/g)) { const a = +m[1], b = +m[2]; if (b > a) out.push([a, b]); }
+  return out;
+}
+function runRow(ar, r) {
+  const c = P.catalog;
+  return `<div class="run" data-run="${r.id}">
+    <div class="rgrid">
+      <label class="c-nm">Gutter run<input class="in" data-r="name" value="${esc(r.name)}" placeholder="e.g. North eave" maxlength="${LIMIT.name}"></label>
+      <label>Length (ft)<input class="in num" data-r="len" type="number" inputmode="decimal" min="0" step="any" value="${valOf(r.len)}"></label>
+      <label>Roof (sf)<input class="in num" data-r="area" type="number" inputmode="decimal" min="0" step="any" value="${valOf(r.area)}" title="Horizontal projected roof area draining to this gutter"></label>
+      <label>Wall (sf)<input class="in num" data-r="wall" type="number" inputmode="decimal" min="0" step="any" value="${valOf(r.wall)}" title="A wall that sheds onto this roof; half counts (IPC 1106.4)"></label>
+      <label>Slope<select class="in" data-r="slope">${SLOPES.map(s => opt(String(s), String(r.slope), SLOPE_TXT[s] + '"/ft')).join('')}</select></label>
+      <label>Gutter<select class="in" data-r="gutter">${opt('auto', r.gutter, 'Auto')}${c.gutters.filter(g => g.on || g.id === r.gutter).map(g => opt(g.id, r.gutter, shapeTxt(g))).join('')}</select></label>
+      <label>Downspout<select class="in" data-r="ds">${opt('auto', r.ds, 'Auto')}${c.downspouts.filter(g => g.on || g.id === r.ds).map(g => opt(g.id, r.ds, shapeTxt(g))).join('')}</select></label>
+      <label class="c-k">Keep-outs (ft)<input class="in" data-r="keep" value="${esc(keepTxt(r.keep))}" placeholder="e.g. 0-4, 30-34" title="Stretches of the run, in feet from the left end, where no downspout can go"></label>
+      <div class="c-x"><button class="x" data-act="delRun" title="Remove this run" aria-label="Remove">×</button></div>
+    </div>
+    <div class="res" data-d="run-${r.id}"></div>
+  </div>`;
+}
+function lowForm(ar) {
+  const n = (f, label, hint, extra = '') => `<label>${label}<input class="in num" data-a="${f}" type="number" inputmode="decimal" min="0" step="any" value="${valOf(ar[f])}" ${extra}>${hint ? `<span class="hint">${hint}</span>` : ''}</label>`;
+  return `<div class="fields">
+      ${n('plan', 'Roof area (sf)', 'Horizontal projected area')}
+      ${n('wall', 'Wall above the roof (sf)', 'Half counts (IPC 1106.4)')}
+      <label>Primary<select class="in" data-a="pType">${opt('scupper', ar.pType, 'Scuppers')}${opt('drain', ar.pType, 'Roof drains')}</select></label>
+      ${n('pN', 'How many', '', 'step="1"')}
+      <label>Secondary (overflow)<select class="in" data-a="sType">${opt('scupper', ar.sType, 'Scuppers')}${opt('drain', ar.sType, 'Roof drains')}${opt('none', ar.sType, 'None')}</select></label>
+      ${ar.sType === 'none' ? '<span></span>' : n('sN', 'How many', '', 'step="1"')}
+      ${n('rise', 'Secondary inlet above primary (in)', 'The static head, d<sub>s</sub>')}
+      ${n('sH', 'Scupper opening height (in)', 'At least 4"')}
+      ${n('depth', 'Roof design water depth (in)', 'From the structural engineer; optional')}
+      ${ar.sType === 'drain' ? n('sHead', 'Secondary drain head (in)', 'From the drain data at the design flow; optional') : ''}
+      <label class="chk" style="align-self:center"><input type="checkbox" data-a="parapet"${ar.parapet ? ' checked' : ''}> Parapet or raised edge would trap water</label>
+    </div>
+    <div class="res" data-d="low-${ar.id}"></div>`;
+}
+function lowResult(a) {
+  if (a.status === 'empty') return `<p class="msg note">${esc(lowTxt(a))}</p>`;
+  const units = a.units.map(u => `<div class="unit"><h4>${u.role === 'primary' ? 'Primary' : 'Secondary'}: ${u.n} ${u.type === 'scupper' ? 'scupper' : 'roof drain'}${u.n > 1 ? 's' : ''}
+      <span class="kindtag">${gpm(u.q1)} each${u.q15 ? ` · ${gpm(u.q15)} at the rain-load rate` : ''}</span></h4>
+    ${u.type === 'scupper' && !u.fail ? `<p class="given">Opening <b>${frac(u.b)}" wide × ${frac(u.h)}" high</b>, width set by ${({ circumference: 'the drain circumference rule', opening: 'keeping the water inside the opening', depth: 'the design water depth' })[u.why]}${u.leader ? `; conductor head about <b>${frac(u.head)}"</b> wide to a <b>${esc(shapeTxt(u.leader.ds))}</b> downspout` : '; discharges freely where it will be seen (IPC 1108.2)'}.</p>` : ''}
+    <div class="checks">${u.checks.map(checkRow).join('')}</div>${msgs(u.msgs)}</div>`).join('');
+  const rl = a.rain ? `<p class="given" style="margin-top:12px">Rain load with the primary blocked: d<sub>s</sub> <b>${frac(a.rain.ds)}"</b> + d<sub>h</sub> <b>${a.rain.dh.toFixed(2)}"</b>, R = 5.2 × ${(a.rain.ds + a.rain.dh).toFixed(2)} = <b>${a.rain.R.toFixed(1)} psf</b> (IBC 1611.1).</p>` : '';
+  return `<div class="rline">${pill(a.status)}<b>${esc(lowTxt(a))}</b></div>${units}${rl}${msgs(a.msgs)}`;
+}
+function renderAreas() {
+  const el = $('tAreas');
+  const top = !(P.rain1 > 0) ? `<div class="banner"><span><b>Enter the design rainfall first.</b> Everything here is sized from it.</span><button class="btn sm pri" data-act="goJob">Go to Job</button></div>` : '';
+  const cards = P.areas.map(ar => `<div class="card" data-area="${ar.id}">
+    <div class="ahead"><input class="in" data-a="name" value="${esc(ar.name)}" placeholder="${ar.kind === 'steep' ? 'e.g. Office roof' : 'e.g. Warehouse roof'}" maxlength="${LIMIT.name}" aria-label="Area name">
+      <span class="kindtag">${ar.kind === 'steep' ? 'Sloped roof, eave gutters' : 'Low-slope roof, scuppers or drains'}</span>
+      <label class="kindtag">Downspout height (ft) <input class="in num" data-a="height" type="number" inputmode="decimal" min="0" step="any" value="${valOf(ar.height)}" style="width:70px"></label>
+      <button class="link" data-act="delArea">Remove area</button></div>
+    ${ar.kind === 'steep' ? `${ar.runs.map(r => runRow(ar, r)).join('')}<div class="addrow"><button class="btn sm" data-act="addRun">+ Add a gutter run</button></div>` : lowForm(ar)}
+  </div>`).join('');
+  el.innerHTML = `${top}${P.areas.length ? '' : `<div class="card empty"><b>No roof areas yet</b><p>Add each part of the roof: a sloped roof with eave gutters, or a low-slope roof with scuppers or drains.</p></div>`}
+    ${cards}
+    <div class="addrow no-print"><button class="btn" data-act="addSteep">+ Sloped roof with gutters</button><button class="btn" data-act="addLow">+ Low-slope roof with scuppers or drains</button>
+    <span style="flex:1"></span>${P.areas.length ? '<button class="btn pri" data-act="goResults">See the results →</button>' : ''}</div>`;
+  refreshResults();
+}
+// Redraws only the result blocks, so typing never loses its place.
+function refreshResults() {
+  J = analyze(P);
+  for (const a of J.areas) {
+    if (a.kind === 'steep') for (const r of a.runs) { const n = $('tAreas').querySelector(`[data-d="run-${r.run.id}"]`); if (n) n.innerHTML = runResult(r); }
+    else { const n = $('tAreas').querySelector(`[data-d="low-${a.area.id}"]`); if (n) n.innerHTML = lowResult(a); }
+  }
+}
+const areaOf = el => P.areas.find(a => a.id === el.closest('[data-area]')?.dataset.area);
+$('tAreas').addEventListener('input', e => {
+  const el = e.target, ar = areaOf(el);
+  if (!ar) return;
+  if (el.dataset.a && el.tagName === 'INPUT' && el.type !== 'checkbox') {
+    const f = el.dataset.a;
+    if (f === 'name') ar.name = el.value.slice(0, LIMIT.name);
+    else ar[f] = (f === 'pN' || f === 'sN') ? Math.max(1, Math.round(parse(el.value)) || 1) : parse(el.value);
+    if (f === 'sH' && !(ar.sH > 0)) ar.sH = 4;
+  } else if (el.dataset.r && el.tagName === 'INPUT') {
+    const r = ar.runs.find(x => x.id === el.closest('[data-run]').dataset.run), f = el.dataset.r;
+    if (f === 'name') r.name = el.value.slice(0, LIMIT.name);
+    else if (f === 'keep') r.keep = parseKeep(el.value);
+    else r[f] = parse(el.value);
+  } else return;
+  save(); refreshResults();
+});
+$('tAreas').addEventListener('change', e => {
+  const el = e.target, ar = areaOf(el);
+  if (!ar) return;
+  if (el.dataset.a === 'parapet') ar.parapet = el.checked;
+  else if (el.tagName === 'SELECT' && el.dataset.a) { ar[el.dataset.a] = el.value; save(); return renderAreas(); }
+  else if (el.tagName === 'SELECT' && el.dataset.r) {
+    const r = ar.runs.find(x => x.id === el.closest('[data-run]').dataset.run);
+    r[el.dataset.r] = el.dataset.r === 'slope' ? +el.value : el.value;
+  } else return;
+  save(); refreshResults();
+});
+$('tAreas').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const act = b.dataset.act, ar = areaOf(b);
+  if (act === 'goJob') return setTab('job');
+  if (act === 'goResults') return setTab('results');
+  if (act === 'addSteep' || act === 'addLow') {
+    if (P.areas.length >= LIMIT.areas) return toast('That is as many areas as one job can hold.');
+    const a = newArea(nextId('a', P.areas), act === 'addSteep' ? 'steep' : 'low');
+    if (a.kind === 'steep') a.runs.push(newRun('r1'));
+    P.areas.push(a); save(); renderAreas();
+    $('tAreas').querySelector(`[data-area="${a.id}"] input`).focus();
+    return;
+  }
+  if (!ar) return;
+  if (act === 'delArea') {
+    if ((ar.kind === 'low' ? ar.plan : ar.runs.some(r => r.len || r.area)) && !confirm(`Remove “${ar.name || 'this area'}”?`)) return;
+    P.areas = P.areas.filter(a => a !== ar); save(); return renderAreas();
+  }
+  if (act === 'addRun') {
+    if (ar.runs.length >= LIMIT.runs) return toast('That is as many runs as one area can hold.');
+    const r = newRun(nextId('r', ar.runs)); ar.runs.push(r); save(); renderAreas();
+    $('tAreas').querySelector(`[data-run="${r.id}"] input`).focus();
+    return;
+  }
+  const run = ar.runs && ar.runs.find(x => x.id === b.closest('[data-run]')?.dataset.run);
+  if (act === 'delRun' && run) { ar.runs = ar.runs.filter(x => x !== run); save(); return renderAreas(); }
+  if (act === 'pickDs' && run) { run.ds = b.dataset.ds; save(); return renderAreas(); }
+});
+
+/* ---------- 3 Results: the calculation package ---------- */
+function areaSection(a) {
+  const ar = a.area, nm = esc(ar.name || 'Unnamed area');
+  if (a.kind === 'steep') {
+    const runs = a.runs.map(r => {
+      const rn = esc(r.run.name || 'Unnamed run');
+      if (r.status === 'empty') return `<div class="unit"><h4>${rn}</h4><p class="msg note">${esc(runTxt(r))}</p></div>`;
+      const p = r.pick;
+      return `<div class="unit"><h4>${rn} ${pill(r.status)}</h4>
+        <p class="given">Length <b>${fmt(r.run.len, 1)} ft</b> · roof <b>${sf(r.run.area)}</b>${r.run.wall ? ` + ½ × wall ${sf(r.run.wall)} = <b>${sf(r.A)}</b>` : ''} · gutter slope <b>${SLOPE_TXT[r.run.slope]}"/ft</b>${r.run.keep.length ? ` · keep-outs ${esc(keepTxt(r.run.keep))} ft` : ''}<br>
+        Q = 0.0104 × ${J.R.r1} in/hr × ${fmt(r.A)} sf = <b>${gpm(r.Q)}</b> (IPC Eq. 11-1)${p ? ` · downspouts at ${p.xs.map(x => fmt(x, 1) + "'").join(', ')}` : ''}</p>
+        ${p ? `<div class="checks">${p.checks.map(checkRow).join('')}</div>` : ''}${msgs(r.msgs)}</div>`;
+    }).join('');
+    return `<div class="card asec"><h2>${nm} ${pill(a.status)}</h2><p class="why">Sloped roof draining to eave gutters. Downspouts ${fmt(ar.height, 1)} ft high.</p>${runs}</div>`;
+  }
+  return `<div class="card asec"><h2>${nm} ${pill(a.status)}</h2>
+    <p class="given">Roof <b>${sf(ar.plan)}</b>${ar.wall ? ` + ½ × wall ${sf(ar.wall)} = <b>${sf(a.A)}</b>` : ''}<br>
+    Q = 0.0104 × ${J.R.r1} in/hr × ${fmt(a.A)} sf = <b>${gpm(a.Q1)}</b> (IPC Eq. 11-1); at the rain-load rate ${fmt(J.R.r15, 2)} in/hr, <b>${gpm(a.Q15)}</b></p>
+    ${a.status === 'empty' ? '' : lowResult(a).replace(/^<div class="rline">[\s\S]*?<\/div>/, '')}</div>`;
+}
+function schedule() {
+  const rows = [];
+  for (const a of J.areas) {
+    const nm = esc(a.area.name || 'Unnamed area');
+    if (a.kind === 'steep') for (const r of a.runs) if (r.pick) {
+      const p = r.pick;
+      rows.push(`<tr><td>${nm}</td><td class="l">${esc(r.run.name || 'Run')}</td><td class="l">${esc(shapeTxt(p.gutter))} gutter, ${p.n} × ${esc(shapeTxt(p.ds))} downspout${p.n > 1 ? 's' : ''}</td><td>${gpm(r.Q)}</td><td class="l wrapok">at ${p.xs.map(x => fmt(x, 1) + "'").join(', ')}</td></tr>`);
+    }
+    if (a.kind === 'low') for (const u of a.units) if (!u.fail) {
+      const what = u.type === 'scupper' ? `${u.n} × ${frac(u.b)}" × ${frac(u.h)}" scupper${u.leader ? `, conductor head ${frac(u.head)}", ${esc(shapeTxt(u.leader.ds))} downspout` : ''}` : `${u.n} × ${frac(u.drain.size)}" roof drain and leader`;
+      rows.push(`<tr><td>${nm}</td><td class="l">${u.role === 'primary' ? 'Primary' : 'Secondary'}</td><td class="l">${what}</td><td>${gpm(u.q1)} each</td><td class="l wrapok">${u.type === 'scupper' ? (u.ds ? `inlet ${frac(u.ds)}" above the roof` : 'inlet at the roof') : u.role === 'secondary' ? `inlet ${frac(u.ds)}" above the primary` : ''}</td></tr>`);
+    }
+  }
+  return rows.length ? `<div class="tbl"><table><tr><th>Area</th><th class="l">Where</th><th class="l">What</th><th>Flow</th><th class="l">Notes</th></tr>${rows.join('')}</table></div>` : '<p class="why">Nothing sized yet.</p>';
+}
+function materialTable() {
+  if (!J.materials.length) return '<p class="why">Nothing sized yet.</p>';
+  return `<div class="tbl"><table><tr><th>Item</th><th>Qty</th><th class="l">Unit</th><th class="l">Areas</th></tr>
+    ${J.materials.map(r => `<tr><td>${esc(r.item)}</td><td>${fmt(r.qty, r.qty % 1 ? 1 : 0)}</td><td class="l">${r.unit}</td><td class="l wrapok">${esc(r.where.join(', '))}</td></tr>`).join('')}</table></div>
+    <p class="why">Quantities only, with no waste or laps. Downspout footage is the count times each area's downspout height; elbows are three per gutter downspout and one per conductor head.</p>`;
+}
+function renderResults() {
+  J = analyze(P);
+  const h = headline(J);
+  const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  $('tResults').innerHTML = `
+  <div class="card hero ${h.status}">
+    ${pill(h.status)}
+    <h1>${esc(P.name || 'Roof drainage')}</h1>
+    <p class="sub">${esc(h.text)}</p>
+    <div class="cover">
+      ${P.jobNo ? `<div><span>Job number</span>${esc(P.jobNo)}</div>` : ''}
+      ${P.address ? `<div><span>Address</span>${esc(P.address)}</div>` : ''}
+      <div><span>Code</span>${CODE.name}</div>
+      <div><span>Design rainfall</span>${P.rain1 ? `${P.rain1} in/hr, 100-year 1-hour (IPC 1106.1)` : 'not entered'}</div>
+      <div><span>Rain-load rate</span>${P.rain1 ? `${fmt(J.R.r15, 2)} in/hr, ${J.R.r15From === 'nws' ? `100-year 15-minute (${P.rain15}" in 15 min)` : 'twice the hourly rate'} (IBC 1611.1)` : '—'}</div>
+      <div><span>Prepared</span>${today}${P.by ? ` by ${esc(P.by)}` : ''}</div>
+    </div>
+  </div>
+  ${J.areas.map(areaSection).join('')}
+  <div class="card asec"><h2>Outlet schedule</h2>${schedule()}</div>
+  <div class="card"><h2>Material list</h2>${materialTable()}<p class="no-print" style="margin:10px 0 0"><button class="btn sm" data-act="csv">Save as CSV</button></p></div>
+  <div class="card"><h2>Basis of the calculations</h2>
+    <ul class="notes">
+      <li>Flow: IPC Equation 11-1, GPM = R × A × 0.0104, with A the horizontal projected roof area plus half of any wall that sheds onto it (IPC 1106.4).</li>
+      <li>Downspouts and conductor-head leaders: IPC Table 1106.3. Roof drains and their leaders: IPC Table 1106.2, vertical drain column.</li>
+      <li>Gutters: IPC Table 1106.6. Gutters are compared with the table's semicircular and rectangular sections by cross-sectional area. A section's row at the gutter's slope is used as printed. Where the table has no row at that slope, the section's next steeper row is reduced by the square root of the slope ratio, the relation the table approximately follows between its own slope columns; no row is increased for a steeper slope.</li>
+      <li>A size the tables don't list is rated as the listed size with the greatest capacity and no more cross-sectional area. This can only under-rate it. A section larger than any the table lists is held to the table's largest figure; the code gives no capacity beyond it, so a larger gutter needs an engineered calculation to be credited with more.</li>
+      <li>Scuppers: at least 4" high and at least as wide as the circumference of a roof drain sized for the same flow (IPC 1106.5, 1108.3; IBC 1502.3). Water depth over a scupper by the weir relation Q = 2.9 × b × h<sup>1.5</sup> (gpm, inches).</li>
+      <li>Secondary drainage carries the full flow with the primary system blocked, discharging separately where it will be seen (IPC 1108.1–1108.3, IBC 1502.2). Rain load R = 5.2 (d<sub>s</sub> + d<sub>h</sub>) at the IBC 1611.1 rate.</li>
+      <li>Downspout spacing and the gutter outlet check are practice and advice, not code, and never fail an item on their own.</li>
+      <li>Not covered: gutters inside a parapet, valley gutters, horizontal storm drains, siphonic and controlled-flow systems, and the roof structure.</li>
+    </ul>
+  </div>`;
+}
+$('tResults').addEventListener('click', e => { if (e.target.closest('[data-act="csv"]')) saveCsv(); });
+
+/* ---------- files and header ---------- */
+for (const b of document.querySelectorAll('.tab')) b.addEventListener('click', () => setTab(b.dataset.tab));
+const hasWork = () => !P.example && (P.areas.length || P.rain1);
+function newJob() {
+  if (hasWork() && !confirm('Start a new job? The one that’s open is cleared from this browser, so save it first if you want to keep it.')) return;
+  const cat = P.example ? defaultCatalog() : P.catalog;
+  P = newProject(); P.catalog = cat; save(); setTab('job');
+}
+function loadExample() {
+  if (hasWork() && !confirm('Open the example job? The one that’s open is cleared from this browser, so save it first if you want to keep it.')) return;
+  P = exampleProject(); save(); setTab('areas');
+}
+$('helpExample').addEventListener('click', () => { $('dlgHelp').close(); loadExample(); });
+$('newJob').addEventListener('click', newJob);
+$('exNew').addEventListener('click', newJob);
+const slug = () => (P.name || 'roof-drainage').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'roof-drainage';
+function download(text, name, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function saveFile() { download(JSON.stringify({ app: 'zbcad-drainage', ...P }, null, 1), slug() + '.drainage.json', 'application/json'); }
+function saveCsv() {
+  J = analyze(P);
+  if (!J.materials.length) return toast('Nothing is sized yet, so there is no material list.');
+  download(materialsCsv(P, J), slug() + '-materials.csv', 'text/csv');
+}
+$('saveFile').addEventListener('click', saveFile);
+$('csvBtn').addEventListener('click', saveCsv);
+$('openFile').addEventListener('click', () => $('fProj').click());
+$('fProj').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  let o;
+  try { o = JSON.parse(await f.text()); } catch (err) { toast('That file isn’t a saved drainage job.'); return; }
+  if (!o || o.app !== 'zbcad-drainage') { toast('That file isn’t a saved drainage job.'); return; }
+  if (hasWork() && !confirm('Replace the job that’s open with this one?')) return;
+  P = checkProject(o); save(); setTab('results');
+  toast('Opened ' + (P.name || f.name));
+});
+window.addEventListener('beforeprint', () => { if (tab !== 'results') renderResults(); });
+window.addEventListener('afterprint', () => { if (tab !== 'results') render(); });
+$('printBtn').addEventListener('click', () => { renderResults(); window.print(); });
+$('helpBtn').addEventListener('click', () => $('dlgHelp').showModal());
+
+document.addEventListener('keydown', e => {
+  // F1 is blocked rather than bound: an accidental press should cost nothing, and left
+  // alone Chrome opens its own help in a new tab. Help is the header button.
+  if (e.key === 'F1') { e.preventDefault(); return; }
+  const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+  if ($('dlgHelp').open) { if (mod && 'sop'.includes(k)) e.preventDefault(); return; }
+  if (mod && k === 's') { e.preventDefault(); saveFile(); }
+  else if (mod && k === 'o') { e.preventDefault(); $('fProj').click(); }
+});
+
+/* ---------- boot ---------- */
+{
+  let s = null;
+  try { s = localStorage.getItem(KEY); } catch (e) {}
+  let o = null;
+  if (s) { try { o = JSON.parse(s); } catch (e) { try { localStorage.setItem(KEY + '.bad', s); } catch (e2) {} } }
+  P = o ? checkProject(o) : exampleProject();
+  tab = P.areas.length ? 'areas' : 'job';
+  render();
+}
+</script>
+<script data-goatcounter="https://zbfraser.goatcounter.com/count"
+        async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
