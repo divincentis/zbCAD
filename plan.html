@@ -184,6 +184,11 @@ button:disabled{cursor:default}
 .task.active{border-color:var(--accent);border-left-width:3px;background:var(--accent-bg);box-shadow:inset 0 0 0 1px var(--accent)}
 .task.done{border-left-color:var(--ok);opacity:.6}
 .task.dragging{opacity:.4}
+/* A step that runs alongside the one above: indented, with an elbow back to its group's first step. */
+.task.with{margin-left:22px;position:relative}
+.task.with::before{content:'';position:absolute;left:-15px;top:-11px;height:calc(11px + 18px);width:11px;border-left:2px solid var(--line);border-bottom:2px solid var(--line);border-bottom-left-radius:6px}
+.icon-btn.on{color:var(--accent)}
+.icon-btn.on:hover{color:var(--accent);background:var(--accent-bg)}
 .task.folded{display:flex;align-items:center;gap:4px;padding:4px 6px 4px 8px}
 .fold-row{flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:4px;border-radius:6px;text-align:left;font-size:13px}
 .fold-row:hover{background:var(--soft)}
@@ -288,11 +293,12 @@ button:disabled{cursor:default}
       <li>To get going quickly, tap <b>Starters</b> above the steps and pick a common plan, such as getting out the door, catching a flight or a dinner party. It fills in typical steps, minutes, a deadline and a buffer; change any of them to fit. Loading one can be undone.</li>
       <li>Add the <b>steps</b> in the order you'll do them, each with its minutes. The line under the deadline says how long they add up to and when to start. The plan works backwards from the deadline less the buffer.</li>
       <li>Drag the grip, or use the arrows, to reorder steps. Deleting a step can be undone from the bar at the bottom of the screen.</li>
+      <li>Some steps happen at the same time: bread rising while you wash up, or the sides cooking with the main. Tap the <b>link</b> button on a step to run it <b>alongside the step above</b>; it moves in under that step. Linked steps start together and take as long as the longest of them, so the plan doesn't add them up. Link several in a row for more at once. Tap the button again to put the step back after.</li>
     </ul>
 
     <h3>Running it</h3>
     <ul>
-      <li>Press <b>Start</b> when you begin a step, then <b>Done</b>. <b>Pause</b> stops its clock, and <b>Resume</b> picks it up again. The check mark marks a step done without timing it.</li>
+      <li>Press <b>Start</b> when you begin a step, then <b>Done</b>. <b>Pause</b> stops its clock, and <b>Resume</b> picks it up again. The check mark marks a step done without timing it. Linked steps can be running at the same time; starting any other step pauses them.</li>
       <li><b>Start next step by</b> or <b>Finish current step by</b> is the time to beat right now, with a countdown. <b>Est. finish</b> is when you'll finish at this rate.</li>
       <li>The status turns yellow when you're behind the plan but still inside the buffer, and red when the deadline itself is at risk. <b>Buffer left</b> is how much of the buffer is still intact.</li>
       <li>Steps can be done out of order: the times are worked out again from whatever is left. When everything is done, a summary compares each step's estimate with how long it took.</li>
@@ -360,7 +366,8 @@ button:disabled{cursor:default}
             Download: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3",
             Upload: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M17 8l-5-5-5 5 M12 3v12",
             ChevronDown: "M6 9l6 6 6-6",
-            LayoutGrid: "M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z"
+            LayoutGrid: "M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z",
+            Link2: "M9 17H7A5 5 0 0 1 7 7h2 M15 7h2a5 5 0 1 1 0 10h-2 M8 12h8"
         };
 
         const Icon = ({ name, size = 20, className = '' }) => html`
@@ -455,10 +462,41 @@ button:disabled{cursor:default}
         // actualMs (total time spent; unknown if marked done without timing).
         const stepName = (t) => t.name || 'Untitled step';
         const remainingMs = (t) => Math.max(0, t.duration * MIN - (t.spentMs || 0));
-        const freshTask = ({ id, name, duration }) => ({ id, name, duration, status: 'pending' });
+        const freshTask = ({ id, name, duration, with: w }) => ({ id, name, duration, with: !!w, status: 'pending' });
         const pauseOf = (t, now) => {
             const { startedAt, ...rest } = t;
             return { ...rest, status: 'pending', spentMs: (t.spentMs || 0) + Math.max(0, now - (startedAt ?? now)) };
+        };
+
+        // Parallel steps. `with: true` means "runs alongside the step above": a run of linked steps is one
+        // group that starts together and lasts as long as its longest member. Groups follow one another,
+        // so the plan is still a list rather than a dependency graph (that's what schedule.html is for).
+        // The flag on the first step has nothing to link to and is ignored, which is what keeps reordering
+        // safe: a step dragged to the top simply stops being linked.
+        const groupIndex = (list) => {
+            let g = -1;
+            return list.map((t, i) => (i === 0 || !t.with) ? ++g : g);
+        };
+        const groupsOf = (list) => {
+            const gi = groupIndex(list), out = [];
+            list.forEach((t, i) => (out[gi[i]] = out[gi[i]] || []).push(t));
+            return out;
+        };
+        // Elapsed minutes for a list of steps (or template steps): the longest of each group, added up.
+        const spanMins = (list) => groupsOf(list).reduce((s, g) => s + Math.max(...g.map(t => t.duration)), 0);
+        // Only one group may be running. Steps in it can run together; any running step outside it is
+        // paused, keeping its time. Called after anything that can change the groups (reorder, link, undo).
+        const oneRunningGroup = (list, now) => {
+            const gi = groupIndex(list);
+            const first = list.findIndex(t => t.status === 'active');
+            if (first < 0) return list;
+            let changed = false;
+            const out = list.map((t, i) => {
+                if (t.status !== 'active' || gi[i] === gi[first]) return t;
+                changed = true;
+                return pauseOf(t, now);
+            });
+            return changed ? out : list;
         };
         const DEFAULT_TASKS = () => [
             { id: 1, name: "Research", duration: 30, status: "pending" },
@@ -469,8 +507,7 @@ button:disabled{cursor:default}
         const sanitizeTasks = (list, nowMs) => {
             if (!Array.isArray(list)) return null;
             const ids = new Set();
-            let seenActive = false;
-            return list.filter(t => t && typeof t === 'object').map((t, i) => {
+            const tasks = list.filter(t => t && typeof t === 'object').map((t, i) => {
                 let id = t.id ?? `${nowMs.toString(36)}-${i}`;
                 if (ids.has(String(id))) id = `${id}-${i}`;
                 ids.add(String(id));
@@ -478,19 +515,15 @@ button:disabled{cursor:default}
                     id,
                     name: typeof t.name === 'string' ? t.name : '',
                     duration: clampMins(t.duration),
+                    with: t.with === true,
                     status: ['pending', 'active', 'completed'].includes(t.status) ? t.status : 'pending'
                 };
                 if (Number.isFinite(t.spentMs) && t.spentMs > 0) task.spentMs = t.spentMs;
                 if (Number.isFinite(t.firstStartedAt)) task.firstStartedAt = t.firstStartedAt;
                 if (task.status === 'active') {
-                    if (seenActive) {
-                        task.status = 'pending';
-                    } else {
-                        seenActive = true;
-                        // Older saves have no start times; treat an active step as started now.
-                        task.startedAt = Number.isFinite(t.startedAt) ? t.startedAt : nowMs;
-                        task.firstStartedAt = task.firstStartedAt ?? task.startedAt;
-                    }
+                    // Older saves have no start times; treat an active step as started now.
+                    task.startedAt = Number.isFinite(t.startedAt) ? t.startedAt : nowMs;
+                    task.firstStartedAt = task.firstStartedAt ?? task.startedAt;
                 }
                 if (task.status === 'completed') {
                     if (Number.isFinite(t.completedAt)) task.completedAt = t.completedAt;
@@ -502,7 +535,11 @@ button:disabled{cursor:default}
                 }
                 return task;
             });
+            return oneRunningGroup(tasks, nowMs);
         };
+        // Template and export steps carry the link only when set, so plans without parallel steps
+        // read exactly as they did before.
+        const stepOut = (t) => t.with ? { name: t.name, duration: t.duration, with: true } : { name: t.name, duration: t.duration };
 
         const sanitizeTemplate = (t) => {
             if (!t || typeof t !== 'object' || !Array.isArray(t.steps)) return null;
@@ -512,14 +549,15 @@ button:disabled{cursor:default}
                 deadline: typeof t.deadline === 'string' && /^\d{2}:\d{2}$/.test(t.deadline) ? t.deadline : null,
                 buffer: clampMins(t.buffer ?? 10),
                 steps: t.steps.filter(s => s && typeof s === 'object')
-                    .map(s => ({ name: typeof s.name === 'string' ? s.name : '', duration: clampMins(s.duration) }))
+                    .map(s => stepOut({ name: typeof s.name === 'string' ? s.name : '', duration: clampMins(s.duration), with: s.with === true }))
             };
         };
 
         // Starter plans: common days run against a clock, built in so a new user has something to
         // tap instead of a blank list. They load exactly as a saved template does (and undo the same
         // way); `due` says what the deadline stands for, since that's the one thing a starter can't
-        // know about the user's day. Not saved or exported: they ship with the page.
+        // know about the user's day. Not saved or exported: they ship with the page. A step written with a
+        // third entry, `true`, runs alongside the step above it (a rise, an oven, something on the hob).
         const STARTERS = [
             { name: 'Out the door', due: 'you leave the house', deadline: '08:00', buffer: 10, steps: [
                 ['Wake up, water, coffee', 10], ['Shower', 15], ['Get dressed', 10], ['Breakfast', 15],
@@ -535,7 +573,7 @@ button:disabled{cursor:default}
                 ['Gather CV, ID, directions', 10], ['Travel there', 30], ['Find the room, check in', 10]] },
             { name: 'Dinner party', due: 'guests arrive', deadline: '19:00', buffer: 15, steps: [
                 ['Shop for what\'s missing', 45], ['Tidy up and set the table', 30], ['Prep ingredients', 45],
-                ['Cook the main', 60], ['Cook the sides', 30], ['Shower and change', 20], ['Drinks and snacks out', 10]] },
+                ['Cook the main', 60], ['Cook the sides', 30, true], ['Shower and change', 20, true], ['Drinks and snacks out', 10]] },
             { name: 'Tidy for guests', due: 'guests arrive', deadline: '18:00', buffer: 10, steps: [
                 ['Declutter the main rooms', 20], ['Kitchen and dishes', 20], ['Bathroom', 20],
                 ['Vacuum and mop', 25], ['Fresh towels and guest bed', 15], ['Take out the trash', 5]] },
@@ -549,11 +587,11 @@ button:disabled{cursor:default}
                 ['Pack bags', 30], ['Strip beds, gather towels', 15], ['Dishes and kitchen', 20],
                 ['Trash and recycling', 10], ['Final sweep and photos', 10], ['Load the car, return keys', 15]] },
             { name: 'Bake bread', due: 'the bread should be ready to slice', deadline: '18:00', buffer: 15, steps: [
-                ['Mix and knead', 20], ['First rise', 90], ['Shape', 10], ['Second rise', 60],
-                ['Preheat and bake', 45], ['Cool', 60]] },
+                ['Mix and knead', 20], ['First rise', 90], ['Wash up', 15, true], ['Shape', 10], ['Second rise', 60],
+                ['Preheat the oven', 20, true], ['Bake', 35], ['Cool', 60], ['Clean the kitchen', 20, true]] },
             { name: 'Kids\' bedtime', due: 'lights go out', deadline: '19:30', buffer: 5, steps: [
                 ['Dinner', 30], ['Tidy toys', 10], ['Bath', 20], ['Pajamas and teeth', 10], ['Story', 15]] }
-        ].map((s, i) => ({ ...s, id: `starter-${i}`, steps: s.steps.map(([name, duration]) => ({ name, duration })) }));
+        ].map((s, i) => ({ ...s, id: `starter-${i}`, steps: s.steps.map(([name, duration, w]) => stepOut({ name, duration, with: !!w })) }));
 
         // --- 5. Storage ---
         const readJSON = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } };
@@ -794,34 +832,46 @@ button:disabled{cursor:default}
             }, [nowMs, deadlineAt]);
 
             // --- Plan: work backwards from (deadline - buffer) over the work that's left ---
-            // Remaining steps are scheduled back-to-back: the running step first, then pending steps in list
-            // order. Each gets the latest start/end that still lands the whole plan on time. With steps done in
+            // Remaining groups are scheduled back-to-back: the running group first, then the rest in list
+            // order. A group's length is its longest unfinished step; every step in it must end by the group's
+            // end, so a short step has a later latest start than a long one beside it. With steps done in
             // order this matches the original plan; out of order, it stays correct.
             const finishGate = deadlineAt - buffer * MIN;
-            const activeTask = tasks.find(t => t.status === 'active');
-            const pendingTasks = tasks.filter(t => t.status === 'pending');
+            const openGroups = groupsOf(tasks).map(g => g.filter(t => t.status !== 'completed')).filter(g => g.length);
+            const runningGroup = openGroups.find(g => g.some(t => t.status === 'active')) || null;
+            const queuedGroups = openGroups.filter(g => g !== runningGroup);
+            const groupMs = (g) => Math.max(...g.map(remainingMs));
             const latest = new Map();
             {
                 let g = finishGate;
-                const remaining = [activeTask, ...pendingTasks].filter(Boolean);
+                const remaining = runningGroup ? [runningGroup, ...queuedGroups] : queuedGroups;
                 for (let i = remaining.length - 1; i >= 0; i--) {
                     const end = g;
-                    g -= remainingMs(remaining[i]);
-                    latest.set(String(remaining[i].id), { start: g, end });
+                    remaining[i].forEach(t => latest.set(String(t.id), { start: end - remainingMs(t), end }));
+                    g -= groupMs(remaining[i]);
                 }
             }
             const latestOf = (t) => latest.get(String(t.id));
 
             // --- Projection: work forwards from now ---
-            const nextTask = activeTask || pendingTasks[0];
+            const activeTasks = runningGroup ? runningGroup.filter(t => t.status === 'active') : [];
+            const activeTask = activeTasks[0] || null;
+            // The step to start next: in the running group, a linked step not yet started; otherwise the
+            // step in the next group that must start first.
+            const firstToStart = (g) => g.filter(t => t.status === 'pending')
+                .reduce((a, t) => !a || latestOf(t).start < latestOf(a).start ? t : a, null);
+            const nextTask = activeTask || (queuedGroups[0] && firstToStart(queuedGroups[0])) || null;
             const isEmpty = tasks.length === 0;
             const allDone = !isEmpty && !nextTask;
             const hasProgress = tasks.some(t => t.status !== 'pending' || t.spentMs > 0);
-            const activeProjectedEnd = activeTask ? Math.max(nowMs, activeTask.startedAt + remainingMs(activeTask)) : null;
+            // A running step ends when its time runs out; a step beside it that hasn't started is assumed to start now.
+            const projectedEndOf = (t) => t.status === 'active' ? Math.max(nowMs, t.startedAt + remainingMs(t)) : nowMs + remainingMs(t);
+            const activeProjectedEnd = runningGroup ? Math.max(...runningGroup.map(projectedEndOf)) : null;
+            const activeNames = activeTasks.map(stepName).join(' + ');
 
             let projectedFinish = null;
             if (nextTask) {
-                projectedFinish = (activeTask ? activeProjectedEnd : nowMs) + pendingTasks.reduce((s, t) => s + remainingMs(t), 0);
+                projectedFinish = (runningGroup ? activeProjectedEnd : nowMs) + queuedGroups.reduce((s, g) => s + groupMs(g), 0);
             } else {
                 const finishes = tasks.map(t => t.completedAt).filter(Number.isFinite);
                 if (finishes.length) projectedFinish = Math.max(...finishes);
@@ -850,7 +900,7 @@ button:disabled{cursor:default}
                 }
             }
 
-            const totalMins = tasks.reduce((s, t) => s + t.duration, 0);
+            const totalMins = spanMins(tasks);
             const planLine = isEmpty ? 'Add steps to build the plan'
                 : !hasProgress ? `${fmtDur(totalMins)} of steps · start by ${fmtWhen(finishGate - totalMins * MIN, nowMs)}`
                 : allDone ? `${fmtDur(totalMins)} planned`
@@ -858,16 +908,22 @@ button:disabled{cursor:default}
 
             // --- Alerts: 5 minutes before and at the current gate, plus once when the deadline is projected to slip ---
             const alerts = [];
+            const startAlerts = (t) => {
+                const name = stepName(t), at = latestOf(t).start;
+                const k = `${t.id}-${at}-${alertEpoch}`;
+                alerts.push({ key: `warn-start-${k}`, at: at - 5 * MIN, title: `Up next in 5 min: ${name}`, body: `Start by ${fmtWhen(at, nowMs)} to stay on plan.` });
+                alerts.push({ key: `start-${k}`, at, title: `Start now: ${name}`, body: `This step was due to start at ${fmtWhen(at, nowMs)}.` });
+            };
             if (activeTask) {
-                const name = stepName(activeTask);
-                const k = `${activeTask.id}-${gateAt}-${alertEpoch}`;
-                alerts.push({ key: `warn-end-${k}`, at: gateAt - 5 * MIN, title: `5 min left: ${name}`, body: `Finish by ${fmtWhen(gateAt, nowMs)} to stay on plan.` });
-                alerts.push({ key: `end-${k}`, at: gateAt, title: `Time's up: ${name}`, body: `This step was due to finish at ${fmtWhen(gateAt, nowMs)}.` });
+                // One finish alert for the whole running group (its steps share an end), and a start alert
+                // for each step beside it that hasn't been started yet.
+                const many = activeTasks.length > 1;
+                const k = `${activeTasks.map(t => t.id).join('+')}-${gateAt}-${alertEpoch}`;
+                alerts.push({ key: `warn-end-${k}`, at: gateAt - 5 * MIN, title: `5 min left: ${activeNames}`, body: `Finish by ${fmtWhen(gateAt, nowMs)} to stay on plan.` });
+                alerts.push({ key: `end-${k}`, at: gateAt, title: `Time's up: ${activeNames}`, body: `${many ? 'These steps were' : 'This step was'} due to finish at ${fmtWhen(gateAt, nowMs)}.` });
+                runningGroup.filter(t => t.status === 'pending').forEach(startAlerts);
             } else if (nextTask) {
-                const name = stepName(nextTask);
-                const k = `${nextTask.id}-${gateAt}-${alertEpoch}`;
-                alerts.push({ key: `warn-start-${k}`, at: gateAt - 5 * MIN, title: `Up next in 5 min: ${name}`, body: `Start by ${fmtWhen(gateAt, nowMs)} to stay on plan.` });
-                alerts.push({ key: `start-${k}`, at: gateAt, title: `Start now: ${name}`, body: `This step was due to start at ${fmtWhen(gateAt, nowMs)}.` });
+                queuedGroups[0].filter(t => t.status === 'pending').forEach(startAlerts);
             }
             if (nextTask && bufferLeft < 0) {
                 alerts.push({ key: `late-${deadlineAt}`, at: nowMs, always: true, title: `Deadline at risk`, body: `On current pace you'll finish at ${fmtWhen(projectedFinish, nowMs)}, ${fmtDur(bufferLeft)} past the deadline.` });
@@ -959,7 +1015,7 @@ button:disabled{cursor:default}
                 if (tone === 'red') status = `✗ late ${fmtDur(bufferLeft)}`;
                 else if (tone === 'yellow') status = `▼ ${fmtDur(vsPlan)} behind`;
                 else status = activeTask && vsPlan > 0 ? `▲ ${fmtDur(vsPlan)} ahead` : '✓ on track';
-                document.title = `${countdown} · ${stepName(nextTask)} · ${status}`;
+                document.title = `${countdown} · ${activeTask ? activeNames : stepName(nextTask)} · ${status}`;
             });
 
             // --- Actions: settings ---
@@ -1010,7 +1066,7 @@ button:disabled{cursor:default}
             // --- Actions: steps ---
             const addTask = () => {
                 const id = uid();
-                setTasks([...tasks, { id, name: '', duration: 15, status: 'pending' }]);
+                setTasks([...tasks, { id, name: '', duration: 15, with: false, status: 'pending' }]);
                 setFocusId(id);
                 touch();
             };
@@ -1034,12 +1090,16 @@ button:disabled{cursor:default}
                 if (!undo) return;
                 if (undo.kind === 'delete') {
                     setTasks(ts => {
-                        let task = undo.task;
-                        // Don't end up with two running steps.
-                        if (task.status === 'active' && ts.some(t => t.status === 'active')) task = pauseOf(task, Date.now());
+                        const now = Date.now();
+                        const at = Math.min(undo.index, ts.length);
                         const copy = [...ts];
-                        copy.splice(Math.min(undo.index, copy.length), 0, task);
-                        return copy;
+                        copy.splice(at, 0, undo.task);
+                        // Don't end up with two running groups: if the restored step was running and
+                        // something else is now, the restored one is the one that gets paused.
+                        const gi = groupIndex(copy);
+                        const clash = undo.task.status === 'active' && copy.some((t, i) => t.status === 'active' && gi[i] !== gi[at]);
+                        if (clash) copy[at] = pauseOf(undo.task, now);
+                        return oneRunningGroup(copy, now);
                     });
                 } else {
                     setTasks(undo.tasks); setDeadlineAt(undo.deadlineAt); setBuffer(undo.buffer);
@@ -1053,18 +1113,28 @@ button:disabled{cursor:default}
                 if (to < 0 || to >= tasks.length) return;
                 const copy = [...tasks];
                 [copy[index], copy[to]] = [copy[to], copy[index]];
-                setTasks(copy);
+                setTasks(oneRunningGroup(copy, Date.now()));
+                touch();
+            };
+            // Link a step to the one above so they run at the same time, or unlink it.
+            const toggleWith = (id) => {
+                setTasks(ts => oneRunningGroup(ts.map(t => sameId(t.id, id) ? { ...t, with: !t.with } : t), Date.now()));
                 touch();
             };
 
             const startTask = (id) => {
                 const now = Date.now();
-                // Only one step can run; starting another pauses the current one (its time is kept).
-                setTasks(ts => ts.map(t => {
-                    if (sameId(t.id, id)) return { ...t, status: 'active', startedAt: now, firstStartedAt: t.firstStartedAt ?? now };
-                    if (t.status === 'active') return pauseOf(t, now);
-                    return t;
-                }));
+                // Steps linked together can run at once; starting a step anywhere else pauses whatever is
+                // running (its time is kept).
+                setTasks(ts => {
+                    const gi = groupIndex(ts);
+                    const mine = gi[ts.findIndex(t => sameId(t.id, id))];
+                    return ts.map((t, i) => {
+                        if (sameId(t.id, id)) return { ...t, status: 'active', startedAt: now, firstStartedAt: t.firstStartedAt ?? now };
+                        if (t.status === 'active' && gi[i] !== mine) return pauseOf(t, now);
+                        return t;
+                    });
+                });
                 touch();
             };
             const pauseTask = (id) => {
@@ -1113,14 +1183,15 @@ button:disabled{cursor:default}
                 });
             };
             const onGripUp = () => {
-                if (dragId !== null) touch();
+                // A drag can split or join groups; settle who may keep running once it's dropped.
+                if (dragId !== null) { setTasks(ts => oneRunningGroup(ts, Date.now())); touch(); }
                 setDragId(null);
             };
 
             // --- Actions: templates, export, import ---
             const applyPlan = (tpl, label) => {
                 setUndo({ kind: 'snapshot', label, tasks, deadlineAt, buffer });
-                setTasks(tpl.steps.map(s => ({ id: uid(), name: s.name, duration: s.duration, status: 'pending' })));
+                setTasks(tpl.steps.map(s => ({ id: uid(), name: s.name, duration: s.duration, with: !!s.with, status: 'pending' })));
                 setBuffer(tpl.buffer);
                 if (tpl.deadline) setDeadlineAt(resolveDeadline(tpl.deadline, Date.now()));
                 setPlansOpen(false);
@@ -1132,7 +1203,7 @@ button:disabled{cursor:default}
             // tapped at 10 AM means tomorrow's, not one that opened two hours late.
             const applyStarter = (st) => {
                 const now = Date.now();
-                const lead = (st.steps.reduce((s, x) => s + x.duration, 0) + st.buffer) * MIN;
+                const lead = (spanMins(st.steps) + st.buffer) * MIN;
                 const d = new Date(now);
                 const [hh, mm] = st.deadline.split(':').map(Number);
                 d.setHours(hh, mm, 0, 0);
@@ -1147,7 +1218,7 @@ button:disabled{cursor:default}
                 if (name == null) return;
                 const tpl = sanitizeTemplate({
                     id: uid(), name, deadline: toTimeInput(deadlineAt), buffer,
-                    steps: tasks.map(t => ({ name: t.name, duration: t.duration }))
+                    steps: tasks.map(stepOut)
                 });
                 // Saving under an existing name replaces that template.
                 setTemplates(list => [...list.filter(t => t.name !== tpl.name), tpl]);
@@ -1160,7 +1231,7 @@ button:disabled{cursor:default}
             const exportJSON = () => {
                 const data = {
                     app: 'deadline-planner', version: 1, exportedAt: new Date().toISOString(),
-                    plan: { deadline: toTimeInput(deadlineAt), buffer, steps: tasks.map(t => ({ name: t.name, duration: t.duration })) },
+                    plan: { deadline: toTimeInput(deadlineAt), buffer, steps: tasks.map(stepOut) },
                     templates
                 };
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1309,7 +1380,7 @@ button:disabled{cursor:default}
                         ${nextTask && html`
                             <div class="gate-row">
                                 <div>
-                                    <div class="eyebrow">${activeTask ? 'Finish current step by' : 'Start next step by'}</div>
+                                    <div class="eyebrow">${activeTask ? (activeTasks.length > 1 ? 'Finish current steps by' : 'Finish current step by') : 'Start next step by'}</div>
                                     <div class="gate">
                                         <span class="gate-time mono">${fmtWhen(gateAt, nowMs)}</span>
                                         <span class=${'countdown' + countdownClass}>${countdown}</span>
@@ -1371,7 +1442,7 @@ button:disabled{cursor:default}
                                 ${STARTERS.map(st => html`
                                     <button class="starter" key=${st.id} onClick=${() => applyStarter(st)}>
                                         <span class="starter-name">${st.name}</span>
-                                        <span class="starter-meta">${st.steps.length} steps · ${fmtDur(st.steps.reduce((s, x) => s + x.duration, 0))}</span>
+                                        <span class="starter-meta">${st.steps.length} steps · ${fmtDur(spanMins(st.steps))}</span>
                                         <span class="starter-meta">due ${fmtClockStr(st.deadline)}</span>
                                     </button>
                                 `)}
@@ -1386,7 +1457,9 @@ button:disabled{cursor:default}
                             const isPaused = task.status === 'pending' && task.spentMs > 0;
                             const name = stepName(task);
                             const lt = latestOf(task);
-                            const cls = 'task card' + (isActive ? ' active' : '') + (isCompleted ? ' done' : '') + (isPaused ? ' paused' : '') + (sameId(dragId, task.id) ? ' dragging' : '');
+                            const linked = index > 0 && task.with;
+                            const above = index > 0 ? stepName(tasks[index - 1]) : '';
+                            const cls = 'task card' + (isActive ? ' active' : '') + (isCompleted ? ' done' : '') + (isPaused ? ' paused' : '') + (linked ? ' with' : '') + (sameId(dragId, task.id) ? ' dragging' : '');
 
                             // Left/right: when it started or must start, and when it ended or must end.
                             // Middle chip: how this step is tracking against its own gate.
@@ -1401,8 +1474,9 @@ button:disabled{cursor:default}
                             } else if (isActive) {
                                 left = `started ${fmtWhen(task.firstStartedAt ?? task.startedAt, nowMs)}`;
                                 right = `end by ${fmtWhen(lt.end, nowMs)}`;
-                                const diff = toMins(lt.end - activeProjectedEnd);
-                                chip = { text: `ends ${fmtWhen(activeProjectedEnd, nowMs)} · ${earlyLate(diff)}`, cls: (diff >= 0 ? 'chip-ok' : 'chip-late') + ' wide' };
+                                const ends = projectedEndOf(task);
+                                const diff = toMins(lt.end - ends);
+                                chip = { text: `ends ${fmtWhen(ends, nowMs)} · ${earlyLate(diff)}`, cls: (diff >= 0 ? 'chip-ok' : 'chip-late') + ' wide' };
                             } else {
                                 left = `${isPaused ? 'resume' : 'start'} by ${fmtWhen(lt.start, nowMs)}`;
                                 right = `end by ${fmtWhen(lt.end, nowMs)}`;
@@ -1410,7 +1484,7 @@ button:disabled{cursor:default}
                             }
 
                             if (isCompleted && !openDone.has(String(task.id))) return html`
-                                <div key=${task.id} data-task-id=${task.id} class="task card done folded">
+                                <div key=${task.id} data-task-id=${task.id} class=${'task card done folded' + (linked ? ' with' : '')}>
                                     <button class="fold-row" onClick=${() => setDoneOpen(task.id, true)}
                                         aria-expanded="false" aria-label=${`${name}, ${right}. Show details`}>
                                         <${Icon} name="Check" size=${14} className="fold-check" />
@@ -1453,6 +1527,13 @@ button:disabled{cursor:default}
                                         <div class="tools">
                                             <button class="icon-btn" onClick=${() => moveTask(index, -1)} aria-label=${`Move ${name} up`}><${Icon} name="ArrowUp" size=${14} /></button>
                                             <button class="icon-btn" onClick=${() => moveTask(index, 1)} aria-label=${`Move ${name} down`}><${Icon} name="ArrowDown" size=${14} /></button>
+                                            ${index > 0 && html`
+                                                <button class=${'icon-btn' + (linked ? ' on' : '')} onClick=${() => toggleWith(task.id)}
+                                                    aria-pressed=${linked ? 'true' : 'false'} aria-label=${`Run ${name} alongside ${above}`}
+                                                    title=${linked ? `Runs alongside “${above}”. Tap to run it after instead` : `Run alongside “${above}”`}>
+                                                    <${Icon} name="Link2" size=${14} />
+                                                </button>
+                                            `}
                                             <button class="icon-btn danger" onClick=${() => deleteTask(task.id)} aria-label=${`Delete ${name}`}><${Icon} name="Trash2" size=${14} /></button>
                                         </div>
                                         <div class="act-group">
@@ -1489,7 +1570,7 @@ button:disabled{cursor:default}
                                             <li class="tpl" key=${t.id}>
                                                 <div class="tpl-info">
                                                     <div class="tpl-name">${t.name}</div>
-                                                    <div class="tpl-meta">${t.steps.length} steps · ${fmtDur(t.steps.reduce((s, x) => s + x.duration, 0))}${t.deadline ? ` · due ${fmtClockStr(t.deadline)}` : ''}</div>
+                                                    <div class="tpl-meta">${t.steps.length} steps · ${fmtDur(spanMins(t.steps))}${t.deadline ? ` · due ${fmtClockStr(t.deadline)}` : ''}</div>
                                                 </div>
                                                 <button class="act start" onClick=${() => applyPlan(t, `Loaded “${t.name}”`)}>Load</button>
                                                 <button class="icon-btn danger" onClick=${() => deleteTemplate(t)} aria-label=${`Delete template ${t.name}`}><${Icon} name="Trash2" size=${14} /></button>
